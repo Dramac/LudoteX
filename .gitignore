@@ -1,0 +1,48 @@
+# --- Secrets et configuration locale ---
+.env
+.env.*
+!.env.example
+
+# --- Base de données SQLite (jamais versionnée) ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+data/*.db
+data/*.sqlite*
+
+# --- QR codes générés ---
+qr/
+*.qr.png
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+
+# --- Environnements virtuels ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Outils / tests ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

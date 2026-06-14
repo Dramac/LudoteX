@@ -1,0 +1,19 @@
+# --- Application web ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Moteur de templates pour les pages servies (fiche jeu, écran prêt/retour, catalogue)
+jinja2==3.1.4
+
+# Lecture des variables depuis .env
+python-dotenv==1.0.1
+
+# Données de formulaire (POST des actions prêt/retour)
+python-multipart==0.0.20
+
+# --- Génération des QR codes (scripts/generate_qr.py) ---
+qrcode[pil]==8.0
+
+# --- Tests (développement) ---
+pytest==8.3.4
+httpx==0.28.1
