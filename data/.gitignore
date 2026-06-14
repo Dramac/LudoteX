@@ -1,0 +1,4 @@
+# Le contenu de data/ (base SQLite) n'est jamais versionné,
+# mais on garde le dossier dans le dépôt.
+*
+!.gitignore
