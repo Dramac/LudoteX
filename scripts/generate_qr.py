@@ -249,10 +249,20 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
     Utilise reportlab (gère les images couleur en PDF), chaque étiquette étant
     mise à l'échelle dans sa cellule en conservant ses proportions.
     """
+    from io import BytesIO
+
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
+
+    def lecteur_png(im: Image.Image) -> ImageReader:
+        # Passer un PNG (et non l'objet PIL) : préserve la couleur et évite
+        # le recours au codec JPEG (absent de certains builds Pillow).
+        buf = BytesIO()
+        im.save(buf, format="PNG")
+        buf.seek(0)
+        return ImageReader(buf)
 
     page_w, page_h = A4
     cw, ch = page_w / colonnes, page_h / lignes
@@ -274,7 +284,7 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
             w, h = iw * scale, ih * scale
             x = col * cw + (cw - w) / 2
             y = page_h - (row + 1) * ch + (ch - h) / 2     # origine reportlab : bas-gauche
-            c.drawImage(ImageReader(label), x, y, w, h, preserveAspectRatio=True)
+            c.drawImage(lecteur_png(label), x, y, w, h, preserveAspectRatio=True)
         c.showPage()
         pages += 1
 
