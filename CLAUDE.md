@@ -134,7 +134,12 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    N <= nb_joueurs_max, nombre exact ; jeux sans bornes exclus si filtre actif).
    Services `lister_catalogue(categorie,q,age,joueurs)`, `lister_categories`,
    `ages_disponibles`, `max_joueurs`. Tests 200 + filtres.
-8. [à faire] Page statistiques (agrégation par titre, jeux à zéro inclus).
+8. [fait] Page statistiques `/stats` (`routes/stats.py`) : total des prêts +
+   en cours + titres prêtés, palmarès des plus/moins prêtés par titre (zéros
+   inclus via LEFT JOIN « catalogue d'abord »), histogramme prêts par heure
+   (barres CSS, heures UTC). Double vue `?tri=total|exemplaire`. Services
+   `stats_globales`, `palmares`, `prets_par_heure`. Lien dans le pied de page.
+   Tests services + route.
 9. [à faire] Auth par jeton + limitation de débit.
 10. [à faire] Déploiement VPS + HTTPS.
 
