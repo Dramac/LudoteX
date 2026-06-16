@@ -25,6 +25,19 @@ def client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
+def test_catalogue(client):
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert "Catalogue" in r.text and "Catan" in r.text
+    assert "1 / 1 dispo" in r.text or "1 jeu" in r.text
+
+
+def test_catalogue_redirige_depuis_racine(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code in (307, 308)
+    assert r.headers["location"] == "/catalogue"
+
+
 def test_fiche_publique(client):
     r = client.get("/jeu/001")
     assert r.status_code == 200

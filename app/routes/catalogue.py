@@ -37,7 +37,20 @@ def fiche(request: Request, id_exemplaire: str):
     )
 
 
-# --- À implémenter (étape 7) -----------------------------------------------
-# @router.get("/catalogue")
-# def catalogue(request: Request, categorie: str | None = None):
-#     ...
+@router.get("/catalogue")
+def catalogue(request: Request, categorie: str | None = None):
+    """Liste publique des titres (vrac ou filtrée par catégorie), avec dispo."""
+    conn = get_connection()
+    try:
+        categories = services.lister_categories(conn)
+        # On ignore une catégorie inconnue (filtre réinitialisé).
+        filtre = categorie if categorie in categories else None
+        jeux = services.lister_catalogue(conn, filtre)
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request,
+        "catalogue.html",
+        {"jeux": jeux, "categories": categories, "filtre": filtre},
+    )

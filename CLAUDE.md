@@ -125,12 +125,16 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    (message → appareil photo natif). Lien « Scanner le jeu suivant » sur l'écran
    prêt pour enchaîner. jsQR **hébergé en local** (`static/js/jsQR.js`, versionné,
    aucune dépendance CDN). Test route 200 + contenu.
-7. [à faire] Catalogue public (vrac + filtre catégorie).
+7. [fait] Catalogue public `/catalogue` (`routes/catalogue.py`) : liste des
+   titres triée par nom, dispo par titre (X/Y), filtre par catégorie (« Type
+   jeu »), lien vers la fiche d'un exemplaire représentatif (MIN id). Services
+   `lister_catalogue` / `lister_categories`. Page d'accueil `/`→`/catalogue`
+   (plus de 404). Template `catalogue.html`. Tests 200 + filtre.
 8. [à faire] Page statistiques (agrégation par titre, jeux à zéro inclus).
 9. [à faire] Auth par jeton + limitation de débit.
 10. [à faire] Déploiement VPS + HTTPS.
 
-`routes/catalogue.py` : `/jeu/<id>` fait (le `/catalogue` reste à faire, étape 7).
+`routes/catalogue.py` : `/jeu/<id>` + `/catalogue` faits.
 `routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits.
 
 ## Sécurité du dépôt

@@ -62,6 +62,39 @@ def est_sorti(conn: sqlite3.Connection, id_exemplaire: str) -> bool:
     return pret_en_cours(conn, id_exemplaire) is not None
 
 
+def lister_categories(conn: sqlite3.Connection) -> list[str]:
+    """Catégories distinctes présentes dans le catalogue, triées."""
+    rows = conn.execute(
+        "SELECT DISTINCT categorie FROM titres "
+        "WHERE categorie IS NOT NULL AND categorie <> '' ORDER BY categorie"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None) -> list[dict]:
+    """
+    Catalogue au niveau titre : nom, catégorie, total et nombre d'exemplaires
+    disponibles, et un exemplaire représentatif (le plus petit id) pour le lien
+    vers la fiche. Filtrable par catégorie. Trié par nom.
+    """
+    sql = """
+        SELECT t.reference_titre, t.nom, t.categorie,
+               MIN(e.id_exemplaire) AS id_repr,
+               COUNT(e.id_exemplaire) AS total,
+               SUM(CASE WHEN p.id_pret IS NULL THEN 1 ELSE 0 END) AS disponible
+        FROM titres t
+        JOIN exemplaires e ON e.reference_titre = t.reference_titre
+        LEFT JOIN prets p
+               ON p.id_exemplaire = e.id_exemplaire AND p.date_retour IS NULL
+    """
+    params: tuple = ()
+    if categorie:
+        sql += " WHERE t.categorie = ?"
+        params = (categorie,)
+    sql += " GROUP BY t.reference_titre, t.nom, t.categorie ORDER BY t.nom COLLATE NOCASE"
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
     """(total exemplaires, exemplaires disponibles) pour un titre."""
     total = conn.execute(
