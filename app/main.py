@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routes import catalogue, pret, scanner
+from app.routes import catalogue, pret, scanner, stats
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -29,6 +29,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 app.include_router(catalogue.router)
 app.include_router(pret.router)
 app.include_router(scanner.router)
+app.include_router(stats.router)
 
 
 @app.get("/")

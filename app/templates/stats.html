@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block titre %}Statistiques — Des jeux plein la Manche{% endblock %}
+
+{% macro tableau(titres) %}
+  <ol class="palmares">
+    {% for jeu in titres %}
+      <li>
+        <span class="palmares-nom">{{ jeu.nom }}</span>
+        <span class="palmares-val">
+          {% if metrique == "exemplaire" %}
+            {{ "%.1f"|format(jeu.par_exemplaire) }} / ex.
+            <small>({{ jeu.nb_prets }} prêt(s), {{ jeu.nb_exemplaires }} ex.)</small>
+          {% else %}
+            {{ jeu.nb_prets }} prêt(s)
+            {% if jeu.nb_exemplaires > 1 %}<small>({{ jeu.nb_exemplaires }} ex.)</small>{% endif %}
+          {% endif %}
+        </span>
+      </li>
+    {% endfor %}
+  </ol>
+{% endmacro %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Statistiques</h1>
+  <div class="stats-chiffres">
+    <div class="chiffre"><span class="chiffre-val">{{ g.total_prets }}</span><span class="chiffre-lib">prêts au total</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">en cours</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés au moins une fois</span></div>
+  </div>
+</section>
+
+<section class="carte">
+  <p class="stats-bascule">
+    Classement
+    {% if metrique == "exemplaire" %}
+      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total">par total</a>
+    {% else %}
+      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire">par exemplaire</a>
+    {% endif %}
+  </p>
+
+  <h2>Les plus prêtés</h2>
+  {{ tableau(plus) }}
+
+  <h2>Les moins prêtés <small>(jamais sortis inclus)</small></h2>
+  {{ tableau(moins) }}
+</section>
+
+<section class="carte">
+  <h2>Prêts par heure</h2>
+  {% if par_heure %}
+    <ul class="histo">
+      {% for h in par_heure %}
+        <li class="histo-ligne">
+          <span class="histo-label">{{ h.heure[8:10] }}/{{ h.heure[5:7] }} {{ h.heure[11:13] }}h</span>
+          <span class="histo-barre" style="width: {{ (h.n / max_heure * 100) | round }}%;"></span>
+          <span class="histo-val">{{ h.n }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+    <p class="stats-note">Heures en UTC.</p>
+  {% else %}
+    <p>Aucun prêt enregistré pour l'instant.</p>
+  {% endif %}
+</section>
+{% endblock %}

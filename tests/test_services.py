@@ -70,3 +70,26 @@ def test_historique_jamais_purge(conn):
     services.preter(conn, "001")
     n = conn.execute("SELECT COUNT(*) FROM prets WHERE id_exemplaire='001'").fetchone()[0]
     assert n == 2  # deux lignes d'historique, dont une clôturée
+
+
+def test_stats_globales_et_palmares(conn):
+    # 001 prêté 2 fois (1 clôturé + 1 en cours), 002 une fois, 003 jamais.
+    services.preter(conn, "001"); services.rendre(conn, "001"); services.preter(conn, "001")
+    services.preter(conn, "002")
+    g = services.stats_globales(conn)
+    assert g["total_prets"] == 3
+    assert g["en_cours"] == 2          # 001 et 002 encore sortis
+    assert g["titres_pretes"] == 1     # un seul titre (CATAN)
+
+    # Palmarès par titre : CATAN cumule 3 prêts sur 3 exemplaires.
+    plus = services.palmares(conn, sens="desc", metrique="total")
+    assert plus[0]["reference_titre"] == "CATAN"
+    assert plus[0]["nb_prets"] == 3
+    assert plus[0]["nb_exemplaires"] == 3
+
+
+def test_prets_par_heure(conn):
+    services.preter(conn, "001")
+    services.preter(conn, "002")
+    heures = services.prets_par_heure(conn)
+    assert sum(h["n"] for h in heures) == 2

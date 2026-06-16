@@ -51,6 +51,17 @@ def test_catalogue_redirige_depuis_racine(client):
     assert r.headers["location"] == "/catalogue"
 
 
+def test_stats_page(client):
+    client.post("/pret/001/preter")          # un prêt pour alimenter les stats
+    r = client.get("/stats")
+    assert r.status_code == 200
+    assert "Statistiques" in r.text
+    assert "Catan" in r.text                 # apparaît dans le palmarès
+    r2 = client.get("/stats", params={"tri": "exemplaire"})
+    assert r2.status_code == 200
+    assert "par exemplaire" in r2.text
+
+
 def test_fiche_publique(client):
     r = client.get("/jeu/001")
     assert r.status_code == 200

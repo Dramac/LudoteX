@@ -131,6 +131,75 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
     return [dict(r) for r in conn.execute(sql, params)]
 
 
+# ---------------------------------------------------------------------------
+# Statistiques (post-événement) — s'appuient sur l'historique des prêts
+# ---------------------------------------------------------------------------
+def stats_globales(conn: sqlite3.Connection) -> dict:
+    """Indicateurs de synthèse (tout l'historique des prêts)."""
+    total_prets = conn.execute("SELECT COUNT(*) FROM prets").fetchone()[0]
+    en_cours = conn.execute(
+        "SELECT COUNT(*) FROM prets WHERE date_retour IS NULL"
+    ).fetchone()[0]
+    titres_pretes = conn.execute(
+        """
+        SELECT COUNT(DISTINCT e.reference_titre)
+        FROM prets p JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
+        """
+    ).fetchone()[0]
+    nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
+    return {
+        "total_prets": total_prets,
+        "en_cours": en_cours,
+        "titres_pretes": titres_pretes,
+        "nb_titres": nb_titres,
+    }
+
+
+def palmares(conn: sqlite3.Connection, sens: str = "desc",
+             metrique: str = "total", limite: int = 15) -> list[dict]:
+    """
+    Palmarès par titre, agrégé sur tous les exemplaires (zéros inclus :
+    raisonnement « catalogue d'abord » via LEFT JOIN).
+
+    - metrique="total"      : nombre brut de prêts du titre.
+    - metrique="exemplaire" : prêts rapportés au nombre d'exemplaires.
+    - sens="desc" (les plus prêtés) ou "asc" (les moins prêtés).
+    """
+    cle = ("CAST(COUNT(p.id_pret) AS REAL) / COUNT(DISTINCT e.id_exemplaire)"
+           if metrique == "exemplaire" else "COUNT(p.id_pret)")
+    direction = "ASC" if sens == "asc" else "DESC"
+    rows = conn.execute(
+        f"""
+        SELECT t.reference_titre, t.nom,
+               COUNT(DISTINCT e.id_exemplaire) AS nb_exemplaires,
+               COUNT(p.id_pret) AS nb_prets,
+               CAST(COUNT(p.id_pret) AS REAL) / COUNT(DISTINCT e.id_exemplaire)
+                   AS par_exemplaire
+        FROM titres t
+        JOIN exemplaires e ON e.reference_titre = t.reference_titre
+        LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
+        GROUP BY t.reference_titre, t.nom
+        ORDER BY {cle} {direction}, t.nom COLLATE NOCASE
+        LIMIT ?
+        """,
+        (limite,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def prets_par_heure(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Nombre de prêts par heure (depuis date_sortie). Les horodatages sont en UTC ;
+    la forme de l'histogramme est correcte (décalage horaire constant).
+    Retourne [{heure: 'AAAA-MM-JJTHH', n: int}, ...] ordonné chronologiquement.
+    """
+    rows = conn.execute(
+        "SELECT substr(date_sortie, 1, 13) AS heure, COUNT(*) AS n "
+        "FROM prets GROUP BY heure ORDER BY heure"
+    ).fetchall()
+    return [{"heure": r["heure"], "n": r["n"]} for r in rows]
+
+
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
     """(total exemplaires, exemplaires disponibles) pour un titre."""
     total = conn.execute(
