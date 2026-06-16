@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titre %}Catalogue — Des jeux plein la Manche{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Catalogue des jeux</h1>
+
+  <form method="get" action="/catalogue" class="filtre">
+    <label for="categorie">Catégorie</label>
+    <select id="categorie" name="categorie" onchange="this.form.submit()">
+      <option value="">Toutes les catégories</option>
+      {% for c in categories %}
+        <option value="{{ c }}" {% if c == filtre %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit">Filtrer</button></noscript>
+  </form>
+
+  <p class="catalogue-compte">
+    {{ jeux | length }} jeu(x){% if filtre %} dans « {{ filtre }} »{% endif %}
+  </p>
+</section>
+
+<ul class="catalogue-liste">
+  {% for jeu in jeux %}
+    <li class="jeu">
+      <a class="jeu-lien" href="/jeu/{{ jeu.id_repr }}">
+        <span class="jeu-nom">{{ jeu.nom }}</span>
+        {% if jeu.categorie %}<span class="jeu-categorie">{{ jeu.categorie }}</span>{% endif %}
+      </a>
+      {% if jeu.disponible > 0 %}
+        <span class="badge badge-dispo">{{ jeu.disponible }} / {{ jeu.total }} dispo</span>
+      {% else %}
+        <span class="badge badge-sorti">tout sorti</span>
+      {% endif %}
+    </li>
+  {% else %}
+    <li class="jeu"><em>Aucun jeu dans cette catégorie.</em></li>
+  {% endfor %}
+</ul>
+{% endblock %}
