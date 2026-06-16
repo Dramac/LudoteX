@@ -43,7 +43,8 @@ def test_scanner_page(client):
     assert r.status_code == 200
     assert "<video" in r.text
     assert "/static/js/scanner.js" in r.text
-    assert "jsqr" in r.text.lower()
+    assert "/static/js/jsQR.js" in r.text   # jsQR hébergé en local
+    assert "jsdelivr" not in r.text.lower() and "cdn.jsdelivr" not in r.text.lower()
 
 
 def test_cycle_preter_puis_rendre(client):

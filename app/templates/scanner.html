@@ -15,8 +15,7 @@
   </p>
 </section>
 
-<!-- Décodage QR côté navigateur. NOTE PROD : héberger ce fichier en local
-     (static/js/jsQR.js) plutôt que via CDN, pour ne pas dépendre d'un tiers. -->
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<!-- Décodage QR côté navigateur — jsQR hébergé en local (aucune dépendance CDN). -->
+<script src="/static/js/jsQR.js"></script>
 <script src="/static/js/scanner.js"></script>
 {% endblock %}
