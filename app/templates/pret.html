@@ -64,7 +64,11 @@
       </form>
     {% endif %}
 
-    <p class="lien-fiche"><a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a></p>
+    <p class="lien-fiche">
+      <a class="lien" href="/scanner">Scanner le jeu suivant</a>
+      &nbsp;·&nbsp;
+      <a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a>
+    </p>
   </section>
 {% endif %}
 {% endblock %}

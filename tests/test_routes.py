@@ -38,6 +38,14 @@ def test_fiche_inconnue(client):
     assert "inconnu" in r.text.lower()
 
 
+def test_scanner_page(client):
+    r = client.get("/scanner")
+    assert r.status_code == 200
+    assert "<video" in r.text
+    assert "/static/js/scanner.js" in r.text
+    assert "jsqr" in r.text.lower()
+
+
 def test_cycle_preter_puis_rendre(client):
     r = client.post("/pret/001/preter")
     assert r.status_code == 200
