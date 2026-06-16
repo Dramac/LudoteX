@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block titre %}Scanner — Des jeux plein la Manche{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Scanner un jeu</h1>
+  <p class="scanner-statut" id="statut">Démarrage de la caméra…</p>
+  <div class="scanner-cadre">
+    <video id="video" class="scanner-video" playsinline muted></video>
+  </div>
+  <canvas id="canvas" hidden></canvas>
+  <p class="scanner-aide">
+    Visez le QR code de l'étiquette : l'écran de prêt / retour s'ouvre
+    automatiquement. Une seule autorisation caméra par session.
+  </p>
+</section>
+
+<!-- Décodage QR côté navigateur. NOTE PROD : héberger ce fichier en local
+     (static/js/jsQR.js) plutôt que via CDN, pour ne pas dépendre d'un tiers. -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="/static/js/scanner.js"></script>
+{% endblock %}

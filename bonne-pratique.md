@@ -154,6 +154,20 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
   encore figée → la partie chiffrée (âge, joueurs, durée) est déduite des
   données, les lettres restent `XXX`. Tout est centralisé dans `code_classement()`.
 
+## Scanner caméra
+
+- Décodage QR via **jsQR** (canvas + getUserMedia), choisi pour sa compatibilité
+  **iOS Safari ET Android** ; l'API native `BarcodeDetector` est plus rapide mais
+  absente d'iOS — à éviter comme unique solution.
+- `getUserMedia` n'autorise la caméra qu'en **contexte sécurisé** (HTTPS ou
+  localhost) → tester via le tunnel. La balise `<video>` doit avoir `playsinline`
+  et `muted` (autoplay iOS).
+- **Prod** : héberger jsQR en local (`static/js/jsQR.js`) au lieu du CDN, pour ne
+  pas dépendre d'un tiers. Remplacer la balise `<script src="…cdn…">` de
+  `scanner.html`.
+- Repli prévu : si la caméra est indisponible/refusée, message invitant à scanner
+  le QR avec l'appareil photo natif (qui ouvre la fiche publique `/jeu/<id>`).
+
 ## Mémoire & continuité
 
 - **`CLAUDE.md`** (versionné) = contrat du projet, relu à chaque session : stack,

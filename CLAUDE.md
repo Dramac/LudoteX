@@ -118,7 +118,13 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    mobile-first + `static/css/style.css`. `main.py` : StaticFiles + redirection
    `/`→`/catalogue`. Auth jeton = placeholder `exiger_jeton` (étape 9). 10 tests
    verts (services + routes via TestClient), flux validé sous uvicorn.
-6. [à faire] Scanner caméra embarqué (redirigera vers `/pret/<id>`).
+6. [fait] Scanner caméra embarqué : page `/scanner` (`routes/scanner.py`) +
+   `static/js/scanner.js`. getUserMedia caméra arrière + décodage **jsQR**
+   (compatible iOS/Android ; `BarcodeDetector` absent d'iOS). Extrait l'id de
+   l'URL `/jeu/<id>` et redirige vers `/pret/<id>`. Repli si caméra indispo
+   (message → appareil photo natif). Lien « Scanner le jeu suivant » sur l'écran
+   prêt pour enchaîner. jsQR chargé via CDN — **à héberger en local pour la
+   prod**. Test route 200 + contenu.
 7. [à faire] Catalogue public (vrac + filtre catégorie).
 8. [à faire] Page statistiques (agrégation par titre, jeux à zéro inclus).
 9. [à faire] Auth par jeton + limitation de débit.

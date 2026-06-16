@@ -118,6 +118,12 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .lien { color: #1a73e8; }
 .lien-fiche { margin: 16px 0 0; text-align: center; }
 
+/* Scanner */
+.scanner-cadre { background: #000; border-radius: 12px; overflow: hidden; }
+.scanner-video { display: block; width: 100%; height: auto; }
+.scanner-statut { font-weight: 600; }
+.scanner-aide { color: var(--gris); font-size: 0.9rem; }
+
 .pied {
   max-width: 540px;
   margin: 8px auto 24px;
