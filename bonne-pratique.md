@@ -172,8 +172,8 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
 - Un seul **jeton** (`PRET_TOKEN` dans `.env`) protège `/pret/*` et `/scanner` ;
   le reste (catalogue, fiches, stats) est public. Pas de comptes individuels.
 - **Activation** : distribuer aux bénévoles le lien `/acces?jeton=<JETON>` (via
-  le canal interne). L'appareil mémorise le jeton dans un cookie (1 an). Le jeton
-  n'apparaît jamais dans les pages.
+  le canal interne). L'appareil mémorise le jeton dans un cookie (validité
+  3 jours, à rouvrir ensuite). Le jeton n'apparaît jamais dans les pages.
 - **Rotation annuelle** : changer `PRET_TOKEN` invalide tous les anciens cookies.
   Générer : `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 - **Sécurité** : comparaison en temps constant (`secrets.compare_digest`), cookie

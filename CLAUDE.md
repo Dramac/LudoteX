@@ -143,7 +143,7 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 9. [fait] Auth bénévole par jeton + limitation de débit (`app/auth.py`,
    `routes/acces.py`). `/pret/*` et `/scanner` exigent un cookie = `PRET_TOKEN`
    (comparé en temps constant). Lien d'activation `/acces?jeton=…` pose le cookie
-   (HttpOnly, SameSite=Lax, Secure si HTTPS, 1 an) puis redirige vers /scanner.
+   (HttpOnly, SameSite=Lax, Secure si HTTPS, validité 3 jours) puis redirige vers /scanner.
    Limitation de débit par IP sur `/acces` (`RATE_LIMIT_PER_MINUTE`, en mémoire).
    Catalogue/fiches/stats restent publics. Si `PRET_TOKEN` non défini → mode
    ouvert + avertissement au démarrage (À DÉFINIR en prod). Page `acces_refuse`
