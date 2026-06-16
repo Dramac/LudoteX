@@ -162,9 +162,8 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
 - `getUserMedia` n'autorise la caméra qu'en **contexte sécurisé** (HTTPS ou
   localhost) → tester via le tunnel. La balise `<video>` doit avoir `playsinline`
   et `muted` (autoplay iOS).
-- **Prod** : héberger jsQR en local (`static/js/jsQR.js`) au lieu du CDN, pour ne
-  pas dépendre d'un tiers. Remplacer la balise `<script src="…cdn…">` de
-  `scanner.html`.
+- jsQR est **hébergé en local** (`static/js/jsQR.js`, versionné) : aucune
+  dépendance CDN, tout est servi depuis notre origine.
 - Repli prévu : si la caméra est indisponible/refusée, message invitant à scanner
   le QR avec l'appareil photo natif (qui ouvre la fiche publique `/jeu/<id>`).
 
