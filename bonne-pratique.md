@@ -94,17 +94,18 @@ Pour le contexte technique du projet, voir `CLAUDE.md` ; pour la conception,
   public (lecture seule). Pas de jeton dans l'URL.
 - `BASE_URL` vient du `.env` → le jour J, on régénère tout avec la bonne URL en
   une commande, sans toucher au code.
-- La planche PDF est en **1-bit (noir/blanc par seuil)** : net à l'impression et
-  compatible avec les builds Pillow sans codec JPEG. Conséquence : les cadres de
-  placeholder sont tracés en **noir** (le gris disparaîtrait au seuillage).
-- **Étiquette** = QR + emplacement logo (placeholder, `--logo` pour le vrai) +
-  cercle gommette de couleur + code jeu/nom + code de classement. La grille
-  d'impression est réglable (`--grille LxC`) pour coller aux planches
-  autocollantes du commerce.
+- La planche PDF est produite avec **reportlab** : elle gère les images
+  **couleur** (logo) sans dépendre du codec JPEG de Pillow (absent de certains
+  builds). Chaque étiquette est mise à l'échelle dans sa cellule en conservant
+  ses proportions ; marge de cellule réglable.
+- **Étiquette format paysage** = QR à gauche ; à droite : emplacement logo
+  agrandi (placeholder, `--logo logo_djplm.jpg` pour le vrai), cercle gommette de
+  couleur, nom du jeu, code de classement. Pas de numéro affiché (il est dans le
+  QR). La grille d'impression est réglable (`--grille LxC`, défaut 8x2) pour
+  coller aux planches autocollantes du commerce.
 - **Code de classement** (type `EAM8-3-5-15`) : nomenclature des lettres pas
   encore figée → la partie chiffrée (âge, joueurs, durée) est déduite des
   données, les lettres restent `XXX`. Tout est centralisé dans `code_classement()`.
-  Un logo en couleur nécessitera d'adapter la planche (le 1-bit l'écraserait).
 
 ## Mémoire & continuité
 

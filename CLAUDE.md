@@ -108,7 +108,8 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    type `EAM8-3-5-15` (fonction `code_classement()` : chiffres âge/joueurs/durée
    depuis la base, lettres `XXX` en placeholder tant que la nomenclature n'est
    pas figée). Le numéro de base n'est PAS affiché (présent dans le QR). Planche
-   A4 à grille **configurable** `--grille LxC` (défaut 8x2).
+   A4 (reportlab, **couleur** pour le logo) à grille **configurable**
+   `--grille LxC` (défaut 8x2). Logo réel : `logo_djplm.jpg` à la racine.
 5. [à faire] Fiche jeu `/jeu/<id>` (lecture) + écran prêt/retour (écriture).
 6. [à faire] Scanner caméra embarqué.
 7. [à faire] Catalogue public (vrac + filtre catégorie).

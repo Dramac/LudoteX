@@ -11,8 +11,9 @@ python-dotenv==1.0.1
 # Données de formulaire (POST des actions prêt/retour)
 python-multipart==0.0.20
 
-# --- Génération des QR codes (scripts/generate_qr.py) ---
+# --- Génération des QR codes / étiquettes (scripts/generate_qr.py) ---
 qrcode[pil]==8.0
+reportlab==4.5.1
 
 # --- Tests (développement) ---
 pytest==8.3.4

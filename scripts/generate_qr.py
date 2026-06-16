@@ -242,30 +242,44 @@ def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
 
 
 def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
-                    colonnes: int, logo, simple: bool) -> int:
-    """Planche A4 (300 DPI) : grille lignes x colonnes d'étiquettes."""
-    A4 = (2480, 3508)
-    par_page = lignes * colonnes
-    cw, ch = A4[0] // colonnes, A4[1] // lignes
+                    colonnes: int, logo, simple: bool, marge_mm: float = 2.0) -> int:
+    """
+    Planche A4 prête à imprimer : grille lignes x colonnes d'étiquettes.
 
-    pages: list[Image.Image] = []
-    for i in range(0, len(exemplaires), par_page):
-        page = Image.new("RGB", A4, BLANC)
-        for j, ex in enumerate(exemplaires[i:i + par_page]):
-            url = url_fiche(base_url, ex["id_exemplaire"])
-            cell = image_qr_nu(url) if simple else image_etiquette(url, ex, logo)
-            cell.thumbnail((cw - 24, ch - 24))
-            col, row = j % colonnes, j // colonnes
-            x = col * cw + (cw - cell.width) // 2
-            y = row * ch + (ch - cell.height) // 2
-            page.paste(cell, (x, y))
-        # 1-bit par seuil : net à l'impression, évite le codec JPEG.
-        page = page.convert("L").point(lambda v: 0 if v < 128 else 255, mode="1")
-        pages.append(page)
+    Utilise reportlab (gère les images couleur en PDF), chaque étiquette étant
+    mise à l'échelle dans sa cellule en conservant ses proportions.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    page_w, page_h = A4
+    cw, ch = page_w / colonnes, page_h / lignes
+    marge = marge_mm * mm
+    par_page = lignes * colonnes
 
     chemin_pdf.parent.mkdir(parents=True, exist_ok=True)
-    pages[0].save(chemin_pdf, save_all=True, append_images=pages[1:], resolution=300.0)
-    return len(pages)
+    c = canvas.Canvas(str(chemin_pdf), pagesize=A4)
+
+    pages = 0
+    for i in range(0, len(exemplaires), par_page):
+        for j, ex in enumerate(exemplaires[i:i + par_page]):
+            url = url_fiche(base_url, ex["id_exemplaire"])
+            label = image_qr_nu(url) if simple else image_etiquette(url, ex, logo)
+            iw, ih = label.size
+            col, row = j % colonnes, j // colonnes
+            avail_w, avail_h = cw - 2 * marge, ch - 2 * marge
+            scale = min(avail_w / iw, avail_h / ih)
+            w, h = iw * scale, ih * scale
+            x = col * cw + (cw - w) / 2
+            y = page_h - (row + 1) * ch + (ch - h) / 2     # origine reportlab : bas-gauche
+            c.drawImage(ImageReader(label), x, y, w, h, preserveAspectRatio=True)
+        c.showPage()
+        pages += 1
+
+    c.save()
+    return pages
 
 
 def _parse_grille(valeur: str) -> tuple[int, int]:
@@ -296,11 +310,16 @@ def main() -> None:
         raise SystemExit("ERREUR : aucune URL de base. Renseigner BASE_URL dans "
                          ".env ou passer --base-url. L'URL encodée est définitive.")
 
+    # Logo : --logo explicite, sinon logo_djplm.jpg à la racine du projet s'il existe.
+    chemin_logo = args.logo
+    if chemin_logo is None:
+        defaut = Path(__file__).resolve().parent.parent / "logo_djplm.jpg"
+        chemin_logo = defaut if defaut.exists() else None
     logo = None
-    if args.logo:
-        if not args.logo.exists():
-            raise SystemExit(f"Logo introuvable : {args.logo}")
-        logo = Image.open(args.logo).convert("RGB")
+    if chemin_logo:
+        if not chemin_logo.exists():
+            raise SystemExit(f"Logo introuvable : {chemin_logo}")
+        logo = Image.open(chemin_logo).convert("RGB")
 
     exemplaires = charger_exemplaires(args.limit)
     if not exemplaires:
