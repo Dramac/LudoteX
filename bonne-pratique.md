@@ -4,6 +4,53 @@ Mémo des conseils accumulés au fil du développement. Complété à chaque ét
 Pour le contexte technique du projet, voir `CLAUDE.md` ; pour la conception,
 `docs/specification.md`.
 
+## Tester en local
+
+Sur Mac (la commande Python est `python3`). Première fois seulement :
+
+```bash
+cd ~/Documents/Claude/Projects/DJPLM
+python3 -m venv .venv          # crée l'environnement virtuel (une seule fois)
+source .venv/bin/activate      # l'invite passe à (.venv)
+pip install -r requirements.txt
+python -m app.db               # crée la base SQLite vide
+python -m scripts.import_csv <chemin_du_catalogue.csv>   # remplit le catalogue
+```
+
+Ensuite, à chaque session, il suffit de :
+
+```bash
+cd ~/Documents/Claude/Projects/DJPLM
+source .venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+Puis ouvrir `http://localhost:8000/pret/001` (écran bénévole) ou `/jeu/001`
+(fiche publique). `deactivate` pour sortir de l'environnement.
+
+> Si `source .venv/bin/activate` répond *no such file or directory*, c'est que
+> le `.venv` n'a pas encore été créé → refaire `python3 -m venv .venv`.
+
+### Tester sur smartphone (scan caméra) — tunnel HTTPS
+
+Le scanner caméra exige HTTPS. Pour tester depuis un téléphone, exposer le
+serveur local via un tunnel **Cloudflare** (gratuit, sans compte) :
+
+```bash
+brew install cloudflared            # une seule fois (nécessite Homebrew)
+```
+
+Deux fenêtres de Terminal : l'une lance `uvicorn app.main:app --reload`,
+l'autre :
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+cloudflared affiche une URL `https://….trycloudflare.com` (elle change à chaque
+lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret/001`.
+`Ctrl+C` dans chaque fenêtre pour arrêter.
+
 ## Git & GitHub
 
 - **Qui pousse ?** L'assistant édite et commit en local, mais **ne peut pas
