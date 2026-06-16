@@ -8,27 +8,19 @@ Principes (voir docs/specification.md §5.1, §6, §8) :
 - Écran déclenché par un scan ; le scanner embarqué (étape 6) redirige vers
   GET /pret/<id>.
 
-Sécurité : l'accès à ces routes sera protégé par un JETON aléatoire long +
-limitation de débit par IP — À IMPLÉMENTER À L'ÉTAPE 9. Le point d'accroche
-`exiger_jeton` ci-dessous est un placeholder neutre pour l'instant.
+Sécurité : ces routes sont protégées par le jeton bénévole (voir app/auth.py
+et la route /acces). La dépendance `exiger_jeton` renvoie une 403 (page
+acces_refuse) si l'appareil n'a pas activé l'accès.
 """
 
 from fastapi import APIRouter, Depends, Request
 
 from app import services
+from app.auth import exiger_jeton
 from app.db import get_connection
 from app.templating import templates
 
 router = APIRouter(prefix="/pret", tags=["pret"])
-
-
-def exiger_jeton() -> None:
-    """
-    Placeholder d'authentification (étape 9).
-    TODO : vérifier le jeton d'écriture (PRET_TOKEN) et appliquer la limitation
-    de débit par IP. Pour l'instant : ne bloque rien.
-    """
-    return None
 
 
 def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,

@@ -10,7 +10,7 @@ Sécurité : comme les autres écrans bénévole, l'accès sera protégé par le
 
 from fastapi import APIRouter, Depends, Request
 
-from app.routes.pret import exiger_jeton
+from app.auth import exiger_jeton
 from app.templating import templates
 
 router = APIRouter(tags=["scanner"])
