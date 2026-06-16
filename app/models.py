@@ -48,16 +48,20 @@ PRAGMAS = (
 # remettre en cause les deux clés non négociables.
 SCHEMA_TITRES = """
 CREATE TABLE IF NOT EXISTS titres (
-    reference_titre  TEXT PRIMARY KEY,            -- clé de regroupement (ex. "CATAN")
-    nom              TEXT NOT NULL,               -- nom affiché du jeu
-    categorie        TEXT,                        -- catégorie pour le filtrage public
+    reference_titre  TEXT PRIMARY KEY,            -- clé de regroupement (slug du nom, ex. "CATAN")
+    nom              TEXT NOT NULL,               -- nom d'affichage du jeu
+    categorie        TEXT,                        -- catégorie pour le filtrage public (CSV "Type jeu")
 
-    -- Colonnes optionnelles (nullables) — peuvent évoluer librement
-    nb_joueurs_min   INTEGER,
-    nb_joueurs_max   INTEGER,
-    duree_min        INTEGER,                     -- durée approximative en minutes
-    age_min          INTEGER,                     -- âge minimum conseillé
-    editeur          TEXT
+    -- Colonnes optionnelles (nullables) — peuvent évoluer librement.
+    -- L'import CSV remplit ce qu'il trouve ; absence = NULL.
+    nb_joueurs_min   INTEGER,                     -- ex. "2 - 4" -> 2
+    nb_joueurs_max   INTEGER,                     -- ex. "2 - 4" -> 4
+    duree_min        INTEGER,                     -- durée en minutes (borne basse si plage)
+    age_min          INTEGER,                     -- âge minimum conseillé (ex. "10 +" -> 10)
+    editeur          TEXT,                        -- CSV "Marque"
+    auteur           TEXT,                        -- CSV "Auteur"
+    annee_edition    INTEGER,                     -- CSV "Année édition"
+    descriptif       TEXT                         -- CSV "Descriptif" (fiche publique)
 );
 """
 

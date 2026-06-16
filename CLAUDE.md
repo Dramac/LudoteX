@@ -50,7 +50,8 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 ## Modèle de données (4 tables — voir spec §3 et `app/models.py`)
 
 - `titres` : `reference_titre` (PK), `nom`, `categorie` + colonnes optionnelles
-  nullables (`nb_joueurs_min/max`, `duree_min`, `age_min`, `editeur`).
+  nullables (`nb_joueurs_min/max`, `duree_min`, `age_min`, `editeur`, `auteur`,
+  `annee_edition`, `descriptif`).
 - `exemplaires` : `id_exemplaire` (PK, TEXT), `reference_titre` (FK).
 - `prets` : `id_pret` (PK auto), `id_exemplaire` (FK), `numero_pochette`,
   `date_sortie`, `date_retour` (NULL tant que sorti). Historique jamais purgé.
@@ -84,9 +85,16 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 
 1. [fait] Structure du dépôt + `requirements.txt` + README.
 2. [fait] Schéma SQLite (`app/models.py`) + init (`app/db.py`).
-3. [à faire] `scripts/import_csv.py` — import catalogue, tolérant aux colonnes
-   variables, n'exige que les deux clés. **Bloqué sur** : obtenir un échantillon
-   de CSV ou figer la liste des colonnes.
+3. [fait] `scripts/import_csv.py` — import tolérant. CSV réel reçu
+   (`Liste_Jeux_Etendue_140626.csv`, 703 lignes, séparateur `;`, UTF-8 BOM).
+   Mapping : « Code jeu »→`id_exemplaire` (TEXT, zéros de tête), nom nettoyé,
+   `reference_titre`=slug du nom (REGROUPEMENT par nom, validé par Simon),
+   « Type jeu »→`categorie`, parsing « Nb joueurs » 2-4→min/max, « Age » 10+→10,
+   « Temps jeu »→`duree_min`, « Marque »→`editeur`, + descriptif/auteur/année.
+   Colonnes d'état du CSV ignorées (état déduit des prêts). Idempotent (UPSERT).
+   Résultat : **609 titres / 703 exemplaires**, 0 FK orpheline. Regroupements
+   à noms divergents (28) tous vérifiés corrects (casse/accents). « Lien image »
+   non importé (chemins Windows locaux inutilisables).
 4. [à faire] `scripts/generate_qr.py` — QR au format URL `<BASE_URL>/jeu/<id>`.
 5. [à faire] Fiche jeu `/jeu/<id>` (lecture) + écran prêt/retour (écriture).
 6. [à faire] Scanner caméra embarqué.
