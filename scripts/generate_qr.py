@@ -129,6 +129,25 @@ def _tronquer(draw, texte, police, largeur_max):
     return texte + "…"
 
 
+def _wrap(draw, texte, police, largeur_max, max_lignes=3):
+    """Découpe le texte en lignes tenant dans largeur_max (max_lignes lignes)."""
+    lignes, cur = [], ""
+    for mot in (texte or "").split():
+        essai = (cur + " " + mot).strip()
+        if draw.textbbox((0, 0), essai, font=police)[2] <= largeur_max:
+            cur = essai
+        else:
+            if cur:
+                lignes.append(cur)
+            cur = mot
+            if len(lignes) >= max_lignes:
+                break
+    if cur and len(lignes) < max_lignes:
+        lignes.append(cur)
+    lignes = [_tronquer(draw, l, police, largeur_max) for l in lignes[:max_lignes]]
+    return lignes or [""]
+
+
 def image_qr_nu(url: str, box: int = 8) -> Image.Image:
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
                        box_size=box, border=2)
@@ -140,66 +159,66 @@ def image_qr_nu(url: str, box: int = 8) -> Image.Image:
 def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
                     box: int = 8) -> Image.Image:
     """
-    Compose une étiquette complète. Tous les cadres de placeholder sont tracés
-    en NOIR pour rester visibles après conversion 1-bit de la planche PDF.
+    Étiquette au format PAYSAGE : QR à gauche, panneau d'infos à droite
+    (logo + gommette en haut, nom au centre, code de classement en bas).
+    Pas de numéro de base affiché (il est dans le QR). Tous les cadres de
+    placeholder sont en NOIR pour survivre à la conversion 1-bit de la planche.
     """
     qr = image_qr_nu(url, box)
-    pad = 18
-    logo_w, logo_h = 150, 74          # cadre logo (haut gauche)
-    gom_d = 58                        # diamètre gommette (haut droite)
-    header_h = max(logo_h, gom_d + 18)
+    pad, gap = 18, 22
+    panel_w = 360
+    logo_w, logo_h = 150, 74
+    gom_d = 58
+    classif_h = 46
 
-    f_code = _police(26)
-    f_nom = _police(20)
+    f_nom = _police(24)
     f_classif = _police(24)
     f_small = _police(13)
 
-    content_w = max(qr.width, logo_w + 40 + gom_d)
-    W = content_w + 2 * pad
-
-    # Hauteurs des blocs
-    cap_h = 34 + 26                    # code jeu + nom
-    classif_h = 46
-    qr_y = pad + header_h + 10
-    cap_y = qr_y + qr.height + 8
-    classif_y = cap_y + cap_h + 6
-    H = classif_y + classif_h + pad
+    W = pad + qr.width + gap + panel_w + pad
+    H = pad + qr.height + pad
 
     img = Image.new("RGB", (W, H), BLANC)
     d = ImageDraw.Draw(img)
 
-    # --- Logo (haut gauche) ---
-    lx0, ly0 = pad, pad
+    # --- QR (gauche, centré verticalement) ---
+    qy = (H - qr.height) // 2
+    img.paste(qr, (pad, qy))
+
+    px = pad + qr.width + gap          # bord gauche du panneau
+    panel_cx = px + panel_w // 2
+
+    # --- Logo (haut gauche du panneau) ---
     if logo is not None:
         vignette = logo.copy()
         vignette.thumbnail((logo_w, logo_h))
-        img.paste(vignette, (lx0 + (logo_w - vignette.width) // 2,
-                             ly0 + (logo_h - vignette.height) // 2))
+        img.paste(vignette, (px + (logo_w - vignette.width) // 2,
+                             pad + (logo_h - vignette.height) // 2))
     else:
-        d.rectangle([lx0, ly0, lx0 + logo_w, ly0 + logo_h], outline=NOIR, width=3)
-        _texte_centre(d, lx0 + logo_w // 2, ly0 + logo_h // 2 - 10, "LOGO", f_nom)
-        _texte_centre(d, lx0 + logo_w // 2, ly0 + logo_h // 2 + 12, "(asso)", f_small)
+        d.rectangle([px, pad, px + logo_w, pad + logo_h], outline=NOIR, width=3)
+        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 - 10, "LOGO", f_nom)
+        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 + 14, "(asso)", f_small)
 
-    # --- Gommette de couleur (haut droite) ---
+    # --- Gommette (haut droite du panneau) ---
     gx0 = W - pad - gom_d
-    gy0 = pad
-    d.ellipse([gx0, gy0, gx0 + gom_d, gy0 + gom_d], outline=NOIR, width=3)
-    _texte_centre(d, gx0 + gom_d // 2, gy0 + gom_d + 1, "gommette", f_small)
+    d.ellipse([gx0, pad, gx0 + gom_d, pad + gom_d], outline=NOIR, width=3)
+    _texte_centre(d, gx0 + gom_d // 2, pad + gom_d + 1, "gommette", f_small)
 
-    # --- QR (centré) ---
-    img.paste(qr, ((W - qr.width) // 2, qr_y))
+    # --- Nom (panneau, centré entre l'en-tête et le code) ---
+    lignes = _wrap(d, ex.get("nom", ""), f_nom, panel_w, max_lignes=3)
+    lh = d.textbbox((0, 0), "Ag", font=f_nom)[3] + 8
+    haut_entete = pad + max(logo_h, gom_d + 16)
+    bas_code = H - pad - classif_h
+    bloc_h = len(lignes) * lh
+    ny = haut_entete + (bas_code - haut_entete - bloc_h) // 2
+    for ligne in lignes:
+        _texte_centre(d, panel_cx, ny, ligne, f_nom)
+        ny += lh
 
-    # --- Code jeu + nom ---
-    cx = W // 2
-    _texte_centre(d, cx, cap_y, ex["id_exemplaire"], f_code)
-    nom = _tronquer(d, ex.get("nom", ""), f_nom, W - 2 * pad)
-    _texte_centre(d, cx, cap_y + 34, nom, f_nom)
-
-    # --- Code de classement (bas, encadré) ---
-    box_w = W - 2 * pad
-    d.rectangle([pad, classif_y, pad + box_w, classif_y + classif_h],
-                outline=NOIR, width=3)
-    _texte_centre(d, cx, classif_y + 11, code_classement(ex), f_classif)
+    # --- Code de classement (bas du panneau, encadré) ---
+    cy = H - pad - classif_h
+    d.rectangle([px, cy, px + panel_w, cy + classif_h], outline=NOIR, width=3)
+    _texte_centre(d, panel_cx, cy + 11, code_classement(ex), f_classif)
 
     return img
 
@@ -261,8 +280,8 @@ def main() -> None:
     p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="Dossier de sortie.")
     p.add_argument("--logo", type=Path, help="Image du logo (sinon placeholder).")
     p.add_argument("--planche", action="store_true", help="Planche PDF A4 à imprimer.")
-    p.add_argument("--grille", default="6x4",
-                   help="Disposition planche 'lignesxcolonnes' (défaut 6x4).")
+    p.add_argument("--grille", default="8x2",
+                   help="Disposition planche 'lignesxcolonnes' (défaut 8x2, paysage).")
     p.add_argument("--simple", action="store_true", help="QR nu, sans décor.")
     p.add_argument("--limit", type=int, help="Limiter le nombre d'exemplaires (tests).")
     args = p.parse_args()

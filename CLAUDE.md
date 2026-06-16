@@ -103,11 +103,12 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    (OpenCV) : URL exacte. **URL définitive : ne tirer les étiquettes qu'une fois
    le domaine figé** ; avant, QR de test (tunnel/localhost). QR exclus du dépôt
    (`qr/` dans `.gitignore`).
-   Étiquette enrichie : placeholder LOGO (option `--logo`), cercle GOMMETTE,
-   code jeu + nom, et CODE DE CLASSEMENT type `EAM8-3-5-15` (fonction
-   `code_classement()` : chiffres âge/joueurs/durée depuis la base, lettres
-   `XXX` en placeholder tant que la nomenclature n'est pas figée). Planche A4
-   à grille **configurable** `--grille LxC` (défaut 6x4).
+   Étiquette **format paysage** (QR à gauche, panneau à droite) : placeholder
+   LOGO (option `--logo`), cercle GOMMETTE, nom du jeu, et CODE DE CLASSEMENT
+   type `EAM8-3-5-15` (fonction `code_classement()` : chiffres âge/joueurs/durée
+   depuis la base, lettres `XXX` en placeholder tant que la nomenclature n'est
+   pas figée). Le numéro de base n'est PAS affiché (présent dans le QR). Planche
+   A4 à grille **configurable** `--grille LxC` (défaut 8x2).
 5. [à faire] Fiche jeu `/jeu/<id>` (lecture) + écran prêt/retour (écriture).
 6. [à faire] Scanner caméra embarqué.
 7. [à faire] Catalogue public (vrac + filtre catégorie).
