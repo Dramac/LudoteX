@@ -1,16 +1,37 @@
 """
-Logique métier du prêt — état, pochettes, prêt/retour.
+Logique métier du prêt — état des exemplaires, numéros de pochette, prêt/retour,
+catalogue et statistiques.
 
-Toutes les fonctions prennent une connexion SQLite ouverte (`sqlite3.Connection`)
-pour rester testables et permettre à l'appelant de gérer la transaction. Les
-fonctions d'écriture committent elles-mêmes.
+POURQUOI CE MODULE EXISTE
+-------------------------
+On isole ici TOUTE la logique métier, séparée des routes HTTP (app/routes/*).
+Avantages : ces fonctions sont testables sans serveur (voir tests/test_services.py)
+et réutilisables (un futur module « prêts longue durée » pourra s'appuyer dessus).
+Les routes se contentent d'appeler ces fonctions et de rendre des pages.
 
-Règles (voir docs/specification.md §3, §5, §6) :
-- L'état d'un exemplaire est DÉDUIT : il est SORTI s'il a un prêt avec
-  `date_retour IS NULL`, DISPONIBLE sinon. Jamais stocké en dur.
+CONVENTIONS (valables dans tout le projet)
+------------------------------------------
+- Le code, les noms de variables, de fonctions et de colonnes sont en FRANÇAIS.
+- `conn` : une connexion SQLite déjà ouverte (`sqlite3.Connection`). Chaque
+  fonction la reçoit en paramètre plutôt que de l'ouvrir elle-même → testabilité
+  et maîtrise de la transaction par l'appelant.
+- Les fonctions de LECTURE ne committent pas ; les fonctions d'ÉCRITURE
+  (`preter`, `rendre`, `repreter`) committent elles-mêmes.
+- Une « ligne » SQLite est un `sqlite3.Row` (accès par nom de colonne) ; on la
+  convertit en `dict` avant de la renvoyer, pour découpler l'appelant de sqlite3.
+- Vocabulaire métier :
+    * exemplaire  = une boîte physique unique (clé `id_exemplaire`, TEXT).
+    * titre       = un jeu, regroupant ses exemplaires (clé `reference_titre`).
+    * pochette    = emplacement numéroté où l'on dépose la pièce d'identité.
+    * prêt        = une ligne de la table `prets` (sortie + éventuel retour).
+
+RÈGLES MÉTIER NON NÉGOCIABLES (voir docs/specification.md §3, §5, §6)
+--------------------------------------------------------------------
+- L'état d'un exemplaire est DÉDUIT, jamais stocké : il est SORTI s'il existe un
+  prêt avec `date_retour IS NULL`, DISPONIBLE sinon.
 - Numéro de pochette : à partir de 1, on attribue toujours le PLUS PETIT numéro
-  libre, recyclé au retour, AUCUN plafond (on ne refuse jamais un prêt).
-- L'historique des prêts n'est jamais purgé.
+  libre, recyclé au retour, et SANS PLAFOND (on ne refuse jamais un prêt).
+- L'historique des prêts n'est jamais purgé : il alimente les statistiques.
 """
 
 from __future__ import annotations
@@ -20,15 +41,38 @@ from datetime import datetime, timezone
 
 
 def maintenant() -> str:
-    """Horodatage ISO 8601 en UTC (précision seconde)."""
+    """
+    Horodatage courant au format ISO 8601, en UTC, à la seconde.
+
+    On stocke toujours en UTC (ex. ``2026-06-16T14:01:18+00:00``) pour éviter
+    toute ambiguïté de fuseau ou d'heure d'été ; la conversion en heure locale,
+    si besoin, se fait à l'affichage.
+
+    Returns:
+        La date/heure courante UTC sous forme de chaîne ISO 8601.
+    """
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# ---------------------------------------------------------------------------
-# Lecture / état
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# LECTURE / ÉTAT
+# ===========================================================================
 def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None:
-    """Infos de l'exemplaire + son titre, ou None si l'exemplaire est inconnu."""
+    """
+    Renvoie les informations d'un exemplaire et de son titre.
+
+    Jointure `exemplaires` → `titres` : on récupère en une fois l'identité de la
+    boîte et toutes les caractéristiques du jeu (utile pour la fiche publique).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: identifiant de la boîte (TEXT, ex. "00472").
+
+    Returns:
+        Un dict des colonnes (id_exemplaire, reference_titre, nom, categorie,
+        nb_joueurs_min/max, duree_min, age_min, editeur, auteur, annee_edition,
+        descriptif), ou ``None`` si l'exemplaire est inconnu.
+    """
     row = conn.execute(
         """
         SELECT e.id_exemplaire, t.reference_titre, t.nom, t.categorie,
@@ -44,7 +88,21 @@ def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None
 
 
 def pret_en_cours(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None:
-    """Le prêt non clos de l'exemplaire (dict id_pret/numero_pochette), ou None."""
+    """
+    Renvoie le prêt NON CLOS d'un exemplaire (celui dont `date_retour IS NULL`).
+
+    C'est la brique qui matérialise l'état « sorti » : s'il existe une telle
+    ligne, l'exemplaire est dehors. On trie par `id_pret` décroissant et on
+    limite à 1 par sécurité (il ne devrait jamais y en avoir plus d'un ouvert).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: identifiant de la boîte.
+
+    Returns:
+        Un dict {id_pret, numero_pochette, date_sortie} si l'exemplaire est
+        sorti, sinon ``None``.
+    """
     row = conn.execute(
         """
         SELECT id_pret, numero_pochette, date_sortie
@@ -59,11 +117,20 @@ def pret_en_cours(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None:
 
 
 def est_sorti(conn: sqlite3.Connection, id_exemplaire: str) -> bool:
+    """Raccourci booléen : True si l'exemplaire a un prêt non clos."""
     return pret_en_cours(conn, id_exemplaire) is not None
 
 
 def lister_categories(conn: sqlite3.Connection) -> list[str]:
-    """Catégories distinctes présentes dans le catalogue, triées."""
+    """
+    Liste les catégories distinctes du catalogue (pour le menu de filtrage).
+
+    Source : la colonne `titres.categorie` (issue du CSV « Type jeu »). On exclut
+    les valeurs nulles/vides et on trie alphabétiquement.
+
+    Returns:
+        Liste de chaînes (catégories), triée.
+    """
     rows = conn.execute(
         "SELECT DISTINCT categorie FROM titres "
         "WHERE categorie IS NOT NULL AND categorie <> '' ORDER BY categorie"
@@ -72,7 +139,12 @@ def lister_categories(conn: sqlite3.Connection) -> list[str]:
 
 
 def ages_disponibles(conn: sqlite3.Connection) -> list[int]:
-    """Âges minimum distincts présents dans le catalogue, triés."""
+    """
+    Liste les âges minimum distincts présents (pour le menu « âge » du filtre).
+
+    Returns:
+        Liste d'entiers (âges min), triée croissant.
+    """
     rows = conn.execute(
         "SELECT DISTINCT age_min FROM titres WHERE age_min IS NOT NULL ORDER BY age_min"
     ).fetchall()
@@ -80,7 +152,12 @@ def ages_disponibles(conn: sqlite3.Connection) -> list[int]:
 
 
 def max_joueurs(conn: sqlite3.Connection) -> int:
-    """Plus grand nombre de joueurs maximum du catalogue (pour le menu)."""
+    """
+    Plus grand `nb_joueurs_max` du catalogue (borne haute du menu « joueurs »).
+
+    Returns:
+        Un entier (0 si aucune donnée de joueurs n'est renseignée).
+    """
     val = conn.execute("SELECT MAX(nb_joueurs_max) FROM titres").fetchone()[0]
     return val or 0
 
@@ -89,17 +166,33 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
                      q: str | None = None, age: int | None = None,
                      joueurs: int | None = None) -> list[dict]:
     """
-    Catalogue au niveau titre : nom, catégorie, total et nombre d'exemplaires
-    disponibles, et un exemplaire représentatif (le plus petit id) pour le lien
-    vers la fiche. Trié par nom.
+    Construit le catalogue AU NIVEAU TITRE, avec disponibilité et filtres.
 
-    Filtres combinables :
-    - categorie : égalité exacte sur la catégorie.
-    - q         : recherche texte dans le nom (insensible à la casse).
-    - age       : jeux accessibles dès cet âge (age_min <= age).
-    - joueurs   : jeux jouables à ce nombre exact (nb_joueurs_min <= n <= nb_joueurs_max).
-    Les jeux sans l'information filtrée (âge/joueurs NULL) sont exclus quand le
-    filtre correspondant est actif.
+    Pour chaque titre, on calcule en une requête : un exemplaire représentatif
+    (le plus petit id, pour le lien vers la fiche), le nombre total
+    d'exemplaires, et combien sont disponibles.
+
+    Astuce SQL : le LEFT JOIN sur `prets` est restreint aux prêts NON CLOS
+    (`date_retour IS NULL`). Pour un exemplaire disponible, aucune ligne de prêt
+    ne se joint → `p.id_pret` est NULL → on le compte comme disponible via
+    `SUM(CASE WHEN p.id_pret IS NULL THEN 1 ELSE 0 END)`.
+
+    Filtres combinables (tous optionnels, ajoutés dynamiquement au WHERE) :
+        categorie : égalité exacte sur la catégorie.
+        q         : sous-chaîne dans le nom (LIKE, insensible à la casse ASCII).
+        age       : jeux accessibles dès cet âge (`age_min <= age`).
+        joueurs   : jeux jouables à ce nombre EXACT (`min <= joueurs <= max`).
+    Les jeux dont l'information filtrée est absente (âge/joueurs NULL) sont
+    naturellement exclus quand le filtre correspondant est actif (comparaison
+    avec NULL = faux).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        categorie, q, age, joueurs: filtres optionnels (voir ci-dessus).
+
+    Returns:
+        Liste de dicts {reference_titre, nom, categorie, id_repr, total,
+        disponible}, triée par nom (insensible à la casse).
     """
     sql = """
         SELECT t.reference_titre, t.nom, t.categorie,
@@ -111,6 +204,8 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         LEFT JOIN prets p
                ON p.id_exemplaire = e.id_exemplaire AND p.date_retour IS NULL
     """
+    # On accumule les conditions et leurs paramètres pour un WHERE paramétré
+    # (jamais de concaténation de valeurs → pas d'injection SQL).
     conditions: list[str] = []
     params: list = []
     if categorie:
@@ -131,11 +226,20 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
     return [dict(r) for r in conn.execute(sql, params)]
 
 
-# ---------------------------------------------------------------------------
-# Statistiques (post-événement) — s'appuient sur l'historique des prêts
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# STATISTIQUES (post-événement) — fondées sur l'historique complet des prêts
+# ===========================================================================
 def stats_globales(conn: sqlite3.Connection) -> dict:
-    """Indicateurs de synthèse (tout l'historique des prêts)."""
+    """
+    Indicateurs de synthèse à partir de tout l'historique des prêts.
+
+    Returns:
+        dict avec :
+            total_prets   : nombre total de prêts jamais enregistrés.
+            en_cours      : prêts non clos (exemplaires actuellement sortis).
+            titres_pretes : nombre de titres distincts sortis au moins une fois.
+            nb_titres     : nombre total de titres au catalogue (pour le ratio).
+    """
     total_prets = conn.execute("SELECT COUNT(*) FROM prets").fetchone()[0]
     en_cours = conn.execute(
         "SELECT COUNT(*) FROM prets WHERE date_retour IS NULL"
@@ -158,13 +262,30 @@ def stats_globales(conn: sqlite3.Connection) -> dict:
 def palmares(conn: sqlite3.Connection, sens: str = "desc",
              metrique: str = "total", limite: int = 15) -> list[dict]:
     """
-    Palmarès par titre, agrégé sur tous les exemplaires (zéros inclus :
-    raisonnement « catalogue d'abord » via LEFT JOIN).
+    Palmarès des titres, agrégé sur tous leurs exemplaires.
 
-    - metrique="total"      : nombre brut de prêts du titre.
-    - metrique="exemplaire" : prêts rapportés au nombre d'exemplaires.
-    - sens="desc" (les plus prêtés) ou "asc" (les moins prêtés).
+    « Catalogue d'abord » : on part de TOUS les titres (JOIN sur exemplaires) et
+    on rattache les prêts par LEFT JOIN. Ainsi un titre jamais prêté apparaît
+    avec `nb_prets = 0` — indispensable pour le palmarès des MOINS prêtés.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        sens: "desc" pour les plus prêtés, "asc" pour les moins prêtés.
+        metrique: "total" (nombre brut de prêts) ou "exemplaire" (prêts rapportés
+            au nombre d'exemplaires, pour ne pas avantager les titres en plusieurs
+            boîtes).
+        limite: nombre de lignes renvoyées.
+
+    Returns:
+        Liste de dicts {reference_titre, nom, nb_exemplaires, nb_prets,
+        par_exemplaire}, ordonnée selon la métrique et le sens.
+
+    Note de sécurité : `metrique`/`sens` ne viennent JAMAIS directement de
+    l'utilisateur ; ils sont normalisés en amont (route /stats) à des valeurs
+    connues. On les injecte dans le SQL via un littéral contrôlé, et seul
+    `limite` passe en paramètre lié.
     """
+    # Clé de tri : ratio prêts/exemplaires, ou total brut.
     cle = ("CAST(COUNT(p.id_pret) AS REAL) / COUNT(DISTINCT e.id_exemplaire)"
            if metrique == "exemplaire" else "COUNT(p.id_pret)")
     direction = "ASC" if sens == "asc" else "DESC"
@@ -189,9 +310,15 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
 
 def prets_par_heure(conn: sqlite3.Connection) -> list[dict]:
     """
-    Nombre de prêts par heure (depuis date_sortie). Les horodatages sont en UTC ;
-    la forme de l'histogramme est correcte (décalage horaire constant).
-    Retourne [{heure: 'AAAA-MM-JJTHH', n: int}, ...] ordonné chronologiquement.
+    Nombre de prêts par heure, pour l'histogramme de fréquentation.
+
+    On regroupe sur les 13 premiers caractères de `date_sortie`
+    (``AAAA-MM-JJTHH``), ce qui revient à grouper par heure. Les horodatages
+    étant en UTC, l'histogramme est juste décalé d'un offset constant par rapport
+    à l'heure locale — sa FORME (les pics de fréquentation) reste exacte.
+
+    Returns:
+        Liste de dicts {heure: 'AAAA-MM-JJTHH', n: int}, triée chronologiquement.
     """
     rows = conn.execute(
         "SELECT substr(date_sortie, 1, 13) AS heure, COUNT(*) AS n "
@@ -201,11 +328,21 @@ def prets_par_heure(conn: sqlite3.Connection) -> list[dict]:
 
 
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
-    """(total exemplaires, exemplaires disponibles) pour un titre."""
+    """
+    Disponibilité d'un titre donné (utilisé par la fiche d'un exemplaire).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        reference_titre: clé du titre.
+
+    Returns:
+        Un tuple (total_exemplaires, exemplaires_disponibles).
+    """
     total = conn.execute(
         "SELECT COUNT(*) FROM exemplaires WHERE reference_titre = ?",
         (reference_titre,),
     ).fetchone()[0]
+    # « sortis » = exemplaires ayant AU MOINS un prêt non clos.
     sortis = conn.execute(
         """
         SELECT COUNT(*) FROM exemplaires e
@@ -219,13 +356,24 @@ def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int
     return total, total - sortis
 
 
-# ---------------------------------------------------------------------------
-# Pochettes
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# POCHETTES — attribution / libération des numéros
+# ===========================================================================
 def plus_petit_numero_libre(conn: sqlite3.Connection) -> int:
     """
-    Attribue (et marque occupé) le plus petit numéro de pochette libre.
-    Réutilise un numéro libéré ; sinon en crée un nouveau (max + 1). Sans plafond.
+    Attribue le PLUS PETIT numéro de pochette libre, et le marque occupé.
+
+    Deux cas :
+    1. Il existe une pochette libérée (occupe = 0) → on réutilise la plus petite
+       (recyclage), pour garder des numéros bas et tassés.
+    2. Aucune libre → on en crée une nouvelle (max + 1, ou 1 si table vide).
+       AUCUN PLAFOND : on ne refuse jamais un prêt (spec §6).
+
+    Effet de bord : modifie la table `pochettes` (mais ne committe pas ; c'est
+    `preter()` qui committe l'ensemble de l'opération).
+
+    Returns:
+        Le numéro de pochette attribué (entier ≥ 1).
     """
     libre = conn.execute(
         "SELECT MIN(numero_pochette) FROM pochettes WHERE occupe = 0"
@@ -245,20 +393,32 @@ def plus_petit_numero_libre(conn: sqlite3.Connection) -> int:
 
 
 def liberer_numero(conn: sqlite3.Connection, numero_pochette: int) -> None:
+    """Marque une pochette comme libre (occupe = 0) ; ne committe pas."""
     conn.execute(
         "UPDATE pochettes SET occupe = 0 WHERE numero_pochette = ?", (numero_pochette,)
     )
 
 
-# ---------------------------------------------------------------------------
-# Opérations de prêt / retour
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# OPÉRATIONS DE PRÊT / RETOUR
+# ===========================================================================
 def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     """
-    Ouvre un prêt : attribue le plus petit numéro de pochette libre et
-    enregistre la sortie. Retourne le numéro de pochette attribué.
-    L'appelant garantit que l'exemplaire est DISPONIBLE (contrôle d'état côté
-    route) ; cette fonction ne refuse jamais.
+    Ouvre un prêt sur un exemplaire DISPONIBLE.
+
+    Attribue le plus petit numéro de pochette libre, enregistre la sortie
+    (date_sortie = maintenant, date_retour = NULL) et committe.
+
+    L'appelant (route) garantit que l'exemplaire est bien disponible via un
+    contrôle d'état préalable ; conformément à « ne jamais bloquer », cette
+    fonction elle-même ne refuse jamais.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: identifiant de la boîte à prêter.
+
+    Returns:
+        Le numéro de pochette attribué (à afficher au bénévole).
     """
     numero = plus_petit_numero_libre(conn)
     conn.execute(
@@ -274,8 +434,17 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
 
 def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
-    Clôt le prêt en cours et libère le numéro de pochette.
-    Retourne {"numero_libere": n} ou {"deja_disponible": True} si rien à rendre.
+    Enregistre le retour d'un exemplaire : clôt le prêt en cours et libère sa
+    pochette.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: identifiant de la boîte rendue.
+
+    Returns:
+        {"numero_libere": n} en cas de retour effectif, ou
+        {"deja_disponible": True} s'il n'y avait aucun prêt à clore (cas non
+        bloquant : l'exemplaire était déjà rentré).
     """
     courant = pret_en_cours(conn, id_exemplaire)
     if courant is None:
@@ -291,19 +460,32 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
 
 def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
-    Cas d'oubli de scan : considère le prêt précédent comme rentré (retour =
-    maintenant, ancien numéro libéré), puis ouvre un nouveau prêt.
-    Retourne {"ancien_numero": a, "nouveau_numero": n} ; si l'exemplaire était
-    en fait disponible, {"nouveau_numero": n, "etait_disponible": True}.
+    Re-prêt après oubli de scan (spec §5.1).
+
+    Scénario : un exemplaire est noté « sorti » en base mais revient physiquement
+    et repart aussitôt sans qu'on ait scanné le retour. On considère donc
+    l'ancien prêt comme rentré (date_retour = maintenant, ancien numéro libéré),
+    puis on ouvre immédiatement un nouveau prêt (nouveau numéro).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: identifiant de la boîte.
+
+    Returns:
+        {"ancien_numero": a, "nouveau_numero": n} dans le cas nominal ; ou
+        {"nouveau_numero": n, "etait_disponible": True} si l'exemplaire était en
+        réalité déjà disponible (on se contente alors d'un prêt simple).
     """
     courant = pret_en_cours(conn, id_exemplaire)
     if courant is None:
+        # Incohérence bénigne : rien à clore, on ouvre simplement un prêt.
         return {"nouveau_numero": preter(conn, id_exemplaire), "etait_disponible": True}
+    # Clôture de l'ancien prêt + libération de son numéro...
     conn.execute(
         "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
         (maintenant(), courant["id_pret"]),
     )
     liberer_numero(conn, courant["numero_pochette"])
-    # commit implicite via preter()
+    # ... puis ouverture d'un nouveau prêt (preter() committe l'ensemble).
     nouveau = preter(conn, id_exemplaire)
     return {"ancien_numero": courant["numero_pochette"], "nouveau_numero": nouveau}

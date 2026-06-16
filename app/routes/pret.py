@@ -1,16 +1,30 @@
 """
-Routes de PRÊT / RETOUR — opérations d'écriture (réservées aux bénévoles).
+Routes de PRÊT / RETOUR — opérations d'ÉCRITURE, réservées aux bénévoles.
 
-Principes (voir docs/specification.md §5.1, §6, §8) :
-- NE JAMAIS BLOQUER : toute incohérence (exemplaire déjà sorti/déjà dispo) donne
-  un message + une action de rattrapage, jamais une erreur bloquante.
-- Le système pré-sélectionne l'action probable selon l'état (déduit côté serveur).
-- Écran déclenché par un scan ; le scanner embarqué (étape 6) redirige vers
-  GET /pret/<id>.
+PRINCIPES (voir docs/specification.md §5.1, §6, §8)
+---------------------------------------------------
+- NE JAMAIS BLOQUER : toute incohérence (exemplaire déjà sorti, ou déjà
+  disponible) produit un MESSAGE, jamais une erreur. Le résultat renvoyé au
+  gabarit porte un `type` que pret.html sait afficher.
+- Le serveur fait foi sur l'état : avant chaque action, on relit l'état réel
+  (`pret_en_cours`) pour gérer les conflits (deux bénévoles sur le même
+  exemplaire) sans planter.
+- L'écran est déclenché par un scan : le scanner (routes/scanner.py) redirige
+  vers GET /pret/<id>.
 
-Sécurité : ces routes sont protégées par le jeton bénévole (voir app/auth.py
-et la route /acces). La dépendance `exiger_jeton` renvoie une 403 (page
-acces_refuse) si l'appareil n'a pas activé l'accès.
+SÉCURITÉ
+--------
+Toutes les routes dépendent de `exiger_jeton` (app/auth.py) : sans cookie
+d'accès valide, FastAPI lève un 403 que main.py transforme en page
+« accès réservé ».
+
+DICTIONNAIRE `resultat` (passé au gabarit pret.html)
+----------------------------------------------------
+    {"type": "prete",            "numero": n}             prêt réussi
+    {"type": "repret",           "nouveau": n, "ancien": a|None}  re-prêt
+    {"type": "rendu",            "numero": n}             retour enregistré
+    {"type": "deja_sorti",       "numero": n}             déjà sorti (no-op)
+    {"type": "deja_disponible"}                           rien à rendre (no-op)
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -20,12 +34,30 @@ from app.auth import exiger_jeton
 from app.db import get_connection
 from app.templating import templates
 
+# prefix="/pret" : toutes les routes ci-dessous commencent par /pret.
 router = APIRouter(prefix="/pret", tags=["pret"])
 
 
 def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
            status: int = 200):
-    """Rend l'écran prêt/retour avec l'état courant et un résultat optionnel."""
+    """
+    Rend l'écran prêt/retour avec l'état COURANT de l'exemplaire.
+
+    Fonction interne (préfixe `_`) factorisant le rendu commun aux quatre routes.
+    Elle relit toujours l'état frais en base, de sorte que la page reflète la
+    réalité après l'action. Le `resultat` éventuel sert au bandeau de
+    confirmation.
+
+    Args:
+        request: requête courante.
+        id_exemplaire: identifiant concerné.
+        resultat: dict décrivant l'issue d'une action (voir en-tête), ou None
+            pour un simple affichage (GET).
+        status: code HTTP si l'exemplaire existe (404 forcé sinon).
+
+    Returns:
+        La page pret.html.
+    """
     conn = get_connection()
     try:
         info = services.info_exemplaire(conn, id_exemplaire)
@@ -43,18 +75,30 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
 
 @router.get("/{id_exemplaire}")
 def ecran(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
-    """Écran prêt/retour : état + action pré-sélectionnée."""
+    """
+    Affiche l'écran prêt/retour (GET).
+
+    Le gabarit pré-sélectionne l'action probable : « Prêter » si l'exemplaire est
+    disponible, « Rendre » / « Le re-prêter » s'il est sorti.
+
+    Le paramètre `_=Depends(exiger_jeton)` applique la protection par jeton ; sa
+    valeur n'est pas utilisée (d'où le nom `_`).
+    """
     return _rendu(request, id_exemplaire)
 
 
 @router.post("/{id_exemplaire}/preter")
 def action_preter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """
+    Prête l'exemplaire (POST). Contrôle d'état : si déjà sorti, ne duplique pas
+    le prêt et renvoie un message `deja_sorti` (jamais d'erreur).
+    """
     conn = get_connection()
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
-            return _rendu(request, id_exemplaire)
+            return _rendu(request, id_exemplaire)  # exemplaire inconnu -> 404
         courant = services.pret_en_cours(conn, id_exemplaire)
-        if courant is not None:  # contrôle d'état : déjà sorti, ne pas dupliquer
+        if courant is not None:  # déjà sorti : on ne ré-attribue pas de pochette
             resultat = {"type": "deja_sorti", "numero": courant["numero_pochette"]}
         else:
             resultat = {"type": "prete", "numero": services.preter(conn, id_exemplaire)}
@@ -65,6 +109,10 @@ def action_preter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
 
 @router.post("/{id_exemplaire}/rendre")
 def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """
+    Enregistre le retour (POST). Si l'exemplaire était déjà disponible, renvoie
+    `deja_disponible` sans rien modifier.
+    """
     conn = get_connection()
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
@@ -81,11 +129,16 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
 
 @router.post("/{id_exemplaire}/repreter")
 def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """
+    Re-prête l'exemplaire (POST) : clôt l'ancien prêt puis en ouvre un nouveau
+    (cas d'oubli de scan de retour). Voir services.repreter pour la logique.
+    """
     conn = get_connection()
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
             return _rendu(request, id_exemplaire)
         res = services.repreter(conn, id_exemplaire)
+        # `ancien` peut être None si l'exemplaire était en fait déjà disponible.
         resultat = {"type": "repret", "nouveau": res["nouveau_numero"],
                     "ancien": res.get("ancien_numero")}
     finally:
