@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titre %}{{ info.nom if info else "Jeu inconnu" }} — Prêt de jeux{% endblock %}
+
+{% block contenu %}
+{% if info is none %}
+  <section class="carte">
+    <h1>Exemplaire inconnu</h1>
+    <p>Le code <strong>{{ id_exemplaire }}</strong> ne correspond à aucun jeu du
+       catalogue. Si l'étiquette est récente, le catalogue n'est peut-être pas
+       à jour.</p>
+    <p><a class="lien" href="/catalogue">Voir le catalogue</a></p>
+  </section>
+{% else %}
+  <section class="carte">
+    <h1>{{ info.nom }}</h1>
+
+    {% if disponible > 0 %}
+      <p class="etat etat-dispo">Disponible</p>
+    {% else %}
+      <p class="etat etat-sorti">Actuellement tout sorti</p>
+    {% endif %}
+    <p class="dispo-titre">{{ disponible }} / {{ total }} exemplaire(s) de ce jeu disponible(s)</p>
+
+    <dl class="caracteristiques">
+      {% if info.categorie %}<dt>Catégorie</dt><dd>{{ info.categorie }}</dd>{% endif %}
+      {% if info.nb_joueurs_min %}
+        <dt>Joueurs</dt>
+        <dd>{% if info.nb_joueurs_max and info.nb_joueurs_max != info.nb_joueurs_min %}
+              {{ info.nb_joueurs_min }} à {{ info.nb_joueurs_max }}
+            {% else %}{{ info.nb_joueurs_min }}{% endif %}</dd>
+      {% endif %}
+      {% if info.duree_min %}<dt>Durée</dt><dd>environ {{ info.duree_min }} min</dd>{% endif %}
+      {% if info.age_min %}<dt>Âge</dt><dd>à partir de {{ info.age_min }} ans</dd>{% endif %}
+      {% if info.editeur %}<dt>Éditeur</dt><dd>{{ info.editeur }}</dd>{% endif %}
+      {% if info.auteur %}<dt>Auteur</dt><dd>{{ info.auteur }}</dd>{% endif %}
+      {% if info.annee_edition %}<dt>Année</dt><dd>{{ info.annee_edition }}</dd>{% endif %}
+    </dl>
+
+    {% if info.descriptif %}
+      <p class="descriptif">{{ info.descriptif }}</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}

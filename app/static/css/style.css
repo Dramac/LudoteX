@@ -1,0 +1,119 @@
+:root {
+  --vert: #1f7a3d;
+  --vert-clair: #e6f4ea;
+  --rouge: #b3261e;
+  --rouge-clair: #fce8e6;
+  --orange: #8a5a00;
+  --orange-clair: #fff4e0;
+  --gris: #5f6368;
+  --bord: #dadce0;
+  --texte: #202124;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--texte);
+  background: #f1f3f4;
+  line-height: 1.5;
+}
+
+.bandeau {
+  background: #4a148c;
+  padding: 12px 16px;
+  position: sticky;
+  top: 0;
+}
+.bandeau-titre {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+}
+
+.contenu {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.carte {
+  background: #fff;
+  border: 1px solid var(--bord);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 12px; }
+
+/* États */
+.etat {
+  display: inline-block;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin: 0 0 8px;
+}
+.etat-dispo { background: var(--vert-clair); color: var(--vert); }
+.etat-sorti { background: var(--rouge-clair); color: var(--rouge); }
+.dispo-titre { color: var(--gris); margin-top: 0; }
+
+/* Caractéristiques */
+.caracteristiques {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 16px 0;
+}
+.caracteristiques dt { color: var(--gris); }
+.caracteristiques dd { margin: 0; font-weight: 600; }
+.descriptif { color: #3c4043; }
+
+/* Boutons d'action (grandes cibles tactiles) */
+.bouton {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 12px 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+}
+.bouton-sous {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 400;
+  opacity: 0.9;
+  margin-top: 4px;
+}
+.bouton-principal { background: var(--vert); }
+.bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord); }
+
+/* Résultat d'action */
+.resultat {
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.resultat-ok { background: var(--vert-clair); border: 2px solid var(--vert); }
+.resultat-info { background: #e8f0fe; border: 2px solid #1a73e8; }
+.resultat-attention { background: var(--orange-clair); border: 2px solid var(--orange); color: var(--orange); }
+.resultat-libelle { margin: 0; font-size: 1.1rem; color: var(--vert); }
+.pochette-num {
+  margin: 4px 0;
+  font-size: 5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--vert);
+}
+.resultat-consigne { margin: 0; font-weight: 600; }
+
+.lien { color: #1a73e8; }
+.lien-fiche { margin: 16px 0 0; text-align: center; }
