@@ -71,11 +71,35 @@ def lister_categories(conn: sqlite3.Connection) -> list[str]:
     return [r[0] for r in rows]
 
 
-def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None) -> list[dict]:
+def ages_disponibles(conn: sqlite3.Connection) -> list[int]:
+    """Âges minimum distincts présents dans le catalogue, triés."""
+    rows = conn.execute(
+        "SELECT DISTINCT age_min FROM titres WHERE age_min IS NOT NULL ORDER BY age_min"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def max_joueurs(conn: sqlite3.Connection) -> int:
+    """Plus grand nombre de joueurs maximum du catalogue (pour le menu)."""
+    val = conn.execute("SELECT MAX(nb_joueurs_max) FROM titres").fetchone()[0]
+    return val or 0
+
+
+def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
+                     q: str | None = None, age: int | None = None,
+                     joueurs: int | None = None) -> list[dict]:
     """
     Catalogue au niveau titre : nom, catégorie, total et nombre d'exemplaires
     disponibles, et un exemplaire représentatif (le plus petit id) pour le lien
-    vers la fiche. Filtrable par catégorie. Trié par nom.
+    vers la fiche. Trié par nom.
+
+    Filtres combinables :
+    - categorie : égalité exacte sur la catégorie.
+    - q         : recherche texte dans le nom (insensible à la casse).
+    - age       : jeux accessibles dès cet âge (age_min <= age).
+    - joueurs   : jeux jouables à ce nombre exact (nb_joueurs_min <= n <= nb_joueurs_max).
+    Les jeux sans l'information filtrée (âge/joueurs NULL) sont exclus quand le
+    filtre correspondant est actif.
     """
     sql = """
         SELECT t.reference_titre, t.nom, t.categorie,
@@ -87,10 +111,22 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None) -> 
         LEFT JOIN prets p
                ON p.id_exemplaire = e.id_exemplaire AND p.date_retour IS NULL
     """
-    params: tuple = ()
+    conditions: list[str] = []
+    params: list = []
     if categorie:
-        sql += " WHERE t.categorie = ?"
-        params = (categorie,)
+        conditions.append("t.categorie = ?")
+        params.append(categorie)
+    if q:
+        conditions.append("t.nom LIKE ? COLLATE NOCASE")
+        params.append(f"%{q}%")
+    if age is not None:
+        conditions.append("t.age_min IS NOT NULL AND t.age_min <= ?")
+        params.append(age)
+    if joueurs is not None:
+        conditions.append("t.nb_joueurs_min <= ? AND t.nb_joueurs_max >= ?")
+        params.extend([joueurs, joueurs])
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY t.reference_titre, t.nom, t.categorie ORDER BY t.nom COLLATE NOCASE"
     return [dict(r) for r in conn.execute(sql, params)]
 

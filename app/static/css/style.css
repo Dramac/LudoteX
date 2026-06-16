@@ -118,17 +118,42 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .lien { color: #1a73e8; }
 .lien-fiche { margin: 16px 0 0; text-align: center; }
 
-/* Catalogue */
-.filtre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.filtre label { color: var(--gris); }
-.filtre select {
-  flex: 1;
-  min-width: 200px;
+/* Catalogue — recherche / filtres */
+.recherche {
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.recherche > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #4a148c;
+}
+.recherche-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.champ { display: flex; flex-direction: column; gap: 4px; }
+.champ label { color: var(--gris); font-size: 0.9rem; }
+.champ input, .champ select {
   padding: 10px;
   border: 1px solid var(--bord);
   border-radius: 8px;
   font-size: 1rem;
   background: #fff;
+}
+.recherche-actions { display: flex; align-items: center; gap: 16px; }
+.bouton-filtrer {
+  background: #4a148c;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 .catalogue-compte { color: var(--gris); margin: 12px 0 0; }
 

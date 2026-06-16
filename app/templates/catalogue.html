@@ -5,20 +5,52 @@
 <section class="carte">
   <h1>Catalogue des jeux</h1>
 
-  <form method="get" action="/catalogue" class="filtre">
-    <label for="categorie">Catégorie</label>
-    <select id="categorie" name="categorie" onchange="this.form.submit()">
-      <option value="">Toutes les catégories</option>
-      {% for c in categories %}
-        <option value="{{ c }}" {% if c == filtre %}selected{% endif %}>{{ c }}</option>
-      {% endfor %}
-    </select>
-    <noscript><button type="submit">Filtrer</button></noscript>
-  </form>
+  <details class="recherche" {% if filtres_actifs %}open{% endif %}>
+    <summary>Rechercher / filtrer</summary>
+    <form method="get" action="/catalogue" class="recherche-form">
+      <div class="champ">
+        <label for="q">Recherche</label>
+        <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
+      </div>
 
-  <p class="catalogue-compte">
-    {{ jeux | length }} jeu(x){% if filtre %} dans « {{ filtre }} »{% endif %}
-  </p>
+      <div class="champ">
+        <label for="categorie">Catégorie</label>
+        <select id="categorie" name="categorie">
+          <option value="">Toutes</option>
+          {% for c in categories %}
+            <option value="{{ c }}" {% if c == filtre %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="champ">
+        <label for="age">Âge minimum</label>
+        <select id="age" name="age">
+          <option value="">Tous</option>
+          {% for a in ages %}
+            <option value="{{ a }}" {% if a == age %}selected{% endif %}>dès {{ a }} ans</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="champ">
+        <label for="joueurs">Nombre de joueurs</label>
+        <select id="joueurs" name="joueurs">
+          <option value="">Indifférent</option>
+          {% for n in range(1, max_joueurs + 1) %}
+            <option value="{{ n }}" {% if n == joueurs %}selected{% endif %}>{{ n }} joueur{{ 's' if n > 1 else '' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="recherche-actions">
+        <button type="submit" class="bouton-filtrer">Filtrer</button>
+        {% if filtres_actifs %}<a class="lien" href="/catalogue">Réinitialiser</a>{% endif %}
+      </div>
+    </form>
+  </details>
+
+  <p class="catalogue-compte">{{ jeux | length }} jeu(x)</p>
 </section>
 
 <ul class="catalogue-liste">
@@ -35,7 +67,7 @@
       {% endif %}
     </li>
   {% else %}
-    <li class="jeu"><em>Aucun jeu dans cette catégorie.</em></li>
+    <li class="jeu"><em>Aucun jeu ne correspond à ces critères.</em></li>
   {% endfor %}
 </ul>
 {% endblock %}

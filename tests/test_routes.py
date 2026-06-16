@@ -32,6 +32,19 @@ def test_catalogue(client):
     assert "1 / 1 dispo" in r.text or "1 jeu" in r.text
 
 
+def test_catalogue_recherche_par_nom(client):
+    r = client.get("/catalogue", params={"q": "cat"})
+    assert r.status_code == 200
+    assert "Catan" in r.text
+
+
+def test_catalogue_filtre_joueurs_exclut_hors_bornes(client):
+    # Catan (jeu de test) n'a pas de bornes joueurs -> exclu si filtre joueurs actif
+    r = client.get("/catalogue", params={"joueurs": "3"})
+    assert r.status_code == 200
+    assert "Catan" not in r.text
+
+
 def test_catalogue_redirige_depuis_racine(client):
     r = client.get("/", follow_redirects=False)
     assert r.status_code in (307, 308)
