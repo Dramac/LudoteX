@@ -41,7 +41,7 @@ def test_fiche_inconnue(client):
 def test_cycle_preter_puis_rendre(client):
     r = client.post("/pret/001/preter")
     assert r.status_code == 200
-    assert "Pochette" in r.text and ">1<" in r.text.replace(" ", "")
+    assert "Emplacement" in r.text and ">1<" in r.text.replace(" ", "")
 
     # Re-prêter alors que déjà sorti -> message, pas d'erreur
     r2 = client.get("/pret/001")
@@ -49,7 +49,7 @@ def test_cycle_preter_puis_rendre(client):
 
     r3 = client.post("/pret/001/rendre")
     assert r3.status_code == 200
-    assert "libérée" in r3.text
+    assert "libéré" in r3.text
 
     # Après retour : de nouveau disponible
     r4 = client.get("/pret/001")
