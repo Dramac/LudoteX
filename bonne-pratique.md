@@ -83,6 +83,20 @@ Pour le contexte technique du projet, voir `CLAUDE.md` ; pour la conception,
 - **« Lien image » du CSV inutilisable tel quel** : ce sont des chemins Windows
   locaux (`C:\Ludopret\...`). Les images devront être réhébergées plus tard.
 
+## QR codes
+
+- **L'URL encodée dans un QR est DÉFINITIVE.** Une fois imprimé et collé, un QR
+  ne doit jamais changer (la fiche `/jeu/<id>` doit rester accessible à cette
+  adresse). **Ne lancer le tirage des ~700 étiquettes qu'une fois le nom de
+  domaine réservé et figé.** Avant ça, générer des QR de test (BASE_URL = tunnel
+  HTTPS ou `http://localhost:8000`).
+- Le QR ne contient **aucun secret** : il donne le même accès que le catalogue
+  public (lecture seule). Pas de jeton dans l'URL.
+- `BASE_URL` vient du `.env` → le jour J, on régénère tout avec la bonne URL en
+  une commande, sans toucher au code.
+- La planche PDF est en **1-bit (noir/blanc par seuil)** : net à l'impression et
+  compatible avec les builds Pillow sans codec JPEG.
+
 ## Mémoire & continuité
 
 - **`CLAUDE.md`** (versionné) = contrat du projet, relu à chaque session : stack,
