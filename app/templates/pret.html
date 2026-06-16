@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour{% endblock %}
+
+{% block contenu %}
+{% if info is none %}
+  <section class="carte">
+    <h1>Exemplaire inconnu</h1>
+    <p>Le code <strong>{{ id_exemplaire }}</strong> n'existe pas dans le catalogue.</p>
+    <p><a class="lien" href="/catalogue">Retour au catalogue</a></p>
+  </section>
+{% else %}
+
+  {# --- Bandeau de résultat après une action --- #}
+  {% if resultat %}
+    {% if resultat.type == "prete" %}
+      <section class="resultat resultat-ok">
+        <p class="resultat-libelle">Pochette n°</p>
+        <p class="pochette-num">{{ resultat.numero }}</p>
+        <p class="resultat-consigne">Glissez-y la pièce d'identité.</p>
+      </section>
+    {% elif resultat.type == "repret" %}
+      <section class="resultat resultat-ok">
+        <p class="resultat-libelle">Nouvelle pochette n°</p>
+        <p class="pochette-num">{{ resultat.nouveau }}</p>
+        <p class="resultat-consigne">
+          {% if resultat.ancien %}Ancien prêt (pochette n°{{ resultat.ancien }}) clôturé.{% endif %}
+          Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
+        </p>
+      </section>
+    {% elif resultat.type == "rendu" %}
+      <section class="resultat resultat-info">
+        <p>Retour enregistré. Pochette n°{{ resultat.numero }} libérée — récupérez-y la pièce d'identité.</p>
+      </section>
+    {% elif resultat.type == "deja_sorti" %}
+      <section class="resultat resultat-attention">
+        <p>Cet exemplaire était déjà sorti (pochette n°{{ resultat.numero }}). Rien n'a été modifié.</p>
+      </section>
+    {% elif resultat.type == "deja_disponible" %}
+      <section class="resultat resultat-attention">
+        <p>Cet exemplaire était déjà disponible. Rien à rendre.</p>
+      </section>
+    {% endif %}
+  {% endif %}
+
+  <section class="carte">
+    <h1>{{ info.nom }}</h1>
+
+    {% if pret_actuel %}
+      <p class="etat etat-sorti">Sorti — pochette n°{{ pret_actuel.numero_pochette }}</p>
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
+        <button class="bouton bouton-principal" type="submit">
+          Rendre <span class="bouton-sous">libère la pochette n°{{ pret_actuel.numero_pochette }}</span>
+        </button>
+      </form>
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/repreter">
+        <button class="bouton bouton-secondaire" type="submit">
+          Le re-prêter <span class="bouton-sous">oubli de scan : nouveau prêt</span>
+        </button>
+      </form>
+    {% else %}
+      <p class="etat etat-dispo">Disponible</p>
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/preter">
+        <button class="bouton bouton-principal" type="submit">Prêter</button>
+      </form>
+    {% endif %}
+
+    <p class="lien-fiche"><a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a></p>
+  </section>
+{% endif %}
+{% endblock %}

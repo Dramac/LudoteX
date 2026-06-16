@@ -110,15 +110,22 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    pas figée). Le numéro de base n'est PAS affiché (présent dans le QR). Planche
    A4 (reportlab, **couleur** pour le logo) à grille **configurable**
    `--grille LxC` (défaut 8x2). Logo réel : `logo_djplm.jpg` à la racine.
-5. [à faire] Fiche jeu `/jeu/<id>` (lecture) + écran prêt/retour (écriture).
-6. [à faire] Scanner caméra embarqué.
+5. [fait] Fiche jeu `/jeu/<id>` (lecture publique) + écran prêt/retour
+   `/pret/<id>` (écriture). Logique métier isolée dans `app/services.py` (état
+   déduit, plus petit n° de pochette libre recyclé sans plafond, prêter / rendre
+   / re-prêter, dispo par titre). Contrôle d'état côté serveur → jamais bloquant
+   (déjà sorti / déjà dispo = message). Templates Jinja2 (`base/fiche/pret.html`)
+   mobile-first + `static/css/style.css`. `main.py` : StaticFiles + redirection
+   `/`→`/catalogue`. Auth jeton = placeholder `exiger_jeton` (étape 9). 10 tests
+   verts (services + routes via TestClient), flux validé sous uvicorn.
+6. [à faire] Scanner caméra embarqué (redirigera vers `/pret/<id>`).
 7. [à faire] Catalogue public (vrac + filtre catégorie).
 8. [à faire] Page statistiques (agrégation par titre, jeux à zéro inclus).
 9. [à faire] Auth par jeton + limitation de débit.
 10. [à faire] Déploiement VPS + HTTPS.
 
-`routes/pret.py` et `routes/catalogue.py` sont actuellement des **squelettes
-commentés** (aucune logique métier).
+`routes/catalogue.py` : `/jeu/<id>` fait (le `/catalogue` reste à faire, étape 7).
+`routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits.
 
 ## Sécurité du dépôt
 

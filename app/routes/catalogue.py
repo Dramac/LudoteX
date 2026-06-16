@@ -1,44 +1,43 @@
 """
 Routes du CATALOGUE PUBLIC — consultation en lecture seule.
 
->>> SQUELETTE — aucune logique métier implémentée pour l'instant. <<<
+Accès public, SANS donnée personnelle, SANS bouton d'action (voir spec §5.2).
+La fiche `/jeu/<id_exemplaire>` est l'URL encodée dans le QR.
 
-Principe (voir docs/specification.md §5.2 et §8) :
-- Accès public, SANS donnée personnelle, SANS bouton d'action.
-- C'est la couche de lecture, conçue pour resservir telle quelle au
-  catalogue public navigable (spec §11).
-
-Endpoints prévus (à implémenter plus tard) :
-
-    GET /jeu/{id_exemplaire}
-        Fiche d'un exemplaire (lecture seule). C'est l'URL encodée dans le
-        QR code. Affiche le titre, la disponibilité, etc. AUCUNE action ici :
-        le contenu du QR ne donne que le niveau d'accès du catalogue public.
-
-    GET /catalogue
-        Liste des titres, navigable « en vrac » ou par catégorie
-        (catégories définies dans le CSV). Affiche pour chaque titre sa
-        disponibilité agrégée (nb d'exemplaires disponibles / total).
-
-    GET /catalogue?categorie=...
-        Filtrage par catégorie.
-
-Remarques d'implémentation (pour mémoire, à ne pas coder maintenant) :
-- La disponibilité d'un exemplaire se déduit de l'absence de prêt non clos
-  (aucune ligne dans `prets` avec date_retour IS NULL).
-- Raisonnement « catalogue d'abord » : partir de tous les titres, y rattacher
-  les exemplaires/prêts, pour que les jeux jamais sortis restent visibles.
+À venir (étape 7) : GET /catalogue (liste, filtre par catégorie).
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+from app import services
+from app.db import get_connection
+from app.templating import templates
 
 router = APIRouter(tags=["catalogue"])
 
-# --- À implémenter ---------------------------------------------------------
-# @router.get("/jeu/{id_exemplaire}")
-# def fiche_exemplaire(id_exemplaire: str):
-#     ...
-#
+
+@router.get("/jeu/{id_exemplaire}")
+def fiche(request: Request, id_exemplaire: str):
+    """Fiche d'un exemplaire (lecture seule)."""
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        total = disponible = 0
+        if info is not None:
+            total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request,
+        "fiche.html",
+        {"id_exemplaire": id_exemplaire, "info": info,
+         "total": total, "disponible": disponible},
+        status_code=200 if info else 404,
+    )
+
+
+# --- À implémenter (étape 7) -----------------------------------------------
 # @router.get("/catalogue")
-# def catalogue(categorie: str | None = None):
+# def catalogue(request: Request, categorie: str | None = None):
 #     ...

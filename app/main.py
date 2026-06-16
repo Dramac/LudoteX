@@ -4,14 +4,19 @@ Point d'entrée de l'application FastAPI.
 Lancement (développement) :
     uvicorn app.main:app --reload
 
-À ce stade, l'application se contente d'enregistrer les routeurs (catalogue
-public et prêt/retour, encore en squelettes) et d'exposer un point de santé.
-La logique métier sera ajoutée ensuite (voir docs/specification.md §5).
+Enregistre les routeurs (catalogue public en lecture, prêt/retour en écriture),
+sert les fichiers statiques et expose un point de santé.
 """
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.routes import catalogue, pret
+
+BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(
     title="Prêt de jeux",
@@ -19,12 +24,19 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Catalogue public (lecture seule) et prêt/retour (écriture protégée).
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
 app.include_router(catalogue.router)
 app.include_router(pret.router)
 
 
+@app.get("/")
+def racine():
+    """Redirige vers le catalogue public."""
+    return RedirectResponse(url="/catalogue")
+
+
 @app.get("/sante", tags=["meta"])
 def sante():
-    """Point de santé minimal pour vérifier que l'application répond."""
+    """Point de santé minimal."""
     return {"statut": "ok"}
