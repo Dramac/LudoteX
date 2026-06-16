@@ -58,7 +58,17 @@ def url_fiche(base_url: str, id_exemplaire: str) -> str:
 
 
 def charger_exemplaires(limit: int | None = None) -> list[dict]:
-    """Retourne les exemplaires + champs du titre (pour étiquette et code)."""
+    """
+    Charge les exemplaires depuis la base, avec les champs du titre nécessaires
+    à l'étiquette (nom) et au code de classement (âge, joueurs, durée).
+
+    Args:
+        limit: si fourni, ne renvoie que les N premiers (pratique pour générer un
+            échantillon de test sans traiter les ~700 exemplaires).
+
+    Returns:
+        Liste de dicts (un par exemplaire), triés par id_exemplaire.
+    """
     conn = get_connection()
     try:
         sql = """
@@ -100,9 +110,15 @@ def code_classement(ex: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Outils image
+# Outils image (helpers Pillow ; préfixe _ = usage interne au module)
 # ---------------------------------------------------------------------------
 def _police(taille: int):
+    """
+    Charge une police TrueType à la taille voulue, avec repli.
+
+    Cherche DejaVu (Linux/VPS) puis Arial (macOS) ; à défaut, la police bitmap
+    par défaut de Pillow (moins jolie mais toujours disponible).
+    """
     for chemin in (
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -115,6 +131,10 @@ def _police(taille: int):
 
 
 def _texte_centre(draw, cx, y, texte, police, fill=NOIR):
+    """Dessine `texte` centré horizontalement sur `cx`, à l'ordonnée `y`.
+
+    Returns: la hauteur du texte (utile pour empiler des lignes).
+    """
     bbox = draw.textbbox((0, 0), texte, font=police)
     w = bbox[2] - bbox[0]
     draw.text((cx - w // 2, y), texte, fill=fill, font=police)
@@ -122,6 +142,7 @@ def _texte_centre(draw, cx, y, texte, police, fill=NOIR):
 
 
 def _tronquer(draw, texte, police, largeur_max):
+    """Tronque `texte` avec une ellipse « … » s'il dépasse `largeur_max` pixels."""
     if draw.textbbox((0, 0), texte, font=police)[2] <= largeur_max:
         return texte
     while texte and draw.textbbox((0, 0), texte + "…", font=police)[2] > largeur_max:
@@ -149,6 +170,17 @@ def _wrap(draw, texte, police, largeur_max, max_lignes=3):
 
 
 def image_qr_nu(url: str, box: int = 8) -> Image.Image:
+    """
+    Génère l'image d'un QR code « nu » (sans décor) encodant `url`.
+
+    `ERROR_CORRECT_M` ≈ 15 % de correction d'erreur (bon compromis robustesse/
+    densité), `box_size` = taille d'un module en pixels, `border` = marge en
+    modules (4 recommandé par le standard ; 2 suffit ici, l'étiquette ajoute déjà
+    du blanc autour).
+
+    Returns:
+        Une image PIL en mode RGB.
+    """
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
                        box_size=box, border=2)
     qr.add_data(url)
@@ -233,6 +265,19 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
 # Génération
 # ---------------------------------------------------------------------------
 def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
+    """
+    Écrit un PNG par exemplaire dans le dossier `out` (un fichier `<id>.png`).
+
+    Args:
+        exemplaires: liste de dicts (voir charger_exemplaires).
+        base_url: base de l'URL encodée dans le QR.
+        out: dossier de sortie (créé au besoin).
+        logo: image PIL du logo, ou None (placeholder).
+        simple: True = QR nu sans décor ; False = étiquette complète.
+
+    Returns:
+        Le nombre d'étiquettes générées.
+    """
     out.mkdir(parents=True, exist_ok=True)
     for ex in exemplaires:
         url = url_fiche(base_url, ex["id_exemplaire"])
@@ -244,10 +289,20 @@ def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
 def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
                     colonnes: int, logo, simple: bool, marge_mm: float = 2.0) -> int:
     """
-    Planche A4 prête à imprimer : grille lignes x colonnes d'étiquettes.
+    Génère une planche A4 multipage prête à imprimer.
 
-    Utilise reportlab (gère les images couleur en PDF), chaque étiquette étant
-    mise à l'échelle dans sa cellule en conservant ses proportions.
+    Grille `lignes` x `colonnes` d'étiquettes par page. On utilise reportlab
+    plutôt que Pillow pour le PDF car il gère les images couleur (le logo) sans
+    dépendre du codec JPEG, absent de certains builds Pillow.
+
+    Args:
+        exemplaires, base_url, logo, simple: voir generer_pngs.
+        chemin_pdf: fichier PDF de sortie.
+        lignes, colonnes: disposition de la grille.
+        marge_mm: marge intérieure de chaque cellule, en millimètres.
+
+    Returns:
+        Le nombre de pages générées.
     """
     from io import BytesIO
 
@@ -278,12 +333,17 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
             url = url_fiche(base_url, ex["id_exemplaire"])
             label = image_qr_nu(url) if simple else image_etiquette(url, ex, logo)
             iw, ih = label.size
+            # Position dans la grille (colonne, ligne) à partir de l'indice j.
             col, row = j % colonnes, j // colonnes
+            # Échelle pour tenir dans la cellule (marges déduites), en gardant
+            # les proportions de l'étiquette.
             avail_w, avail_h = cw - 2 * marge, ch - 2 * marge
             scale = min(avail_w / iw, avail_h / ih)
             w, h = iw * scale, ih * scale
+            # Centrage dans la cellule. NB : reportlab a son origine en bas-gauche,
+            # d'où le calcul de y à partir du haut de page (page_h).
             x = col * cw + (cw - w) / 2
-            y = page_h - (row + 1) * ch + (ch - h) / 2     # origine reportlab : bas-gauche
+            y = page_h - (row + 1) * ch + (ch - h) / 2
             c.drawImage(lecteur_png(label), x, y, w, h, preserveAspectRatio=True)
         c.showPage()
         pages += 1
@@ -293,7 +353,7 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
 
 
 def _parse_grille(valeur: str) -> tuple[int, int]:
-    """'8x3' -> (8 lignes, 3 colonnes)."""
+    """Convertit '8x3' en (8 lignes, 3 colonnes). Erreur claire si format invalide."""
     try:
         lignes, colonnes = (int(x) for x in valeur.lower().split("x"))
         if lignes < 1 or colonnes < 1:
@@ -304,6 +364,11 @@ def _parse_grille(valeur: str) -> tuple[int, int]:
 
 
 def main() -> None:
+    """
+    Point d'entrée CLI : analyse les options, charge logo + exemplaires, génère
+    les PNG (et la planche si --planche). Voir le docstring du module pour les
+    exemples d'usage.
+    """
     p = argparse.ArgumentParser(description="Génère les étiquettes QR des exemplaires.")
     p.add_argument("--base-url", default=os.getenv("BASE_URL"),
                    help="URL de base (défaut : BASE_URL du .env).")

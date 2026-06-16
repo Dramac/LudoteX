@@ -57,11 +57,24 @@ COLONNES = {
 
 
 def _norm_header(h: str) -> str:
+    """Normalise un intitulé de colonne pour la comparaison (trim + minuscules)."""
     return (h or "").strip().lower()
 
 
 def construire_index_colonnes(entetes: list[str]) -> dict[str, str | None]:
-    """Associe chaque champ logique à l'intitulé réel de colonne (ou None)."""
+    """
+    Fait correspondre chaque champ logique du modèle à la colonne réelle du CSV.
+
+    Pour chaque champ (clé de COLONNES), on cherche le premier alias présent
+    dans les en-têtes (comparaison normalisée). Cela rend l'import tolérant aux
+    variations d'intitulé d'un export à l'autre.
+
+    Args:
+        entetes: liste des noms de colonnes lus en tête du CSV.
+
+    Returns:
+        dict {champ_logique: intitulé_réel_ou_None}. None = colonne absente.
+    """
     presentes = {_norm_header(h): h for h in entetes}
     index: dict[str, str | None] = {}
     for champ, alias in COLONNES.items():
@@ -131,7 +144,21 @@ def _ou_none(valeur: str) -> str | None:
 # Lecture du CSV
 # ---------------------------------------------------------------------------
 def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
-    """Retourne (lignes, index_colonnes). Détecte le séparateur."""
+    """
+    Lit le CSV et détecte automatiquement le séparateur.
+
+    `encoding="utf-8-sig"` gère le BOM éventuel (fréquent sur les exports
+    Windows/Excel). Le séparateur est deviné par `csv.Sniffer` parmi `;`, `,` et
+    tabulation ; à défaut, on retombe sur `;`.
+
+    Args:
+        chemin: chemin du fichier CSV.
+
+    Returns:
+        (lignes, index_colonnes) où `lignes` est une liste de dicts (une par
+        ligne, clés = en-têtes réels) et `index_colonnes` la correspondance
+        champ logique → en-tête réel.
+    """
     with open(chemin, encoding="utf-8-sig", newline="") as fh:
         echantillon = fh.read(4096)
         fh.seek(0)
@@ -139,7 +166,7 @@ def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
             dialecte = csv.Sniffer().sniff(echantillon, delimiters=";,\t")
             sep = dialecte.delimiter
         except csv.Error:
-            sep = ";"
+            sep = ";"  # repli : la liste de l'asso utilise « ; »
         lecteur = csv.DictReader(fh, delimiter=sep)
         lignes = list(lecteur)
         entetes = lecteur.fieldnames or []
@@ -217,13 +244,30 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
 # Écriture en base
 # ---------------------------------------------------------------------------
 def importer(chemin: Path, dry_run: bool = False) -> dict:
+    """
+    Importe (ou simule) le catalogue en base.
+
+    Idempotence : les deux INSERT utilisent `ON CONFLICT … DO UPDATE` (UPSERT)
+    sur les clés primaires (`reference_titre`, `id_exemplaire`). Relancer
+    l'import après mise à jour du CSV met simplement à jour les lignes existantes
+    sans créer de doublon. `executemany` fait l'insertion en lot (performant).
+
+    Args:
+        chemin: chemin du CSV.
+        dry_run: si True, ne touche pas la base (analyse + rapport seulement).
+
+    Returns:
+        dict de synthèse (compteurs, regroupements multi-exemplaires, lignes
+        ignorées, et données titres pour le rapport).
+    """
     lignes, index = lire_csv(chemin)
     exemplaires, titres, groupes, ignores = construire_donnees(lignes, index)
 
     if not dry_run:
         conn = get_connection()
         try:
-            init_db(conn)
+            init_db(conn)  # garantit que les tables existent
+            # UPSERT des titres (clé : reference_titre) — paramètres nommés.
             conn.executemany(
                 """
                 INSERT INTO titres (reference_titre, nom, categorie,
@@ -269,6 +313,13 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
 # Rapport
 # ---------------------------------------------------------------------------
 def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
+    """
+    Affiche un récapitulatif lisible de l'import sur la sortie standard.
+
+    Compteurs (exemplaires/titres), lignes ignorées, taux de remplissage de
+    chaque colonne optionnelle, et — si `montrer_groupes` — la liste des titres
+    présents en plusieurs exemplaires (utile pour vérifier les regroupements).
+    """
     print(f"Exemplaires : {res['exemplaires']}")
     print(f"Titres      : {res['titres']}")
     multi = res["groupes_multi"]
@@ -293,6 +344,7 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
 
 
 def main() -> None:
+    """Point d'entrée CLI : analyse les arguments, lance l'import, affiche le rapport."""
     p = argparse.ArgumentParser(description="Import du catalogue de jeux depuis un CSV.")
     p.add_argument("csv", type=Path, help="Chemin du fichier CSV.")
     p.add_argument("--dry-run", action="store_true", help="N'écrit rien en base.")

@@ -1,11 +1,12 @@
 """
 Route du SCANNER caméra embarqué (outil bénévole).
 
-Affiche la page qui active la caméra et décode les QR (voir
-static/js/scanner.js). Chaque QR ouvre l'écran prêt/retour /pret/<id>.
+Sert la page `/scanner` qui active la caméra et décode les QR côté navigateur
+(toute la logique caméra est dans static/js/scanner.js). Quand un QR est lu, le
+JS extrait l'id et redirige vers l'écran prêt/retour `/pret/<id>`.
 
-Sécurité : comme les autres écrans bénévole, l'accès sera protégé par le jeton
-à l'étape 9 (réutilise le placeholder `exiger_jeton`).
+Le serveur n'a presque rien à faire ici : il rend juste le gabarit. La page est
+protégée par le jeton bénévole, comme /pret.
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -18,4 +19,14 @@ router = APIRouter(tags=["scanner"])
 
 @router.get("/scanner")
 def scanner(request: Request, _=Depends(exiger_jeton)):
+    """
+    Affiche la page du scanner caméra (protégée par jeton).
+
+    Args:
+        request: requête (nécessaire à Jinja2).
+        _: dépendance d'authentification (valeur ignorée).
+
+    Returns:
+        La page scanner.html.
+    """
     return templates.TemplateResponse(request, "scanner.html", {})
