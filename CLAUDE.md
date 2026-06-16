@@ -95,7 +95,14 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    Résultat : **609 titres / 703 exemplaires**, 0 FK orpheline. Regroupements
    à noms divergents (28) tous vérifiés corrects (casse/accents). « Lien image »
    non importé (chemins Windows locaux inutilisables).
-4. [à faire] `scripts/generate_qr.py` — QR au format URL `<BASE_URL>/jeu/<id>`.
+4. [fait] `scripts/generate_qr.py` — un QR par exemplaire encodant
+   `<BASE_URL>/jeu/<id_exemplaire>`. Lit les exemplaires en base. PNG individuels
+   `<id>.png` avec libellé « code — nom » ; option `--planche` → PDF A4 (grille
+   4×6, pages converties 1-bit pour éviter le codec JPEG absent de Pillow).
+   `BASE_URL` depuis `.env`, surchargeable par `--base-url`. Décodage vérifié
+   (OpenCV) : URL exacte. **URL définitive : ne tirer les étiquettes qu'une fois
+   le domaine figé** ; avant, QR de test (tunnel/localhost). QR exclus du dépôt
+   (`qr/` dans `.gitignore`).
 5. [à faire] Fiche jeu `/jeu/<id>` (lecture) + écran prêt/retour (écriture).
 6. [à faire] Scanner caméra embarqué.
 7. [à faire] Catalogue public (vrac + filtre catégorie).
