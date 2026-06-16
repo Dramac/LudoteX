@@ -37,20 +37,40 @@ def fiche(request: Request, id_exemplaire: str):
     )
 
 
+def _entier_ou_none(valeur: str | None) -> int | None:
+    """Convertit une valeur de formulaire en entier, ou None si vide/invalide."""
+    if valeur is None or valeur.strip() == "":
+        return None
+    try:
+        return int(valeur)
+    except ValueError:
+        return None
+
+
 @router.get("/catalogue")
-def catalogue(request: Request, categorie: str | None = None):
-    """Liste publique des titres (vrac ou filtrée par catégorie), avec dispo."""
+def catalogue(request: Request, categorie: str | None = None, q: str | None = None,
+              age: str | None = None, joueurs: str | None = None):
+    """Catalogue public avec recherche et filtres combinés (catégorie, âge, joueurs)."""
+    q = (q or "").strip() or None
+    age_i = _entier_ou_none(age)
+    joueurs_i = _entier_ou_none(joueurs)
+
     conn = get_connection()
     try:
         categories = services.lister_categories(conn)
+        ages = services.ages_disponibles(conn)
+        max_j = services.max_joueurs(conn)
         # On ignore une catégorie inconnue (filtre réinitialisé).
-        filtre = categorie if categorie in categories else None
-        jeux = services.lister_catalogue(conn, filtre)
+        filtre_cat = categorie if categorie in categories else None
+        jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i)
     finally:
         conn.close()
 
+    actifs = bool(q or filtre_cat or age_i is not None or joueurs_i is not None)
     return templates.TemplateResponse(
         request,
         "catalogue.html",
-        {"jeux": jeux, "categories": categories, "filtre": filtre},
+        {"jeux": jeux, "categories": categories, "ages": ages, "max_joueurs": max_j,
+         "filtre": filtre_cat, "q": q, "age": age_i, "joueurs": joueurs_i,
+         "filtres_actifs": actifs},
     )

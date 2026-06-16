@@ -126,10 +126,14 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    prêt pour enchaîner. jsQR **hébergé en local** (`static/js/jsQR.js`, versionné,
    aucune dépendance CDN). Test route 200 + contenu.
 7. [fait] Catalogue public `/catalogue` (`routes/catalogue.py`) : liste des
-   titres triée par nom, dispo par titre (X/Y), filtre par catégorie (« Type
-   jeu »), lien vers la fiche d'un exemplaire représentatif (MIN id). Services
-   `lister_catalogue` / `lister_categories`. Page d'accueil `/`→`/catalogue`
-   (plus de 404). Template `catalogue.html`. Tests 200 + filtre.
+   titres triée par nom, dispo par titre (X/Y), lien vers la fiche d'un
+   exemplaire représentatif (MIN id). Page d'accueil `/`→`/catalogue`. Template
+   `catalogue.html`. **Recherche/filtres combinés** dans un panneau dépliable
+   `<details>` (sans JS) : champ `q` (nom, LIKE NOCASE), `categorie` (égalité),
+   `age` (age_min <= X, « accessible dès cet âge »), `joueurs` (nb_joueurs_min <=
+   N <= nb_joueurs_max, nombre exact ; jeux sans bornes exclus si filtre actif).
+   Services `lister_catalogue(categorie,q,age,joueurs)`, `lister_categories`,
+   `ages_disponibles`, `max_joueurs`. Tests 200 + filtres.
 8. [à faire] Page statistiques (agrégation par titre, jeux à zéro inclus).
 9. [à faire] Auth par jeton + limitation de débit.
 10. [à faire] Déploiement VPS + HTTPS.
