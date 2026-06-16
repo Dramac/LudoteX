@@ -166,17 +166,25 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     """
     qr = image_qr_nu(url, box)
     pad, gap = 18, 22
-    panel_w = 360
-    logo_w, logo_h = 150, 74
-    gom_d = 58
+    panel_w = 400
+    logo_w, logo_h = 240, 150          # emplacement logo agrandi
+    gom_d = 64
     classif_h = 46
 
     f_nom = _police(24)
     f_classif = _police(24)
     f_small = _police(13)
+    f_logo = _police(30)
+
+    # Mesure préalable (brouillon) pour dimensionner sans débordement.
+    mesure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    lignes = _wrap(mesure, ex.get("nom", ""), f_nom, panel_w, max_lignes=3)
+    lh = mesure.textbbox((0, 0), "Ag", font=f_nom)[3] + 8
+    header_h = max(logo_h, gom_d + 16)
+    panel_h = header_h + 22 + len(lignes) * lh + 22 + classif_h
 
     W = pad + qr.width + gap + panel_w + pad
-    H = pad + qr.height + pad
+    H = pad + max(qr.height, panel_h) + pad
 
     img = Image.new("RGB", (W, H), BLANC)
     d = ImageDraw.Draw(img)
@@ -188,7 +196,7 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     px = pad + qr.width + gap          # bord gauche du panneau
     panel_cx = px + panel_w // 2
 
-    # --- Logo (haut gauche du panneau) ---
+    # --- Logo (haut gauche du panneau, agrandi) ---
     if logo is not None:
         vignette = logo.copy()
         vignette.thumbnail((logo_w, logo_h))
@@ -196,8 +204,8 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
                              pad + (logo_h - vignette.height) // 2))
     else:
         d.rectangle([px, pad, px + logo_w, pad + logo_h], outline=NOIR, width=3)
-        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 - 10, "LOGO", f_nom)
-        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 + 14, "(asso)", f_small)
+        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 - 18, "LOGO", f_logo)
+        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 + 18, "(asso)", f_small)
 
     # --- Gommette (haut droite du panneau) ---
     gx0 = W - pad - gom_d
@@ -205,9 +213,7 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     _texte_centre(d, gx0 + gom_d // 2, pad + gom_d + 1, "gommette", f_small)
 
     # --- Nom (panneau, centré entre l'en-tête et le code) ---
-    lignes = _wrap(d, ex.get("nom", ""), f_nom, panel_w, max_lignes=3)
-    lh = d.textbbox((0, 0), "Ag", font=f_nom)[3] + 8
-    haut_entete = pad + max(logo_h, gom_d + 16)
+    haut_entete = pad + header_h
     bas_code = H - pad - classif_h
     bloc_h = len(lignes) * lh
     ny = haut_entete + (bas_code - haut_entete - bloc_h) // 2
