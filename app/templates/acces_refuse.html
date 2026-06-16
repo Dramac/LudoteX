@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titre %}Accès réservé — Des jeux plein la Manche{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Accès réservé aux bénévoles</h1>
+
+  {% if motif == "trop" %}
+    <p>Trop de tentatives en peu de temps. Merci de réessayer dans une minute.</p>
+  {% elif motif == "invalide" %}
+    <p>Ce lien d'activation n'est pas valide. Demandez le lien à jour à
+       l'association.</p>
+  {% elif motif == "ouvert" %}
+    <p>Aucun jeton n'est requis sur cette installation : les écrans bénévole sont
+       déjà accessibles.</p>
+  {% else %}
+    <p>Cet écran (prêt / retour, scanner) est réservé aux bénévoles. Ouvrez le
+       <strong>lien d'activation</strong> distribué par l'association pour activer
+       l'accès sur cet appareil.</p>
+  {% endif %}
+
+  <p><a class="lien" href="/catalogue">Aller au catalogue public</a></p>
+</section>
+{% endblock %}

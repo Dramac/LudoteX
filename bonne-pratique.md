@@ -167,6 +167,24 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
 - Repli prévu : si la caméra est indisponible/refusée, message invitant à scanner
   le QR avec l'appareil photo natif (qui ouvre la fiche publique `/jeu/<id>`).
 
+## Authentification bénévole (jeton)
+
+- Un seul **jeton** (`PRET_TOKEN` dans `.env`) protège `/pret/*` et `/scanner` ;
+  le reste (catalogue, fiches, stats) est public. Pas de comptes individuels.
+- **Activation** : distribuer aux bénévoles le lien `/acces?jeton=<JETON>` (via
+  le canal interne). L'appareil mémorise le jeton dans un cookie (1 an). Le jeton
+  n'apparaît jamais dans les pages.
+- **Rotation annuelle** : changer `PRET_TOKEN` invalide tous les anciens cookies.
+  Générer : `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+- **Sécurité** : comparaison en temps constant (`secrets.compare_digest`), cookie
+  HttpOnly + SameSite=Lax + Secure (en HTTPS), limitation de débit par IP sur
+  `/acces` (`RATE_LIMIT_PER_MINUTE`).
+- **Dev/local** : si `PRET_TOKEN` n'est pas défini, l'accès est ouvert (pratique
+  pour tester) et un avertissement s'affiche au démarrage. **NE PAS déployer sans
+  jeton.**
+- Le limiteur de débit est **en mémoire** (un seul process uvicorn). Avec
+  plusieurs workers, prévoir un store partagé (étape déploiement).
+
 ## Mémoire & continuité
 
 - **`CLAUDE.md`** (versionné) = contrat du projet, relu à chaque session : stack,

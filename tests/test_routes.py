@@ -75,6 +75,26 @@ def test_fiche_inconnue(client):
     assert "inconnu" in r.text.lower()
 
 
+def test_auth_protege_pret_et_scanner(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-test-secret-32-caracteres")
+
+    # Sans cookie : écrans bénévole refusés (403), mais public accessible.
+    assert client.get("/pret/001").status_code == 403
+    assert client.get("/scanner").status_code == 403
+    assert client.get("/catalogue").status_code == 200
+    assert client.get("/jeu/001").status_code == 200
+
+    # Lien d'activation invalide : pas d'accès.
+    assert client.get("/acces", params={"jeton": "mauvais"}).status_code == 403
+
+    # Activation correcte : pose le cookie, puis accès autorisé.
+    r = client.get("/acces", params={"jeton": "jeton-test-secret-32-caracteres"},
+                   follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/scanner"
+    assert client.get("/scanner").status_code == 200
+    assert client.get("/pret/001").status_code == 200
+
+
 def test_scanner_page(client):
     r = client.get("/scanner")
     assert r.status_code == 200

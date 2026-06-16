@@ -140,11 +140,20 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    (barres CSS, heures UTC). Double vue `?tri=total|exemplaire`. Services
    `stats_globales`, `palmares`, `prets_par_heure`. Lien dans le pied de page.
    Tests services + route.
-9. [à faire] Auth par jeton + limitation de débit.
+9. [fait] Auth bénévole par jeton + limitation de débit (`app/auth.py`,
+   `routes/acces.py`). `/pret/*` et `/scanner` exigent un cookie = `PRET_TOKEN`
+   (comparé en temps constant). Lien d'activation `/acces?jeton=…` pose le cookie
+   (HttpOnly, SameSite=Lax, Secure si HTTPS, 1 an) puis redirige vers /scanner.
+   Limitation de débit par IP sur `/acces` (`RATE_LIMIT_PER_MINUTE`, en mémoire).
+   Catalogue/fiches/stats restent publics. Si `PRET_TOKEN` non défini → mode
+   ouvert + avertissement au démarrage (À DÉFINIR en prod). Page `acces_refuse`
+   via gestionnaire 403. Rotation annuelle = changer `PRET_TOKEN`. Tests verts.
 10. [à faire] Déploiement VPS + HTTPS.
 
 `routes/catalogue.py` : `/jeu/<id>` + `/catalogue` faits.
-`routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits.
+`routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits
+(protégés par `exiger_jeton`). `routes/scanner.py`, `routes/stats.py`,
+`routes/acces.py` faits.
 
 ## Sécurité du dépôt
 
