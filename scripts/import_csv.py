@@ -1,0 +1,313 @@
+"""
+Import / mise à jour du catalogue depuis le CSV de l'association.
+
+Principes (voir docs/specification.md §3 et §5) :
+- Tolérant aux colonnes variables : seules deux données sont exigées,
+  l'identifiant d'exemplaire (CSV « Code jeu ») et le nom du jeu. Tout le
+  reste est optionnel ; l'import remplit ce qu'il trouve.
+- Deux clés stables :
+    * id_exemplaire  <- « Code jeu » (TEXT, zéros de tête préservés).
+    * reference_titre <- slug normalisé du nom -> REGROUPE les exemplaires
+      d'un même jeu (ex. les 4 « Dobble » partagent une référence).
+- Les colonnes d'état du CSV (Suspendu, Prêt en cours, Réserv Active, Sur
+  place, Manque) sont IGNORÉES : l'état d'un exemplaire est déduit des prêts.
+- Idempotent : relançable sans créer de doublons (UPSERT sur les deux clés).
+
+Usage :
+    python -m scripts.import_csv chemin/vers/catalogue.csv
+    python -m scripts.import_csv catalogue.csv --dry-run   # n'écrit rien
+    python -m scripts.import_csv catalogue.csv --groupes    # liste les regroupements
+
+Le séparateur (« ; » ou « , ») et l'encodage (UTF-8, avec ou sans BOM) sont
+détectés automatiquement.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import re
+import sys
+import unicodedata
+from collections import defaultdict
+from pathlib import Path
+
+# Permet « python scripts/import_csv.py » comme « python -m scripts.import_csv ».
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.db import get_connection, init_db  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Correspondance colonnes CSV -> champs du modèle
+# ---------------------------------------------------------------------------
+# Insensible à la casse et aux espaces. On liste plusieurs intitulés possibles
+# pour rester tolérant si le CSV évolue.
+COLONNES = {
+    "id_exemplaire": ["code jeu", "id_exemplaire", "code"],
+    "nom":           ["nom jeu", "nom", "titre"],
+    "categorie":     ["type jeu", "categorie", "catégorie", "classification"],
+    "nb_joueurs":    ["nb joueurs", "nombre de joueurs", "joueurs"],
+    "age":           ["age joueurs", "âge joueurs", "age", "âge"],
+    "duree":         ["temps jeu", "durée", "duree", "temps"],
+    "editeur":       ["marque", "editeur", "éditeur"],
+    "auteur":        ["auteur", "auteurs"],
+    "annee":         ["année édition", "annee edition", "année", "annee"],
+    "descriptif":    ["descriptif", "description"],
+}
+
+
+def _norm_header(h: str) -> str:
+    return (h or "").strip().lower()
+
+
+def construire_index_colonnes(entetes: list[str]) -> dict[str, str | None]:
+    """Associe chaque champ logique à l'intitulé réel de colonne (ou None)."""
+    presentes = {_norm_header(h): h for h in entetes}
+    index: dict[str, str | None] = {}
+    for champ, alias in COLONNES.items():
+        index[champ] = next((presentes[a] for a in alias if a in presentes), None)
+    return index
+
+
+# ---------------------------------------------------------------------------
+# Nettoyage et parsing des valeurs
+# ---------------------------------------------------------------------------
+def nettoyer_nom(valeur: str) -> str:
+    """Espaces superflus réduits ; le reste est conservé tel quel."""
+    return re.sub(r"\s+", " ", (valeur or "").strip())
+
+
+def slug_titre(nom: str) -> str:
+    """
+    Slug de regroupement : majuscules, sans accents ni ponctuation,
+    espaces -> underscore. Deux noms identiques (à la casse/accents près)
+    produisent le même slug -> ils sont regroupés sous la même référence.
+    Ex. 'Mr Jack' -> 'MR_JACK' ; '7 Wonders' -> '7_WONDERS'.
+    """
+    base = unicodedata.normalize("NFKD", nom)
+    base = base.encode("ascii", "ignore").decode("ascii")  # retire les accents
+    base = base.upper()
+    base = re.sub(r"[^A-Z0-9]+", "_", base)                # ponctuation -> _
+    return base.strip("_")
+
+
+def _entiers(valeur: str) -> list[int]:
+    """Tous les entiers présents dans une chaîne, dans l'ordre."""
+    return [int(n) for n in re.findall(r"\d+", valeur or "")]
+
+
+def parse_nb_joueurs(valeur: str) -> tuple[int | None, int | None]:
+    """'2 - 4' -> (2, 4) ; '2' -> (2, 2) ; vide -> (None, None)."""
+    nums = _entiers(valeur)
+    if not nums:
+        return None, None
+    return nums[0], nums[-1]
+
+
+def parse_age(valeur: str) -> int | None:
+    """'10 +' -> 10 ; '8 ans' -> 8 ; vide -> None."""
+    nums = _entiers(valeur)
+    return nums[0] if nums else None
+
+
+def parse_duree(valeur: str) -> int | None:
+    """'30 mn' -> 30 ; '<= 15 mn' -> 15 ; '30 - 60 mn' -> 30 (borne basse)."""
+    nums = _entiers(valeur)
+    return nums[0] if nums else None
+
+
+def parse_annee(valeur: str) -> int | None:
+    """Premier nombre à 4 chiffres trouvé (année), sinon None."""
+    m = re.search(r"(19|20)\d{2}", valeur or "")
+    return int(m.group(0)) if m else None
+
+
+def _ou_none(valeur: str) -> str | None:
+    valeur = (valeur or "").strip()
+    return valeur or None
+
+
+# ---------------------------------------------------------------------------
+# Lecture du CSV
+# ---------------------------------------------------------------------------
+def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
+    """Retourne (lignes, index_colonnes). Détecte le séparateur."""
+    with open(chemin, encoding="utf-8-sig", newline="") as fh:
+        echantillon = fh.read(4096)
+        fh.seek(0)
+        try:
+            dialecte = csv.Sniffer().sniff(echantillon, delimiters=";,\t")
+            sep = dialecte.delimiter
+        except csv.Error:
+            sep = ";"
+        lecteur = csv.DictReader(fh, delimiter=sep)
+        lignes = list(lecteur)
+        entetes = lecteur.fieldnames or []
+    index = construire_index_colonnes(entetes)
+    return lignes, index
+
+
+def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
+    """
+    Transforme les lignes CSV en :
+      - exemplaires : liste de (id_exemplaire, reference_titre)
+      - titres      : dict reference_titre -> champs agrégés (1re valeur non vide)
+      - groupes     : reference_titre -> liste d'id_exemplaire (pour le rapport)
+    Lève une erreur si les colonnes clés (Code jeu, Nom jeu) sont absentes.
+    """
+    if not index["id_exemplaire"] or not index["nom"]:
+        raise SystemExit(
+            "ERREUR : colonnes clés introuvables. Le CSV doit comporter au "
+            "minimum un identifiant d'exemplaire (« Code jeu ») et un nom "
+            "(« Nom jeu »)."
+        )
+
+    def val(ligne, champ):
+        col = index[champ]
+        return ligne.get(col, "") if col else ""
+
+    exemplaires: list[tuple[str, str]] = []
+    titres: dict[str, dict] = {}
+    groupes: dict[str, list[str]] = defaultdict(list)
+    ignores: list[str] = []
+    vus: set[str] = set()
+
+    for ligne in lignes:
+        id_ex = (val(ligne, "id_exemplaire") or "").strip()
+        nom = nettoyer_nom(val(ligne, "nom"))
+        if not id_ex or not nom:
+            ignores.append(id_ex or "(code vide)")
+            continue
+        if id_ex in vus:
+            ignores.append(f"{id_ex} (doublon de Code jeu)")
+            continue
+        vus.add(id_ex)
+
+        ref = slug_titre(nom)
+        exemplaires.append((id_ex, ref))
+        groupes[ref].append(id_ex)
+
+        nb_min, nb_max = parse_nb_joueurs(val(ligne, "nb_joueurs"))
+        champs = {
+            "reference_titre": ref,
+            "nom": nom,
+            "categorie": _ou_none(val(ligne, "categorie")),
+            "nb_joueurs_min": nb_min,
+            "nb_joueurs_max": nb_max,
+            "duree_min": parse_duree(val(ligne, "duree")),
+            "age_min": parse_age(val(ligne, "age")),
+            "editeur": _ou_none(val(ligne, "editeur")),
+            "auteur": _ou_none(val(ligne, "auteur")),
+            "annee_edition": parse_annee(val(ligne, "annee")),
+            "descriptif": _ou_none(val(ligne, "descriptif")),
+        }
+        # Agrégation au niveau titre : on conserve la 1re valeur non vide
+        # rencontrée parmi les exemplaires d'un même titre.
+        if ref not in titres:
+            titres[ref] = champs
+        else:
+            for k, v in champs.items():
+                if titres[ref].get(k) in (None, "") and v not in (None, ""):
+                    titres[ref][k] = v
+
+    return exemplaires, titres, groupes, ignores
+
+
+# ---------------------------------------------------------------------------
+# Écriture en base
+# ---------------------------------------------------------------------------
+def importer(chemin: Path, dry_run: bool = False) -> dict:
+    lignes, index = lire_csv(chemin)
+    exemplaires, titres, groupes, ignores = construire_donnees(lignes, index)
+
+    if not dry_run:
+        conn = get_connection()
+        try:
+            init_db(conn)
+            conn.executemany(
+                """
+                INSERT INTO titres (reference_titre, nom, categorie,
+                    nb_joueurs_min, nb_joueurs_max, duree_min, age_min,
+                    editeur, auteur, annee_edition, descriptif)
+                VALUES (:reference_titre, :nom, :categorie, :nb_joueurs_min,
+                    :nb_joueurs_max, :duree_min, :age_min, :editeur, :auteur,
+                    :annee_edition, :descriptif)
+                ON CONFLICT(reference_titre) DO UPDATE SET
+                    nom=excluded.nom, categorie=excluded.categorie,
+                    nb_joueurs_min=excluded.nb_joueurs_min,
+                    nb_joueurs_max=excluded.nb_joueurs_max,
+                    duree_min=excluded.duree_min, age_min=excluded.age_min,
+                    editeur=excluded.editeur, auteur=excluded.auteur,
+                    annee_edition=excluded.annee_edition,
+                    descriptif=excluded.descriptif
+                """,
+                list(titres.values()),
+            )
+            conn.executemany(
+                """
+                INSERT INTO exemplaires (id_exemplaire, reference_titre)
+                VALUES (?, ?)
+                ON CONFLICT(id_exemplaire) DO UPDATE SET
+                    reference_titre=excluded.reference_titre
+                """,
+                exemplaires,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return {
+        "exemplaires": len(exemplaires),
+        "titres": len(titres),
+        "groupes_multi": {r: ids for r, ids in groupes.items() if len(ids) > 1},
+        "ignores": ignores,
+        "titres_data": titres,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Rapport
+# ---------------------------------------------------------------------------
+def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
+    print(f"Exemplaires : {res['exemplaires']}")
+    print(f"Titres      : {res['titres']}")
+    multi = res["groupes_multi"]
+    print(f"Titres en plusieurs exemplaires : {len(multi)}")
+    if res["ignores"]:
+        print(f"Lignes ignorées : {len(res['ignores'])} -> {res['ignores'][:10]}")
+
+    # Taux de remplissage par colonne optionnelle
+    champs = ["categorie", "nb_joueurs_min", "duree_min", "age_min",
+              "editeur", "auteur", "annee_edition", "descriptif"]
+    total = max(res["titres"], 1)
+    print("\nRemplissage des colonnes (au niveau titre) :")
+    for c in champs:
+        n = sum(1 for t in res["titres_data"].values() if t.get(c) not in (None, ""))
+        print(f"  {c:16} {n:4}/{total}")
+
+    if montrer_groupes:
+        print(f"\n=== Regroupements (titres à plusieurs exemplaires) ===")
+        for ref, ids in sorted(multi.items()):
+            nom = res["titres_data"][ref]["nom"]
+            print(f"  {nom!r:40} [{ref}] : {len(ids)} exemplaires -> {ids}")
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Import du catalogue de jeux depuis un CSV.")
+    p.add_argument("csv", type=Path, help="Chemin du fichier CSV.")
+    p.add_argument("--dry-run", action="store_true", help="N'écrit rien en base.")
+    p.add_argument("--groupes", action="store_true",
+                   help="Affiche la liste des regroupements par titre.")
+    args = p.parse_args()
+
+    if not args.csv.exists():
+        raise SystemExit(f"Fichier introuvable : {args.csv}")
+
+    res = importer(args.csv, dry_run=args.dry_run)
+    mode = "DRY-RUN (aucune écriture)" if args.dry_run else "importé en base"
+    print(f"--- Catalogue {mode} ---")
+    afficher_rapport(res, montrer_groupes=args.groupes)
+
+
+if __name__ == "__main__":
+    main()
