@@ -46,3 +46,6 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# --- Fichiers temporaires / verrous Microsoft Office ---
+~$*
