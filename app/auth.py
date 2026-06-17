@@ -31,9 +31,12 @@ from __future__ import annotations
 
 import os
 import secrets
+import sqlite3
 import time
 
 from fastapi import HTTPException, Request
+
+from app.db import get_connection
 
 # Nom du cookie déposé sur l'appareil bénévole après activation.
 COOKIE_NAME = "jeton_pret"
@@ -41,20 +44,50 @@ COOKIE_NAME = "jeton_pret"
 _PLACEHOLDER = "remplacer_par_un_jeton_aleatoire_long"
 
 
-def jeton_configure() -> str | None:
+def jeton_actuel(conn: sqlite3.Connection) -> str | None:
     """
-    Retourne le jeton attendu, ou None si aucun n'est réellement configuré.
+    Retourne le jeton bénévole en vigueur, ou None (mode ouvert).
 
-    None déclenche le MODE OUVERT (accès non protégé). On considère comme « non
-    configuré » : variable absente, vide, ou laissée à la valeur placeholder.
+    Priorité : la valeur stockée en base (table `parametres`, clé "pret_token",
+    posée lors d'une réinitialisation depuis l'admin) ; à défaut, la variable
+    d'environnement `PRET_TOKEN` (amorçage via .env). Une valeur vide ou égale au
+    placeholder est ignorée → mode ouvert.
+
+    Args:
+        conn: connexion SQLite ouverte.
 
     Returns:
         Le jeton (str) si configuré, sinon None.
     """
-    valeur = (os.getenv("PRET_TOKEN") or "").strip()
-    if not valeur or valeur == _PLACEHOLDER:
-        return None
-    return valeur
+    row = conn.execute(
+        "SELECT valeur FROM parametres WHERE cle = 'pret_token'"
+    ).fetchone()
+    if row and row[0] and row[0] != _PLACEHOLDER:
+        return row[0]
+    env = (os.getenv("PRET_TOKEN") or "").strip()
+    if env and env != _PLACEHOLDER:
+        return env
+    return None
+
+
+def reinitialiser_jeton(conn: sqlite3.Connection) -> str:
+    """
+    Génère un nouveau jeton aléatoire, le stocke en base et le renvoie.
+
+    Effet : invalide immédiatement tous les anciens cookies bénévole (le jeton
+    attendu a changé). C'est la « rotation » du jeton, déclenchée depuis l'admin.
+
+    Returns:
+        Le nouveau jeton (à diffuser via le lien d'activation).
+    """
+    nouveau = secrets.token_urlsafe(32)
+    conn.execute(
+        "INSERT INTO parametres (cle, valeur) VALUES ('pret_token', ?) "
+        "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+        (nouveau,),
+    )
+    conn.commit()
+    return nouveau
 
 
 def acces_valide(request: Request) -> bool:
@@ -71,7 +104,11 @@ def acces_valide(request: Request) -> bool:
     Returns:
         True si l'accès est autorisé, False sinon.
     """
-    attendu = jeton_configure()
+    conn = get_connection()
+    try:
+        attendu = jeton_actuel(conn)
+    finally:
+        conn.close()
     if attendu is None:
         return True  # mode ouvert (dev)
     presente = request.cookies.get(COOKIE_NAME, "")

@@ -54,10 +54,23 @@
   </details>
 
   <p class="stats-export">
-    Exporter :
-    <a class="lien" href="/stats/export.xlsx{% if qs %}?{{ qs }}{% endif %}">Excel</a> ·
-    <a class="lien" href="/stats/export.pdf{% if qs %}?{{ qs }}{% endif %}">PDF</a>
+    Export Excel (complet) :
+    <a class="lien" href="/stats/export.xlsx{% if qs %}?{{ qs }}{% endif %}">Télécharger</a>
   </p>
+
+  <details class="recherche">
+    <summary>Export PDF (choisir les sections)</summary>
+    <form method="get" action="/stats/export.pdf" class="recherche-form">
+      <input type="hidden" name="tri" value="{{ metrique }}">
+      {% if debut %}<input type="hidden" name="debut" value="{{ debut }}">{% endif %}
+      {% if fin %}<input type="hidden" name="fin" value="{{ fin }}">{% endif %}
+      <label class="case"><input type="checkbox" name="sections" value="synthese" checked> Synthèse</label>
+      <label class="case"><input type="checkbox" name="sections" value="plus" checked> Palmarès des plus prêtés</label>
+      <label class="case"><input type="checkbox" name="sections" value="moins" checked> Palmarès des moins prêtés</label>
+      <label class="case"><input type="checkbox" name="sections" value="detail"> Détail des prêts</label>
+      <div><button type="submit" class="bouton-filtrer">Télécharger le PDF</button></div>
+    </form>
+  </details>
 </section>
 
 <section class="carte">

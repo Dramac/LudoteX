@@ -119,9 +119,17 @@ def export_xlsx(request: Request, tri: str = "total", debut: str | None = None,
 @router.get("/stats/export.pdf")
 def export_pdf(request: Request, tri: str = "total", debut: str | None = None,
                fin: str | None = None):
-    """Télécharge les statistiques au format PDF."""
+    """
+    Télécharge les statistiques au format PDF, avec sections au choix.
+
+    Les sections à inclure sont passées en paramètres `sections` (multivalués) :
+    synthese, plus, moins, detail. Par défaut (aucune fournie), on inclut
+    synthèse + les deux palmarès (détail décoché par défaut côté page).
+    """
+    sections = set(request.query_params.getlist("sections")) or {"synthese", "plus", "moins"}
+    sections &= set(exports.SECTIONS_PDF)  # ne garder que les sections connues
     data, periode = _exporter(tri, debut, fin)
-    contenu = exports.construire_pdf(data, periode)
+    contenu = exports.construire_pdf(data, periode, sections)
     return Response(
         content=contenu,
         media_type="application/pdf",

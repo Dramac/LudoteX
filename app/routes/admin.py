@@ -17,11 +17,12 @@ Toutes les routes (sauf la connexion) commencent par vérifier la session via
 
 import os
 from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, services
+from app import admin_auth, auth, services
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.db import get_connection
 from app.etiquettes import charger_logo, image_etiquette, url_fiche
@@ -270,3 +271,46 @@ def motdepasse_changer(
         message = (("succes", "Mot de passe modifié.") if ok else
                    ("erreur", "Ancien mot de passe incorrect ou nouveau invalide."))
     return templates.TemplateResponse(request, "admin_motdepasse.html", {"message": message})
+
+
+# ---------------------------------------------------------------------------
+# Jeton bénévole : lien d'activation, réinitialisation, partage
+# ---------------------------------------------------------------------------
+@router.get("/jeton")
+def jeton_page(request: Request):
+    """Affiche le lien d'activation bénévole et les options de partage."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        jeton = auth.jeton_actuel(conn)
+    finally:
+        conn.close()
+
+    lien, partage = None, {}
+    if jeton:
+        lien = f"{_base_url(request)}/acces?jeton={jeton}"
+        message = f"Accès bénévole — Des jeux plein la Manche : {lien}"
+        partage = {
+            "whatsapp": "https://wa.me/?text=" + quote(message),
+            "mail": ("mailto:?subject=" + quote("Accès bénévole — prêt de jeux")
+                     + "&body=" + quote(message)),
+            "sms": "sms:?&body=" + quote(message),
+        }
+    return templates.TemplateResponse(
+        request, "admin_jeton.html",
+        {"jeton": jeton, "lien": lien, "partage": partage},
+    )
+
+
+@router.post("/jeton/reinitialiser")
+def jeton_reinitialiser(request: Request):
+    """Génère un nouveau jeton bénévole (invalide les anciens) puis réaffiche la page."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        auth.reinitialiser_jeton(conn)
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/jeton", status_code=303)

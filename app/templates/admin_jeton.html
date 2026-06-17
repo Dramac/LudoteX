@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block titre %}Administration — accès bénévole{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Accès bénévole</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+
+  {% if jeton %}
+    <p>Voici le <strong>lien d'activation</strong> à diffuser aux bénévoles. En
+       l'ouvrant sur leur téléphone, leur appareil est autorisé pour 3 jours.</p>
+
+    <div class="champ">
+      <label for="lien">Lien d'activation</label>
+      <input type="text" id="lien" value="{{ lien }}" readonly onclick="this.select()">
+    </div>
+    <p>
+      <button type="button" class="bouton-filtrer" onclick="copierLien()">Copier le lien</button>
+      <span id="copie-ok" class="copie-ok" hidden>copié ✓</span>
+    </p>
+
+    <p class="stats-export">Partager :
+      <a class="lien" href="{{ partage.whatsapp }}" target="_blank" rel="noopener">WhatsApp</a> ·
+      <a class="lien" href="{{ partage.mail }}">E-mail</a> ·
+      <a class="lien" href="{{ partage.sms }}">SMS</a>
+    </p>
+    <p class="stats-note">Traitez ce lien comme un mot de passe : ne le publiez pas
+       en public. En cas de fuite, réinitialisez-le ci-dessous.</p>
+  {% else %}
+    <p class="resultat resultat-attention">
+      Aucun jeton n'est actif : les écrans bénévole sont actuellement ouverts à
+      tous. Cliquez sur « Réinitialiser » pour générer un jeton et obtenir un
+      lien d'activation.
+    </p>
+  {% endif %}
+
+  <form method="post" action="/admin/jeton/reinitialiser"
+        onsubmit="return confirm('Générer un nouveau jeton ? Les anciens liens et appareils déjà activés cesseront de fonctionner.');">
+    <button type="submit" class="bouton bouton-secondaire">Réinitialiser le jeton</button>
+  </form>
+</section>
+
+<script>
+  function copierLien() {
+    var champ = document.getElementById("lien");
+    navigator.clipboard.writeText(champ.value).then(function () {
+      var ok = document.getElementById("copie-ok");
+      ok.hidden = false;
+      setTimeout(function () { ok.hidden = true; }, 2000);
+    });
+  }
+</script>
+{% endblock %}

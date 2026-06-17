@@ -174,8 +174,13 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
 - **Activation** : distribuer aux bénévoles le lien `/acces?jeton=<JETON>` (via
   le canal interne). L'appareil mémorise le jeton dans un cookie (validité
   3 jours, à rouvrir ensuite). Le jeton n'apparaît jamais dans les pages.
-- **Rotation annuelle** : changer `PRET_TOKEN` invalide tous les anciens cookies.
-  Générer : `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+- **Rotation** : se fait désormais en un clic depuis `/admin` → « Accès
+  bénévole » → « Réinitialiser le jeton » (le nouveau jeton est stocké en base et
+  invalide les anciens liens/cookies). `PRET_TOKEN` du `.env` ne sert plus qu'à
+  l'amorçage initial si la base n'a pas encore de jeton.
+- Cette page fournit le **lien d'activation** prêt à partager (WhatsApp, e-mail,
+  SMS, copier). Le jeton n'apparaît qu'à l'admin connecté ; à traiter comme un
+  mot de passe.
 - **Sécurité** : comparaison en temps constant (`secrets.compare_digest`), cookie
   HttpOnly + SameSite=Lax + Secure (en HTTPS), limitation de débit par IP sur
   `/acces` (`RATE_LIMIT_PER_MINUTE`).
