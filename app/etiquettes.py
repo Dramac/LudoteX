@@ -28,8 +28,9 @@ from PIL import Image, ImageDraw, ImageFont
 NOIR = (0, 0, 0)
 BLANC = (255, 255, 255)
 
-# Logo par défaut : logo_ludotex.jpg à la racine du dépôt (../ par rapport à app/).
-LOGO_DEFAUT = Path(__file__).resolve().parent.parent / "logo_ludotex.jpg"
+# Logo par défaut : app/static/img/logo_ludotex.jpg (servi aussi sous
+# /static/img/logo_ludotex.jpg par l'application).
+LOGO_DEFAUT = Path(__file__).resolve().parent / "static" / "img" / "logo_ludotex.jpg"
 
 
 def url_fiche(base_url: str, id_exemplaire: str) -> str:

@@ -62,6 +62,34 @@ def test_stats_page(client):
     assert "par exemplaire" in r2.text
 
 
+def test_stats_alias_redirige(client):
+    for chemin in ("/stat", "/statistique", "/statistiques"):
+        r = client.get(chemin, follow_redirects=False)
+        assert r.status_code == 307
+        assert r.headers["location"].startswith("/stats")
+
+
+def test_stats_filtre_periode(client):
+    client.post("/pret/001/preter")
+    # Période lointaine dans le passé -> aucun prêt.
+    r = client.get("/stats", params={"debut": "2000-01-01T00:00",
+                                     "fin": "2000-01-02T00:00"})
+    assert r.status_code == 200
+    assert "Aucun prêt sur la période." in r.text
+
+
+def test_stats_exports(client):
+    client.post("/pret/001/preter")
+    x = client.get("/stats/export.xlsx")
+    assert x.status_code == 200
+    assert "spreadsheetml" in x.headers["content-type"]
+    assert x.content[:2] == b"PK"            # un .xlsx est une archive ZIP
+    p = client.get("/stats/export.pdf")
+    assert p.status_code == 200
+    assert p.headers["content-type"] == "application/pdf"
+    assert p.content[:4] == b"%PDF"
+
+
 def test_fiche_publique(client):
     r = client.get("/jeu/001")
     assert r.status_code == 200
