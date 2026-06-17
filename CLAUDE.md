@@ -56,6 +56,7 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 - `prets` : `id_pret` (PK auto), `id_exemplaire` (FK), `numero_pochette`,
   `date_sortie`, `date_retour` (NULL tant que sorti). Historique jamais purgé.
 - `pochettes` : `numero_pochette` (PK), `occupe` (0/1). Occupation du moment.
+- `parametres` : `cle` (PK), `valeur`. Réglages persistants (ex. `admin_hash`).
 
 ## Décisions de conception déjà prises
 
@@ -154,6 +155,19 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 `routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits
 (protégés par `exiger_jeton`). `routes/scanner.py`, `routes/stats.py`,
 `routes/acces.py` faits.
+
+## Espace d'administration (hors séquence initiale)
+
+Écran `/admin` protégé par **mot de passe** (≠ jeton bénévole) : `app/admin_auth.py`
+(hachage pbkdf2 stdlib, hash en table `parametres`, amorçage via `ADMIN_PASSWORD`
+du `.env`, sessions en mémoire + cookie), `routes/admin.py`, templates `admin_*`.
+Permet : créer une fiche de jeu (id_exemplaire AUTO, préfixe `A` via
+`services.prochain_id_exemplaire`, voir `creer_jeu`/`ajouter_exemplaire`),
+consulter une fiche et **(ré)imprimer l'étiquette** de chaque exemplaire
+(`GET /admin/etiquette/<id>.png`), changer le mot de passe. Le **dessin
+d'étiquette est mutualisé** dans `app/etiquettes.py` (partagé avec
+`scripts/generate_qr.py`). Accès non authentifié → redirection vers /admin (pas
+de 403). Tests verts.
 
 ## Sécurité du dépôt
 

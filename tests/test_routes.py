@@ -95,6 +95,50 @@ def test_auth_protege_pret_et_scanner(client, monkeypatch):
     assert client.get("/pret/001").status_code == 200
 
 
+def test_admin_login_et_creation_jeu(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+
+    # Sans session : accès admin redirige vers la connexion.
+    r = client.get("/admin/jeu-nouveau", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+    # Mauvais mot de passe -> refus.
+    assert client.post("/admin/login", data={"mot_de_passe": "faux"}).status_code == 403
+
+    # Bon mot de passe -> session ouverte (cookie conservé par le client).
+    r2 = client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"},
+                     follow_redirects=False)
+    assert r2.status_code == 303
+
+    # Création d'un jeu -> redirige vers sa fiche admin (id auto, préfixe A).
+    r3 = client.post("/admin/jeu-nouveau", data={"nom": "Jeu Test Admin",
+                     "categorie": "Cartes", "nb_joueurs_min": "2",
+                     "nb_joueurs_max": "5", "age_min": "8", "duree_min": "20"},
+                     follow_redirects=False)
+    assert r3.status_code == 303
+    ref = r3.headers["location"].rsplit("/", 1)[-1]
+    assert ref == "JEU_TEST_ADMIN"
+
+    # La fiche admin affiche un exemplaire à id auto (A0001) + son étiquette PNG.
+    fiche = client.get("/admin/jeu/" + ref)
+    assert fiche.status_code == 200 and "A0001" in fiche.text
+    png = client.get("/admin/etiquette/A0001.png")
+    assert png.status_code == 200 and png.headers["content-type"] == "image/png"
+
+
+def test_admin_changement_mdp(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "initial-123")
+    client.post("/admin/login", data={"mot_de_passe": "initial-123"})
+    # Mauvaise confirmation -> pas de changement.
+    r = client.post("/admin/motdepasse", data={"ancien": "initial-123",
+                    "nouveau": "nouveau-456", "confirmation": "xxx"})
+    assert "ne correspond pas" in r.text
+    # Changement correct.
+    r2 = client.post("/admin/motdepasse", data={"ancien": "initial-123",
+                     "nouveau": "nouveau-456", "confirmation": "nouveau-456"})
+    assert "modifié" in r2.text
+
+
 def test_scanner_page(client):
     r = client.get("/scanner")
     assert r.status_code == 200

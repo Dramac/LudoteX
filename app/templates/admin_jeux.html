@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titre %}Administration — jeux{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Jeux</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+  <form method="get" action="/admin/jeux" class="recherche-form">
+    <div class="champ">
+      <label for="q">Rechercher un jeu</label>
+      <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
+    </div>
+    <div><button type="submit" class="bouton-filtrer">Rechercher</button></div>
+  </form>
+  <p class="catalogue-compte">{{ jeux | length }} jeu(x)</p>
+</section>
+
+<ul class="catalogue-liste">
+  {% for jeu in jeux %}
+    <li class="jeu">
+      <a class="jeu-lien" href="/admin/jeu/{{ jeu.reference_titre }}">
+        <span class="jeu-nom">{{ jeu.nom }}</span>
+        <span class="jeu-categorie">{{ jeu.total }} exemplaire(s)</span>
+      </a>
+    </li>
+  {% else %}
+    <li class="jeu"><em>Aucun jeu.</em></li>
+  {% endfor %}
+</ul>
+{% endblock %}

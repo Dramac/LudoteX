@@ -109,6 +109,18 @@ CREATE TABLE IF NOT EXISTS pochettes (
 """
 
 # ---------------------------------------------------------------------------
+# parametres — réglages applicatifs (clé/valeur), ex. hash du mot de passe admin.
+# ---------------------------------------------------------------------------
+# Table générique pour stocker des réglages persistants modifiables depuis
+# l'application (sans toucher au .env ni au code). Aujourd'hui : "admin_hash".
+SCHEMA_PARAMETRES = """
+CREATE TABLE IF NOT EXISTS parametres (
+    cle     TEXT PRIMARY KEY,   -- ex. "admin_hash"
+    valeur  TEXT                -- valeur associée (ex. hash pbkdf2 du mot de passe)
+);
+"""
+
+# ---------------------------------------------------------------------------
 # Index — accélèrent les requêtes les plus fréquentes.
 # ---------------------------------------------------------------------------
 SCHEMA_INDEXES = """
@@ -131,5 +143,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_EXEMPLAIRES,
     SCHEMA_PRETS,
     SCHEMA_POCHETTES,
+    SCHEMA_PARAMETRES,
     SCHEMA_INDEXES,
 )

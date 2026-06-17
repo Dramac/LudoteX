@@ -36,7 +36,9 @@ RÈGLES MÉTIER NON NÉGOCIABLES (voir docs/specification.md §3, §5, §6)
 
 from __future__ import annotations
 
+import re
 import sqlite3
+import unicodedata
 from datetime import datetime, timezone
 
 
@@ -489,3 +491,164 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     # ... puis ouverture d'un nouveau prêt (preter() committe l'ensemble).
     nouveau = preter(conn, id_exemplaire)
     return {"ancien_numero": courant["numero_pochette"], "nouveau_numero": nouveau}
+
+
+# ===========================================================================
+# ADMINISTRATION — création/édition du catalogue depuis l'application
+# ===========================================================================
+# Préfixe des id_exemplaire créés via l'appli (≠ codes numériques du CSV et des
+# codes « E… » existants), pour garantir l'absence de collision.
+PREFIXE_ID_ADMIN = "A"
+
+
+def slug_titre(nom: str) -> str:
+    """
+    Construit la clé de regroupement `reference_titre` à partir d'un nom.
+
+    Normalisation : majuscules, sans accents, ponctuation → underscore. Deux noms
+    identiques à la casse/aux accents près produisent le même slug → ils sont
+    regroupés sous le même titre. Ex. 'Mr Jack' → 'MR_JACK'.
+
+    Cette fonction est PARTAGÉE avec scripts/import_csv.py pour que l'import en
+    lot et la création via l'admin produisent exactement les mêmes références.
+
+    Args:
+        nom: nom d'affichage du jeu.
+
+    Returns:
+        Le slug (clé `reference_titre`).
+    """
+    base = unicodedata.normalize("NFKD", nom)
+    base = base.encode("ascii", "ignore").decode("ascii")  # retire les accents
+    base = base.upper()
+    base = re.sub(r"[^A-Z0-9]+", "_", base)                # ponctuation -> _
+    return base.strip("_")
+
+
+def prochain_id_exemplaire(conn: sqlite3.Connection,
+                           prefixe: str = PREFIXE_ID_ADMIN) -> str:
+    """
+    Calcule le prochain id_exemplaire libre pour un préfixe donné (id AUTO).
+
+    On parcourt les ids existants commençant par `prefixe` et suivis de chiffres,
+    et on renvoie le suivant, formaté sur 4 chiffres (ex. 'A0001', 'A0002'…).
+    Le préfixe évite toute collision avec les codes du CSV.
+
+    Returns:
+        Le nouvel identifiant (TEXT), garanti unique au moment de l'appel.
+    """
+    rows = conn.execute(
+        "SELECT id_exemplaire FROM exemplaires WHERE id_exemplaire LIKE ?",
+        (prefixe + "%",),
+    ).fetchall()
+    maxn = 0
+    for (idex,) in rows:
+        suffixe = idex[len(prefixe):]
+        if suffixe.isdigit():
+            maxn = max(maxn, int(suffixe))
+    return f"{prefixe}{maxn + 1:04d}"
+
+
+def get_titre(conn: sqlite3.Connection, reference_titre: str) -> dict | None:
+    """Renvoie la ligne du titre (dict), ou None s'il n'existe pas."""
+    row = conn.execute(
+        "SELECT * FROM titres WHERE reference_titre = ?", (reference_titre,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def creer_jeu(conn: sqlite3.Connection, nom: str, **champs) -> dict:
+    """
+    Crée (ou complète) un titre et lui ajoute un premier exemplaire (id AUTO).
+
+    Le `reference_titre` est dérivé du nom (slug). Si un titre de même slug
+    existe déjà, ses champs sont mis à jour (UPSERT) et un exemplaire de plus lui
+    est rattaché — cohérent avec la règle « même nom = même titre ».
+
+    Args:
+        conn: connexion SQLite ouverte.
+        nom: nom du jeu (obligatoire).
+        **champs: colonnes optionnelles de `titres` (categorie, nb_joueurs_min,
+            nb_joueurs_max, duree_min, age_min, editeur, auteur, annee_edition,
+            descriptif). Les clés inconnues sont ignorées.
+
+    Returns:
+        dict {reference_titre, id_exemplaire} de l'élément créé.
+
+    Raises:
+        ValueError: si le nom est vide.
+    """
+    nom = (nom or "").strip()
+    if not nom:
+        raise ValueError("Le nom du jeu est obligatoire.")
+    ref = slug_titre(nom)
+
+    colonnes_ok = ("categorie", "nb_joueurs_min", "nb_joueurs_max", "duree_min",
+                   "age_min", "editeur", "auteur", "annee_edition", "descriptif")
+    valeurs = {c: champs.get(c) for c in colonnes_ok}
+
+    conn.execute(
+        """
+        INSERT INTO titres (reference_titre, nom, categorie, nb_joueurs_min,
+            nb_joueurs_max, duree_min, age_min, editeur, auteur, annee_edition,
+            descriptif)
+        VALUES (:ref, :nom, :categorie, :nb_joueurs_min, :nb_joueurs_max,
+            :duree_min, :age_min, :editeur, :auteur, :annee_edition, :descriptif)
+        ON CONFLICT(reference_titre) DO UPDATE SET
+            nom=excluded.nom, categorie=excluded.categorie,
+            nb_joueurs_min=excluded.nb_joueurs_min,
+            nb_joueurs_max=excluded.nb_joueurs_max, duree_min=excluded.duree_min,
+            age_min=excluded.age_min, editeur=excluded.editeur,
+            auteur=excluded.auteur, annee_edition=excluded.annee_edition,
+            descriptif=excluded.descriptif
+        """,
+        {"ref": ref, "nom": nom, **valeurs},
+    )
+    id_ex = prochain_id_exemplaire(conn)
+    conn.execute(
+        "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
+        (id_ex, ref),
+    )
+    conn.commit()
+    return {"reference_titre": ref, "id_exemplaire": id_ex}
+
+
+def ajouter_exemplaire(conn: sqlite3.Connection, reference_titre: str) -> str:
+    """
+    Ajoute un exemplaire (id AUTO) à un titre existant.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        reference_titre: titre auquel rattacher la nouvelle boîte.
+
+    Returns:
+        L'id_exemplaire créé.
+
+    Raises:
+        ValueError: si le titre n'existe pas.
+    """
+    if get_titre(conn, reference_titre) is None:
+        raise ValueError(f"Titre inconnu : {reference_titre}")
+    id_ex = prochain_id_exemplaire(conn)
+    conn.execute(
+        "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
+        (id_ex, reference_titre),
+    )
+    conn.commit()
+    return id_ex
+
+
+def lister_exemplaires_du_titre(conn: sqlite3.Connection,
+                                reference_titre: str) -> list[dict]:
+    """
+    Liste les exemplaires d'un titre avec leur état (pour la fiche admin).
+
+    Returns:
+        Liste de dicts {id_exemplaire, sorti(bool)}, triée par id.
+    """
+    rows = conn.execute(
+        "SELECT id_exemplaire FROM exemplaires WHERE reference_titre = ? "
+        "ORDER BY id_exemplaire",
+        (reference_titre,),
+    ).fetchall()
+    return [{"id_exemplaire": r[0], "sorti": est_sorti(conn, r[0])} for r in rows]

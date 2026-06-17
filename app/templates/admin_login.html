@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block titre %}Administration — connexion{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Administration</h1>
+
+  {% if not configure %}
+    <p class="resultat resultat-attention">
+      Aucun mot de passe administrateur n'est défini. Renseignez
+      <code>ADMIN_PASSWORD</code> dans le fichier <code>.env</code>, redémarrez
+      l'application, puis connectez-vous (vous pourrez ensuite le changer ici).
+    </p>
+  {% else %}
+    {% if erreur == "trop" %}
+      <p class="resultat resultat-attention">Trop de tentatives. Réessayez dans une minute.</p>
+    {% elif erreur %}
+      <p class="resultat resultat-attention">Mot de passe incorrect.</p>
+    {% endif %}
+    <form method="post" action="/admin/login" class="recherche-form">
+      <div class="champ">
+        <label for="mot_de_passe">Mot de passe administrateur</label>
+        <input type="password" id="mot_de_passe" name="mot_de_passe" autofocus>
+      </div>
+      <div><button type="submit" class="bouton-filtrer">Se connecter</button></div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

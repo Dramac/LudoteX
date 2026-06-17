@@ -28,7 +28,6 @@ import argparse
 import csv
 import re
 import sys
-import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
@@ -36,6 +35,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import get_connection, init_db  # noqa: E402
+# slug_titre est PARTAGÉ avec l'app (création de jeu via l'admin) pour produire
+# exactement les mêmes références de regroupement.
+from app.services import slug_titre  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Correspondance colonnes CSV -> champs du modèle
@@ -88,20 +90,6 @@ def construire_index_colonnes(entetes: list[str]) -> dict[str, str | None]:
 def nettoyer_nom(valeur: str) -> str:
     """Espaces superflus réduits ; le reste est conservé tel quel."""
     return re.sub(r"\s+", " ", (valeur or "").strip())
-
-
-def slug_titre(nom: str) -> str:
-    """
-    Slug de regroupement : majuscules, sans accents ni ponctuation,
-    espaces -> underscore. Deux noms identiques (à la casse/accents près)
-    produisent le même slug -> ils sont regroupés sous la même référence.
-    Ex. 'Mr Jack' -> 'MR_JACK' ; '7 Wonders' -> '7_WONDERS'.
-    """
-    base = unicodedata.normalize("NFKD", nom)
-    base = base.encode("ascii", "ignore").decode("ascii")  # retire les accents
-    base = base.upper()
-    base = re.sub(r"[^A-Z0-9]+", "_", base)                # ponctuation -> _
-    return base.strip("_")
 
 
 def _entiers(valeur: str) -> list[int]:

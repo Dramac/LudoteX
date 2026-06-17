@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import auth
-from app.routes import acces, catalogue, pret, scanner, stats
+from app.routes import acces, admin, catalogue, pret, scanner, stats
 from app.templating import templates
 
 # Répertoire du paquet `app/`, pour localiser le dossier static/.
@@ -55,6 +55,7 @@ app.include_router(pret.router)        # /pret/<id> + actions     (bénévole)
 app.include_router(scanner.router)     # /scanner                 (bénévole)
 app.include_router(stats.router)       # /stats                   (public)
 app.include_router(acces.router)       # /acces                   (activation)
+app.include_router(admin.router)       # /admin                   (mot de passe)
 
 
 @app.exception_handler(StarletteHTTPException)
