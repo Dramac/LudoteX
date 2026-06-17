@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titre %}Administration — mot de passe{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Changer le mot de passe</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+
+  {% if message %}
+    <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
+      {{ message[1] }}
+    </p>
+  {% endif %}
+
+  <form method="post" action="/admin/motdepasse" class="recherche-form">
+    <div class="champ">
+      <label for="ancien">Mot de passe actuel</label>
+      <input type="password" id="ancien" name="ancien">
+    </div>
+    <div class="champ">
+      <label for="nouveau">Nouveau mot de passe</label>
+      <input type="password" id="nouveau" name="nouveau">
+    </div>
+    <div class="champ">
+      <label for="confirmation">Confirmer le nouveau mot de passe</label>
+      <input type="password" id="confirmation" name="confirmation">
+    </div>
+    <div><button type="submit" class="bouton-filtrer">Modifier</button></div>
+  </form>
+</section>
+{% endblock %}

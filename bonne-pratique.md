@@ -185,6 +185,22 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
 - Le limiteur de débit est **en mémoire** (un seul process uvicorn). Avec
   plusieurs workers, prévoir un store partagé (étape déploiement).
 
+## Espace d'administration (/admin)
+
+- Protégé par **mot de passe** (distinct du jeton bénévole). Amorçage : définir
+  `ADMIN_PASSWORD` dans `.env` au premier démarrage → il est haché et stocké en
+  base (table `parametres`) ; ensuite on le change depuis l'écran. Changer
+  `ADMIN_PASSWORD` après l'amorçage n'a plus d'effet (la base fait foi).
+- Sert à **créer une fiche de jeu** (l'`id_exemplaire` est attribué
+  automatiquement avec le préfixe `A`, ex. `A0001`, pour ne jamais entrer en
+  collision avec les codes du CSV) et à **(ré)imprimer l'étiquette** de n'importe
+  quel exemplaire (utile si une étiquette est abîmée) — sans jamais changer le
+  code du QR.
+- Le dessin de l'étiquette est **mutualisé** dans `app/etiquettes.py`, utilisé
+  à la fois par l'admin et par `scripts/generate_qr.py` (rendu identique).
+- Mot de passe haché en **pbkdf2** (bibliothèque standard). Sessions admin **en
+  mémoire** (un seul worker uvicorn ; sinon store partagé).
+
 ## Mémoire & continuité
 
 - **`CLAUDE.md`** (versionné) = contrat du projet, relu à chaque session : stack,

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block titre %}Administration{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Administration</h1>
+  <ul class="admin-menu">
+    <li><a class="lien" href="/admin/jeu-nouveau">➕ Créer une nouvelle fiche de jeu</a></li>
+    <li><a class="lien" href="/admin/jeux">🔎 Rechercher un jeu / réimprimer une étiquette</a></li>
+    <li><a class="lien" href="/admin/motdepasse">🔑 Changer le mot de passe</a></li>
+    <li><a class="lien" href="/admin/logout">Se déconnecter</a></li>
+  </ul>
+</section>
+{% endblock %}

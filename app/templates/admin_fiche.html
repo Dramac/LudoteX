@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titre %}Administration — {{ titre.nom if titre else "Inconnu" }}{% endblock %}
+
+{% block contenu %}
+{% if titre is none %}
+  <section class="carte">
+    <h1>Jeu inconnu</h1>
+    <p><a class="lien" href="/admin/jeux">← Retour à la liste</a></p>
+  </section>
+{% else %}
+  <section class="carte">
+    <h1>{{ titre.nom }}</h1>
+    <p><a class="lien" href="/admin/jeux">← Liste</a> ·
+       <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a></p>
+    <p class="dispo-titre">Référence : <code>{{ titre.reference_titre }}</code> ·
+       {{ exemplaires | length }} exemplaire(s)</p>
+
+    <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/exemplaire">
+      <button type="submit" class="bouton-filtrer">➕ Ajouter un exemplaire</button>
+    </form>
+  </section>
+
+  {% for ex in exemplaires %}
+    <section class="carte etiquette-bloc">
+      <div class="etiquette-entete">
+        <span><strong>{{ ex.id_exemplaire }}</strong>
+          {% if ex.sorti %}<span class="badge badge-sorti">sorti</span>
+          {% else %}<span class="badge badge-dispo">disponible</span>{% endif %}
+        </span>
+        <a class="lien" href="/admin/etiquette/{{ ex.id_exemplaire }}.png" target="_blank">
+          Ouvrir / imprimer l'étiquette
+        </a>
+      </div>
+      <img class="etiquette-apercu" src="/admin/etiquette/{{ ex.id_exemplaire }}.png"
+           alt="Étiquette {{ ex.id_exemplaire }}">
+    </section>
+  {% endfor %}
+{% endif %}
+{% endblock %}

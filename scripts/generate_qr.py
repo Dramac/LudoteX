@@ -1,15 +1,10 @@
 """
-Génération des étiquettes QR — une par exemplaire.
+Génération en lot des étiquettes QR — une par exemplaire.
 
-Chaque étiquette porte :
-  - un QR encodant l'URL de la fiche : <BASE_URL>/jeu/<id_exemplaire> ;
-  - un emplacement LOGO de l'association (placeholder tant que le logo manque,
-    remplaçable par --logo chemin.png) ;
-  - un cercle réservé pour une GOMMETTE de couleur (collée à la main) ;
-  - le code jeu + le nom ;
-  - un CODE DE CLASSEMENT (type « EAM8-3-5-15 ») : partie chiffrée déduite des
-    données (âge, joueurs, durée), lettres en placeholder tant que la
-    nomenclature n'est pas figée (voir code_classement()).
+Le DESSIN de l'étiquette (QR, logo, gommette, nom, code de classement) est
+mutualisé dans app/etiquettes.py — partagé avec l'écran d'administration, pour un
+rendu identique. Ce script s'occupe de : lire les exemplaires en base, produire
+les PNG individuels, et assembler une planche PDF prête à imprimer.
 
 >>> IMPORTANT : l'URL encodée est DÉFINITIVE. Un QR collé sur une boîte ne doit
     jamais changer. Ne lancer le tirage définitif qu'une fois le NOM DE DOMAINE
@@ -22,7 +17,7 @@ Usage :
     python -m scripts.generate_qr                      # PNG individuels dans qr/
     python -m scripts.generate_qr --planche            # + planche PDF A4
     python -m scripts.generate_qr --planche --grille 8x3   # 8 lignes x 3 colonnes
-    python -m scripts.generate_qr --logo logo.png          # insère le vrai logo
+    python -m scripts.generate_qr --logo logo.png          # logo explicite
     python -m scripts.generate_qr --base-url https://abcd.trycloudflare.com
     python -m scripts.generate_qr --limit 12               # échantillon (tests)
     python -m scripts.generate_qr --simple                 # QR nu, sans décor
@@ -35,26 +30,18 @@ import os
 import sys
 from pathlib import Path
 
-import qrcode
-from PIL import Image, ImageDraw, ImageFont
-
+# Permet « python scripts/generate_qr.py » comme « python -m scripts.generate_qr ».
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import get_connection  # noqa: E402
+from app.etiquettes import (  # noqa: E402
+    charger_logo,
+    image_etiquette,
+    image_qr_nu,
+    url_fiche,
+)
 
 DEFAULT_OUT = Path("qr")
-
-# Couleurs
-NOIR = (0, 0, 0)
-BLANC = (255, 255, 255)
-
-
-# ---------------------------------------------------------------------------
-# URL et données
-# ---------------------------------------------------------------------------
-def url_fiche(base_url: str, id_exemplaire: str) -> str:
-    """Construit l'URL de fiche, en évitant les doubles slash."""
-    return f"{base_url.rstrip('/')}/jeu/{id_exemplaire}"
 
 
 def charger_exemplaires(limit: int | None = None) -> list[dict]:
@@ -63,8 +50,7 @@ def charger_exemplaires(limit: int | None = None) -> list[dict]:
     à l'étiquette (nom) et au code de classement (âge, joueurs, durée).
 
     Args:
-        limit: si fourni, ne renvoie que les N premiers (pratique pour générer un
-            échantillon de test sans traiter les ~700 exemplaires).
+        limit: si fourni, ne renvoie que les N premiers (échantillon de test).
 
     Returns:
         Liste de dicts (un par exemplaire), triés par id_exemplaire.
@@ -85,195 +71,16 @@ def charger_exemplaires(limit: int | None = None) -> list[dict]:
         conn.close()
 
 
-def code_classement(ex: dict) -> str:
-    """
-    Code de classement type « EAM8-3-5-15 ».
-
-    Structure PROVISOIRE (nomenclature pas encore arrêtée) :
-        [3 lettres][âge]-[joueurs min]-[joueurs max]-[durée]
-        E = cible (enfant…), A = ambiance (catégorie), M = mot (sous-catégorie).
-
-    Les 3 lettres ne sont pas dérivables proprement des données actuelles : on
-    les laisse en placeholder « XXX ». La partie chiffrée est remplie depuis la
-    base (âge, joueurs, durée) ; « ? » si l'info manque. À faire évoluer ici
-    quand la nomenclature des lettres sera fixée.
-    """
-    def v(x):
-        return str(x) if x not in (None, "") else "?"
-
-    lettres = "XXX"  # placeholder : cible / catégorie / sous-catégorie
-    age = v(ex.get("age_min"))
-    jmin = v(ex.get("nb_joueurs_min"))
-    jmax = v(ex.get("nb_joueurs_max"))
-    duree = v(ex.get("duree_min"))
-    return f"{lettres}{age}-{jmin}-{jmax}-{duree}"
-
-
-# ---------------------------------------------------------------------------
-# Outils image (helpers Pillow ; préfixe _ = usage interne au module)
-# ---------------------------------------------------------------------------
-def _police(taille: int):
-    """
-    Charge une police TrueType à la taille voulue, avec repli.
-
-    Cherche DejaVu (Linux/VPS) puis Arial (macOS) ; à défaut, la police bitmap
-    par défaut de Pillow (moins jolie mais toujours disponible).
-    """
-    for chemin in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/Library/Fonts/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ):
-        if Path(chemin).exists():
-            return ImageFont.truetype(chemin, taille)
-    return ImageFont.load_default()
-
-
-def _texte_centre(draw, cx, y, texte, police, fill=NOIR):
-    """Dessine `texte` centré horizontalement sur `cx`, à l'ordonnée `y`.
-
-    Returns: la hauteur du texte (utile pour empiler des lignes).
-    """
-    bbox = draw.textbbox((0, 0), texte, font=police)
-    w = bbox[2] - bbox[0]
-    draw.text((cx - w // 2, y), texte, fill=fill, font=police)
-    return bbox[3] - bbox[1]
-
-
-def _tronquer(draw, texte, police, largeur_max):
-    """Tronque `texte` avec une ellipse « … » s'il dépasse `largeur_max` pixels."""
-    if draw.textbbox((0, 0), texte, font=police)[2] <= largeur_max:
-        return texte
-    while texte and draw.textbbox((0, 0), texte + "…", font=police)[2] > largeur_max:
-        texte = texte[:-1]
-    return texte + "…"
-
-
-def _wrap(draw, texte, police, largeur_max, max_lignes=3):
-    """Découpe le texte en lignes tenant dans largeur_max (max_lignes lignes)."""
-    lignes, cur = [], ""
-    for mot in (texte or "").split():
-        essai = (cur + " " + mot).strip()
-        if draw.textbbox((0, 0), essai, font=police)[2] <= largeur_max:
-            cur = essai
-        else:
-            if cur:
-                lignes.append(cur)
-            cur = mot
-            if len(lignes) >= max_lignes:
-                break
-    if cur and len(lignes) < max_lignes:
-        lignes.append(cur)
-    lignes = [_tronquer(draw, l, police, largeur_max) for l in lignes[:max_lignes]]
-    return lignes or [""]
-
-
-def image_qr_nu(url: str, box: int = 8) -> Image.Image:
-    """
-    Génère l'image d'un QR code « nu » (sans décor) encodant `url`.
-
-    `ERROR_CORRECT_M` ≈ 15 % de correction d'erreur (bon compromis robustesse/
-    densité), `box_size` = taille d'un module en pixels, `border` = marge en
-    modules (4 recommandé par le standard ; 2 suffit ici, l'étiquette ajoute déjà
-    du blanc autour).
-
-    Returns:
-        Une image PIL en mode RGB.
-    """
-    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
-                       box_size=box, border=2)
-    qr.add_data(url)
-    qr.make(fit=True)
-    return qr.make_image(fill_color="black", back_color="white").convert("RGB")
-
-
-def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
-                    box: int = 8) -> Image.Image:
-    """
-    Étiquette au format PAYSAGE : QR à gauche, panneau d'infos à droite
-    (logo + gommette en haut, nom au centre, code de classement en bas).
-    Pas de numéro de base affiché (il est dans le QR). Tous les cadres de
-    placeholder sont en NOIR pour survivre à la conversion 1-bit de la planche.
-    """
-    qr = image_qr_nu(url, box)
-    pad, gap = 18, 22
-    panel_w = 400
-    logo_w, logo_h = 240, 150          # emplacement logo agrandi
-    gom_d = 64
-    classif_h = 46
-
-    f_nom = _police(24)
-    f_classif = _police(24)
-    f_small = _police(13)
-    f_logo = _police(30)
-
-    # Mesure préalable (brouillon) pour dimensionner sans débordement.
-    mesure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    lignes = _wrap(mesure, ex.get("nom", ""), f_nom, panel_w, max_lignes=3)
-    lh = mesure.textbbox((0, 0), "Ag", font=f_nom)[3] + 8
-    header_h = max(logo_h, gom_d + 16)
-    panel_h = header_h + 22 + len(lignes) * lh + 22 + classif_h
-
-    W = pad + qr.width + gap + panel_w + pad
-    H = pad + max(qr.height, panel_h) + pad
-
-    img = Image.new("RGB", (W, H), BLANC)
-    d = ImageDraw.Draw(img)
-
-    # --- QR (gauche, centré verticalement) ---
-    qy = (H - qr.height) // 2
-    img.paste(qr, (pad, qy))
-
-    px = pad + qr.width + gap          # bord gauche du panneau
-    panel_cx = px + panel_w // 2
-
-    # --- Logo (haut gauche du panneau, agrandi) ---
-    if logo is not None:
-        vignette = logo.copy()
-        vignette.thumbnail((logo_w, logo_h))
-        img.paste(vignette, (px + (logo_w - vignette.width) // 2,
-                             pad + (logo_h - vignette.height) // 2))
-    else:
-        d.rectangle([px, pad, px + logo_w, pad + logo_h], outline=NOIR, width=3)
-        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 - 18, "LOGO", f_logo)
-        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 + 18, "(asso)", f_small)
-
-    # --- Gommette (haut droite du panneau) ---
-    gx0 = W - pad - gom_d
-    d.ellipse([gx0, pad, gx0 + gom_d, pad + gom_d], outline=NOIR, width=3)
-    _texte_centre(d, gx0 + gom_d // 2, pad + gom_d + 1, "gommette", f_small)
-
-    # --- Nom (panneau, centré entre l'en-tête et le code) ---
-    haut_entete = pad + header_h
-    bas_code = H - pad - classif_h
-    bloc_h = len(lignes) * lh
-    ny = haut_entete + (bas_code - haut_entete - bloc_h) // 2
-    for ligne in lignes:
-        _texte_centre(d, panel_cx, ny, ligne, f_nom)
-        ny += lh
-
-    # --- Code de classement (bas du panneau, encadré) ---
-    cy = H - pad - classif_h
-    d.rectangle([px, cy, px + panel_w, cy + classif_h], outline=NOIR, width=3)
-    _texte_centre(d, panel_cx, cy + 11, code_classement(ex), f_classif)
-
-    return img
-
-
-# ---------------------------------------------------------------------------
-# Génération
-# ---------------------------------------------------------------------------
 def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
     """
-    Écrit un PNG par exemplaire dans le dossier `out` (un fichier `<id>.png`).
+    Écrit un PNG par exemplaire dans `out` (fichier `<id>.png`).
 
     Args:
         exemplaires: liste de dicts (voir charger_exemplaires).
         base_url: base de l'URL encodée dans le QR.
         out: dossier de sortie (créé au besoin).
         logo: image PIL du logo, ou None (placeholder).
-        simple: True = QR nu sans décor ; False = étiquette complète.
+        simple: True = QR nu ; False = étiquette complète.
 
     Returns:
         Le nombre d'étiquettes générées.
@@ -292,7 +99,7 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
     Génère une planche A4 multipage prête à imprimer.
 
     Grille `lignes` x `colonnes` d'étiquettes par page. On utilise reportlab
-    plutôt que Pillow pour le PDF car il gère les images couleur (le logo) sans
+    (et non Pillow) pour le PDF car il gère les images couleur (logo) sans
     dépendre du codec JPEG, absent de certains builds Pillow.
 
     Args:
@@ -311,7 +118,7 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
 
-    def lecteur_png(im: Image.Image) -> ImageReader:
+    def lecteur_png(im) -> ImageReader:
         # Passer un PNG (et non l'objet PIL) : préserve la couleur et évite
         # le recours au codec JPEG (absent de certains builds Pillow).
         buf = BytesIO()
@@ -335,13 +142,13 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
             iw, ih = label.size
             # Position dans la grille (colonne, ligne) à partir de l'indice j.
             col, row = j % colonnes, j // colonnes
-            # Échelle pour tenir dans la cellule (marges déduites), en gardant
-            # les proportions de l'étiquette.
+            # Échelle pour tenir dans la cellule (marges déduites), proportions
+            # conservées.
             avail_w, avail_h = cw - 2 * marge, ch - 2 * marge
             scale = min(avail_w / iw, avail_h / ih)
             w, h = iw * scale, ih * scale
-            # Centrage dans la cellule. NB : reportlab a son origine en bas-gauche,
-            # d'où le calcul de y à partir du haut de page (page_h).
+            # Centrage. NB : origine reportlab en bas-gauche, d'où le calcul de y
+            # depuis le haut de page (page_h).
             x = col * cw + (cw - w) / 2
             y = page_h - (row + 1) * ch + (ch - h) / 2
             c.drawImage(lecteur_png(label), x, y, w, h, preserveAspectRatio=True)
@@ -365,15 +172,14 @@ def _parse_grille(valeur: str) -> tuple[int, int]:
 
 def main() -> None:
     """
-    Point d'entrée CLI : analyse les options, charge logo + exemplaires, génère
-    les PNG (et la planche si --planche). Voir le docstring du module pour les
-    exemples d'usage.
+    Point d'entrée CLI : options, chargement logo + exemplaires, génération des
+    PNG (et de la planche si --planche).
     """
     p = argparse.ArgumentParser(description="Génère les étiquettes QR des exemplaires.")
     p.add_argument("--base-url", default=os.getenv("BASE_URL"),
                    help="URL de base (défaut : BASE_URL du .env).")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="Dossier de sortie.")
-    p.add_argument("--logo", type=Path, help="Image du logo (sinon placeholder).")
+    p.add_argument("--logo", type=Path, help="Image du logo (sinon logo_djplm.jpg).")
     p.add_argument("--planche", action="store_true", help="Planche PDF A4 à imprimer.")
     p.add_argument("--grille", default="8x2",
                    help="Disposition planche 'lignesxcolonnes' (défaut 8x2, paysage).")
@@ -385,16 +191,10 @@ def main() -> None:
         raise SystemExit("ERREUR : aucune URL de base. Renseigner BASE_URL dans "
                          ".env ou passer --base-url. L'URL encodée est définitive.")
 
-    # Logo : --logo explicite, sinon logo_djplm.jpg à la racine du projet s'il existe.
-    chemin_logo = args.logo
-    if chemin_logo is None:
-        defaut = Path(__file__).resolve().parent.parent / "logo_djplm.jpg"
-        chemin_logo = defaut if defaut.exists() else None
-    logo = None
-    if chemin_logo:
-        if not chemin_logo.exists():
-            raise SystemExit(f"Logo introuvable : {chemin_logo}")
-        logo = Image.open(chemin_logo).convert("RGB")
+    # Logo : si --logo est passé, il doit exister ; sinon on tente logo_djplm.jpg.
+    if args.logo and not args.logo.exists():
+        raise SystemExit(f"Logo introuvable : {args.logo}")
+    logo = charger_logo(args.logo)
 
     exemplaires = charger_exemplaires(args.limit)
     if not exemplaires:
@@ -404,7 +204,7 @@ def main() -> None:
     print(f"URL de base : {args.base_url}")
     if any(s in args.base_url for s in ("example", "localhost", "trycloudflare", "ngrok")):
         print("  (URL de TEST — ne pas utiliser pour le tirage définitif.)")
-    print(f"Logo : {'fourni' if logo else 'PLACEHOLDER (à remplacer via --logo)'}")
+    print(f"Logo : {'fourni' if logo else 'PLACEHOLDER (logo_djplm.jpg absent)'}")
 
     n = generer_pngs(exemplaires, args.base_url, args.out, logo, args.simple)
     print(f"{n} étiquette(s) PNG écrites dans : {args.out}/")
