@@ -34,6 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import auth
+from app.db import init_db
 from app.routes import acces, admin, catalogue, pret, scanner, stats
 from app.templating import templates
 
@@ -74,6 +75,10 @@ async def gestion_http(request, exc: StarletteHTTPException):
         )
     return await http_exception_handler(request, exc)
 
+
+# S'assure que le schéma existe / est à jour au démarrage (idempotent). Crée les
+# tables manquantes sur une base déjà existante (ex. nouvelle table `parametres`).
+init_db()
 
 # Garde-fou de déploiement : si aucun jeton n'est défini, les écrans bénévole
 # sont ouverts à tous. On le signale fort dans les logs au démarrage.
