@@ -4,11 +4,25 @@
 {% block contenu %}
 <section class="carte">
   <h1>Administration</h1>
+  <h2>Gérer</h2>
   <ul class="admin-menu">
     <li><a class="lien" href="/admin/jeu-nouveau">➕ Créer une nouvelle fiche de jeu</a></li>
     <li><a class="lien" href="/admin/jeux">🔎 Rechercher un jeu / réimprimer une étiquette</a></li>
+    <li><a class="lien" href="/admin/jeton">🔗 Accès bénévole (lien d'activation / réinitialisation)</a></li>
     <li><a class="lien" href="/admin/motdepasse">🔑 Changer le mot de passe</a></li>
-    <li><a class="lien" href="/admin/logout">Se déconnecter</a></li>
   </ul>
+</section>
+
+<section class="carte">
+  <h2>Aller aux modules</h2>
+  <ul class="admin-menu">
+    <li><a class="lien" href="/catalogue">📚 Catalogue public</a></li>
+    <li><a class="lien" href="/stats">📊 Statistiques</a></li>
+    <li><a class="lien" href="/scanner">📷 Scanner (prêt / retour)</a></li>
+  </ul>
+</section>
+
+<section class="carte">
+  <p><a class="lien" href="/admin/logout">Se déconnecter</a></p>
 </section>
 {% endblock %}

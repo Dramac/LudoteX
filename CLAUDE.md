@@ -174,7 +174,20 @@ consulter une fiche et **(ré)imprimer l'étiquette** de chaque exemplaire
 (`GET /admin/etiquette/<id>.png`), changer le mot de passe. Le **dessin
 d'étiquette est mutualisé** dans `app/etiquettes.py` (partagé avec
 `scripts/generate_qr.py`). Accès non authentifié → redirection vers /admin (pas
-de 403). Tests verts.
+de 403). Le **tableau de bord** propose un menu vers les modules (catalogue,
+stats, scanner) en plus des actions d'admin.
+
+**Jeton bénévole en base** : `auth.jeton_actuel(conn)` lit d'abord `parametres`
+(clé `pret_token`) puis l'env `PRET_TOKEN` (amorçage). Page `/admin/jeton` :
+affiche le lien d'activation, permet de **réinitialiser** le jeton
+(`auth.reinitialiser_jeton`, invalide les anciens cookies) et de le **partager**
+(WhatsApp/e-mail/SMS + copier). `acces_valide` ouvre une connexion pour lire le
+jeton courant.
+
+**Export PDF à la carte** : `exports.construire_pdf(data, periode, sections)`
+avec sections cochables (synthèse, plus, moins, detail — détail décoché par
+défaut) ; route `/stats/export.pdf?sections=…`. L'export Excel reste complet.
+Tests verts.
 
 ## Sécurité du dépôt
 

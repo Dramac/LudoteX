@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import auth
-from app.db import init_db
+from app.db import get_connection, init_db
 from app.routes import acces, admin, catalogue, pret, scanner, stats
 from app.templating import templates
 
@@ -80,12 +80,18 @@ async def gestion_http(request, exc: StarletteHTTPException):
 # tables manquantes sur une base déjà existante (ex. nouvelle table `parametres`).
 init_db()
 
-# Garde-fou de déploiement : si aucun jeton n'est défini, les écrans bénévole
-# sont ouverts à tous. On le signale fort dans les logs au démarrage.
-if auth.jeton_configure() is None:
+# Garde-fou de déploiement : si aucun jeton n'est en vigueur, les écrans
+# bénévole sont ouverts à tous. On le signale fort dans les logs au démarrage.
+_conn_demarrage = get_connection()
+try:
+    _jeton_absent = auth.jeton_actuel(_conn_demarrage) is None
+finally:
+    _conn_demarrage.close()
+if _jeton_absent:
     logging.getLogger("uvicorn.error").warning(
-        "PRET_TOKEN non défini : les écrans bénévole (/pret, /scanner) sont "
-        "OUVERTS. Définir PRET_TOKEN dans .env pour la production."
+        "Aucun jeton bénévole en vigueur : les écrans bénévole (/pret, /scanner) "
+        "sont OUVERTS. Définir PRET_TOKEN dans .env ou réinitialiser le jeton "
+        "depuis /admin pour la production."
     )
 
 

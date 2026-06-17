@@ -167,6 +167,22 @@ def test_admin_changement_mdp(client, monkeypatch):
     assert "modifié" in r2.text
 
 
+def test_admin_jeton_reinitialisation(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    # Réinitialisation -> un jeton est posé, la page montre un lien d'activation.
+    r = client.post("/admin/jeton/reinitialiser", follow_redirects=False)
+    assert r.status_code == 303
+    page = client.get("/admin/jeton")
+    assert page.status_code == 200 and "/acces?jeton=" in page.text
+
+
+def test_export_pdf_sections(client):
+    client.post("/pret/001/preter")
+    r = client.get("/stats/export.pdf", params=[("sections", "synthese")])
+    assert r.status_code == 200 and r.content[:4] == b"%PDF"
+
+
 def test_scanner_page(client):
     r = client.get("/scanner")
     assert r.status_code == 200

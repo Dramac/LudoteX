@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from app import auth
+from app.db import get_connection
 from app.templating import templates
 
 router = APIRouter(tags=["acces"])
@@ -56,7 +57,11 @@ def acces(request: Request, jeton: str = ""):
             request, "acces_refuse.html", {"motif": "trop"}, status_code=429
         )
 
-    attendu = auth.jeton_configure()
+    conn = get_connection()
+    try:
+        attendu = auth.jeton_actuel(conn)
+    finally:
+        conn.close()
     if attendu and secrets.compare_digest(jeton, attendu):
         # 303 force le navigateur à faire un GET sur /scanner après l'activation.
         reponse = RedirectResponse("/scanner", status_code=303)

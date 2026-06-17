@@ -99,17 +99,26 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     return buf.getvalue()
 
 
-def construire_pdf(data: dict, periode_txt: str) -> bytes:
+# Sections possibles du PDF, dans l'ordre d'apparition.
+SECTIONS_PDF = ("synthese", "plus", "moins", "detail")
+
+
+def construire_pdf(data: dict, periode_txt: str,
+                   sections: "set[str] | None" = None) -> bytes:
     """
-    Construit un PDF de bilan : synthèse, palmarès, détail des prêts.
+    Construit un PDF de bilan, avec sections au choix.
 
     Args:
         data: dict de services.collecter_stats.
         periode_txt: libellé lisible de la période.
+        sections: ensemble des sections à inclure parmi SECTIONS_PDF
+            ("synthese", "plus", "moins", "detail"). None = toutes.
 
     Returns:
         Le contenu binaire du fichier .pdf.
     """
+    if sections is None:
+        sections = set(SECTIONS_PDF)
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -140,20 +149,25 @@ def construire_pdf(data: dict, periode_txt: str) -> bytes:
     elements.append(Spacer(1, 0.4 * cm))
 
     # Synthèse
-    g = data["globales"]
-    elements.append(Paragraph("Synthèse", styles["Heading2"]))
-    elements.append(tableau(
-        ["Indicateur", "Valeur"],
-        [["Prêts au total", str(g["total_prets"])],
-         ["Prêts en cours", str(g["en_cours"])],
-         ["Titres prêtés", str(g["titres_pretes"])],
-         ["Titres au catalogue", str(g["nb_titres"])]],
-        [8 * cm, 4 * cm]))
-    elements.append(Spacer(1, 0.4 * cm))
+    if "synthese" in sections:
+        g = data["globales"]
+        elements.append(Paragraph("Synthèse", styles["Heading2"]))
+        elements.append(tableau(
+            ["Indicateur", "Valeur"],
+            [["Prêts au total", str(g["total_prets"])],
+             ["Prêts en cours", str(g["en_cours"])],
+             ["Titres prêtés", str(g["titres_pretes"])],
+             ["Titres au catalogue", str(g["nb_titres"])]],
+            [8 * cm, 4 * cm]))
+        elements.append(Spacer(1, 0.4 * cm))
 
-    # Palmarès
-    for titre_section, jeux in (("Les plus prêtés", data["plus"]),
-                                ("Les moins prêtés", data["moins"])):
+    # Palmarès (les deux sections sont indépendantes)
+    palmares_sections = []
+    if "plus" in sections:
+        palmares_sections.append(("Les plus prêtés", data["plus"]))
+    if "moins" in sections:
+        palmares_sections.append(("Les moins prêtés", data["moins"]))
+    for titre_section, jeux in palmares_sections:
         elements.append(Paragraph(
             f"{titre_section} ({_libelle_metrique(data['metrique'])})",
             styles["Heading2"]))
@@ -164,16 +178,17 @@ def construire_pdf(data: dict, periode_txt: str) -> bytes:
         elements.append(Spacer(1, 0.4 * cm))
 
     # Détail des prêts
-    elements.append(Paragraph(f"Détail des prêts ({len(data['prets'])})",
-                              styles["Heading2"]))
-    lignes = [[p["nom"], p["id_exemplaire"], p["sortie_locale"],
-               p["retour_local"] or "en cours", str(p["numero_pochette"])]
-              for p in data["prets"]]
-    if lignes:
-        elements.append(tableau(["Jeu", "Ex.", "Sortie", "Retour", "Empl."],
-                                lignes, [6.5 * cm, 2 * cm, 3.2 * cm, 3.2 * cm, 1.6 * cm]))
-    else:
-        elements.append(Paragraph("Aucun prêt sur la période.", styles["Normal"]))
+    if "detail" in sections:
+        elements.append(Paragraph(f"Détail des prêts ({len(data['prets'])})",
+                                  styles["Heading2"]))
+        lignes = [[p["nom"], p["id_exemplaire"], p["sortie_locale"],
+                   p["retour_local"] or "en cours", str(p["numero_pochette"])]
+                  for p in data["prets"]]
+        if lignes:
+            elements.append(tableau(["Jeu", "Ex.", "Sortie", "Retour", "Empl."],
+                                    lignes, [6.5 * cm, 2 * cm, 3.2 * cm, 3.2 * cm, 1.6 * cm]))
+        else:
+            elements.append(Paragraph("Aucun prêt sur la période.", styles["Normal"]))
 
     doc.build(elements)
     return buf.getvalue()
