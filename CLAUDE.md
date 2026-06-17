@@ -49,9 +49,11 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 
 ## Modèle de données (4 tables — voir spec §3 et `app/models.py`)
 
-- `titres` : `reference_titre` (PK), `nom`, `categorie` + colonnes optionnelles
-  nullables (`nb_joueurs_min/max`, `duree_min`, `age_min`, `editeur`, `auteur`,
-  `annee_edition`, `descriptif`).
+- `titres` : `reference_titre` (PK), `nom`, `type_jeu` ("Jeu"/"Extension"),
+  `categorie` + colonnes optionnelles nullables (`nb_joueurs_min/max`,
+  `duree_min`, `age_min`, `editeur`, `auteur`, `annee_edition`, `descriptif`).
+  Migration : `db._appliquer_migrations` ajoute les colonnes apparues après coup
+  (ex. `type_jeu`) aux bases existantes via ALTER TABLE.
 - `exemplaires` : `id_exemplaire` (PK, TEXT), `reference_titre` (FK).
 - `prets` : `id_pret` (PK auto), `id_exemplaire` (FK), `numero_pochette`,
   `date_sortie`, `date_retour` (NULL tant que sorti). Historique jamais purgé.
@@ -90,7 +92,8 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    (`Liste_Jeux_Etendue_140626.csv`, 703 lignes, séparateur `;`, UTF-8 BOM).
    Mapping : « Code jeu »→`id_exemplaire` (TEXT, zéros de tête), nom nettoyé,
    `reference_titre`=slug du nom (REGROUPEMENT par nom, validé par Simon),
-   « Type jeu »→`categorie`, parsing « Nb joueurs » 2-4→min/max, « Age » 10+→10,
+   « Type »→`type_jeu` (Jeu/Extension), « Type jeu »→`categorie`, parsing
+   « Nb joueurs » 2-4→min/max, « Age » 10+→10,
    « Temps jeu »→`duree_min`, « Marque »→`editeur`, + descriptif/auteur/année.
    Colonnes d'état du CSV ignorées (état déduit des prêts). Idempotent (UPSERT).
    Résultat : **609 titres / 703 exemplaires**, 0 FK orpheline. Regroupements

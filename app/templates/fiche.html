@@ -22,6 +22,7 @@
     <p class="dispo-titre">{{ disponible }} / {{ total }} exemplaire(s) de ce jeu disponible(s)</p>
 
     <dl class="caracteristiques">
+      {% if info.type_jeu %}<dt>Type</dt><dd>{{ info.type_jeu }}</dd>{% endif %}
       {% if info.categorie %}<dt>Catégorie</dt><dd>{{ info.categorie }}</dd>{% endif %}
       {% if info.nb_joueurs_min %}
         <dt>Joueurs</dt>

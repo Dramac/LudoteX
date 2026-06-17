@@ -202,6 +202,7 @@ def nouveau_formulaire(request: Request):
 def nouveau_creer(
     request: Request,
     nom: str = Form(""),
+    type_jeu: str = Form("Jeu"),
     categorie: str = Form(""),
     nb_joueurs_min: str = Form(""),
     nb_joueurs_max: str = Form(""),
@@ -224,6 +225,7 @@ def nouveau_creer(
     try:
         res = services.creer_jeu(
             conn, nom,
+            type_jeu=type_jeu.strip() or None,
             categorie=categorie.strip() or None,
             nb_joueurs_min=_int_ou_none(nb_joueurs_min),
             nb_joueurs_max=_int_ou_none(nb_joueurs_max),

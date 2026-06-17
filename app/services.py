@@ -129,7 +129,7 @@ def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None
     """
     row = conn.execute(
         """
-        SELECT e.id_exemplaire, t.reference_titre, t.nom, t.categorie,
+        SELECT e.id_exemplaire, t.reference_titre, t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
                t.editeur, t.auteur, t.annee_edition, t.descriptif
         FROM exemplaires e
@@ -712,20 +712,22 @@ def creer_jeu(conn: sqlite3.Connection, nom: str, **champs) -> dict:
         raise ValueError("Le nom du jeu est obligatoire.")
     ref = slug_titre(nom)
 
-    colonnes_ok = ("categorie", "nb_joueurs_min", "nb_joueurs_max", "duree_min",
-                   "age_min", "editeur", "auteur", "annee_edition", "descriptif")
+    colonnes_ok = ("type_jeu", "categorie", "nb_joueurs_min", "nb_joueurs_max",
+                   "duree_min", "age_min", "editeur", "auteur", "annee_edition",
+                   "descriptif")
     valeurs = {c: champs.get(c) for c in colonnes_ok}
 
     conn.execute(
         """
-        INSERT INTO titres (reference_titre, nom, categorie, nb_joueurs_min,
-            nb_joueurs_max, duree_min, age_min, editeur, auteur, annee_edition,
-            descriptif)
-        VALUES (:ref, :nom, :categorie, :nb_joueurs_min, :nb_joueurs_max,
-            :duree_min, :age_min, :editeur, :auteur, :annee_edition, :descriptif)
+        INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
+            nb_joueurs_min, nb_joueurs_max, duree_min, age_min, editeur, auteur,
+            annee_edition, descriptif)
+        VALUES (:ref, :nom, :type_jeu, :categorie, :nb_joueurs_min,
+            :nb_joueurs_max, :duree_min, :age_min, :editeur, :auteur,
+            :annee_edition, :descriptif)
         ON CONFLICT(reference_titre) DO UPDATE SET
-            nom=excluded.nom, categorie=excluded.categorie,
-            nb_joueurs_min=excluded.nb_joueurs_min,
+            nom=excluded.nom, type_jeu=excluded.type_jeu,
+            categorie=excluded.categorie, nb_joueurs_min=excluded.nb_joueurs_min,
             nb_joueurs_max=excluded.nb_joueurs_max, duree_min=excluded.duree_min,
             age_min=excluded.age_min, editeur=excluded.editeur,
             auteur=excluded.auteur, annee_edition=excluded.annee_edition,

@@ -12,7 +12,9 @@
     <h1>{{ titre.nom }}</h1>
     <p><a class="lien" href="/admin/jeux">← Liste</a> ·
        <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a></p>
-    <p class="dispo-titre">Référence : <code>{{ titre.reference_titre }}</code> ·
+    <p class="dispo-titre">
+       {% if titre.type_jeu %}{{ titre.type_jeu }} · {% endif %}
+       Référence : <code>{{ titre.reference_titre }}</code> ·
        {{ exemplaires | length }} exemplaire(s)</p>
 
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/exemplaire">
