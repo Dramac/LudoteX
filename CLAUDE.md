@@ -140,7 +140,14 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    inclus via LEFT JOIN « catalogue d'abord »), histogramme prêts par heure
    (barres CSS, heures UTC). Double vue `?tri=total|exemplaire`. Services
    `stats_globales`, `palmares`, `prets_par_heure`. Lien dans le pied de page.
-   Tests services + route.
+   **Filtre par période** `debut`/`fin` (saisies heure locale FR → UTC via
+   `local_vers_utc_iso`, fuseau Europe/Paris) appliqué à tout + **liste
+   détaillée** des prêts (`lister_prets_periode`). **Exports** Excel (openpyxl)
+   et PDF (reportlab) via `app/exports.py` + `services.collecter_stats`, routes
+   `/stats/export.xlsx|pdf` (filtres respectés). Alias `/stat`,`/statistique`,
+   `/statistiques`→`/stats`. Logo de l'asso (`app/static/img/logo_djplm.jpg`,
+   aussi `LOGO_DEFAUT` des étiquettes) affiché en tête du catalogue.
+   Tests services + route + exports.
 9. [fait] Auth bénévole par jeton + limitation de débit (`app/auth.py`,
    `routes/acces.py`). `/pret/*` et `/scanner` exigent un cookie = `PRET_TOKEN`
    (comparé en temps constant). Lien d'activation `/acces?jeton=…` pose le cookie

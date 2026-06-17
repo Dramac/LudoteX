@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block titre %}Statistiques — Des jeux plein la Manche{% endblock %}
 
+{# Suffixe de query string pour conserver la période dans les bascules de tri #}
+{% set periode_qs = (("&debut=" ~ debut) if debut else "") ~ (("&fin=" ~ fin) if fin else "") %}
+
 {% macro tableau(titres) %}
   <ol class="palmares">
     {% for jeu in titres %}
@@ -23,20 +26,47 @@
 {% block contenu %}
 <section class="carte">
   <h1>Statistiques</h1>
+  <p class="dispo-titre">Période : {{ periode_txt }}</p>
   <div class="stats-chiffres">
-    <div class="chiffre"><span class="chiffre-val">{{ g.total_prets }}</span><span class="chiffre-lib">prêts au total</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.total_prets }}</span><span class="chiffre-lib">prêts</span></div>
     <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">en cours</span></div>
-    <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés au moins une fois</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés</span></div>
   </div>
+
+  <details class="recherche" {% if debut or fin %}open{% endif %}>
+    <summary>Filtrer par période</summary>
+    <form method="get" action="/stats" class="recherche-form">
+      <input type="hidden" name="tri" value="{{ metrique }}">
+      <div class="champ">
+        <label for="debut">Début</label>
+        <input type="datetime-local" id="debut" name="debut" value="{{ debut }}">
+      </div>
+      <div class="champ">
+        <label for="fin">Fin</label>
+        <input type="datetime-local" id="fin" name="fin" value="{{ fin }}">
+      </div>
+      <div class="recherche-actions">
+        <button type="submit" class="bouton-filtrer">Appliquer</button>
+        {% if debut or fin %}<a class="lien" href="/stats?tri={{ metrique }}">Réinitialiser</a>{% endif %}
+      </div>
+    </form>
+    <p class="stats-note">Heures saisies en heure locale (France).</p>
+  </details>
+
+  <p class="stats-export">
+    Exporter :
+    <a class="lien" href="/stats/export.xlsx{% if qs %}?{{ qs }}{% endif %}">Excel</a> ·
+    <a class="lien" href="/stats/export.pdf{% if qs %}?{{ qs }}{% endif %}">PDF</a>
+  </p>
 </section>
 
 <section class="carte">
   <p class="stats-bascule">
     Classement
     {% if metrique == "exemplaire" %}
-      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total">par total</a>
+      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total{{ periode_qs }}">par total</a>
     {% else %}
-      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire">par exemplaire</a>
+      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire{{ periode_qs }}">par exemplaire</a>
     {% endif %}
   </p>
 
@@ -61,7 +91,29 @@
     </ul>
     <p class="stats-note">Heures en UTC.</p>
   {% else %}
-    <p>Aucun prêt enregistré pour l'instant.</p>
+    <p>Aucun prêt sur la période.</p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  <h2>Détail des prêts <small>({{ prets | length }})</small></h2>
+  {% if prets %}
+    <table class="detail">
+      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Empl.</th></tr></thead>
+      <tbody>
+        {% for p in prets %}
+          <tr>
+            <td>{{ p.nom }}</td>
+            <td>{{ p.id_exemplaire }}</td>
+            <td>{{ p.sortie_locale }}</td>
+            <td>{{ p.retour_local or "en cours" }}</td>
+            <td>{{ p.numero_pochette }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Aucun prêt sur la période.</p>
   {% endif %}
 </section>
 {% endblock %}

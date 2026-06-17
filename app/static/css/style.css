@@ -118,6 +118,9 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .lien { color: #1a73e8; }
 .lien-fiche { margin: 16px 0 0; text-align: center; }
 
+/* Catalogue */
+.logo-catalogue { display: block; max-width: 180px; height: auto; margin: 0 auto 12px; }
+
 /* Catalogue — recherche / filtres */
 .recherche {
   border: 1px solid var(--bord);
@@ -200,6 +203,10 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .histo-barre { height: 16px; background: #7e57c2; border-radius: 4px; min-width: 2px; }
 .histo-val { font-size: 0.85rem; font-weight: 600; }
 .stats-note { color: #9aa0a6; font-size: 0.8rem; }
+.stats-export { font-weight: 600; }
+.detail { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.detail th, .detail td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord); }
+.detail th { color: var(--gris); }
 
 /* Administration */
 .admin-menu { list-style: none; margin: 0; padding: 0; }

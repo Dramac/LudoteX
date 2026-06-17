@@ -15,6 +15,9 @@ python-multipart==0.0.20
 qrcode[pil]==8.0
 reportlab==4.5.1
 
+# --- Exports de statistiques (Excel) ---
+openpyxl==3.1.5
+
 # --- Tests (développement) ---
 pytest==8.3.4
 httpx==0.28.1

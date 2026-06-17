@@ -40,6 +40,58 @@ import re
 import sqlite3
 import unicodedata
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+# Fuseau de l'événement (saisies « 20h », « 2h du matin » = heure locale FR).
+# Les horodatages sont STOCKÉS en UTC ; on convertit aux frontières (filtre,
+# affichage). Comme tout est en ISO 8601 UTC à offset fixe « +00:00 », la
+# comparaison de bornes peut se faire par simple comparaison de chaînes.
+FUSEAU_LOCAL = ZoneInfo("Europe/Paris")
+FUSEAU_UTC = ZoneInfo("UTC")
+
+
+def local_vers_utc_iso(saisie: str | None) -> str | None:
+    """
+    Convertit une saisie locale `datetime-local` ('AAAA-MM-JJTHH:MM') en chaîne
+    ISO 8601 UTC ('...+00:00'), pour filtrer la colonne date_sortie.
+
+    Returns:
+        La chaîne UTC, ou None si la saisie est vide/invalide.
+    """
+    if not saisie:
+        return None
+    try:
+        dt = datetime.fromisoformat(saisie)          # naïf (heure locale)
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=FUSEAU_LOCAL).astimezone(FUSEAU_UTC).isoformat(timespec="seconds")
+
+
+def format_local(iso_utc: str | None) -> str:
+    """Formate un horodatage UTC ('...+00:00') en heure locale 'JJ/MM/AAAA HH:MM'."""
+    if not iso_utc:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_utc)
+    except ValueError:
+        return iso_utc
+    return dt.astimezone(FUSEAU_LOCAL).strftime("%d/%m/%Y %H:%M")
+
+
+def _filtre_periode(colonne: str, debut: str | None, fin: str | None) -> tuple[str, list]:
+    """
+    Construit un fragment SQL « AND <colonne> >= ? AND <colonne> < ? » selon les
+    bornes fournies (UTC ISO). Retourne (fragment, params) — fragment vide si
+    aucune borne. Borne de fin EXCLUSIVE.
+    """
+    fragment, params = "", []
+    if debut:
+        fragment += f" AND {colonne} >= ?"
+        params.append(debut)
+    if fin:
+        fragment += f" AND {colonne} < ?"
+        params.append(fin)
+    return fragment, params
 
 
 def maintenant() -> str:
@@ -231,26 +283,32 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
 # ===========================================================================
 # STATISTIQUES (post-événement) — fondées sur l'historique complet des prêts
 # ===========================================================================
-def stats_globales(conn: sqlite3.Connection) -> dict:
+def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
+                   fin: str | None = None) -> dict:
     """
-    Indicateurs de synthèse à partir de tout l'historique des prêts.
+    Indicateurs de synthèse, éventuellement restreints à une période.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
 
     Returns:
-        dict avec :
-            total_prets   : nombre total de prêts jamais enregistrés.
-            en_cours      : prêts non clos (exemplaires actuellement sortis).
-            titres_pretes : nombre de titres distincts sortis au moins une fois.
-            nb_titres     : nombre total de titres au catalogue (pour le ratio).
+        dict avec total_prets, en_cours, titres_pretes, nb_titres.
     """
-    total_prets = conn.execute("SELECT COUNT(*) FROM prets").fetchone()[0]
+    f, params = _filtre_periode("date_sortie", debut, fin)
+    total_prets = conn.execute(
+        f"SELECT COUNT(*) FROM prets WHERE 1=1{f}", params
+    ).fetchone()[0]
     en_cours = conn.execute(
-        "SELECT COUNT(*) FROM prets WHERE date_retour IS NULL"
+        f"SELECT COUNT(*) FROM prets WHERE date_retour IS NULL{f}", params
     ).fetchone()[0]
     titres_pretes = conn.execute(
-        """
+        f"""
         SELECT COUNT(DISTINCT e.reference_titre)
         FROM prets p JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
-        """
+        WHERE 1=1{f}
+        """,
+        params,
     ).fetchone()[0]
     nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
     return {
@@ -262,7 +320,8 @@ def stats_globales(conn: sqlite3.Connection) -> dict:
 
 
 def palmares(conn: sqlite3.Connection, sens: str = "desc",
-             metrique: str = "total", limite: int = 15) -> list[dict]:
+             metrique: str = "total", limite: int = 15,
+             debut: str | None = None, fin: str | None = None) -> list[dict]:
     """
     Palmarès des titres, agrégé sur tous leurs exemplaires.
 
@@ -270,27 +329,28 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
     on rattache les prêts par LEFT JOIN. Ainsi un titre jamais prêté apparaît
     avec `nb_prets = 0` — indispensable pour le palmarès des MOINS prêtés.
 
+    IMPORTANT : le filtre de période est placé dans la condition du LEFT JOIN
+    (et non dans un WHERE), pour conserver les titres à zéro prêt sur la période.
+
     Args:
         conn: connexion SQLite ouverte.
-        sens: "desc" pour les plus prêtés, "asc" pour les moins prêtés.
-        metrique: "total" (nombre brut de prêts) ou "exemplaire" (prêts rapportés
-            au nombre d'exemplaires, pour ne pas avantager les titres en plusieurs
-            boîtes).
+        sens: "desc" (plus prêtés) ou "asc" (moins prêtés).
+        metrique: "total" (nombre brut) ou "exemplaire" (rapporté au nombre
+            d'exemplaires).
         limite: nombre de lignes renvoyées.
+        debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
 
     Returns:
         Liste de dicts {reference_titre, nom, nb_exemplaires, nb_prets,
-        par_exemplaire}, ordonnée selon la métrique et le sens.
+        par_exemplaire}.
 
-    Note de sécurité : `metrique`/`sens` ne viennent JAMAIS directement de
-    l'utilisateur ; ils sont normalisés en amont (route /stats) à des valeurs
-    connues. On les injecte dans le SQL via un littéral contrôlé, et seul
-    `limite` passe en paramètre lié.
+    Sécurité : `metrique`/`sens` sont normalisés en amont (route) à des valeurs
+    connues ; seuls les paramètres liés (bornes, limite) viennent de l'extérieur.
     """
-    # Clé de tri : ratio prêts/exemplaires, ou total brut.
     cle = ("CAST(COUNT(p.id_pret) AS REAL) / COUNT(DISTINCT e.id_exemplaire)"
            if metrique == "exemplaire" else "COUNT(p.id_pret)")
     direction = "ASC" if sens == "asc" else "DESC"
+    f, params = _filtre_periode("p.date_sortie", debut, fin)
     rows = conn.execute(
         f"""
         SELECT t.reference_titre, t.nom,
@@ -300,33 +360,102 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
                    AS par_exemplaire
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
-        LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
+        LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire{f}
         GROUP BY t.reference_titre, t.nom
         ORDER BY {cle} {direction}, t.nom COLLATE NOCASE
         LIMIT ?
         """,
-        (limite,),
+        params + [limite],
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def prets_par_heure(conn: sqlite3.Connection) -> list[dict]:
+def prets_par_heure(conn: sqlite3.Connection, debut: str | None = None,
+                    fin: str | None = None) -> list[dict]:
     """
-    Nombre de prêts par heure, pour l'histogramme de fréquentation.
-
-    On regroupe sur les 13 premiers caractères de `date_sortie`
-    (``AAAA-MM-JJTHH``), ce qui revient à grouper par heure. Les horodatages
-    étant en UTC, l'histogramme est juste décalé d'un offset constant par rapport
-    à l'heure locale — sa FORME (les pics de fréquentation) reste exacte.
+    Nombre de prêts par heure (UTC), pour l'histogramme, éventuellement restreint
+    à une période.
 
     Returns:
         Liste de dicts {heure: 'AAAA-MM-JJTHH', n: int}, triée chronologiquement.
     """
+    f, params = _filtre_periode("date_sortie", debut, fin)
     rows = conn.execute(
-        "SELECT substr(date_sortie, 1, 13) AS heure, COUNT(*) AS n "
-        "FROM prets GROUP BY heure ORDER BY heure"
+        f"SELECT substr(date_sortie, 1, 13) AS heure, COUNT(*) AS n "
+        f"FROM prets WHERE 1=1{f} GROUP BY heure ORDER BY heure",
+        params,
     ).fetchall()
     return [{"heure": r["heure"], "n": r["n"]} for r in rows]
+
+
+def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
+                         fin: str | None = None, limite: int | None = None) -> list[dict]:
+    """
+    Liste détaillée des prêts (un par ligne), éventuellement restreinte à une
+    période, triée par date de sortie décroissante.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
+        limite: nombre maximal de lignes (None = toutes — utile pour l'export).
+
+    Returns:
+        Liste de dicts {date_sortie, date_retour, numero_pochette,
+        id_exemplaire, nom, sortie_locale, retour_local}. Les champs *_locale
+        sont préformatés en heure locale pour l'affichage et les exports.
+    """
+    f, params = _filtre_periode("p.date_sortie", debut, fin)
+    sql = (
+        f"""
+        SELECT p.date_sortie, p.date_retour, p.numero_pochette,
+               e.id_exemplaire, t.nom
+        FROM prets p
+        JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
+        JOIN titres t ON t.reference_titre = e.reference_titre
+        WHERE 1=1{f}
+        ORDER BY p.date_sortie DESC
+        """
+    )
+    if limite is not None:
+        sql += " LIMIT ?"
+        params = params + [limite]
+    out = []
+    for r in conn.execute(sql, params):
+        d = dict(r)
+        d["sortie_locale"] = format_local(d["date_sortie"])
+        d["retour_local"] = format_local(d["date_retour"]) if d["date_retour"] else ""
+        out.append(d)
+    return out
+
+
+def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
+                    debut: str | None = None, fin: str | None = None,
+                    limite_palmares: int = 15,
+                    limite_prets: int | None = None) -> dict:
+    """
+    Rassemble toutes les données de la page statistiques en une fois.
+
+    Mutualisé entre l'affichage (/stats) et les exports (Excel/PDF) pour garantir
+    qu'ils montrent exactement les mêmes chiffres, avec le même filtre de période.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        metrique: "total" ou "exemplaire" (pour les palmarès).
+        debut, fin: bornes UTC ISO optionnelles (fin exclusive).
+        limite_palmares: taille de chaque palmarès.
+        limite_prets: limite de la liste détaillée (None = toutes, pour l'export).
+
+    Returns:
+        dict {globales, plus, moins, par_heure, prets, metrique}.
+    """
+    return {
+        "globales": stats_globales(conn, debut, fin),
+        "plus": palmares(conn, "desc", metrique, limite_palmares, debut, fin),
+        "moins": palmares(conn, "asc", metrique, limite_palmares, debut, fin),
+        "par_heure": prets_par_heure(conn, debut, fin),
+        "prets": lister_prets_periode(conn, debut, fin, limite_prets),
+        "metrique": metrique,
+    }
 
 
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
