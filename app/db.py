@@ -84,17 +84,35 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+# Colonnes ajoutées APRÈS la première mise en service : on les ajoute aux bases
+# existantes via ALTER TABLE (les CREATE TABLE IF NOT EXISTS ne le font pas).
+# Format : (table, colonne, type_sql). Étendre cette liste à chaque évolution.
+_MIGRATIONS_COLONNES = [
+    ("titres", "type_jeu", "TEXT"),
+]
+
+
+def _appliquer_migrations(conn: sqlite3.Connection) -> None:
+    """Ajoute les colonnes manquantes des bases déjà créées (idempotent)."""
+    for table, colonne, type_sql in _MIGRATIONS_COLONNES:
+        existantes = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+        if colonne not in existantes:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {type_sql}")
+    conn.commit()
+
+
 def init_db(conn: sqlite3.Connection | None = None) -> None:
     """
-    Crée les tables et les index s'ils n'existent pas. Idempotent.
+    Crée les tables/index manquants et applique les migrations de colonnes.
+    Idempotent : sans danger pour les données existantes.
 
-    Tous les ``CREATE`` de ``models.SCHEMA_STATEMENTS`` utilisent
-    ``IF NOT EXISTS`` : relancer cette fonction sur une base déjà initialisée ne
-    casse rien et ne perd aucune donnée.
+    - ``CREATE ... IF NOT EXISTS`` crée ce qui manque mais ne MODIFIE pas une
+      table déjà présente ; d'où l'étape de migration (``_appliquer_migrations``)
+      qui ajoute les colonnes apparues après coup.
 
     Args:
-        conn: connexion existante (utile pour les tests, qui passent une base en
-            mémoire). Si ``None``, une connexion est ouverte puis refermée ici.
+        conn: connexion existante (utile pour les tests, base en mémoire). Si
+            ``None``, une connexion est ouverte puis refermée ici.
     """
     own_connection = conn is None  # a-t-on ouvert la connexion nous-mêmes ?
     if own_connection:
@@ -103,6 +121,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         for statement in models.SCHEMA_STATEMENTS:
             conn.executescript(statement)
         conn.commit()
+        _appliquer_migrations(conn)
     finally:
         # On ne ferme que si on a ouvert : ne pas fermer la connexion du test.
         if own_connection:

@@ -53,6 +53,7 @@ SCHEMA_TITRES = """
 CREATE TABLE IF NOT EXISTS titres (
     reference_titre  TEXT PRIMARY KEY,            -- clé de regroupement (slug du nom, ex. "CATAN")
     nom              TEXT NOT NULL,               -- nom d'affichage du jeu
+    type_jeu         TEXT,                        -- "Jeu" ou "Extension" (CSV "Type")
     categorie        TEXT,                        -- catégorie pour le filtrage public (CSV "Type jeu")
 
     -- Colonnes optionnelles (nullables). NULL = information absente du CSV.

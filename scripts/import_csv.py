@@ -47,6 +47,7 @@ from app.services import slug_titre  # noqa: E402
 COLONNES = {
     "id_exemplaire": ["code jeu", "id_exemplaire", "code"],
     "nom":           ["nom jeu", "nom", "titre"],
+    "type_jeu":      ["type"],                # "Jeu" ou "Extension"
     "categorie":     ["type jeu", "categorie", "catégorie", "classification"],
     "nb_joueurs":    ["nb joueurs", "nombre de joueurs", "joueurs"],
     "age":           ["age joueurs", "âge joueurs", "age", "âge"],
@@ -206,6 +207,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         champs = {
             "reference_titre": ref,
             "nom": nom,
+            "type_jeu": _ou_none(val(ligne, "type_jeu")),
             "categorie": _ou_none(val(ligne, "categorie")),
             "nb_joueurs_min": nb_min,
             "nb_joueurs_max": nb_max,
@@ -258,14 +260,15 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
             # UPSERT des titres (clé : reference_titre) — paramètres nommés.
             conn.executemany(
                 """
-                INSERT INTO titres (reference_titre, nom, categorie,
+                INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
                     nb_joueurs_min, nb_joueurs_max, duree_min, age_min,
                     editeur, auteur, annee_edition, descriptif)
-                VALUES (:reference_titre, :nom, :categorie, :nb_joueurs_min,
-                    :nb_joueurs_max, :duree_min, :age_min, :editeur, :auteur,
-                    :annee_edition, :descriptif)
+                VALUES (:reference_titre, :nom, :type_jeu, :categorie,
+                    :nb_joueurs_min, :nb_joueurs_max, :duree_min, :age_min,
+                    :editeur, :auteur, :annee_edition, :descriptif)
                 ON CONFLICT(reference_titre) DO UPDATE SET
-                    nom=excluded.nom, categorie=excluded.categorie,
+                    nom=excluded.nom, type_jeu=excluded.type_jeu,
+                    categorie=excluded.categorie,
                     nb_joueurs_min=excluded.nb_joueurs_min,
                     nb_joueurs_max=excluded.nb_joueurs_max,
                     duree_min=excluded.duree_min, age_min=excluded.age_min,
