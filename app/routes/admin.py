@@ -53,7 +53,7 @@ def _base_url(request: Request) -> str:
 def accueil(request: Request):
     """Page d'accueil admin : tableau de bord si connecté, sinon formulaire de connexion."""
     if admin_auth.admin_connecte(request):
-        return templates.TemplateResponse(request, "admin_dashboard.html", {})
+        return templates.TemplateResponse(request, "admin_dashboard.html", {"message": None})
     conn = get_connection()
     try:
         configure = admin_auth.admin_configure(conn)
@@ -303,6 +303,20 @@ def jeton_page(request: Request):
         request, "admin_jeton.html",
         {"jeton": jeton, "lien": lien, "partage": partage},
     )
+
+
+@router.post("/cloturer-prets")
+def cloturer_prets(request: Request):
+    """Clôture tous les prêts/sorties en cours (fin d'événement) ; garde l'historique."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        nb = services.cloturer_tous_les_prets(conn)
+    finally:
+        conn.close()
+    message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau disponible.")
+    return templates.TemplateResponse(request, "admin_dashboard.html", {"message": message})
 
 
 @router.post("/jeton/reinitialiser")
