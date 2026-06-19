@@ -159,7 +159,13 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    Catalogue/fiches/stats restent publics. Si `PRET_TOKEN` non défini → mode
    ouvert + avertissement au démarrage (À DÉFINIR en prod). Page `acces_refuse`
    via gestionnaire 403. Rotation annuelle = changer `PRET_TOKEN`. Tests verts.
-10. [à faire] Déploiement VPS + HTTPS.
+10. [artefacts prêts] Déploiement VPS + HTTPS. Fichiers dans `deploy/`
+    (`pret-jeux.service` systemd 1 worker + `--proxy-headers`,
+    `nginx-pret-jeux.conf` reverse proxy + static, `sauvegarde.sh` SQLite `.backup`
+    + rotation + rclone optionnel) et guide pas à pas `docs/deploiement.md`
+    (VPS, venv, `.env`, base + import, systemd, nginx, certbot Let's Encrypt,
+    QR définitifs une fois le domaine figé, sauvegarde cron, mises à jour).
+    Reste à exécuter sur le VPS par Simon quand l'hébergeur/domaine seront choisis.
 
 `routes/catalogue.py` : `/jeu/<id>` + `/catalogue` faits.
 `routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits
