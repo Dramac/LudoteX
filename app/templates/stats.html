@@ -75,6 +75,36 @@
 </section>
 
 <section class="carte">
+  <h2>Jeux actuellement sortis</h2>
+
+  <h3>Prêtés au public <small>({{ sortis_pret | length }})</small></h3>
+  {% if sortis_pret %}
+    <table class="detail">
+      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Empl.</th><th>Depuis</th></tr></thead>
+      <tbody>
+        {% for p in sortis_pret %}
+          <tr><td>{{ p.nom }}</td><td>{{ p.id_exemplaire }}</td>
+              <td>{{ p.numero_pochette }}</td><td>{{ p.sortie_locale }} · {{ p.duree_txt }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<p>Aucun.</p>{% endif %}
+
+  <h3>En tournoi <small>({{ sortis_tournoi | length }})</small></h3>
+  {% if sortis_tournoi %}
+    <table class="detail">
+      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Depuis</th></tr></thead>
+      <tbody>
+        {% for p in sortis_tournoi %}
+          <tr><td>{{ p.nom }}</td><td>{{ p.id_exemplaire }}</td>
+              <td>{{ p.sortie_locale }} · {{ p.duree_txt }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<p>Aucun.</p>{% endif %}
+</section>
+
+<section class="carte">
   <p class="stats-bascule">
     Classement
     {% if metrique == "exemplaire" %}

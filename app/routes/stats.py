@@ -71,6 +71,9 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
     try:
         data = services.collecter_stats(conn, metrique, debut_utc, fin_utc,
                                          limite_prets=LIMITE_PRETS_PAGE)
+        # Vue « actuellement sortis » : indépendante du filtre de période, inclut
+        # les tournois (état du parc à l'instant T).
+        en_cours = services.lister_prets_en_cours(conn)
     finally:
         conn.close()
 
@@ -84,7 +87,8 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
          "par_heure": data["par_heure"], "max_heure": max_heure,
          "metrique": metrique, "prets": data["prets"],
          "debut": debut or "", "fin": fin or "",
-         "periode_txt": _periode_txt(debut, fin), "qs": qs},
+         "periode_txt": _periode_txt(debut, fin), "qs": qs,
+         "sortis_pret": en_cours["pret"], "sortis_tournoi": en_cours["tournoi"]},
     )
 
 

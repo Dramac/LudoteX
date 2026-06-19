@@ -472,6 +472,37 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
     return out
 
 
+def lister_prets_en_cours(conn: sqlite3.Connection) -> dict:
+    """
+    Jeux actuellement sortis (prêt non clos), séparés par motif.
+
+    Sert la vue « Jeux actuellement sortis » : contrairement aux statistiques,
+    elle INCLUT les sorties tournoi (le parc doit les voir), mais dans un bloc
+    distinct des prêts au public.
+
+    Returns:
+        dict {"pret": [...], "tournoi": [...]} ; chaque élément est un dict
+        {id_exemplaire, nom, numero_pochette, sortie_locale, duree_txt}.
+    """
+    rows = conn.execute(
+        """
+        SELECT p.date_sortie, p.numero_pochette, p.motif, e.id_exemplaire, t.nom
+        FROM prets p
+        JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
+        JOIN titres t ON t.reference_titre = e.reference_titre
+        WHERE p.date_retour IS NULL
+        ORDER BY p.date_sortie DESC
+        """
+    ).fetchall()
+    groupes: dict = {"pret": [], "tournoi": []}
+    for r in rows:
+        d = dict(r)
+        d["sortie_locale"] = format_local(d["date_sortie"])
+        d["duree_txt"] = "depuis " + format_duree(_duree_secondes(d["date_sortie"], None))
+        groupes.setdefault(d["motif"], []).append(d)
+    return groupes
+
+
 def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
                     debut: str | None = None, fin: str | None = None,
                     limite_palmares: int = 15,
