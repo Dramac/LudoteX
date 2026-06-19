@@ -89,9 +89,10 @@ SCHEMA_PRETS = """
 CREATE TABLE IF NOT EXISTS prets (
     id_pret          INTEGER PRIMARY KEY AUTOINCREMENT,
     id_exemplaire    TEXT NOT NULL,               -- FK -> exemplaires.id_exemplaire
-    numero_pochette  INTEGER NOT NULL,            -- numéro attribué pour ce prêt
+    numero_pochette  INTEGER NOT NULL,            -- numéro attribué (0 = sortie tournoi, sans emplacement)
     date_sortie      TEXT NOT NULL,               -- horodatage ISO 8601 (UTC)
     date_retour      TEXT,                        -- NULL tant que l'exemplaire est sorti
+    motif            TEXT NOT NULL DEFAULT 'pret', -- 'pret' (au public) ou 'tournoi'
     FOREIGN KEY (id_exemplaire) REFERENCES exemplaires (id_exemplaire)
 );
 """

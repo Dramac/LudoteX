@@ -31,6 +31,14 @@
       <section class="resultat resultat-info">
         <p>Retour enregistré. Emplacement n°{{ resultat.numero }} libéré — récupérez-y la pièce d'identité.</p>
       </section>
+    {% elif resultat.type == "tournoi_sorti" %}
+      <section class="resultat resultat-info">
+        <p>Sorti pour un tournoi (sans emplacement). Ce jeu n'est pas comptabilisé dans les statistiques.</p>
+      </section>
+    {% elif resultat.type == "rendu_tournoi" %}
+      <section class="resultat resultat-info">
+        <p>Retour de tournoi enregistré.</p>
+      </section>
     {% elif resultat.type == "deja_sorti" %}
       <section class="resultat resultat-attention">
         <p>Cet exemplaire était déjà sorti (emplacement n°{{ resultat.numero }}). Rien n'a été modifié.</p>
@@ -45,7 +53,14 @@
   <section class="carte">
     <h1>{{ info.nom }}</h1>
 
-    {% if pret_actuel %}
+    {% if pret_actuel and pret_actuel.motif == "tournoi" %}
+      <p class="etat etat-sorti">Sorti — tournoi</p>
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
+        <button class="bouton bouton-principal" type="submit">
+          Rendre <span class="bouton-sous">retour de tournoi</span>
+        </button>
+      </form>
+    {% elif pret_actuel %}
       <p class="etat etat-sorti">Sorti — emplacement n°{{ pret_actuel.numero_pochette }}</p>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
         <button class="bouton bouton-principal" type="submit">
@@ -61,6 +76,11 @@
       <p class="etat etat-dispo">Disponible</p>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/preter">
         <button class="bouton bouton-principal" type="submit">Prêter</button>
+      </form>
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/tournoi">
+        <button class="bouton bouton-secondaire" type="submit">
+          Sortir pour un tournoi <span class="bouton-sous">sans pièce d'identité, hors statistiques</span>
+        </button>
       </form>
     {% endif %}
 

@@ -159,7 +159,7 @@ def pret_en_cours(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None:
     """
     row = conn.execute(
         """
-        SELECT id_pret, numero_pochette, date_sortie
+        SELECT id_pret, numero_pochette, date_sortie, motif
         FROM prets
         WHERE id_exemplaire = ? AND date_retour IS NULL
         ORDER BY id_pret DESC
@@ -295,18 +295,20 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
     Returns:
         dict avec total_prets, en_cours, titres_pretes, nb_titres.
     """
+    # Les sorties « tournoi » sont exclues de toutes les statistiques.
     f, params = _filtre_periode("date_sortie", debut, fin)
     total_prets = conn.execute(
-        f"SELECT COUNT(*) FROM prets WHERE 1=1{f}", params
+        f"SELECT COUNT(*) FROM prets WHERE motif = 'pret'{f}", params
     ).fetchone()[0]
     en_cours = conn.execute(
-        f"SELECT COUNT(*) FROM prets WHERE date_retour IS NULL{f}", params
+        f"SELECT COUNT(*) FROM prets WHERE date_retour IS NULL AND motif = 'pret'{f}",
+        params,
     ).fetchone()[0]
     titres_pretes = conn.execute(
         f"""
         SELECT COUNT(DISTINCT e.reference_titre)
         FROM prets p JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
-        WHERE 1=1{f}
+        WHERE p.motif = 'pret'{f}
         """,
         params,
     ).fetchone()[0]
@@ -360,7 +362,8 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
                    AS par_exemplaire
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
-        LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire{f}
+        LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
+                          AND p.motif = 'pret'{f}
         GROUP BY t.reference_titre, t.nom
         ORDER BY {cle} {direction}, t.nom COLLATE NOCASE
         LIMIT ?
@@ -382,7 +385,7 @@ def prets_par_heure(conn: sqlite3.Connection, debut: str | None = None,
     f, params = _filtre_periode("date_sortie", debut, fin)
     rows = conn.execute(
         f"SELECT substr(date_sortie, 1, 13) AS heure, COUNT(*) AS n "
-        f"FROM prets WHERE 1=1{f} GROUP BY heure ORDER BY heure",
+        f"FROM prets WHERE motif = 'pret'{f} GROUP BY heure ORDER BY heure",
         params,
     ).fetchall()
     return [{"heure": r["heure"], "n": r["n"]} for r in rows]
@@ -412,7 +415,7 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
         FROM prets p
         JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
         JOIN titres t ON t.reference_titre = e.reference_titre
-        WHERE 1=1{f}
+        WHERE p.motif = 'pret'{f}
         ORDER BY p.date_sortie DESC
         """
     )
@@ -554,8 +557,8 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     numero = plus_petit_numero_libre(conn)
     conn.execute(
         """
-        INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie)
-        VALUES (?, ?, ?)
+        INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
+        VALUES (?, ?, ?, 'pret')
         """,
         (id_exemplaire, numero, maintenant()),
     )
@@ -563,19 +566,46 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     return numero
 
 
+# Numéro de pochette « factice » pour les sorties tournoi (pas d'emplacement).
+NUMERO_TOURNOI = 0
+
+
+def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
+    """
+    Sort un exemplaire pour un TOURNOI (pas de PI, pas d'emplacement attribué).
+
+    Crée une ligne de prêt `motif='tournoi'` avec `numero_pochette = 0` (marqueur
+    « sans emplacement »). L'exemplaire devient « sorti » (date_retour NULL) donc
+    indisponible, mais ces sorties sont EXCLUES des statistiques (filtre
+    `motif='pret'`). L'appelant garantit que l'exemplaire est disponible.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: identifiant de la boîte prélevée pour le tournoi.
+    """
+    conn.execute(
+        """
+        INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
+        VALUES (?, ?, ?, 'tournoi')
+        """,
+        (id_exemplaire, NUMERO_TOURNOI, maintenant()),
+    )
+    conn.commit()
+
+
 def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
-    Enregistre le retour d'un exemplaire : clôt le prêt en cours et libère sa
-    pochette.
+    Enregistre le retour d'un exemplaire : clôt le prêt/sortie en cours et, s'il
+    s'agissait d'un prêt au public, libère sa pochette.
 
     Args:
         conn: connexion SQLite ouverte.
         id_exemplaire: identifiant de la boîte rendue.
 
     Returns:
-        {"numero_libere": n} en cas de retour effectif, ou
-        {"deja_disponible": True} s'il n'y avait aucun prêt à clore (cas non
-        bloquant : l'exemplaire était déjà rentré).
+        {"numero_libere": n, "motif": "pret"} pour un prêt au public,
+        {"motif": "tournoi"} pour un retour de tournoi (pas d'emplacement), ou
+        {"deja_disponible": True} si rien à clore (cas non bloquant).
     """
     courant = pret_en_cours(conn, id_exemplaire)
     if courant is None:
@@ -584,9 +614,13 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
         (maintenant(), courant["id_pret"]),
     )
+    if courant["motif"] == "tournoi":
+        conn.commit()
+        return {"motif": "tournoi"}
+    # Prêt au public : on libère le numéro d'emplacement.
     liberer_numero(conn, courant["numero_pochette"])
     conn.commit()
-    return {"numero_libere": courant["numero_pochette"]}
+    return {"numero_libere": courant["numero_pochette"], "motif": "pret"}
 
 
 def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:

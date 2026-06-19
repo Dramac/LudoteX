@@ -120,8 +120,31 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
         res = services.rendre(conn, id_exemplaire)
         if res.get("deja_disponible"):
             resultat = {"type": "deja_disponible"}
+        elif res.get("motif") == "tournoi":
+            resultat = {"type": "rendu_tournoi"}
         else:
             resultat = {"type": "rendu", "numero": res["numero_libere"]}
+    finally:
+        conn.close()
+    return _rendu(request, id_exemplaire, resultat)
+
+
+@router.post("/{id_exemplaire}/tournoi")
+def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """
+    Sort l'exemplaire pour un TOURNOI (POST) : pas de PI, pas d'emplacement, hors
+    statistiques. Si déjà sorti, message `deja_sorti` (jamais d'erreur).
+    """
+    conn = get_connection()
+    try:
+        if services.info_exemplaire(conn, id_exemplaire) is None:
+            return _rendu(request, id_exemplaire)
+        courant = services.pret_en_cours(conn, id_exemplaire)
+        if courant is not None:
+            resultat = {"type": "deja_sorti", "numero": courant["numero_pochette"]}
+        else:
+            services.sortir_tournoi(conn, id_exemplaire)
+            resultat = {"type": "tournoi_sorti"}
     finally:
         conn.close()
     return _rendu(request, id_exemplaire, resultat)
