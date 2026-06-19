@@ -89,6 +89,7 @@ def get_connection() -> sqlite3.Connection:
 # Format : (table, colonne, type_sql). Étendre cette liste à chaque évolution.
 _MIGRATIONS_COLONNES = [
     ("titres", "type_jeu", "TEXT"),
+    ("prets", "motif", "TEXT NOT NULL DEFAULT 'pret'"),
 ]
 
 

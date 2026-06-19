@@ -187,6 +187,15 @@ def test_export_pdf_sections(client):
     assert r.status_code == 200 and r.content[:4] == b"%PDF"
 
 
+def test_pret_tournoi_route(client):
+    r = client.post("/pret/001/tournoi")
+    assert r.status_code == 200 and "tournoi" in r.text.lower()
+    # L'écran indique « Sorti — tournoi » (pas d'emplacement).
+    assert "Sorti — tournoi" in client.get("/pret/001").text
+    # Hors statistiques : aucun prêt comptabilisé.
+    assert '<span class="chiffre-val">0<' in client.get("/stats").text
+
+
 def test_scanner_page(client):
     r = client.get("/scanner")
     assert r.status_code == 200

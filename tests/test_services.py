@@ -42,7 +42,7 @@ def test_rendre_libere_et_recycle_le_numero(conn):
     services.preter(conn, "001")        # n°1
     services.preter(conn, "002")        # n°2
     res = services.rendre(conn, "001")  # libère n°1
-    assert res == {"numero_libere": 1}
+    assert res == {"numero_libere": 1, "motif": "pret"}
     # le plus petit libre est de nouveau 1
     assert services.preter(conn, "003") == 1
 
@@ -86,6 +86,22 @@ def test_stats_globales_et_palmares(conn):
     assert plus[0]["reference_titre"] == "CATAN"
     assert plus[0]["nb_prets"] == 3
     assert plus[0]["nb_exemplaires"] == 3
+
+
+def test_sortir_tournoi_hors_stats(conn):
+    # Une sortie tournoi rend l'exemplaire indisponible...
+    services.sortir_tournoi(conn, "001")
+    assert services.est_sorti(conn, "001") is True
+    # ... mais n'est PAS comptée dans les statistiques.
+    g = services.stats_globales(conn)
+    assert g["total_prets"] == 0 and g["en_cours"] == 0
+    # Un vrai prêt, lui, compte.
+    services.preter(conn, "002")
+    assert services.stats_globales(conn)["total_prets"] == 1
+    # Le retour de tournoi ne libère pas d'emplacement.
+    res = services.rendre(conn, "001")
+    assert res == {"motif": "tournoi"}
+    assert services.est_sorti(conn, "001") is False
 
 
 def test_prets_par_heure(conn):
