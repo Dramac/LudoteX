@@ -17,6 +17,9 @@ data/*.sqlite*
 qr/
 *.qr.png
 
+# --- Sauvegardes de la base (générées sur le serveur) ---
+sauvegardes/
+
 # --- Python ---
 __pycache__/
 *.py[cod]

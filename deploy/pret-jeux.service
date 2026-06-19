@@ -1,0 +1,44 @@
+# Service systemd pour l'application de prêt de jeux (FastAPI + uvicorn).
+#
+# Installation :
+#   sudo cp deploy/pret-jeux.service /etc/systemd/system/pret-jeux.service
+#   # adapter User/Group/WorkingDirectory/chemins ci-dessous si besoin
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pret-jeux
+#   sudo systemctl status pret-jeux        # vérifier
+#   journalctl -u pret-jeux -f             # suivre les logs
+#
+# IMPORTANT : un SEUL worker uvicorn (valeur par défaut). La limitation de débit
+# et les sessions admin sont en mémoire du process ; plusieurs workers les
+# casseraient. La charge réelle (quelques écritures/minute) ne justifie pas plus.
+
+[Unit]
+Description=Application de prêt de jeux (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+# Utilisateur dédié non privilégié (à créer : sudo adduser --system --group pretjeux)
+User=pretjeux
+Group=pretjeux
+
+# Racine du dépôt cloné sur le serveur (à adapter)
+WorkingDirectory=/opt/pret-jeux
+
+# Le .env (jeton, mot de passe admin, BASE_URL, chemin base) est lu depuis ce dossier.
+# --proxy-headers + --forwarded-allow-ips : indispensables derrière nginx pour que
+# l'application voie le HTTPS (cookies Secure) et la vraie IP (limite de débit).
+ExecStart=/opt/pret-jeux/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+Restart=on-failure
+RestartSec=3
+
+# Durcissement léger
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
