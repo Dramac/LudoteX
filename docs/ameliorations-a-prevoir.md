@@ -69,6 +69,27 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
   `motif='pret'` dans les fonctions de stats ; bouton + route POST
   `/pret/<id>/tournoi`.
 
+### 4. Menu de navigation bénévole
+- **Besoin** : un petit menu pour passer facilement d'un module à l'autre.
+- **Emplacement** : bandeau en haut de page (présent partout).
+- **Contenu validé** :
+  - Catalogue
+  - Scanner (prêt / retour)
+  - Statistiques
+  - Aide / mode d'emploi *(nouvelle page courte à créer — point 5)*
+  - Jeux actuellement sortis *(point 2)*
+- **À trancher** : afficher « Scanner » partout (un visiteur public non activé
+  tombe alors sur « Accès réservé ») OU ne l'afficher qu'aux appareils déjà
+  activés. Défaut proposé : l'afficher partout (simple), à confirmer.
+- **Mise en œuvre prévue** : liens dans `base.html` (nav du bandeau) + style CSS ;
+  rien côté logique.
+
+### 5. Page d'aide / mode d'emploi bénévole
+- **Besoin** : page courte expliquant aux bénévoles comment scanner, prêter,
+  rendre, re-prêter, et le principe du numéro d'emplacement.
+- **Mise en œuvre prévue** : un gabarit statique `aide.html` + une route GET
+  `/aide` (publique ou bénévole), liée depuis le menu (point 4).
+
 ---
 
 ## Retours en attente de tri
