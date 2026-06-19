@@ -48,6 +48,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
         ("Prêts en cours", g["en_cours"]),
         ("Titres prêtés", g["titres_pretes"]),
         ("Titres au catalogue", g["nb_titres"]),
+        ("Durée moyenne de prêt", g.get("duree_moyenne", "—")),
     ]
     for i, (lib, val) in enumerate(lignes, start=4):
         ws[f"A{i}"] = lib
@@ -78,7 +79,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     # --- Feuille 3 : Détail des prêts ---
     wd = wb.create_sheet("Détail")
     for col, entete in enumerate(["Jeu", "Exemplaire", "Sortie", "Retour",
-                                  "N° emplacement"]):
+                                  "Durée", "N° emplacement"]):
         c = wd.cell(row=1, column=1 + col, value=entete)
         c.font = gras
     for i, p in enumerate(data["prets"], start=2):
@@ -86,11 +87,12 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
         wd.cell(row=i, column=2, value=p["id_exemplaire"])
         wd.cell(row=i, column=3, value=p["sortie_locale"])
         wd.cell(row=i, column=4, value=p["retour_local"] or "en cours")
-        wd.cell(row=i, column=5, value=p["numero_pochette"])
+        wd.cell(row=i, column=5, value=p["duree_txt"])
+        wd.cell(row=i, column=6, value=p["numero_pochette"])
 
     # Largeurs de colonnes lisibles.
-    for feuille, largeurs in ((ws, [22, 12]), (wp, [40, 10, 12, 12]),
-                              (wd, [40, 12, 18, 18, 14])):
+    for feuille, largeurs in ((ws, [24, 14]), (wp, [40, 10, 12, 12]),
+                              (wd, [40, 12, 18, 18, 12, 14])):
         for idx, larg in enumerate(largeurs):
             feuille.column_dimensions[chr(65 + idx)].width = larg
 
@@ -157,7 +159,8 @@ def construire_pdf(data: dict, periode_txt: str,
             [["Prêts au total", str(g["total_prets"])],
              ["Prêts en cours", str(g["en_cours"])],
              ["Titres prêtés", str(g["titres_pretes"])],
-             ["Titres au catalogue", str(g["nb_titres"])]],
+             ["Titres au catalogue", str(g["nb_titres"])],
+             ["Durée moyenne de prêt", g.get("duree_moyenne", "—")]],
             [8 * cm, 4 * cm]))
         elements.append(Spacer(1, 0.4 * cm))
 
@@ -182,11 +185,14 @@ def construire_pdf(data: dict, periode_txt: str,
         elements.append(Paragraph(f"Détail des prêts ({len(data['prets'])})",
                                   styles["Heading2"]))
         lignes = [[p["nom"], p["id_exemplaire"], p["sortie_locale"],
-                   p["retour_local"] or "en cours", str(p["numero_pochette"])]
+                   p["retour_local"] or "en cours", p["duree_txt"],
+                   str(p["numero_pochette"])]
                   for p in data["prets"]]
         if lignes:
-            elements.append(tableau(["Jeu", "Ex.", "Sortie", "Retour", "Empl."],
-                                    lignes, [6.5 * cm, 2 * cm, 3.2 * cm, 3.2 * cm, 1.6 * cm]))
+            elements.append(tableau(
+                ["Jeu", "Ex.", "Sortie", "Retour", "Durée", "Empl."],
+                lignes,
+                [5.5 * cm, 1.8 * cm, 3 * cm, 3 * cm, 2 * cm, 1.4 * cm]))
         else:
             elements.append(Paragraph("Aucun prêt sur la période.", styles["Normal"]))
 
