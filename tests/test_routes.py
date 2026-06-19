@@ -25,6 +25,20 @@ def client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
+def test_aide_page(client):
+    r = client.get("/aide")
+    assert r.status_code == 200 and "Mode d'emploi" in r.text
+
+
+def test_menu_benevole_conditionnel(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-menu-xyz")
+    # Appareil non activé : pas de menu bénévole sur le catalogue public.
+    assert 'class="menu-benevole"' not in client.get("/catalogue").text
+    # Après activation : le menu apparaît.
+    client.get("/acces", params={"jeton": "jeton-menu-xyz"})
+    assert 'class="menu-benevole"' in client.get("/catalogue").text
+
+
 def test_catalogue(client):
     r = client.get("/catalogue")
     assert r.status_code == 200

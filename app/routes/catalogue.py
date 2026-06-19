@@ -23,6 +23,12 @@ from app.templating import templates
 router = APIRouter(tags=["catalogue"])
 
 
+@router.get("/aide")
+def aide(request: Request):
+    """Page d'aide / mode d'emploi bénévole (publique, liée depuis le menu)."""
+    return templates.TemplateResponse(request, "aide.html", {})
+
+
 @router.get("/jeu/{id_exemplaire}")
 def fiche(request: Request, id_exemplaire: str):
     """

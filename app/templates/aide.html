@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titre %}Aide — Des jeux plein la Manche{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Mode d'emploi (bénévoles)</h1>
+
+  <h2>Activer son téléphone</h2>
+  <p>Ouvrez une fois le <strong>lien d'activation</strong> fourni par
+     l'association. Votre appareil est alors autorisé à scanner pendant toute la
+     durée de validité.</p>
+
+  <h2>Prêter un jeu</h2>
+  <p>Depuis <a class="lien" href="/scanner">Scanner</a>, visez le QR code de la
+     boîte. Sur un jeu disponible, touchez <strong>Prêter</strong> : un
+     <strong>numéro d'emplacement</strong> s'affiche en grand. Glissez-y la pièce
+     d'identité de l'emprunteur, et rangez la pochette à ce numéro.</p>
+
+  <h2>Rendre un jeu</h2>
+  <p>Scannez la boîte au retour : touchez <strong>Rendre</strong>. Le numéro
+     d'emplacement indiqué est libéré — récupérez-y la pièce d'identité à
+     restituer.</p>
+
+  <h2>« Le re-prêter » (oubli de scan)</h2>
+  <p>Si un jeu déjà sorti repart sans qu'on ait scanné son retour, touchez
+     <strong>Le re-prêter</strong> : l'ancien prêt est clôturé et un nouvel
+     emplacement est attribué.</p>
+
+  <h2>Sortir un jeu pour un tournoi</h2>
+  <p>Sur un jeu disponible, <strong>Sortir pour un tournoi</strong> le marque
+     comme sorti sans pièce d'identité ni emplacement. Ces sorties ne comptent
+     pas dans les statistiques. Au retour, touchez <strong>Rendre</strong>.</p>
+
+  <h2>Bon à savoir</h2>
+  <p>L'application ne demande jamais de données personnelles : seul le numéro
+     d'emplacement relie un prêt à une pièce d'identité. En cas de message
+     inattendu, suivez l'action proposée à l'écran — rien n'est jamais bloquant.</p>
+</section>
+{% endblock %}
