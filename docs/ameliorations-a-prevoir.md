@@ -106,6 +106,27 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
   dashboard admin, sous une section « Modules » ; les actions d'admin restent
   dans leur propre section.
 
+### 7. Durée de validité du jeton bénévole (fusionnée avec le cookie)
+- **Besoin** : choisir, à la création/réinitialisation du jeton, jusqu'à quand
+  l'accès bénévole est valable (ex. le week-end de l'événement).
+- **Décision (validée)** — un **seul** réglage « valable jusqu'au » :
+  - Champ date/heure de fin sur l'écran de réinitialisation (`/admin/jeton`).
+  - Cette date régit À LA FOIS l'expiration du **cookie** (max_age = date − maintenant)
+    et celle du **jeton** côté serveur (accès refusé au-delà).
+  - **Sans date de fin** : durée par défaut **1 semaine** (7 jours), et cette
+    valeur par défaut est **affichée sur l'écran de création du jeton**.
+- **Point de logique à respecter** : distinguer « pas de jeton configuré » (=
+  accès OUVERT, mode dev) de « jeton EXPIRÉ » (= accès FERMÉ, refusé). L'expiration
+  ferme l'accès, ne l'ouvre pas.
+- **Mise en œuvre prévue** :
+  - Stocker en base (table `parametres`) le jeton + sa date d'expiration
+    (`pret_token_expire`, UTC ISO).
+  - `acces_valide` : si un jeton existe et est expiré → refus ; si valide →
+    comparer le cookie ; si aucun jeton → ouvert.
+  - `/acces` pose le cookie avec `max_age` = (expiration − maintenant), ou 7 j
+    par défaut.
+  - Page `/admin/jeton` : champ « valable jusqu'au » + mention du défaut (1 semaine).
+
 ---
 
 ## Retours en attente de tri
