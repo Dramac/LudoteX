@@ -193,7 +193,17 @@ def test_pret_tournoi_route(client):
     # L'écran indique « Sorti — tournoi » (pas d'emplacement).
     assert "Sorti — tournoi" in client.get("/pret/001").text
     # Hors statistiques : aucun prêt comptabilisé.
-    assert '<span class="chiffre-val">0<' in client.get("/stats").text
+    stats = client.get("/stats").text
+    assert '<span class="chiffre-val">0<' in stats
+    # Mais visible dans « Jeux actuellement sortis » (bloc tournoi).
+    assert "Jeux actuellement sortis" in stats and "En tournoi" in stats
+
+
+def test_stats_jeux_sortis(client):
+    client.post("/pret/001/preter")
+    stats = client.get("/stats").text
+    assert "Jeux actuellement sortis" in stats
+    assert "Prêtés au public" in stats
 
 
 def test_scanner_page(client):
