@@ -127,6 +127,23 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
     par défaut.
   - Page `/admin/jeton` : champ « valable jusqu'au » + mention du défaut (1 semaine).
 
+### 8. Durée de prêt (par prêt + durée moyenne)
+- **Besoin** : afficher la durée de chaque prêt dans la liste détaillée, et une
+  **durée moyenne de prêt** dans les indicateurs de synthèse.
+- **Décisions** :
+  - Par prêt : `date_retour − date_sortie`. Pour un prêt **en cours**, afficher
+    « en cours (depuis X) » plutôt qu'une durée figée.
+  - Moyenne : calculée sur les prêts **terminés** uniquement (ceux ayant une
+    `date_retour`), **hors tournois** (`motif = 'pret'`, cf. point 3), et dans la
+    **période filtrée** si active.
+- **Mise en œuvre prévue** :
+  - Helper `format_duree(secondes)` → « 45 min », « 2 h 15 », « 3 j 4 h ».
+  - `lister_prets_periode` : ajouter `duree_txt` (et l'inclure dans les exports
+    Excel/PDF — colonne « Durée »).
+  - `stats_globales` : ajouter `duree_moyenne` (AVG via `julianday(date_retour) −
+    julianday(date_sortie)` côté SQL, ou calcul Python), affichée dans la synthèse
+    et les exports.
+
 ---
 
 ## Retours en attente de tri
