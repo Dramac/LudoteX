@@ -33,6 +33,14 @@ body {
   text-decoration: none;
 }
 
+/* Menu bénévole (fragment partagé bandeau / dashboard admin) */
+.menu-benevole { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.menu-benevole a { color: #1a73e8; text-decoration: none; font-weight: 600; }
+.menu-benevole a:hover { text-decoration: underline; }
+/* Sur le bandeau violet, les liens passent en blanc. */
+.bandeau .menu-benevole { margin-top: 8px; }
+.bandeau .menu-benevole a { color: #fff; opacity: 0.95; }
+
 .contenu {
   max-width: 540px;
   margin: 0 auto;
