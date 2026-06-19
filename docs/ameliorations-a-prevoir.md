@@ -90,6 +90,18 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
 - **Mise en œuvre prévue** : un gabarit statique `aide.html` + une route GET
   `/aide` (publique ou bénévole), liée depuis le menu (point 4).
 
+### 6. Menu admin = menu bénévole + actions d'administration
+- **Besoin** : le tableau de bord admin doit **inclure automatiquement** toutes
+  les entrées du menu bénévole (point 4), en plus des actions d'admin (créer un
+  jeu, réimprimer, jeton, mot de passe, clôturer les prêts…).
+- **Décision** : définir le menu bénévole **une seule fois** dans un fragment de
+  gabarit partagé (ex. `templates/_menu_benevole.html`), inclus à la fois par le
+  bandeau (point 4) et par `admin_dashboard.html`. Ainsi toute évolution du menu
+  bénévole se répercute automatiquement côté admin (pas de double maintenance).
+- **Mise en œuvre prévue** : `{% include "_menu_benevole.html" %}` dans le
+  dashboard admin, sous une section « Modules » ; les actions d'admin restent
+  dans leur propre section.
+
 ---
 
 ## Retours en attente de tri
