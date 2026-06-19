@@ -27,6 +27,21 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
     statistiques au préalable.
   - Pas de changement du modèle de données.
 
+### 2. Vue « Jeux actuellement sortis » (depuis la page statistiques)
+- **Besoin** : voir d'un coup d'œil la liste des jeux encore dehors (relancer les
+  retours manquants, surtout en fin d'événement).
+- **Emplacement** : accessible depuis la page **Statistiques** (section dédiée,
+  par ex. en haut, ou via un lien/onglet).
+- **Contenu** : nom du jeu, code (`id_exemplaire`), **numéro d'emplacement**,
+  date/heure de sortie (en heure locale). Trié par date de sortie.
+- **Mise en œuvre prévue** :
+  - `services.lister_prets_en_cours(conn)` : `SELECT ... FROM prets p JOIN
+    exemplaires e JOIN titres t WHERE p.date_retour IS NULL ORDER BY
+    p.date_sortie`.
+  - Affichage dans `stats.html` (réutiliser le style de la table « Détail »).
+  - Bon compagnon du bouton « clôturer tous les prêts » (point 1) : on visualise
+    ce qui reste sorti avant de clôturer.
+
 ---
 
 ## Retours en attente de tri
