@@ -192,6 +192,30 @@ avec sections cochables (synthèse, plus, moins, detail — détail décoché pa
 défaut) ; route `/stats/export.pdf?sections=…`. L'export Excel reste complet.
 Tests verts.
 
+## Évolutions du backlog (points 1–8, juin 2026)
+
+- **Sortie « tournoi »** : colonne `prets.motif` ('pret'/'tournoi', migration auto).
+  `services.sortir_tournoi` (numero_pochette=0, sans emplacement), bouton « Sortir
+  pour un tournoi » sur `/pret/<id>`. **Exclu de toutes les stats** (filtre
+  `motif='pret'` dans stats_globales/palmares/prets_par_heure/lister_prets_periode).
+- **Durées** : `services.format_duree`, durée par prêt (`duree_txt`, « depuis … »
+  si en cours) dans la liste détaillée, **durée moyenne** (`stats_globales`,
+  prêts terminés via `julianday`). Affichées page stats + exports Excel/PDF.
+- **Vue « Jeux actuellement sortis »** (`/stats`, ancre `#sortis`) :
+  `services.lister_prets_en_cours` → 2 blocs (prêtés au public / en tournoi).
+- **Clôture de fin d'événement** : `services.cloturer_tous_les_prets` (clôt tout
+  prêt non clos + libère les pochettes, **garde l'historique**), bouton admin
+  `/admin/cloturer-prets` (section « Fin d'événement », confirmation).
+- **Validité du jeton** : `parametres.pret_token_expire` (UTC). `auth.jeton_expire`
+  (expiré = accès FERMÉ ≠ absent = ouvert), `reinitialiser_jeton(conn, expire_iso)`
+  défaut **1 semaine** ; cookie d'`/acces` aligné sur l'expiration. Champ
+  « valable jusqu'au » sur `/admin/jeton`.
+- **Menu bénévole** : fragment `templates/_menu_benevole.html` (Catalogue,
+  Scanner, Statistiques, Jeux sortis, Aide), affiché dans le bandeau **uniquement
+  si `est_benevole(request)`** (global Jinja = `auth.acces_valide`), et réutilisé
+  dans le dashboard admin (point unique de maintenance). Page **`/aide`** (mode
+  d'emploi bénévole).
+
 ## Sécurité du dépôt
 
 Ne **jamais** committer : le jeton bénévole, `.env`, la base SQLite. Ils sont

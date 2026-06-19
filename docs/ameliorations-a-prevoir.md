@@ -6,9 +6,12 @@ est traité, le cocher (et le décrire dans `CLAUDE.md`).
 
 Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
 
+> **Points 1 à 8 : IMPLÉMENTÉS** (session de dev du 2026-06-17). Conservés
+> ci-dessous pour mémoire des décisions. Voir `CLAUDE.md` pour l'état courant.
+
 ---
 
-## À faire
+## Réalisé (points 1 à 8)
 
 ### 1. Bouton admin « Clôturer tous les prêts en cours » (fin d'événement)
 - **Besoin** : après l'événement, remettre tout le parc « disponible » et libérer
