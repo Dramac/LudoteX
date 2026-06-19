@@ -286,9 +286,12 @@ def jeton_page(request: Request):
     conn = get_connection()
     try:
         jeton = auth.jeton_actuel(conn)
+        expire_iso = auth.expiration_jeton(conn)
+        expire_depasse = auth.jeton_expire(conn)
     finally:
         conn.close()
 
+    expire_local = services.format_local(expire_iso) if expire_iso else None
     lien, partage = None, {}
     if jeton:
         lien = f"{_base_url(request)}/acces?jeton={jeton}"
@@ -301,7 +304,9 @@ def jeton_page(request: Request):
         }
     return templates.TemplateResponse(
         request, "admin_jeton.html",
-        {"jeton": jeton, "lien": lien, "partage": partage},
+        {"jeton": jeton, "lien": lien, "partage": partage,
+         "expire_local": expire_local, "expire_depasse": expire_depasse,
+         "defaut_jours": auth.DUREE_DEFAUT_JOURS},
     )
 
 
@@ -320,13 +325,19 @@ def cloturer_prets(request: Request):
 
 
 @router.post("/jeton/reinitialiser")
-def jeton_reinitialiser(request: Request):
-    """Génère un nouveau jeton bénévole (invalide les anciens) puis réaffiche la page."""
+def jeton_reinitialiser(request: Request, expire: str = Form("")):
+    """
+    Génère un nouveau jeton bénévole (invalide les anciens) puis réaffiche la page.
+
+    `expire` (datetime-local, heure locale) fixe la fin de validité ; vide → la
+    durée par défaut (1 semaine) est appliquée par `auth.reinitialiser_jeton`.
+    """
     if (garde := _garde(request)):
         return garde
+    expire_utc = services.local_vers_utc_iso(expire.strip() or None)
     conn = get_connection()
     try:
-        auth.reinitialiser_jeton(conn)
+        auth.reinitialiser_jeton(conn, expire_utc)
     finally:
         conn.close()
     return RedirectResponse("/admin/jeton", status_code=303)

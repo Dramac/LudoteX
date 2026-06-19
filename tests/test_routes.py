@@ -184,11 +184,22 @@ def test_admin_changement_mdp(client, monkeypatch):
 def test_admin_jeton_reinitialisation(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    # Réinitialisation -> un jeton est posé, la page montre un lien d'activation.
-    r = client.post("/admin/jeton/reinitialiser", follow_redirects=False)
+    # Réinitialisation (sans date) -> jeton posé + lien + validité par défaut affichée.
+    r = client.post("/admin/jeton/reinitialiser", data={"expire": ""},
+                    follow_redirects=False)
     assert r.status_code == 303
     page = client.get("/admin/jeton")
     assert page.status_code == 200 and "/acces?jeton=" in page.text
+    assert "Valable jusqu'au" in page.text
+
+
+def test_jeton_expire_ferme_acces(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    # Réinitialisation avec une date de fin déjà passée -> accès fermé.
+    client.post("/admin/jeton/reinitialiser", data={"expire": "2000-01-01T00:00"})
+    # Même avec un cookie (impossible à obtenir ici), l'accès est refusé : 403.
+    assert client.get("/scanner").status_code == 403
 
 
 def test_export_pdf_sections(client):

@@ -33,10 +33,14 @@ import os
 import secrets
 import sqlite3
 import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 
 from app.db import get_connection
+
+# Durée de validité par défaut du jeton si aucune date de fin n'est choisie.
+DUREE_DEFAUT_JOURS = 7
 
 # Nom du cookie déposé sur l'appareil bénévole après activation.
 COOKIE_NAME = "jeton_pret"
@@ -70,22 +74,50 @@ def jeton_actuel(conn: sqlite3.Connection) -> str | None:
     return None
 
 
-def reinitialiser_jeton(conn: sqlite3.Connection) -> str:
-    """
-    Génère un nouveau jeton aléatoire, le stocke en base et le renvoie.
+def expiration_jeton(conn: sqlite3.Connection) -> str | None:
+    """Date d'expiration du jeton (UTC ISO) stockée en base, ou None (pas d'expiration)."""
+    row = conn.execute(
+        "SELECT valeur FROM parametres WHERE cle = 'pret_token_expire'"
+    ).fetchone()
+    return row[0] if row and row[0] else None
 
-    Effet : invalide immédiatement tous les anciens cookies bénévole (le jeton
-    attendu a changé). C'est la « rotation » du jeton, déclenchée depuis l'admin.
+
+def jeton_expire(conn: sqlite3.Connection) -> bool:
+    """True si une date d'expiration est définie ET dépassée."""
+    e = expiration_jeton(conn)
+    if not e:
+        return False
+    try:
+        return datetime.now(timezone.utc) > datetime.fromisoformat(e)
+    except ValueError:
+        return False
+
+
+def reinitialiser_jeton(conn: sqlite3.Connection,
+                        expire_iso: str | None = None) -> str:
+    """
+    Génère un nouveau jeton aléatoire + sa date d'expiration, et le renvoie.
+
+    Effet : invalide immédiatement tous les anciens cookies (le jeton change).
+    Si `expire_iso` est None, on applique la durée par défaut (DUREE_DEFAUT_JOURS).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        expire_iso: date de fin de validité (UTC ISO), ou None → défaut 1 semaine.
 
     Returns:
         Le nouveau jeton (à diffuser via le lien d'activation).
     """
     nouveau = secrets.token_urlsafe(32)
-    conn.execute(
-        "INSERT INTO parametres (cle, valeur) VALUES ('pret_token', ?) "
-        "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
-        (nouveau,),
-    )
+    if not expire_iso:
+        expire_iso = (datetime.now(timezone.utc)
+                      + timedelta(days=DUREE_DEFAUT_JOURS)).isoformat(timespec="seconds")
+    for cle, valeur in (("pret_token", nouveau), ("pret_token_expire", expire_iso)):
+        conn.execute(
+            "INSERT INTO parametres (cle, valeur) VALUES (?, ?) "
+            "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+            (cle, valeur),
+        )
     conn.commit()
     return nouveau
 
@@ -94,9 +126,11 @@ def acces_valide(request: Request) -> bool:
     """
     Indique si la requête est autorisée à accéder aux écrans bénévole.
 
-    Règle : en mode ouvert (pas de jeton configuré) → True. Sinon, le cookie de
-    l'appareil doit être présent ET égal au jeton attendu (comparaison en temps
-    constant).
+    Règles :
+    - aucun jeton configuré → accès OUVERT (mode dev) ;
+    - jeton configuré mais EXPIRÉ → accès FERMÉ (refusé) ;
+    - sinon, le cookie de l'appareil doit égaler le jeton (comparaison en temps
+      constant).
 
     Args:
         request: la requête entrante (on y lit le cookie).
@@ -107,10 +141,13 @@ def acces_valide(request: Request) -> bool:
     conn = get_connection()
     try:
         attendu = jeton_actuel(conn)
+        expire = jeton_expire(conn)
     finally:
         conn.close()
     if attendu is None:
-        return True  # mode ouvert (dev)
+        return True   # mode ouvert (dev)
+    if expire:
+        return False  # jeton expiré → fermé
     presente = request.cookies.get(COOKIE_NAME, "")
     return bool(presente) and secrets.compare_digest(presente, attendu)
 
