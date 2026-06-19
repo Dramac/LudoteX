@@ -78,11 +78,15 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
   - Statistiques
   - Aide / mode d'emploi *(nouvelle page courte à créer — point 5)*
   - Jeux actuellement sortis *(point 2)*
-- **À trancher** : afficher « Scanner » partout (un visiteur public non activé
-  tombe alors sur « Accès réservé ») OU ne l'afficher qu'aux appareils déjà
-  activés. Défaut proposé : l'afficher partout (simple), à confirmer.
-- **Mise en œuvre prévue** : liens dans `base.html` (nav du bandeau) + style CSS ;
-  rien côté logique.
+- **Décision (validée)** : le menu n'apparaît **que sur les appareils ayant
+  activé le jeton bénévole** (cookie valide). Le public ordinaire ne voit que le
+  bandeau simple → pas de « Accès réservé » intempestif. Le tableau de bord admin
+  affiche toujours le menu (admin connecté, voir point 6).
+- **Mise en œuvre prévue** :
+  - Exposer aux gabarits un indicateur `est_benevole` (calculé via
+    `auth.acces_valide(request)`), p. ex. en global Jinja ou context processor.
+  - Dans `base.html` : `{% if est_benevole %}` … menu … `{% endif %}` + style CSS.
+  - Aucune autre logique : `acces_valide` existe déjà.
 
 ### 5. Page d'aide / mode d'emploi bénévole
 - **Besoin** : page courte expliquant aux bénévoles comment scanner, prêter,
