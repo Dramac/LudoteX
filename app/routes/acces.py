@@ -14,6 +14,7 @@ Secure dès que la connexion est en HTTPS.
 
 import os
 import secrets
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
@@ -24,8 +25,18 @@ from app.templating import templates
 
 router = APIRouter(tags=["acces"])
 
-# Durée de validité du cookie d'accès bénévole : 3 jours (en secondes).
-DUREE_COOKIE = 60 * 60 * 24 * 3
+
+def _duree_cookie(expire_iso: str | None) -> int:
+    """Durée du cookie (s) : jusqu'à l'expiration du jeton, ou défaut 1 semaine."""
+    defaut = auth.DUREE_DEFAUT_JOURS * 86400
+    if not expire_iso:
+        return defaut
+    try:
+        restant = int((datetime.fromisoformat(expire_iso)
+                       - datetime.now(timezone.utc)).total_seconds())
+    except ValueError:
+        return defaut
+    return max(60, restant)   # au moins 1 minute
 
 
 @router.get("/acces")
@@ -60,19 +71,22 @@ def acces(request: Request, jeton: str = ""):
     conn = get_connection()
     try:
         attendu = auth.jeton_actuel(conn)
+        expire_iso = auth.expiration_jeton(conn)
+        expire = auth.jeton_expire(conn)
     finally:
         conn.close()
-    if attendu and secrets.compare_digest(jeton, attendu):
+    if attendu and not expire and secrets.compare_digest(jeton, attendu):
         # 303 force le navigateur à faire un GET sur /scanner après l'activation.
+        # Le cookie expire en même temps que le jeton (ou défaut 1 semaine).
         reponse = RedirectResponse("/scanner", status_code=303)
         reponse.set_cookie(
             auth.COOKIE_NAME, jeton,
-            max_age=DUREE_COOKIE, httponly=True, samesite="lax",
+            max_age=_duree_cookie(expire_iso), httponly=True, samesite="lax",
             secure=(request.url.scheme == "https"),
         )
         return reponse
 
-    # Échec : on distingue le mode ouvert (pas de jeton configuré) du jeton erroné.
+    # Échec : mode ouvert (aucun jeton), jeton expiré, ou jeton erroné.
     motif = "ouvert" if attendu is None else "invalide"
     return templates.TemplateResponse(
         request, "acces_refuse.html", {"motif": motif}, status_code=403
