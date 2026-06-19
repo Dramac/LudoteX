@@ -158,6 +158,16 @@ def test_admin_login_et_creation_jeu(client, monkeypatch):
     assert png.status_code == 200 and png.headers["content-type"] == "image/png"
 
 
+def test_admin_cloture_prets(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/pret/001/preter")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.post("/admin/cloturer-prets")
+    assert r.status_code == 200 and "clôturé" in r.text
+    # L'exemplaire est de nouveau disponible.
+    assert "Disponible" in client.get("/pret/001").text
+
+
 def test_admin_changement_mdp(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "initial-123")
     client.post("/admin/login", data={"mot_de_passe": "initial-123"})

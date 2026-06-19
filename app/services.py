@@ -695,6 +695,28 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     return {"numero_libere": courant["numero_pochette"], "motif": "pret"}
 
 
+def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
+    """
+    Clôture TOUS les prêts/sorties en cours et libère toutes les pochettes.
+
+    Usage : remise à blanc en fin d'événement. On NE supprime PAS l'historique
+    (les statistiques restent) : on se contente de poser `date_retour = maintenant`
+    sur tout ce qui était encore ouvert, et de libérer toutes les pochettes. Cela
+    couvre aussi les sorties tournoi encore ouvertes.
+
+    Returns:
+        Le nombre de prêts/sorties clôturés.
+    """
+    cur = conn.execute(
+        "UPDATE prets SET date_retour = ? WHERE date_retour IS NULL",
+        (maintenant(),),
+    )
+    nb = cur.rowcount
+    conn.execute("UPDATE pochettes SET occupe = 0")
+    conn.commit()
+    return nb
+
+
 def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
     Re-prêt après oubli de scan (spec §5.1).

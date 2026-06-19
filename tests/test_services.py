@@ -124,6 +124,21 @@ def test_format_duree():
     assert services.format_duree(3 * 86400 + 4 * 3600).startswith("3 j 4 h")
 
 
+def test_cloturer_tous_les_prets(conn):
+    services.preter(conn, "001")
+    services.sortir_tournoi(conn, "002")
+    nb = services.cloturer_tous_les_prets(conn)
+    assert nb == 2
+    assert services.est_sorti(conn, "001") is False
+    assert services.est_sorti(conn, "002") is False
+    # Historique conservé (les lignes existent toujours, juste clôturées).
+    total = conn.execute("SELECT COUNT(*) FROM prets").fetchone()[0]
+    assert total == 2
+    # Toutes les pochettes sont libérées.
+    occupees = conn.execute("SELECT COUNT(*) FROM pochettes WHERE occupe = 1").fetchone()[0]
+    assert occupees == 0
+
+
 def test_prets_par_heure(conn):
     services.preter(conn, "001")
     services.preter(conn, "002")
