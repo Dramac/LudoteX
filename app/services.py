@@ -78,6 +78,33 @@ def format_local(iso_utc: str | None) -> str:
     return dt.astimezone(FUSEAU_LOCAL).strftime("%d/%m/%Y %H:%M")
 
 
+def format_duree(secondes: float | None) -> str:
+    """
+    Met en forme une durée en secondes : « 45 min », « 2 h 05 », « 3 j 4 h ».
+
+    Returns:
+        Chaîne lisible, ou « — » si la durée est inconnue (None).
+    """
+    if secondes is None:
+        return "—"
+    secondes = int(secondes)
+    jours, reste = divmod(secondes, 86400)
+    heures, reste = divmod(reste, 3600)
+    minutes = reste // 60
+    if jours:
+        return f"{jours} j {heures} h"
+    if heures:
+        return f"{heures} h {minutes:02d}"
+    return f"{minutes} min"
+
+
+def _duree_secondes(sortie_iso: str, retour_iso: str | None) -> float:
+    """Durée d'un prêt en secondes (jusqu'à `retour_iso`, ou jusqu'à maintenant)."""
+    debut = datetime.fromisoformat(sortie_iso)
+    fin = datetime.fromisoformat(retour_iso) if retour_iso else datetime.now(timezone.utc)
+    return (fin - debut).total_seconds()
+
+
 def _filtre_periode(colonne: str, debut: str | None, fin: str | None) -> tuple[str, list]:
     """
     Construit un fragment SQL « AND <colonne> >= ? AND <colonne> < ? » selon les
@@ -313,11 +340,21 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         params,
     ).fetchone()[0]
     nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
+    # Durée moyenne, sur les prêts TERMINÉS uniquement (hors tournoi, période incluse).
+    moyenne = conn.execute(
+        f"""
+        SELECT AVG((julianday(date_retour) - julianday(date_sortie)) * 86400)
+        FROM prets
+        WHERE motif = 'pret' AND date_retour IS NOT NULL{f}
+        """,
+        params,
+    ).fetchone()[0]
     return {
         "total_prets": total_prets,
         "en_cours": en_cours,
         "titres_pretes": titres_pretes,
         "nb_titres": nb_titres,
+        "duree_moyenne": format_duree(moyenne) if moyenne is not None else "—",
     }
 
 
@@ -427,6 +464,10 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
         d = dict(r)
         d["sortie_locale"] = format_local(d["date_sortie"])
         d["retour_local"] = format_local(d["date_retour"]) if d["date_retour"] else ""
+        secs = _duree_secondes(d["date_sortie"], d["date_retour"])
+        # Prêt clos : durée fixe ; prêt en cours : « depuis X ».
+        d["duree_txt"] = (format_duree(secs) if d["date_retour"]
+                          else "depuis " + format_duree(secs))
         out.append(d)
     return out
 

@@ -31,6 +31,7 @@
     <div class="chiffre"><span class="chiffre-val">{{ g.total_prets }}</span><span class="chiffre-lib">prêts</span></div>
     <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">en cours</span></div>
     <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
   </div>
 
   <details class="recherche" {% if debut or fin %}open{% endif %}>
@@ -112,7 +113,7 @@
   <h2>Détail des prêts <small>({{ prets | length }})</small></h2>
   {% if prets %}
     <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Empl.</th></tr></thead>
+      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th><th>Empl.</th></tr></thead>
       <tbody>
         {% for p in prets %}
           <tr>
@@ -120,6 +121,7 @@
             <td>{{ p.id_exemplaire }}</td>
             <td>{{ p.sortie_locale }}</td>
             <td>{{ p.retour_local or "en cours" }}</td>
+            <td>{{ p.duree_txt }}</td>
             <td>{{ p.numero_pochette }}</td>
           </tr>
         {% endfor %}

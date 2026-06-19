@@ -104,6 +104,26 @@ def test_sortir_tournoi_hors_stats(conn):
     assert services.est_sorti(conn, "001") is False
 
 
+def test_duree_moyenne_et_par_pret(conn):
+    services.preter(conn, "001")
+    services.rendre(conn, "001")
+    g = services.stats_globales(conn)
+    assert g["duree_moyenne"] != "—"          # une durée est calculée
+    prets = services.lister_prets_periode(conn)
+    assert prets and prets[0]["duree_txt"]    # durée par prêt présente
+    # Prêt en cours : libellé « depuis … »
+    services.preter(conn, "002")
+    en_cours = [p for p in services.lister_prets_periode(conn) if not p["date_retour"]]
+    assert en_cours and en_cours[0]["duree_txt"].startswith("depuis")
+
+
+def test_format_duree():
+    assert services.format_duree(None) == "—"
+    assert services.format_duree(45 * 60) == "45 min"
+    assert services.format_duree(2 * 3600 + 5 * 60) == "2 h 05"
+    assert services.format_duree(3 * 86400 + 4 * 3600).startswith("3 j 4 h")
+
+
 def test_prets_par_heure(conn):
     services.preter(conn, "001")
     services.preter(conn, "002")
