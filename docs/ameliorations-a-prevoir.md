@@ -32,15 +32,42 @@ Format d'un point : intitulé, besoin, décisions/notes de mise en œuvre.
   retours manquants, surtout en fin d'événement).
 - **Emplacement** : accessible depuis la page **Statistiques** (section dédiée,
   par ex. en haut, ou via un lien/onglet).
-- **Contenu** : nom du jeu, code (`id_exemplaire`), **numéro d'emplacement**,
-  date/heure de sortie (en heure locale). Trié par date de sortie.
+- **Contenu** : présentée en **deux blocs distincts** —
+  1. « Prêtés au public » : nom, code (`id_exemplaire`), **numéro d'emplacement**,
+     heure de sortie ;
+  2. « En tournoi » : nom, code, heure de sortie (sans emplacement).
+  Trié par date de sortie dans chaque bloc.
 - **Mise en œuvre prévue** :
   - `services.lister_prets_en_cours(conn)` : `SELECT ... FROM prets p JOIN
     exemplaires e JOIN titres t WHERE p.date_retour IS NULL ORDER BY
-    p.date_sortie`.
+    p.date_sortie` ; séparer par `motif` ('pret' vs 'tournoi', voir point 3).
   - Affichage dans `stats.html` (réutiliser le style de la table « Détail »).
   - Bon compagnon du bouton « clôturer tous les prêts » (point 1) : on visualise
     ce qui reste sorti avant de clôturer.
+
+### 3. Sortie « tournoi » (jeux prélevés pour un tournoi, hors statistiques)
+- **Besoin** : prélever des jeux pour un tournoi pendant l'événement. Ils doivent
+  apparaître **sortis** (donc indisponibles), mais **sans PI / sans emplacement**,
+  et **ne pas compter dans les statistiques** (ce ne sont pas des prêts au public).
+- **Décision (validée)** :
+  - Ajouter une colonne **`motif`** à `prets` : `pret` (défaut) ou `tournoi`.
+    L'état « sorti » reste déduit de `date_retour IS NULL` → aucune modification
+    de la logique de disponibilité (catalogue, fiche, scan).
+  - Les **statistiques filtrent `motif = 'pret'`** (stats_globales, palmares,
+    prets_par_heure, lister_prets_periode) → les tournois en sont exclus.
+  - La sortie tournoi **n'attribue pas d'emplacement** ; `numero_pochette`
+    recevra un marqueur « pas d'emplacement » (colonne NOT NULL aujourd'hui →
+    sentinelle, sans rebuild de table).
+- **UI** : sur l'écran `/pret/<id>` d'un jeu DISPONIBLE, bouton principal
+  « Prêter » + bouton secondaire **« Sortir pour un tournoi »**. Au retour,
+  l'écran affiche « Sorti (tournoi) » + « Rendre » (pas de pochette à libérer).
+- **Lien avec le point 2** : la vue « Jeux actuellement sortis » inclut les
+  tournois dans un bloc séparé (le parc doit les voir, même si les stats les
+  ignorent).
+- **Mise en œuvre prévue** : migration colonne `motif` (`_appliquer_migrations`) ;
+  `services.sortir_tournoi(conn, id)` + prise en compte dans `rendre` ; filtre
+  `motif='pret'` dans les fonctions de stats ; bouton + route POST
+  `/pret/<id>/tournoi`.
 
 ---
 
