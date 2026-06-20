@@ -25,6 +25,24 @@ def client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
+def test_page_erreur_500(client, monkeypatch):
+    # On force une erreur inattendue dans une route et on vérifie que l'app
+    # renvoie la page 500 conviviale (et ne « plante » pas).
+    from fastapi.testclient import TestClient
+
+    from app import services
+    from app.main import app
+
+    def boum(*a, **k):
+        raise RuntimeError("erreur simulée")
+
+    monkeypatch.setattr(services, "lister_catalogue", boum)
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.get("/catalogue")
+    assert r.status_code == 500
+    assert "une erreur est survenue" in r.text.lower()
+
+
 def test_aide_page(client):
     r = client.get("/aide")
     assert r.status_code == 200 and "Mode d'emploi" in r.text
