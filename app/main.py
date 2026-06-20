@@ -6,7 +6,8 @@ RÔLE
 - Crée l'objet `app` (l'application ASGI servie par uvicorn).
 - Monte les fichiers statiques (CSS, JS du scanner) sous /static.
 - Enregistre les routeurs (un module par domaine fonctionnel dans app/routes/).
-- Définit le gestionnaire d'erreur 403 (page « accès réservé » conviviale).
+- Définit les gestionnaires d'erreur : 403 (page « accès réservé ») et 500
+  (page d'erreur conviviale + journalisation) pour rester robuste en ligne.
 - Émet un avertissement au démarrage si aucun jeton bénévole n'est configuré.
 
 CARTE DES URL
@@ -74,6 +75,20 @@ async def gestion_http(request, exc: StarletteHTTPException):
             request, "acces_refuse.html", {"motif": "reserve"}, status_code=403
         )
     return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(Exception)
+async def gestion_erreur(request, exc: Exception):
+    """
+    Filet de sécurité pour toute exception NON anticipée.
+
+    Le serveur reste en ligne (uvicorn isole déjà chaque requête) ; ici on
+    journalise l'erreur complète (pour le référent technique, visible via
+    `journalctl -u pret-jeux`) et on renvoie une page 500 conviviale plutôt
+    qu'un message technique brut.
+    """
+    logging.getLogger("uvicorn.error").exception("Erreur non gérée : %s", exc)
+    return templates.TemplateResponse(request, "erreur.html", {}, status_code=500)
 
 
 # S'assure que le schéma existe / est à jour au démarrage (idempotent). Crée les
