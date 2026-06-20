@@ -29,11 +29,15 @@
       <span id="copie-ok" class="copie-ok" hidden>copié ✓</span>
     </p>
 
-    <p class="stats-export">Partager :
-      <a class="lien" href="{{ partage.whatsapp }}" target="_blank" rel="noopener">WhatsApp</a> ·
-      <a class="lien" href="{{ partage.mail }}">E-mail</a> ·
-      <a class="lien" href="{{ partage.sms }}">SMS</a>
-    </p>
+    <p class="partage-titre">Partager le lien :</p>
+    <div class="partage">
+      <a class="chip chip-wa" href="{{ partage.whatsapp }}" target="_blank" rel="noopener">💬 WhatsApp</a>
+      <a class="chip chip-mail" href="{{ partage.mail }}">✉️ E-mail</a>
+      <a class="chip chip-sms" href="{{ partage.sms }}">📱 SMS</a>
+      <button type="button" class="chip chip-discord" data-message="{{ partage.message }}"
+              onclick="copierDiscord(this)">🎮 Discord</button>
+      <span id="discord-ok" class="copie-ok" hidden>copié — collez dans Discord ✓</span>
+    </div>
     <p class="stats-note">Traitez ce lien comme un mot de passe : ne le publiez pas
        en public. En cas de fuite, réinitialisez-le ci-dessous.</p>
   {% else %}
@@ -62,6 +66,15 @@
       var ok = document.getElementById("copie-ok");
       ok.hidden = false;
       setTimeout(function () { ok.hidden = true; }, 2000);
+    });
+  }
+
+  // Discord n'a pas de lien de partage : on copie le message prêt à coller.
+  function copierDiscord(bouton) {
+    navigator.clipboard.writeText(bouton.dataset.message).then(function () {
+      var ok = document.getElementById("discord-ok");
+      ok.hidden = false;
+      setTimeout(function () { ok.hidden = true; }, 3000);
     });
   }
 </script>

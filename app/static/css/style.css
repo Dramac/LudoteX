@@ -227,6 +227,20 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .champ textarea { padding: 10px; border: 1px solid var(--bord); border-radius: 8px; font-size: 1rem; font-family: inherit; }
 .copie-ok { color: var(--vert); font-weight: 600; margin-left: 8px; }
 
+/* Partage du lien d'activation : pastilles colorées par canal */
+.partage-titre { font-weight: 600; margin-bottom: 6px; }
+.partage { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: 999px;
+  padding: 8px 14px; font-size: 0.95rem; font-weight: 600;
+  color: #fff; text-decoration: none; cursor: pointer;
+}
+.chip-wa { background: #25d366; }       /* WhatsApp */
+.chip-mail { background: #5f6368; }     /* E-mail */
+.chip-sms { background: #1a73e8; }      /* SMS */
+.chip-discord { background: #5865f2; }  /* Discord (couleur Blurple) */
+
 /* Scanner */
 .scanner-cadre { background: #000; border-radius: 12px; overflow: hidden; }
 .scanner-video { display: block; width: 100%; height: auto; }
