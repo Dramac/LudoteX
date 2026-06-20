@@ -301,6 +301,9 @@ def jeton_page(request: Request):
             "mail": ("mailto:?subject=" + quote("Accès bénévole — prêt de jeux")
                      + "&body=" + quote(message)),
             "sms": "sms:?&body=" + quote(message),
+            # Discord n'a pas de lien de partage pré-rempli : on copie le message
+            # (le gabarit fournit un bouton « copier pour Discord »).
+            "message": message,
         }
     return templates.TemplateResponse(
         request, "admin_jeton.html",
