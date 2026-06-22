@@ -71,6 +71,10 @@ et **répartis** via `_ordre_places` (seeding standard 1-8-4-5-2-7-3-6…),
 de nul), `POST .../arbre/suivant`. Gabarit `tournoi_arbre.html` ; page publique
 affiche l'arbre + le vainqueur. **Suite globale : 71 tests verts.**
 
+**Aide dédiée** : page publique `GET /tournoi/aide` (`tournoi_aide.html`, mode
+d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
+liée depuis `/tournois` (bénévole) et l'écran de gestion.
+
 **PHASE 1 COMPLÈTE** (tournois + inscription + suivi + high score + ronde suisse
 + élimination directe). Reste la **phase 2** : double élimination (looser
 bracket), affinements BO3 (manches), e-mails robustes (envoi du code), sauvegarde

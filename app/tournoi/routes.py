@@ -72,6 +72,12 @@ def liste(request: Request):
     )
 
 
+@router.get("/tournoi/aide")
+def aide(request: Request):
+    """Aide / mode d'emploi spécifique au module tournois (publique)."""
+    return templates.TemplateResponse(request, "tournoi_aide.html", {})
+
+
 @router.get("/tournoi/desinscription")
 def desinscription_page(request: Request, code: str = ""):
     """

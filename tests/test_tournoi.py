@@ -429,6 +429,14 @@ def test_liste_publique(client):
     assert r.status_code == 200 and "Tournois" in r.text
 
 
+def test_aide_tournois(client):
+    r = client.get("/tournoi/aide")
+    assert r.status_code == 200
+    assert "Aide" in r.text
+    # Couvre les trois modes de scoring.
+    assert "High score" in r.text and "Ronde suisse" in r.text and "limination directe" in r.text
+
+
 def test_cycle_complet_route(client):
     # Création (mode ouvert : pas de PRET_TOKEN -> accès bénévole autorisé).
     r = client.post("/tournoi/nouveau", data={"nom": "Tournoi Test",
