@@ -30,6 +30,7 @@
   <h1>Tournois</h1>
   {% if est_benevole(request) %}
     <p><a class="bouton bouton-principal" href="/tournoi/nouveau">+ Nouveau tournoi</a></p>
+    <p><a class="lien" href="/tournoi/aide">Aide — comment organiser un tournoi</a></p>
   {% endif %}
   {% if not tournois %}
     <p><em>Aucun tournoi pour le moment.</em></p>

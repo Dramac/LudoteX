@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titre %}Aide — Tournois{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Aide — Tournois</h1>
+  <p class="dispo-titre">Mode d'emploi pour organiser et suivre un tournoi.</p>
+
+  <h2>Le cycle d'un tournoi</h2>
+  <p>Un tournoi passe par quatre états : <strong>brouillon</strong> (en
+     préparation, invisible du public) → <strong>inscriptions</strong> (ouvertes,
+     visible et inscriptible) → <strong>lancé</strong> (mode de scoring choisi,
+     parties en cours) → <strong>terminé</strong>. Les boutons d'état sont sur la
+     page <em>Gérer</em> du tournoi.</p>
+
+  <h2>Créer un tournoi</h2>
+  <p>Depuis <a class="lien" href="/tournois">Tournois</a>, touchez
+     <strong>Nouveau tournoi</strong>. Renseignez au minimum un nom ; le jeu, la
+     date, la durée, le nombre de places et l'emplacement sont facultatifs.
+     Le tournoi est créé en <strong>brouillon</strong> : prenez le temps de tout
+     régler, puis <strong>Ouvrir les inscriptions</strong> pour le rendre public.</p>
+
+  <h2>Inscriptions et désinscription</h2>
+  <p>Quand les inscriptions sont ouvertes, le public s'inscrit avec un simple
+     <strong>pseudo</strong>. Un <strong>code de désinscription</strong> lui est
+     alors affiché : c'est le seul moyen de se désinscrire. <strong>Aucune adresse
+     e-mail n'est demandée ni conservée</strong> (l'envoi du code par e-mail
+     viendra plus tard). Vous pouvez aussi ajouter ou retirer des participants à
+     la main depuis la page <em>Gérer</em> (utile pour les inscriptions sur place).</p>
+
+  <h2>Lancer le tournoi : choisir le mode</h2>
+  <p>Le mode de scoring se choisit <strong>au lancement</strong>, pas à la
+     création. Trois modes sont disponibles :</p>
+
+  <h3>High score (points cumulés)</h3>
+  <p>Le plus simple. Après le lancement, saisissez les <strong>points</strong> de
+     chaque participant dans <em>Saisir les scores</em> (modifiable à volonté). Le
+     classement se fait par points décroissants ; les ex æquo partagent le même
+     rang.</p>
+
+  <h3>Ronde suisse</h3>
+  <p>Vous fixez un <strong>nombre de rondes</strong> au lancement. À chaque ronde,
+     l'application apparie les joueurs <strong>de niveau proche</strong> (par
+     points) <strong>sans jamais refaire jouer deux mêmes adversaires</strong>. Si
+     le nombre de joueurs est impair, un joueur est <strong>exempt (bye)</strong>
+     et marque comme une victoire — chacun son tour. Pour chaque rencontre,
+     indiquez <em>A gagne / match nul / B gagne</em> ; quand tous les résultats
+     d'une ronde sont saisis, touchez <strong>Générer la ronde suivante</strong>.
+     Barème : victoire 1 point, nul 0,5, bye 1.</p>
+
+  <h3>Élimination directe</h3>
+  <p>Arbre classique : le perdant est éliminé. Si le nombre de joueurs n'est pas
+     une puissance de 2 (4, 8, 16…), les mieux placés reçoivent un
+     <strong>bye</strong> au premier tour. Désignez le <strong>vainqueur</strong>
+     de chaque rencontre, puis <strong>Générer le tour suivant</strong>
+     (demi-finales, finale…). Le vainqueur du tournoi s'affiche après la finale.</p>
+
+  <h2>Suivi public</h2>
+  <p>Dès le lancement, la page publique du tournoi affiche le classement (ou
+     l'arbre) en temps réel. Inutile de rien publier : il suffit de partager le
+     lien du tournoi.</p>
+
+  <h2>Supprimer un tournoi</h2>
+  <p>La suppression (page <em>Gérer</em> → <em>Zone de danger</em>) demande une
+     <strong>double confirmation</strong> et efface aussi les inscriptions et les
+     résultats. Elle est définitive.</p>
+
+  <p class="lien-fiche"><a class="lien" href="/tournois">← Retour aux tournois</a></p>
+</section>
+{% endblock %}
