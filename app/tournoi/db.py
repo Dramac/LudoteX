@@ -74,7 +74,9 @@ def get_connection() -> sqlite3.Connection:
 # Colonnes ajoutées APRÈS la première mise en service (ALTER TABLE des bases déjà
 # créées ; les CREATE TABLE IF NOT EXISTS ne le font pas). Format : (table,
 # colonne, type_sql). Vide pour l'instant — à étendre à chaque évolution.
-_MIGRATIONS_COLONNES: list[tuple[str, str, str]] = []
+_MIGRATIONS_COLONNES: list[tuple[str, str, str]] = [
+    ("tournois", "nb_rondes", "INTEGER"),
+]
 
 
 def _appliquer_migrations(conn: sqlite3.Connection) -> None:

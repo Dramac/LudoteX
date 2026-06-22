@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titre %}Rondes — {{ t.nom }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Ronde suisse</h1>
+  <p class="dispo-titre">
+    {{ t.nom }} · {{ ronde_courante }} / {{ t.nb_rondes }} ronde(s)
+  </p>
+
+  {% if message %}
+    <div class="resultat {{ 'resultat-info' if message[0] == 'succes' else 'resultat-attention' }}">
+      <p>{{ message[1] }}</p>
+    </div>
+  {% endif %}
+
+  {# Génération de la ronde suivante #}
+  {% if peut_generer %}
+    <form method="post" action="/tournoi/{{ t.id_tournoi }}/rondes/suivante">
+      <button type="submit" class="bouton bouton-principal"
+              {{ 'disabled' if ronde_courante and not ronde_courante_complete else '' }}>
+        Générer la ronde {{ ronde_courante + 1 }}
+      </button>
+    </form>
+    {% if ronde_courante and not ronde_courante_complete %}
+      <p class="stats-note">Saisissez tous les résultats de la ronde {{ ronde_courante }}
+        avant de générer la suivante.</p>
+    {% endif %}
+  {% else %}
+    <p class="stats-note">Toutes les rondes prévues ont été générées. Vous pouvez
+      <a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">terminer le tournoi</a>.</p>
+  {% endif %}
+</section>
+
+{# Classement courant #}
+<section class="carte">
+  <h2>Classement</h2>
+  <table class="detail">
+    <thead><tr><th>Rang</th><th>Participant</th><th>Points</th></tr></thead>
+    <tbody>
+      {% for c in classement %}
+        <tr><td>{{ c.rang }}</td><td>{{ c.pseudo }}</td><td>{{ c.points_txt }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{# Rondes (de la plus récente à la plus ancienne) — saisie des résultats #}
+{% for r in rondes | reverse %}
+  <section class="carte">
+    <h2>Ronde {{ r.ronde }}{% if r.complete %} <small>(complète)</small>{% endif %}</h2>
+    <form method="post" action="/tournoi/{{ t.id_tournoi }}/rondes/{{ r.ronde }}/resultats">
+      <table class="detail">
+        <tbody>
+          {% for m in r.rencontres %}
+            <tr>
+              {% if m.bye %}
+                <td>{{ m.pseudo_a }}</td>
+                <td colspan="1"><em>exempt (bye) — victoire</em></td>
+              {% else %}
+                <td>{{ m.pseudo_a }} <span class="palmares-val">vs</span> {{ m.pseudo_b }}</td>
+                <td>
+                  <select name="res_{{ m.id_rencontre }}">
+                    <option value="" {{ 'selected' if not m.resultat else '' }}>— à jouer —</option>
+                    <option value="a" {{ 'selected' if m.resultat == 'a' else '' }}>{{ m.pseudo_a }} gagne</option>
+                    <option value="nul" {{ 'selected' if m.resultat == 'nul' else '' }}>match nul</option>
+                    <option value="b" {{ 'selected' if m.resultat == 'b' else '' }}>{{ m.pseudo_b }} gagne</option>
+                  </select>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit" class="bouton bouton-secondaire">Enregistrer la ronde {{ r.ronde }}</button>
+    </form>
+  </section>
+{% endfor %}
+
+<p class="lien-fiche">
+  <a class="lien" href="/tournoi/{{ t.id_tournoi }}">Voir la page publique</a>
+  &nbsp;·&nbsp;
+  <a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Retour à la gestion</a>
+</p>
+{% endblock %}

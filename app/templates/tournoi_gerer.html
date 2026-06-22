@@ -63,11 +63,15 @@
               {% endfor %}
             </select>
           </div>
+          <div class="champ">
+            <label for="nb_rondes">Nombre de rondes <small>(ronde suisse uniquement)</small></label>
+            <input type="number" id="nb_rondes" name="nb_rondes" min="1" value="3">
+          </div>
           <button class="bouton bouton-principal" type="submit">Lancer</button>
         </form>
         <p class="stats-note">
-          Le mode se choisit au lancement. Élimination directe et ronde suisse
-          seront ajoutées prochainement.
+          Le mode se choisit au lancement. L'élimination directe sera ajoutée
+          prochainement.
         </p>
       {% else %}
         <p class="stats-note">Ajoutez au moins un participant pour pouvoir lancer.</p>
@@ -78,6 +82,12 @@
       <p class="lien-fiche">
         <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/scores">
           Saisir les scores</a>
+      </p>
+    {% endif %}
+    {% if t.etat in ("lance", "termine") and t.mode_scoring == "ronde_suisse" %}
+      <p class="lien-fiche">
+        <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/rondes">
+          Gérer les rondes et les résultats</a>
       </p>
     {% endif %}
   </section>
