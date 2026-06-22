@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titre %}Inscription — {{ t.nom }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>S'inscrire</h1>
+  <p class="dispo-titre">{{ t.nom }}{% if t.date_heure %} · {{ t.date_heure | dt_local }}{% endif %}</p>
+
+  {% if erreur %}
+    <div class="resultat resultat-attention"><p>{{ erreur }}</p></div>
+  {% endif %}
+
+  <form method="post" action="/tournoi/{{ t.id_tournoi }}/inscription" class="recherche-form">
+    <div class="champ">
+      <label for="pseudo">Pseudo</label>
+      <input type="text" id="pseudo" name="pseudo" maxlength="40" required
+             placeholder="Le nom qui sera affiché">
+    </div>
+    <button type="submit" class="bouton bouton-principal">M'inscrire</button>
+  </form>
+
+  <p class="stats-note">
+    Aucune adresse e-mail n'est demandée ni conservée. Après inscription, un
+    <strong>code de désinscription</strong> vous sera affiché : notez-le pour
+    pouvoir vous désinscrire. Évitez d'utiliser votre vrai nom complet comme
+    pseudo si vous ne le souhaitez pas.
+  </p>
+  <p class="lien-fiche"><a class="lien" href="/tournoi/{{ t.id_tournoi }}">← Retour au tournoi</a></p>
+</section>
+{% endblock %}

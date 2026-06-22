@@ -38,6 +38,8 @@ from app import auth
 from app.db import get_connection, init_db
 from app.routes import acces, admin, catalogue, pret, scanner, stats
 from app.templating import templates
+from app.tournoi import routes as tournoi_routes
+from app.tournoi.db import init_db as init_tournoi_db
 
 # Répertoire du paquet `app/`, pour localiser le dossier static/.
 BASE_DIR = Path(__file__).resolve().parent
@@ -58,6 +60,7 @@ app.include_router(scanner.router)     # /scanner                 (bénévole)
 app.include_router(stats.router)       # /stats                   (public)
 app.include_router(acces.router)       # /acces                   (activation)
 app.include_router(admin.router)       # /admin                   (mot de passe)
+app.include_router(tournoi_routes.router)  # /tournois, /tournoi/* (module tournois)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -94,6 +97,9 @@ async def gestion_erreur(request, exc: Exception):
 # S'assure que le schéma existe / est à jour au démarrage (idempotent). Crée les
 # tables manquantes sur une base déjà existante (ex. nouvelle table `parametres`).
 init_db()
+# Base SÉPARÉE du module tournois (data/tournoi.db). Indépendante de la base de
+# prêt : son init est distinct mais lui aussi idempotent.
+init_tournoi_db()
 
 # Garde-fou de déploiement : si aucun jeton n'est en vigueur, les écrans
 # bénévole sont ouverts à tous. On le signale fort dans les logs au démarrage.

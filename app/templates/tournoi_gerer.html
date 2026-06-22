@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block titre %}Gérer — {{ t.nom if t else "Tournoi inconnu" }}{% endblock %}
+
+{% block contenu %}
+{% if t is none %}
+  <section class="carte">
+    <h1>Tournoi inconnu</h1>
+    <p><a class="lien" href="/tournois">Retour aux tournois</a></p>
+  </section>
+{% else %}
+  <section class="carte">
+    <h1>{{ t.nom }}</h1>
+    <p class="etat {{ 'etat-dispo' if t.etat == 'inscriptions' else 'etat-sorti' if t.etat in ('lance','termine') else '' }}">
+      État : {{ t.etat }}</p>
+
+    <dl class="caracteristiques">
+      {% if t.jeu %}<dt>Jeu</dt><dd>{{ t.jeu }}</dd>{% endif %}
+      {% if t.date_heure %}<dt>Début</dt><dd>{{ t.date_heure | dt_local }}</dd>{% endif %}
+      {% if t.duree_min %}<dt>Durée</dt><dd>{{ t.duree_min }} min</dd>{% endif %}
+      {% if t.emplacement %}<dt>Lieu</dt><dd>{{ t.emplacement }}</dd>{% endif %}
+      <dt>Places</dt><dd>{% if t.nb_places %}{{ t.nb_places }}{% else %}illimité{% endif %}</dd>
+      <dt>Inscription en ligne</dt><dd>{{ "oui" if t.inscription_en_ligne else "non" }}</dd>
+    </dl>
+
+    <p class="lien-fiche">
+      <a class="lien" href="/tournoi/{{ t.id_tournoi }}/editer">Modifier les infos</a>
+      &nbsp;·&nbsp;
+      <a class="lien" href="/tournoi/{{ t.id_tournoi }}">Voir la page publique</a>
+    </p>
+  </section>
+
+  {# --- Transitions d'état --- #}
+  <section class="carte">
+    <h2>État du tournoi</h2>
+    {% if "inscriptions" in transitions %}
+      <form method="post" action="/tournoi/{{ t.id_tournoi }}/etat">
+        <input type="hidden" name="etat" value="inscriptions">
+        <button class="bouton bouton-principal" type="submit">Ouvrir les inscriptions</button>
+      </form>
+    {% endif %}
+    {% if "brouillon" in transitions %}
+      <form method="post" action="/tournoi/{{ t.id_tournoi }}/etat">
+        <input type="hidden" name="etat" value="brouillon">
+        <button class="bouton bouton-secondaire" type="submit">Fermer les inscriptions (brouillon)</button>
+      </form>
+    {% endif %}
+    {% if "termine" in transitions %}
+      <form method="post" action="/tournoi/{{ t.id_tournoi }}/etat">
+        <input type="hidden" name="etat" value="termine">
+        <button class="bouton bouton-secondaire" type="submit">Terminer le tournoi</button>
+      </form>
+    {% endif %}
+    <p class="stats-note">
+      Le lancement avec un mode de scoring (high score, élimination directe,
+      ronde suisse) et la saisie des résultats seront ajoutés à l'étape suivante.
+    </p>
+  </section>
+
+  {# --- Participants --- #}
+  <section class="carte">
+    <h2>Participants ({{ participants | length }}{% if t.nb_places %} / {{ t.nb_places }}{% endif %})</h2>
+    {% if participants %}
+      <ul class="catalogue-liste">
+        {% for p in participants %}
+          <li class="jeu">
+            <span class="jeu-nom">{{ p.pseudo }}</span>
+            <form method="post"
+                  action="/tournoi/{{ t.id_tournoi }}/participant/{{ p.id_inscription }}/supprimer">
+              <button class="lien" type="submit"
+                      onclick="return confirm('Retirer {{ p.pseudo }} ?');">Retirer</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p><em>Aucun participant.</em></p>
+    {% endif %}
+
+    <form method="post" action="/tournoi/{{ t.id_tournoi }}/participant" class="recherche-form">
+      <div class="champ">
+        <label for="pseudo">Ajouter un participant</label>
+        <input type="text" id="pseudo" name="pseudo" maxlength="40" required
+               placeholder="Pseudo">
+      </div>
+      <button type="submit" class="bouton bouton-secondaire">Ajouter</button>
+    </form>
+  </section>
+
+  {# --- Suppression (double confirmation) --- #}
+  <section class="carte">
+    <h2>Zone de danger</h2>
+    <p><a class="lien" href="/tournoi/{{ t.id_tournoi }}/supprimer">Supprimer ce tournoi…</a></p>
+  </section>
+{% endif %}
+{% endblock %}

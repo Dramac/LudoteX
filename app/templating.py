@@ -24,7 +24,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
-from app import auth
+from app import auth, services
 
 # Dossier contenant les gabarits HTML (app/templates/).
 BASE_DIR = Path(__file__).resolve().parent
@@ -34,3 +34,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # l'appareil a activé le jeton bénévole (cookie valide). Sert à n'afficher le
 # menu bénévole qu'aux appareils autorisés.
 templates.env.globals["est_benevole"] = auth.acces_valide
+
+# Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
+# Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).
+templates.env.filters["dt_local"] = services.format_local
