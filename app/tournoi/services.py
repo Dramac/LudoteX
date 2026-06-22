@@ -41,11 +41,18 @@ TRANSITIONS = {
     "termine": set(),
 }
 
-# Modes de scoring disponibles (conception §6). Implémentés un par un : pour
-# l'instant seul 'high_score'. Les libellés servent à l'affichage et aux menus.
+# Modes de scoring disponibles (conception §6). Implémentés un par un. Les
+# libellés servent à l'affichage et aux menus.
 MODES_SCORING = {
     "high_score": "High score (points cumulés)",
+    "ronde_suisse": "Ronde suisse",
 }
+
+# Points attribués par résultat en ronde suisse (barème type échecs/jeux).
+POINTS_VICTOIRE = 1.0
+POINTS_NUL = 0.5
+POINTS_DEFAITE = 0.0
+POINTS_BYE = 1.0   # un bye (exempt) vaut une victoire
 
 
 # ===========================================================================
@@ -358,14 +365,17 @@ def desinscrire(conn: sqlite3.Connection, code: str) -> dict:
 # Lancement + modes de scoring
 # ===========================================================================
 def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
-                   mode_scoring: str) -> dict:
+                   mode_scoring: str, nb_rondes: int | None = None) -> dict:
     """
     Lance un tournoi : passe de 'inscriptions' à 'lance' et fixe le mode de
     scoring, puis initialise les structures propres au mode.
 
+    Args:
+        nb_rondes: requis pour 'ronde_suisse' (>= 1) ; ignoré pour 'high_score'.
+
     Returns:
         {"ok": True} en cas de succès ; sinon {"ok": False, "raison":
-        "introuvable"|"mode_inconnu"|"etat"|"sans_participant"}.
+        "introuvable"|"mode_inconnu"|"etat"|"sans_participant"|"pas_assez"|"nb_rondes"}.
     """
     t = get_tournoi(conn, id_tournoi)
     if t is None:
@@ -374,15 +384,25 @@ def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
         return {"ok": False, "raison": "mode_inconnu"}
     if "lance" not in TRANSITIONS.get(t["etat"], set()):
         return {"ok": False, "raison": "etat"}
-    if compter_inscriptions(conn, id_tournoi) == 0:
+    nb_inscrits = compter_inscriptions(conn, id_tournoi)
+    if nb_inscrits == 0:
         return {"ok": False, "raison": "sans_participant"}
 
+    if mode_scoring == "ronde_suisse":
+        if nb_inscrits < 2:
+            return {"ok": False, "raison": "pas_assez"}
+        if not nb_rondes or nb_rondes < 1:
+            return {"ok": False, "raison": "nb_rondes"}
+
     conn.execute(
-        "UPDATE tournois SET etat = 'lance', mode_scoring = ? WHERE id_tournoi = ?",
-        (mode_scoring, id_tournoi),
+        "UPDATE tournois SET etat = 'lance', mode_scoring = ?, nb_rondes = ? "
+        "WHERE id_tournoi = ?",
+        (mode_scoring, nb_rondes if mode_scoring == "ronde_suisse" else None, id_tournoi),
     )
     if mode_scoring == "high_score":
         _init_high_score(conn, id_tournoi)
+    elif mode_scoring == "ronde_suisse":
+        _generer_ronde_suisse(conn, id_tournoi, 1)
     conn.commit()
     return {"ok": True}
 
@@ -485,4 +505,269 @@ def classement_high_score(conn: sqlite3.Connection, id_tournoi: int) -> list[dic
         rang = position if score != precedent else classement[-1]["rang"]
         precedent = score
         classement.append({"rang": rang, "pseudo": r["pseudo"], "score": score})
+    return classement
+
+
+# --- Ronde suisse ----------------------------------------------------------
+# Représentation : une ligne `rencontres` par match, avec `ronde` = n° de ronde,
+# `participant_a`/`participant_b` (B NULL = bye), `resultat` ∈ {'a','b','nul'}.
+# Le classement agrège les points (victoire/nul/bye) sur toutes les rondes.
+RESULTATS = {"a", "b", "nul"}
+
+
+def format_points(points: float) -> str:
+    """Affiche un total de points sans .0 superflu : 3.0 -> « 3 », 2.5 -> « 2,5 »."""
+    if points == int(points):
+        return str(int(points))
+    return f"{points:.1f}".replace(".", ",")
+
+
+def _participants(conn: sqlite3.Connection, id_tournoi: int) -> dict[int, str]:
+    """{id_inscription: pseudo} des participants du tournoi."""
+    return {
+        r["id_inscription"]: r["pseudo"]
+        for r in conn.execute(
+            "SELECT id_inscription, pseudo FROM inscriptions WHERE id_tournoi = ? "
+            "ORDER BY id_inscription",
+            (id_tournoi,),
+        )
+    }
+
+
+def points_suisse(conn: sqlite3.Connection, id_tournoi: int) -> dict[int, float]:
+    """Points cumulés par participant (victoire 1, nul 0,5, bye 1)."""
+    pts: dict[int, float] = {pid: 0.0 for pid in _participants(conn, id_tournoi)}
+    for r in conn.execute(
+        "SELECT participant_a, participant_b, resultat FROM rencontres WHERE id_tournoi = ?",
+        (id_tournoi,),
+    ):
+        a, b, res = r["participant_a"], r["participant_b"], r["resultat"]
+        if b is None:                      # bye : A marque comme une victoire
+            if a in pts:
+                pts[a] += POINTS_BYE
+            continue
+        if res == "a":
+            if a in pts: pts[a] += POINTS_VICTOIRE
+        elif res == "b":
+            if b in pts: pts[b] += POINTS_VICTOIRE
+        elif res == "nul":
+            if a in pts: pts[a] += POINTS_NUL
+            if b in pts: pts[b] += POINTS_NUL
+    return pts
+
+
+def _adversaires_passes(conn: sqlite3.Connection, id_tournoi: int) -> dict[int, set]:
+    """{id_inscription: {adversaires déjà rencontrés}} (byes exclus)."""
+    adv: dict[int, set] = {pid: set() for pid in _participants(conn, id_tournoi)}
+    for r in conn.execute(
+        "SELECT participant_a, participant_b FROM rencontres "
+        "WHERE id_tournoi = ? AND participant_b IS NOT NULL",
+        (id_tournoi,),
+    ):
+        a, b = r["participant_a"], r["participant_b"]
+        if a in adv and b is not None:
+            adv[a].add(b)
+        if b in adv and a is not None:
+            adv[b].add(a)
+    return adv
+
+
+def _ont_eu_un_bye(conn: sqlite3.Connection, id_tournoi: int) -> set:
+    """Ensemble des participants ayant déjà bénéficié d'un bye."""
+    return {
+        r["participant_a"]
+        for r in conn.execute(
+            "SELECT participant_a FROM rencontres "
+            "WHERE id_tournoi = ? AND participant_b IS NULL",
+            (id_tournoi,),
+        )
+        if r["participant_a"] is not None
+    }
+
+
+def ronde_courante(conn: sqlite3.Connection, id_tournoi: int) -> int:
+    """Numéro de la dernière ronde générée (0 si aucune)."""
+    row = conn.execute(
+        "SELECT MAX(ronde) FROM rencontres WHERE id_tournoi = ?", (id_tournoi,)
+    ).fetchone()
+    return row[0] or 0
+
+
+def ronde_complete(conn: sqlite3.Connection, id_tournoi: int, ronde: int) -> bool:
+    """True si toutes les rencontres (hors byes) de la ronde ont un résultat saisi."""
+    n = conn.execute(
+        "SELECT COUNT(*) FROM rencontres "
+        "WHERE id_tournoi = ? AND ronde = ? AND participant_b IS NOT NULL "
+        "AND resultat IS NULL",
+        (id_tournoi, ronde),
+    ).fetchone()[0]
+    return n == 0
+
+
+def _apparier(ordre: list[int], adversaires: dict[int, set]) -> list[tuple[int, int]]:
+    """
+    Apparie une liste ORDONNÉE (par classement) en évitant les revanches.
+
+    Algorithme glouton : pour chaque joueur encore libre, on cherche le suivant
+    libre qu'il n'a pas déjà affronté ; à défaut (tous déjà joués), on accepte
+    une revanche avec le suivant libre (repli). Suppose un effectif pair.
+    """
+    paires, utilises = [], set()
+    for i, p in enumerate(ordre):
+        if p in utilises:
+            continue
+        partenaire = None
+        for q in ordre[i + 1:]:
+            if q not in utilises and q not in adversaires.get(p, set()):
+                partenaire = q
+                break
+        if partenaire is None:  # repli : revanche autorisée faute de mieux
+            for q in ordre[i + 1:]:
+                if q not in utilises:
+                    partenaire = q
+                    break
+        if partenaire is not None:
+            utilises.add(p)
+            utilises.add(partenaire)
+            paires.append((p, partenaire))
+    return paires
+
+
+def _generer_ronde_suisse(conn: sqlite3.Connection, id_tournoi: int, ronde: int) -> int:
+    """
+    Génère les rencontres d'une ronde : tri par points décroissants, bye au
+    joueur le moins bien classé n'en ayant pas encore eu, puis appariement.
+    Renvoie le nombre de rencontres créées (byes inclus).
+    """
+    participants = _participants(conn, id_tournoi)
+    pts = points_suisse(conn, id_tournoi)
+    # Ordre : points décroissants, puis id croissant (déterministe ; en ronde 1
+    # tous les points valent 0 -> ordre d'inscription).
+    ordre = sorted(participants, key=lambda pid: (-pts.get(pid, 0.0), pid))
+
+    bye_player = None
+    if len(ordre) % 2 == 1:
+        deja_bye = _ont_eu_un_bye(conn, id_tournoi)
+        # Le moins bien classé sans bye antérieur (sinon, le tout dernier).
+        for pid in reversed(ordre):
+            if pid not in deja_bye:
+                bye_player = pid
+                break
+        if bye_player is None:
+            bye_player = ordre[-1]
+        ordre = [pid for pid in ordre if pid != bye_player]
+
+    paires = _apparier(ordre, _adversaires_passes(conn, id_tournoi))
+
+    cree = 0
+    for a, b in paires:
+        conn.execute(
+            "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b) "
+            "VALUES (?, ?, ?, ?)",
+            (id_tournoi, ronde, a, b),
+        )
+        cree += 1
+    if bye_player is not None:
+        # Bye = victoire automatique : resultat 'a', participant_b NULL.
+        conn.execute(
+            "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b, resultat) "
+            "VALUES (?, ?, ?, NULL, 'a')",
+            (id_tournoi, ronde, bye_player),
+        )
+        cree += 1
+    return cree
+
+
+def rencontres_de_ronde(conn: sqlite3.Connection, id_tournoi: int,
+                        ronde: int) -> list[dict]:
+    """Rencontres d'une ronde, avec pseudos résolus (B None = bye)."""
+    noms = _participants(conn, id_tournoi)
+    lignes = []
+    for r in conn.execute(
+        "SELECT * FROM rencontres WHERE id_tournoi = ? AND ronde = ? "
+        "ORDER BY id_rencontre",
+        (id_tournoi, ronde),
+    ):
+        lignes.append({
+            "id_rencontre": r["id_rencontre"],
+            "participant_a": r["participant_a"],
+            "participant_b": r["participant_b"],
+            "pseudo_a": noms.get(r["participant_a"], "?"),
+            "pseudo_b": noms.get(r["participant_b"]) if r["participant_b"] else None,
+            "resultat": r["resultat"],
+            "bye": r["participant_b"] is None,
+        })
+    return lignes
+
+
+def toutes_les_rondes(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
+    """Liste [{ronde, rencontres, complete}] pour toutes les rondes générées."""
+    return [
+        {"ronde": n,
+         "rencontres": rencontres_de_ronde(conn, id_tournoi, n),
+         "complete": ronde_complete(conn, id_tournoi, n)}
+        for n in range(1, ronde_courante(conn, id_tournoi) + 1)
+    ]
+
+
+def enregistrer_resultats_suisse(conn: sqlite3.Connection, id_tournoi: int,
+                                 ronde: int, resultats: dict[int, str | None]) -> None:
+    """
+    Enregistre les résultats d'une ronde. `resultats` mappe id_rencontre ->
+    'a'/'b'/'nul' (ou None pour effacer). Les byes ne sont pas modifiables.
+    """
+    for id_rencontre, res in resultats.items():
+        valeur = res if res in RESULTATS else None
+        conn.execute(
+            "UPDATE rencontres SET resultat = ? "
+            "WHERE id_rencontre = ? AND id_tournoi = ? AND ronde = ? "
+            "AND participant_b IS NOT NULL",
+            (valeur, id_rencontre, id_tournoi, ronde),
+        )
+    conn.commit()
+
+
+def generer_ronde_suivante(conn: sqlite3.Connection, id_tournoi: int) -> dict:
+    """
+    Génère la ronde suivante si la ronde courante est complète et que le nombre
+    de rondes prévu n'est pas atteint.
+
+    Returns:
+        {"ok": True, "ronde": n} ; sinon {"ok": False, "raison":
+        "mode"|"incomplete"|"terminee"}.
+    """
+    t = get_tournoi(conn, id_tournoi)
+    if t is None or t["mode_scoring"] != "ronde_suisse":
+        return {"ok": False, "raison": "mode"}
+    courante = ronde_courante(conn, id_tournoi)
+    if courante and not ronde_complete(conn, id_tournoi, courante):
+        return {"ok": False, "raison": "incomplete"}
+    if t["nb_rondes"] and courante >= t["nb_rondes"]:
+        return {"ok": False, "raison": "terminee"}
+    suivante = courante + 1
+    _generer_ronde_suisse(conn, id_tournoi, suivante)
+    conn.commit()
+    return {"ok": True, "ronde": suivante}
+
+
+def classement_suisse(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
+    """
+    Classement par points décroissants (ranking sportif pour les ex æquo).
+
+    Chaque dict : {rang, pseudo, points, points_txt}.
+    """
+    noms = _participants(conn, id_tournoi)
+    pts = points_suisse(conn, id_tournoi)
+    ordonne = sorted(noms, key=lambda pid: (-pts.get(pid, 0.0),
+                                            noms[pid].lower()))
+    classement, position, precedent = [], 0, None
+    for pid in ordonne:
+        p = pts.get(pid, 0.0)
+        position += 1
+        rang = position if p != precedent else classement[-1]["rang"]
+        precedent = p
+        classement.append({
+            "rang": rang, "pseudo": noms[pid],
+            "points": p, "points_txt": format_points(p),
+        })
     return classement

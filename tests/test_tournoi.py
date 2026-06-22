@@ -165,6 +165,132 @@ def test_participant_ajoute_apres_lancement_a_une_ligne(conn):
     assert "Tardif" in pseudos
 
 
+# --- Ronde suisse ---
+def _tournoi_suisse(conn, pseudos, nb_rondes):
+    tid = services.creer_tournoi(conn, "Suisse")
+    services.changer_etat(conn, tid, "inscriptions")
+    for p in pseudos:
+        services.ajouter_participant(conn, tid, p)
+    res = services.lancer_tournoi(conn, tid, "ronde_suisse", nb_rondes)
+    assert res["ok"]
+    return tid
+
+
+def _ids(conn, tid):
+    return {l: i for i, l in
+            ((r["id_inscription"], r["pseudo"])
+             for r in conn.execute(
+                 "SELECT id_inscription, pseudo FROM inscriptions WHERE id_tournoi=?", (tid,)))}
+
+
+def _jouer_ronde(conn, tid, ronde, gagnant="a"):
+    """Saisit un résultat (par défaut A gagne) pour chaque rencontre non-bye."""
+    res = {}
+    for m in services.rencontres_de_ronde(conn, tid, ronde):
+        if not m["bye"]:
+            res[m["id_rencontre"]] = gagnant
+    services.enregistrer_resultats_suisse(conn, tid, ronde, res)
+
+
+def test_lancer_suisse_validations(conn):
+    tid = services.creer_tournoi(conn, "T")
+    services.changer_etat(conn, tid, "inscriptions")
+    services.ajouter_participant(conn, tid, "Solo")
+    assert services.lancer_tournoi(conn, tid, "ronde_suisse", 3)["raison"] == "pas_assez"
+    services.ajouter_participant(conn, tid, "Duo")
+    assert services.lancer_tournoi(conn, tid, "ronde_suisse", 0)["raison"] == "nb_rondes"
+    assert services.lancer_tournoi(conn, tid, "ronde_suisse", None)["raison"] == "nb_rondes"
+
+
+def test_suisse_ronde1_pair_sans_bye(conn):
+    tid = _tournoi_suisse(conn, ["A", "B", "C", "D"], 3)
+    r1 = services.rencontres_de_ronde(conn, tid, 1)
+    assert len(r1) == 2 and all(not m["bye"] for m in r1)
+
+
+def test_suisse_bye_si_impair_et_rotation(conn):
+    tid = _tournoi_suisse(conn, ["A", "B", "C"], 3)
+    byes = []
+    for ronde in range(1, 4):
+        rencs = services.rencontres_de_ronde(conn, tid, ronde)
+        bye = [m["pseudo_a"] for m in rencs if m["bye"]]
+        assert len(bye) == 1            # exactement un bye par ronde (impair)
+        byes.append(bye[0])
+        _jouer_ronde(conn, tid, ronde)
+        if ronde < 3:
+            assert services.generer_ronde_suivante(conn, tid)["ok"]
+    # Chaque joueur a eu le bye exactement une fois (rotation).
+    assert sorted(byes) == ["A", "B", "C"]
+
+
+def test_suisse_pas_de_revanche(conn):
+    tid = _tournoi_suisse(conn, ["A", "B", "C", "D"], 3)
+    paires_vues = set()
+    for ronde in range(1, 4):
+        for m in services.rencontres_de_ronde(conn, tid, ronde):
+            if not m["bye"]:
+                paire = frozenset((m["participant_a"], m["participant_b"]))
+                assert paire not in paires_vues       # jamais deux fois
+                paires_vues.add(paire)
+        _jouer_ronde(conn, tid, ronde)
+        if ronde < 3:
+            services.generer_ronde_suivante(conn, tid)
+    # 4 joueurs sur 3 rondes = round robin complet : 6 paires distinctes.
+    assert len(paires_vues) == 6
+
+
+def test_suisse_generation_refusee_si_incomplete(conn):
+    tid = _tournoi_suisse(conn, ["A", "B", "C", "D"], 3)
+    # Ronde 1 non saisie -> refus.
+    assert services.generer_ronde_suivante(conn, tid)["raison"] == "incomplete"
+    _jouer_ronde(conn, tid, 1)
+    assert services.generer_ronde_suivante(conn, tid)["ok"]
+
+
+def test_suisse_bye_donne_un_point_et_classement(conn):
+    tid = _tournoi_suisse(conn, ["A", "B", "C"], 1)
+    # Ronde 1 : un match (A vs B p.ex.) + un bye. A gagne son match.
+    _jouer_ronde(conn, tid, 1, gagnant="a")
+    pts = services.points_suisse(conn, tid)
+    # Tous les points totalisent : 1 (vainqueur) + 0 (perdant) + 1 (bye) = 2.
+    assert sum(pts.values()) == 2.0
+    cl = services.classement_suisse(conn, tid)
+    assert cl[0]["rang"] == 1
+    # Le dernier a 0 point.
+    assert cl[-1]["points"] == 0.0
+
+
+def test_suisse_route_complet(client):
+    r = client.post("/tournoi/nouveau", data={"nom": "Suisse Route"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    for p in ("A", "B", "C", "D"):
+        client.post(f"/tournoi/{tid}/participant", data={"pseudo": p})
+
+    lance = client.post(f"/tournoi/{tid}/lancer",
+                        data={"mode_scoring": "ronde_suisse", "nb_rondes": "2"},
+                        follow_redirects=False)
+    assert lance.status_code == 303 and lance.headers["location"].endswith("/rondes")
+    assert "Ronde 1" in client.get(f"/tournoi/{tid}/rondes").text
+
+    # Saisie des résultats de la ronde 1 (champs res_<id>).
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    rencs = [row["id_rencontre"] for row in c.execute(
+        "SELECT id_rencontre FROM rencontres WHERE id_tournoi=? AND ronde=1 "
+        "AND participant_b IS NOT NULL", (tid,))]
+    c.close()
+    client.post(f"/tournoi/{tid}/rondes/1/resultats",
+                data={f"res_{rid}": "a" for rid in rencs})
+
+    # Génération de la ronde 2.
+    suiv = client.post(f"/tournoi/{tid}/rondes/suivante")
+    assert "Ronde 2" in suiv.text
+    # Le classement apparaît sur la page publique.
+    assert "Classement" in client.get(f"/tournoi/{tid}").text
+
+
 # ===========================================================================
 # Routes — TestClient avec les DEUX bases temporaires
 # ===========================================================================

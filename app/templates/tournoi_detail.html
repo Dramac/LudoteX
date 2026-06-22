@@ -53,7 +53,10 @@
               <tr>
                 <td>{{ c.rang if c.rang is not none else "—" }}</td>
                 <td>{{ c.pseudo }}</td>
-                <td>{{ c.score if c.score is not none else "—" }}</td>
+                <td>
+                  {%- if t.mode_scoring == "ronde_suisse" -%}{{ c.points_txt }}
+                  {%- else -%}{{ c.score if c.score is not none else "—" }}{%- endif -%}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -62,6 +65,33 @@
         <p><em>Aucun participant.</em></p>
       {% endif %}
     </section>
+
+    {% if rondes %}
+      {% for r in rondes | reverse %}
+        <section class="carte">
+          <h2>Ronde {{ r.ronde }}</h2>
+          <table class="detail">
+            <tbody>
+              {% for m in r.rencontres %}
+                <tr>
+                  {% if m.bye %}
+                    <td>{{ m.pseudo_a }}</td><td><em>exempt (bye)</em></td>
+                  {% else %}
+                    <td>{{ m.pseudo_a }} <span class="palmares-val">vs</span> {{ m.pseudo_b }}</td>
+                    <td>
+                      {% if m.resultat == "a" %}{{ m.pseudo_a }}
+                      {% elif m.resultat == "b" %}{{ m.pseudo_b }}
+                      {% elif m.resultat == "nul" %}nul
+                      {% else %}—{% endif %}
+                    </td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </section>
+      {% endfor %}
+    {% endif %}
   {% else %}
     <section class="carte">
       <h2>Participants</h2>

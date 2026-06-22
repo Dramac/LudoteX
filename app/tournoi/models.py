@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tournois (
     inscription_en_ligne  INTEGER NOT NULL DEFAULT 1,    -- 0/1 : inscription publique en ligne
     etat                  TEXT NOT NULL DEFAULT 'brouillon', -- brouillon/inscriptions/lance/termine
     mode_scoring          TEXT,                          -- NULL jusqu'au lancement (étape scoring)
+    nb_rondes             INTEGER,                       -- nombre de rondes (ronde suisse) ; NULL sinon
     bo3                   INTEGER NOT NULL DEFAULT 0,    -- 0/1 : best of 3 par rencontre
     restriction_nombre    INTEGER,                       -- plafond éventuel (arbre)
     date_creation         TEXT NOT NULL                  -- horodatage de création (ISO 8601 UTC)

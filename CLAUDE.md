@@ -41,13 +41,27 @@ fin sans rang). Routes bénévole `POST /tournoi/{id}/lancer` (menu de modes) et
 + lien scores) et `tournoi_detail.html` (classement) mis à jour.
 `MODES_SCORING` = {`high_score`} pour l'instant. **Suite globale : 57 tests verts.**
 
-**Prochaines étapes : modes de scoring restants**, sur la même table `rencontres` :
-(2) **élimination directe** (arbre, byes si pas une puissance de 2, option BO3),
-(3) **ronde suisse simple** (appariement par score, sans rejouer, bye si impair,
-nb de rondes fixé). Chaque mode = lancement + génération des appariements +
-saisie des résultats par ronde. Puis phase 2 (double élimination, e-mails
-robustes, sauvegarde externe). Points CA encore ouverts : voir §11 de
-`docs/conception-tournois.md`.
+**Mode de scoring RONDE SUISSE : FAIT.** Colonne `tournois.nb_rondes` (schéma +
+migration `app/tournoi/db.py`). `lancer_tournoi(conn, id, mode, nb_rondes)` gère
+le suisse (refus si < 2 participants → `pas_assez`, ou `nb_rondes` manquant) et
+génère la ronde 1. Barème `POINTS_VICTOIRE=1 / NUL=0,5 / BYE=1`. Algorithme
+(`services`) : `points_suisse`, `_adversaires_passes`, `_ont_eu_un_bye`,
+`_apparier` (glouton, tri par points décroissants, **évite les revanches** avec
+repli si inévitable), `_generer_ronde_suisse` (**bye au moins bien classé sans
+bye antérieur**, victoire auto), `ronde_courante`/`ronde_complete`,
+`enregistrer_resultats_suisse` (résultat ∈ {a,b,nul} ; byes non modifiables),
+`generer_ronde_suivante` (refus si ronde incomplète/terminée),
+`classement_suisse` (ranking sportif). Routes bénévole : lancement avec
+`nb_rondes`, `GET /tournoi/{id}/rondes` (écran rondes), `POST .../rondes/{r}/resultats`,
+`POST .../rondes/suivante`. Gabarit `tournoi_rondes.html` ; `tournoi_detail.html`
+affiche classement + rondes en lecture publique ; `tournoi_gerer.html` adapté.
+**Suite globale : 64 tests verts** (cas limites vérifiés : revanche forcée si
+rondes > round-robin, rotation des byes).
+
+**Reste en phase 1 : élimination directe** (arbre, byes si pas une puissance de 2,
+option BO3) — lancement + génération de l'arbre + saisie des résultats par tour.
+Puis phase 2 (double élimination, e-mails robustes, sauvegarde externe). Points
+CA encore ouverts : voir §11 de `docs/conception-tournois.md`.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,

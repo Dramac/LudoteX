@@ -106,27 +106,27 @@ def detail(request: Request, id_tournoi: int):
     fois le tournoi lancé/terminé en mode high score, le CLASSEMENT remplace la
     simple liste des participants.
     """
+    participants, ouverte, restantes, classement, rondes = [], False, None, None, None
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
-        if t is None:
-            participants, ouverte, restantes, classement = [], False, None, None
-        else:
+        if t is not None:
             participants = services.lister_inscriptions(conn, id_tournoi)
             ouverte = services.inscription_ouverte(conn, t)
             restantes = services.places_restantes(conn, t)
-            classement = (
-                services.classement_high_score(conn, id_tournoi)
-                if t["mode_scoring"] == "high_score" and t["etat"] in ("lance", "termine")
-                else None
-            )
+            lance = t["etat"] in ("lance", "termine")
+            if lance and t["mode_scoring"] == "high_score":
+                classement = services.classement_high_score(conn, id_tournoi)
+            elif lance and t["mode_scoring"] == "ronde_suisse":
+                classement = services.classement_suisse(conn, id_tournoi)
+                rondes = services.toutes_les_rondes(conn, id_tournoi)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "tournoi_detail.html",
         {"t": t, "participants": participants,
          "inscription_ouverte": ouverte, "places_restantes": restantes,
-         "classement": classement},
+         "classement": classement, "rondes": rondes},
         status_code=200 if t else 404,
     )
 
@@ -388,18 +388,23 @@ def supprimer_action(request: Request, id_tournoi: int,
 # ===========================================================================
 @router.post("/tournoi/{id_tournoi:int}/lancer")
 def lancer_action(request: Request, id_tournoi: int,
-                  _=Depends(exiger_jeton), mode_scoring: str = Form("")):
+                  _=Depends(exiger_jeton), mode_scoring: str = Form(""),
+                  nb_rondes: str = Form("")):
     """
-    Lance le tournoi avec le mode choisi. En cas de succès (high score), bascule
-    vers l'écran de saisie des scores ; sinon, revient à la gestion.
+    Lance le tournoi avec le mode choisi. En cas de succès, bascule vers l'écran
+    de saisie adapté (scores pour high score, rondes pour la ronde suisse) ;
+    sinon, revient à la gestion.
     """
+    mode = mode_scoring.strip()
     conn = get_connection()
     try:
-        res = services.lancer_tournoi(conn, id_tournoi, mode_scoring.strip())
+        res = services.lancer_tournoi(conn, id_tournoi, mode, _int_ou_none(nb_rondes))
     finally:
         conn.close()
-    if res.get("ok") and mode_scoring.strip() == "high_score":
+    if res.get("ok") and mode == "high_score":
         return RedirectResponse(f"/tournoi/{id_tournoi}/scores", status_code=303)
+    if res.get("ok") and mode == "ronde_suisse":
+        return RedirectResponse(f"/tournoi/{id_tournoi}/rondes", status_code=303)
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -452,3 +457,84 @@ async def scores_action(request: Request, id_tournoi: int, _=Depends(exiger_jeto
     return templates.TemplateResponse(
         request, "tournoi_scores.html", {"t": t, "lignes": lignes, "enregistre": True}
     )
+
+
+# --- Ronde suisse : écran des rondes -----------------------------------------
+def _contexte_rondes(conn, t, message=None) -> dict:
+    """Contexte commun de l'écran des rondes (rondes + classement + état)."""
+    id_tournoi = t["id_tournoi"]
+    courante = services.ronde_courante(conn, id_tournoi)
+    return {
+        "t": t,
+        "rondes": services.toutes_les_rondes(conn, id_tournoi),
+        "classement": services.classement_suisse(conn, id_tournoi),
+        "ronde_courante": courante,
+        "ronde_courante_complete": services.ronde_complete(conn, id_tournoi, courante) if courante else False,
+        "peut_generer": bool(t["nb_rondes"]) and courante < t["nb_rondes"],
+        "message": message,
+    }
+
+
+@router.get("/tournoi/{id_tournoi:int}/rondes")
+def rondes_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """Écran bénévole des rondes (saisie des résultats, génération, classement)."""
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t is None:
+            return RedirectResponse("/tournois", status_code=303)
+        if t["mode_scoring"] != "ronde_suisse":
+            return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
+        contexte = _contexte_rondes(conn, t)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "tournoi_rondes.html", contexte)
+
+
+@router.post("/tournoi/{id_tournoi:int}/rondes/{ronde:int}/resultats")
+async def rondes_resultats(request: Request, id_tournoi: int, ronde: int,
+                           _=Depends(exiger_jeton)):
+    """Enregistre les résultats d'une ronde (champs `res_<id_rencontre>`)."""
+    form = await request.form()
+    resultats: dict[int, str | None] = {}
+    for cle, valeur in form.items():
+        if not cle.startswith("res_"):
+            continue
+        try:
+            id_rencontre = int(cle.removeprefix("res_"))
+        except ValueError:
+            continue
+        resultats[id_rencontre] = (str(valeur).strip() or None)
+
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t is None:
+            return RedirectResponse("/tournois", status_code=303)
+        services.enregistrer_resultats_suisse(conn, id_tournoi, ronde, resultats)
+        contexte = _contexte_rondes(conn, t, message=("succes", "Résultats enregistrés."))
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "tournoi_rondes.html", contexte)
+
+
+@router.post("/tournoi/{id_tournoi:int}/rondes/suivante")
+def rondes_suivante(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """Génère la ronde suivante (si la courante est complète et qu'il en reste)."""
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t is None:
+            return RedirectResponse("/tournois", status_code=303)
+        res = services.generer_ronde_suivante(conn, id_tournoi)
+        messages = {
+            "incomplete": ("erreur", "Saisissez tous les résultats de la ronde en cours d'abord."),
+            "terminee": ("erreur", "Toutes les rondes prévues ont été générées."),
+            "mode": ("erreur", "Action indisponible."),
+        }
+        message = (("succes", f"Ronde {res['ronde']} générée.") if res.get("ok")
+                   else messages.get(res.get("raison")))
+        contexte = _contexte_rondes(conn, t, message=message)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "tournoi_rondes.html", contexte)
