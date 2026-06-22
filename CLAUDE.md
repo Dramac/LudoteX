@@ -4,6 +4,28 @@ Fichier de contexte relu à chaque session de développement. Le tenir à jour
 à la fin de chaque étape. La **conception fait foi dans `docs/specification.md`** ;
 ce fichier en est un résumé opérationnel, pas une source concurrente.
 
+## État du projet (passage de relais)
+
+**Brique de prêt : COMPLÈTE** — séquence §6 (points 1→10) faite, plus les
+évolutions backlog (tournoi côté prêt, durées, jeux sortis, clôture, expiration
+du jeton, menus, page d'aide), la gestion d'erreur (page 500 + logs) et les
+artefacts de déploiement (`deploy/` + `docs/deploiement.md`). 37 tests verts.
+Reste, côté Simon : exécuter le déploiement VPS, et imprimer les QR une fois le
+domaine figé.
+
+**Prochain chantier : module TOURNOIS** — à développer dans un **nouveau chat du
+même projet**. Tout est cadré dans **`docs/conception-tournois.md`** (module
+`app/tournoi/` intégré, **base SQLite séparée** `data/tournoi.db`, **mêmes jeton
+bénévole + mot de passe admin**, RGPD minimal : on stocke pseudo + code de
+désinscription, jamais l'e-mail). Phase 1 d'abord (tournois + inscription +
+high score + élimination directe + suisse simple) ; phase 2 ensuite (double
+élimination, e-mails, sauvegarde externe). Points encore à trancher par le CA :
+voir §11 de la note.
+
+Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
+prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
+points 1→8 déjà réalisés).
+
 ## Le projet
 
 Application web de **prêt de jeux de société** pour l'événement annuel d'une
