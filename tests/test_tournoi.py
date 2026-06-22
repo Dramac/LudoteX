@@ -260,6 +260,117 @@ def test_suisse_bye_donne_un_point_et_classement(conn):
     assert cl[-1]["points"] == 0.0
 
 
+# --- Élimination directe ---
+def _tournoi_elim(conn, pseudos):
+    tid = services.creer_tournoi(conn, "Elim")
+    services.changer_etat(conn, tid, "inscriptions")
+    for p in pseudos:
+        services.ajouter_participant(conn, tid, p)
+    assert services.lancer_tournoi(conn, tid, "elimination")["ok"]
+    return tid
+
+
+def _jouer_tour_elim(conn, tid, tour, gagnant="a"):
+    res = {m["id_rencontre"]: gagnant
+           for m in services.rencontres_de_ronde(conn, tid, tour) if not m["bye"]}
+    services.enregistrer_resultats_suisse(conn, tid, tour, res)
+
+
+def test_nb_tours_et_ordre_places():
+    assert services._nb_tours_elimination(2) == 1
+    assert services._nb_tours_elimination(4) == 2
+    assert services._nb_tours_elimination(5) == 3
+    assert services._nb_tours_elimination(8) == 3
+    assert services._nb_tours_elimination(9) == 4
+    assert services._ordre_places(4) == [1, 4, 2, 3]
+    assert services._ordre_places(8) == [1, 8, 4, 5, 2, 7, 3, 6]
+
+
+def test_elim_refus_un_seul(conn):
+    tid = services.creer_tournoi(conn, "T")
+    services.changer_etat(conn, tid, "inscriptions")
+    services.ajouter_participant(conn, tid, "Solo")
+    assert services.lancer_tournoi(conn, tid, "elimination")["raison"] == "pas_assez"
+
+
+def test_elim_puissance_de_deux(conn):
+    tid = _tournoi_elim(conn, ["A", "B", "C", "D"])
+    assert services.get_tournoi(conn, tid)["nb_rondes"] == 2
+    r1 = services.rencontres_de_ronde(conn, tid, 1)
+    assert len(r1) == 2 and all(not m["bye"] for m in r1)
+
+
+def test_elim_byes_si_non_puissance_de_deux(conn):
+    # 5 joueurs -> arbre de 8 -> 3 byes au 1er tour, 1 vrai match.
+    tid = _tournoi_elim(conn, ["A", "B", "C", "D", "E"])
+    assert services.get_tournoi(conn, tid)["nb_rondes"] == 3
+    r1 = services.rencontres_de_ronde(conn, tid, 1)
+    assert len(r1) == 4
+    assert sum(1 for m in r1 if m["bye"]) == 3
+    assert sum(1 for m in r1 if not m["bye"]) == 1
+
+
+def test_elim_progression_et_vainqueur(conn):
+    tid = _tournoi_elim(conn, ["A", "B", "C", "D"])
+    assert services.vainqueur(conn, tid) is None
+    # Tour 1 : génération du tour 2 refusée tant qu'incomplet.
+    assert services.generer_tour_suivant(conn, tid)["raison"] == "incomplete"
+    _jouer_tour_elim(conn, tid, 1, gagnant="a")
+    assert services.generer_tour_suivant(conn, tid)["ok"]      # finale
+    # Finale : 1 rencontre.
+    assert len(services.rencontres_de_ronde(conn, tid, 2)) == 1
+    _jouer_tour_elim(conn, tid, 2, gagnant="a")
+    v = services.vainqueur(conn, tid)
+    assert v is not None
+    # Plus de tour à générer.
+    assert services.generer_tour_suivant(conn, tid)["raison"] == "terminee"
+
+
+def test_elim_bye_qualifie_automatiquement(conn):
+    # 3 joueurs -> arbre de 4 : 1 bye, 1 match au tour 1.
+    tid = _tournoi_elim(conn, ["A", "B", "C"])
+    r1 = services.rencontres_de_ronde(conn, tid, 1)
+    byes = [m for m in r1 if m["bye"]]
+    assert len(byes) == 1
+    # Le tour 1 est « complet » même si seul le match doit être saisi.
+    _jouer_tour_elim(conn, tid, 1)
+    assert services.ronde_complete(conn, tid, 1)
+    assert services.generer_tour_suivant(conn, tid)["ok"]
+
+
+def test_elim_route_complet(client):
+    r = client.post("/tournoi/nouveau", data={"nom": "Elim Route"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    for p in ("A", "B", "C", "D"):
+        client.post(f"/tournoi/{tid}/participant", data={"pseudo": p})
+
+    lance = client.post(f"/tournoi/{tid}/lancer",
+                        data={"mode_scoring": "elimination"}, follow_redirects=False)
+    assert lance.status_code == 303 and lance.headers["location"].endswith("/arbre")
+    assert "limination" in client.get(f"/tournoi/{tid}/arbre").text
+
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    r1 = [row["id_rencontre"] for row in c.execute(
+        "SELECT id_rencontre FROM rencontres WHERE id_tournoi=? AND ronde=1 "
+        "AND participant_b IS NOT NULL", (tid,))]
+    c.close()
+    client.post(f"/tournoi/{tid}/arbre/1/resultats", data={f"res_{i}": "a" for i in r1})
+    suiv = client.post(f"/tournoi/{tid}/arbre/suivant")
+    assert "Finale" in suiv.text
+
+    c = tdb.get_connection()
+    fin = [row["id_rencontre"] for row in c.execute(
+        "SELECT id_rencontre FROM rencontres WHERE id_tournoi=? AND ronde=2", (tid,))]
+    c.close()
+    final = client.post(f"/tournoi/{tid}/arbre/2/resultats", data={f"res_{fin[0]}": "a"})
+    assert "Vainqueur" in final.text
+    # La page publique annonce aussi le vainqueur.
+    assert "Vainqueur" in client.get(f"/tournoi/{tid}").text
+
+
 def test_suisse_route_complet(client):
     r = client.post("/tournoi/nouveau", data={"nom": "Suisse Route"},
                     follow_redirects=False)

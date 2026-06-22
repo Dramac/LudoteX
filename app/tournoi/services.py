@@ -46,6 +46,7 @@ TRANSITIONS = {
 MODES_SCORING = {
     "high_score": "High score (points cumulés)",
     "ronde_suisse": "Ronde suisse",
+    "elimination": "Élimination directe",
 }
 
 # Points attribués par résultat en ronde suisse (barème type échecs/jeux).
@@ -393,16 +394,30 @@ def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
             return {"ok": False, "raison": "pas_assez"}
         if not nb_rondes or nb_rondes < 1:
             return {"ok": False, "raison": "nb_rondes"}
+    elif mode_scoring == "elimination":
+        if nb_inscrits < 2:
+            return {"ok": False, "raison": "pas_assez"}
+
+    # nb_rondes stocke : pour le suisse, le nombre choisi ; pour l'élimination,
+    # le nombre de tours de l'arbre (déduit de l'effectif).
+    if mode_scoring == "ronde_suisse":
+        nb_rondes_stocke = nb_rondes
+    elif mode_scoring == "elimination":
+        nb_rondes_stocke = _nb_tours_elimination(nb_inscrits)
+    else:
+        nb_rondes_stocke = None
 
     conn.execute(
         "UPDATE tournois SET etat = 'lance', mode_scoring = ?, nb_rondes = ? "
         "WHERE id_tournoi = ?",
-        (mode_scoring, nb_rondes if mode_scoring == "ronde_suisse" else None, id_tournoi),
+        (mode_scoring, nb_rondes_stocke, id_tournoi),
     )
     if mode_scoring == "high_score":
         _init_high_score(conn, id_tournoi)
     elif mode_scoring == "ronde_suisse":
         _generer_ronde_suisse(conn, id_tournoi, 1)
+    elif mode_scoring == "elimination":
+        _generer_premier_tour_elimination(conn, id_tournoi)
     conn.commit()
     return {"ok": True}
 
@@ -771,3 +786,156 @@ def classement_suisse(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
             "points": p, "points_txt": format_points(p),
         })
     return classement
+
+
+# --- Élimination directe ---------------------------------------------------
+# Arbre à élimination simple. Représentation dans `rencontres` : `ronde` = n° de
+# tour (1 = premier tour … T = finale), `participant_a`/`participant_b` les deux
+# joueurs (B NULL = bye, resultat 'a' automatique). Le vainqueur de chaque
+# rencontre (resultat 'a'/'b') accède au tour suivant.
+def _puissance_de_deux_sup(n: int) -> int:
+    """Plus petite puissance de 2 >= n (n >= 1)."""
+    b = 1
+    while b < n:
+        b *= 2
+    return b
+
+
+def _nb_tours_elimination(nb_inscrits: int) -> int:
+    """Nombre de tours de l'arbre (ex. 5–8 joueurs -> 3 tours)."""
+    tours, taille = 0, _puissance_de_deux_sup(max(nb_inscrits, 1))
+    while taille > 1:
+        taille //= 2
+        tours += 1
+    return tours
+
+
+def _ordre_places(taille: int) -> list[int]:
+    """
+    Ordre des têtes de série (« seeds ») dans un arbre de `taille` (puissance de
+    2). Renvoie la liste des numéros de seed dans l'ordre des positions, de sorte
+    que les seeds opposés (1 contre le dernier, etc.) soient bien répartis et ne
+    se rencontrent que le plus tard possible.
+    """
+    places = [1, 2]
+    while len(places) < taille:
+        n = len(places) * 2 + 1
+        nouveau = []
+        for p in places:
+            nouveau.append(p)
+            nouveau.append(n - p)
+        places = nouveau
+    return places
+
+
+def _generer_premier_tour_elimination(conn: sqlite3.Connection, id_tournoi: int) -> None:
+    """
+    Crée les rencontres du premier tour à partir des participants (têtes de série
+    = ordre d'inscription). Les byes (si l'effectif n'est pas une puissance de 2)
+    vont aux mieux classés et sont répartis dans l'arbre.
+    """
+    joueurs = list(_participants(conn, id_tournoi))  # ids, ordre d'inscription
+    n = len(joueurs)
+    taille = _puissance_de_deux_sup(n)
+    ordre = _ordre_places(taille)
+
+    def joueur(seed: int):
+        return joueurs[seed - 1] if seed <= n else None
+
+    for i in range(0, taille, 2):
+        a, b = joueur(ordre[i]), joueur(ordre[i + 1])
+        present = a if a is not None else b
+        autre = b if a is not None else a
+        if present is not None and autre is not None:
+            conn.execute(
+                "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b) "
+                "VALUES (?, 1, ?, ?)",
+                (id_tournoi, present, autre),
+            )
+        elif present is not None:           # bye : victoire automatique
+            conn.execute(
+                "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b, resultat) "
+                "VALUES (?, 1, ?, NULL, 'a')",
+                (id_tournoi, present),
+            )
+
+
+def _gagnants_du_tour(conn: sqlite3.Connection, id_tournoi: int, tour: int) -> list[int]:
+    """Vainqueurs d'un tour, dans l'ordre des rencontres (None si non joué)."""
+    gagnants = []
+    for r in conn.execute(
+        "SELECT participant_a, participant_b, resultat FROM rencontres "
+        "WHERE id_tournoi = ? AND ronde = ? ORDER BY id_rencontre",
+        (id_tournoi, tour),
+    ):
+        if r["participant_b"] is None:
+            gagnants.append(r["participant_a"])
+        elif r["resultat"] == "a":
+            gagnants.append(r["participant_a"])
+        elif r["resultat"] == "b":
+            gagnants.append(r["participant_b"])
+        else:
+            gagnants.append(None)
+    return gagnants
+
+
+def generer_tour_suivant(conn: sqlite3.Connection, id_tournoi: int) -> dict:
+    """
+    Génère le tour suivant de l'arbre en appariant les vainqueurs du tour courant.
+
+    Returns:
+        {"ok": True, "ronde": n} ; sinon {"ok": False, "raison":
+        "mode"|"incomplete"|"terminee"}.
+    """
+    t = get_tournoi(conn, id_tournoi)
+    if t is None or t["mode_scoring"] != "elimination":
+        return {"ok": False, "raison": "mode"}
+    courant = ronde_courante(conn, id_tournoi)
+    if courant and not ronde_complete(conn, id_tournoi, courant):
+        return {"ok": False, "raison": "incomplete"}
+    if t["nb_rondes"] and courant >= t["nb_rondes"]:
+        return {"ok": False, "raison": "terminee"}
+
+    gagnants = _gagnants_du_tour(conn, id_tournoi, courant)
+    suivant = courant + 1
+    for i in range(0, len(gagnants) - 1, 2):
+        a, b = gagnants[i], gagnants[i + 1]
+        conn.execute(
+            "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b) "
+            "VALUES (?, ?, ?, ?)",
+            (id_tournoi, suivant, a, b),
+        )
+    conn.commit()
+    return {"ok": True, "ronde": suivant}
+
+
+def nom_tour(tour: int, total: int) -> str:
+    """Nom lisible d'un tour selon sa distance à la finale."""
+    reste = total - tour
+    return {0: "Finale", 1: "Demi-finales", 2: "Quarts de finale",
+            3: "Huitièmes de finale"}.get(reste, f"Tour {tour}")
+
+
+def arbre(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
+    """Liste [{tour, nom, rencontres, complete}] des tours générés."""
+    total = get_tournoi(conn, id_tournoi)["nb_rondes"] or 0
+    return [
+        {"tour": n, "nom": nom_tour(n, total),
+         "rencontres": rencontres_de_ronde(conn, id_tournoi, n),
+         "complete": ronde_complete(conn, id_tournoi, n)}
+        for n in range(1, ronde_courante(conn, id_tournoi) + 1)
+    ]
+
+
+def vainqueur(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
+    """Pseudo du vainqueur si la finale est jouée, sinon None."""
+    t = get_tournoi(conn, id_tournoi)
+    if t is None or t["mode_scoring"] != "elimination" or not t["nb_rondes"]:
+        return None
+    total = t["nb_rondes"]
+    if ronde_courante(conn, id_tournoi) < total or not ronde_complete(conn, id_tournoi, total):
+        return None
+    gagnants = _gagnants_du_tour(conn, id_tournoi, total)
+    if len(gagnants) == 1 and gagnants[0] is not None:
+        return _participants(conn, id_tournoi).get(gagnants[0])
+    return None

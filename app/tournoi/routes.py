@@ -106,7 +106,8 @@ def detail(request: Request, id_tournoi: int):
     fois le tournoi lancé/terminé en mode high score, le CLASSEMENT remplace la
     simple liste des participants.
     """
-    participants, ouverte, restantes, classement, rondes = [], False, None, None, None
+    participants, ouverte, restantes = [], False, None
+    classement, rondes, tours, vainqueur = None, None, None, None
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
@@ -120,13 +121,17 @@ def detail(request: Request, id_tournoi: int):
             elif lance and t["mode_scoring"] == "ronde_suisse":
                 classement = services.classement_suisse(conn, id_tournoi)
                 rondes = services.toutes_les_rondes(conn, id_tournoi)
+            elif lance and t["mode_scoring"] == "elimination":
+                tours = services.arbre(conn, id_tournoi)
+                vainqueur = services.vainqueur(conn, id_tournoi)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "tournoi_detail.html",
         {"t": t, "participants": participants,
          "inscription_ouverte": ouverte, "places_restantes": restantes,
-         "classement": classement, "rondes": rondes},
+         "classement": classement, "rondes": rondes,
+         "tours": tours, "vainqueur": vainqueur},
         status_code=200 if t else 404,
     )
 
@@ -405,6 +410,8 @@ def lancer_action(request: Request, id_tournoi: int,
         return RedirectResponse(f"/tournoi/{id_tournoi}/scores", status_code=303)
     if res.get("ok") and mode == "ronde_suisse":
         return RedirectResponse(f"/tournoi/{id_tournoi}/rondes", status_code=303)
+    if res.get("ok") and mode == "elimination":
+        return RedirectResponse(f"/tournoi/{id_tournoi}/arbre", status_code=303)
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -538,3 +545,86 @@ def rondes_suivante(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
     finally:
         conn.close()
     return templates.TemplateResponse(request, "tournoi_rondes.html", contexte)
+
+
+# --- Élimination directe : écran de l'arbre ----------------------------------
+def _contexte_arbre(conn, t, message=None) -> dict:
+    """Contexte commun de l'écran de l'arbre (tours + vainqueur + état)."""
+    id_tournoi = t["id_tournoi"]
+    courant = services.ronde_courante(conn, id_tournoi)
+    return {
+        "t": t,
+        "tours": services.arbre(conn, id_tournoi),
+        "vainqueur": services.vainqueur(conn, id_tournoi),
+        "tour_courant": courant,
+        "tour_courant_complet": services.ronde_complete(conn, id_tournoi, courant) if courant else False,
+        "peut_generer": bool(t["nb_rondes"]) and courant < t["nb_rondes"],
+        "message": message,
+    }
+
+
+@router.get("/tournoi/{id_tournoi:int}/arbre")
+def arbre_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """Écran bénévole de l'arbre (saisie des vainqueurs, génération des tours)."""
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t is None:
+            return RedirectResponse("/tournois", status_code=303)
+        if t["mode_scoring"] != "elimination":
+            return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
+        contexte = _contexte_arbre(conn, t)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "tournoi_arbre.html", contexte)
+
+
+@router.post("/tournoi/{id_tournoi:int}/arbre/{tour:int}/resultats")
+async def arbre_resultats(request: Request, id_tournoi: int, tour: int,
+                          _=Depends(exiger_jeton)):
+    """Enregistre les vainqueurs d'un tour (champs `res_<id_rencontre>` ∈ {a,b})."""
+    form = await request.form()
+    resultats: dict[int, str | None] = {}
+    for cle, valeur in form.items():
+        if not cle.startswith("res_"):
+            continue
+        try:
+            id_rencontre = int(cle.removeprefix("res_"))
+        except ValueError:
+            continue
+        v = str(valeur).strip()
+        # Pas de match nul en élimination : on n'accepte que 'a' ou 'b'.
+        resultats[id_rencontre] = v if v in ("a", "b") else None
+
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t is None:
+            return RedirectResponse("/tournois", status_code=303)
+        services.enregistrer_resultats_suisse(conn, id_tournoi, tour, resultats)
+        contexte = _contexte_arbre(conn, t, message=("succes", "Résultats enregistrés."))
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "tournoi_arbre.html", contexte)
+
+
+@router.post("/tournoi/{id_tournoi:int}/arbre/suivant")
+def arbre_suivant(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """Génère le tour suivant de l'arbre (vainqueurs du tour courant appariés)."""
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t is None:
+            return RedirectResponse("/tournois", status_code=303)
+        res = services.generer_tour_suivant(conn, id_tournoi)
+        messages = {
+            "incomplete": ("erreur", "Désignez tous les vainqueurs du tour en cours d'abord."),
+            "terminee": ("erreur", "La finale a déjà été générée."),
+            "mode": ("erreur", "Action indisponible."),
+        }
+        message = (("succes", f"{services.nom_tour(res['ronde'], t['nb_rondes'])} généré(e).")
+                   if res.get("ok") else messages.get(res.get("raison")))
+        contexte = _contexte_arbre(conn, t, message=message)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "tournoi_arbre.html", contexte)

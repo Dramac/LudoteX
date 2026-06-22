@@ -70,8 +70,8 @@
           <button class="bouton bouton-principal" type="submit">Lancer</button>
         </form>
         <p class="stats-note">
-          Le mode se choisit au lancement. L'élimination directe sera ajoutée
-          prochainement.
+          Le mode se choisit au lancement. Le nombre de rondes ne concerne que la
+          ronde suisse (l'élimination directe déduit ses tours de l'effectif).
         </p>
       {% else %}
         <p class="stats-note">Ajoutez au moins un participant pour pouvoir lancer.</p>
@@ -88,6 +88,12 @@
       <p class="lien-fiche">
         <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/rondes">
           Gérer les rondes et les résultats</a>
+      </p>
+    {% endif %}
+    {% if t.etat in ("lance", "termine") and t.mode_scoring == "elimination" %}
+      <p class="lien-fiche">
+        <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/arbre">
+          Gérer l'arbre et les résultats</a>
       </p>
     {% endif %}
   </section>
