@@ -97,6 +97,74 @@ def test_suppression_cascade(conn):
     assert conn.execute("SELECT COUNT(*) FROM inscriptions").fetchone()[0] == 0
 
 
+# --- High score ---
+def _tournoi_lance_high_score(conn, pseudos=("Alice", "Bob", "Chloé")):
+    tid = services.creer_tournoi(conn, "HS")
+    services.changer_etat(conn, tid, "inscriptions")
+    for p in pseudos:
+        services.ajouter_participant(conn, tid, p)
+    return tid
+
+
+def test_lancer_refus_sans_participant(conn):
+    tid = services.creer_tournoi(conn, "T")
+    services.changer_etat(conn, tid, "inscriptions")
+    assert services.lancer_tournoi(conn, tid, "high_score")["raison"] == "sans_participant"
+
+
+def test_lancer_refus_mode_inconnu_et_etat(conn):
+    tid = _tournoi_lance_high_score(conn)
+    assert services.lancer_tournoi(conn, tid, "inexistant")["raison"] == "mode_inconnu"
+    # Depuis 'brouillon', lancement interdit (transition).
+    tid2 = services.creer_tournoi(conn, "T2")
+    services.ajouter_participant(conn, tid2, "X")
+    assert services.lancer_tournoi(conn, tid2, "high_score")["raison"] == "etat"
+
+
+def test_lancer_high_score_cree_les_lignes(conn):
+    tid = _tournoi_lance_high_score(conn)
+    assert services.lancer_tournoi(conn, tid, "high_score")["ok"]
+    t = services.get_tournoi(conn, tid)
+    assert t["etat"] == "lance" and t["mode_scoring"] == "high_score"
+    # Une ligne de score par participant.
+    assert conn.execute("SELECT COUNT(*) FROM rencontres WHERE id_tournoi = ?",
+                        (tid,)).fetchone()[0] == 3
+
+
+def test_scores_et_classement_ex_aequo(conn):
+    tid = _tournoi_lance_high_score(conn)
+    services.lancer_tournoi(conn, tid, "high_score")
+    lignes = {l["pseudo"]: l["id_inscription"] for l in services.lignes_high_score(conn, tid)}
+    services.enregistrer_scores_high_score(conn, tid, {
+        lignes["Alice"]: 10, lignes["Bob"]: 10, lignes["Chloé"]: 5,
+    })
+    cl = services.classement_high_score(conn, tid)
+    # Alice et Bob ex æquo en tête (rang 1), Chloé rang 3.
+    rangs = {c["pseudo"]: c["rang"] for c in cl}
+    assert rangs["Alice"] == 1 and rangs["Bob"] == 1
+    assert rangs["Chloé"] == 3
+
+
+def test_classement_score_manquant_en_dernier(conn):
+    tid = _tournoi_lance_high_score(conn, pseudos=("Alice", "Bob"))
+    services.lancer_tournoi(conn, tid, "high_score")
+    lignes = {l["pseudo"]: l["id_inscription"] for l in services.lignes_high_score(conn, tid)}
+    services.enregistrer_scores_high_score(conn, tid, {lignes["Alice"]: 7})
+    cl = services.classement_high_score(conn, tid)
+    assert cl[0]["pseudo"] == "Alice" and cl[0]["rang"] == 1
+    # Bob, sans score, finit sans rang.
+    assert cl[-1]["pseudo"] == "Bob" and cl[-1]["rang"] is None
+
+
+def test_participant_ajoute_apres_lancement_a_une_ligne(conn):
+    tid = _tournoi_lance_high_score(conn, pseudos=("Alice",))
+    services.lancer_tournoi(conn, tid, "high_score")
+    services.ajouter_participant(conn, tid, "Tardif")
+    # lignes_high_score crée paresseusement la ligne manquante.
+    pseudos = {l["pseudo"] for l in services.lignes_high_score(conn, tid)}
+    assert "Tardif" in pseudos
+
+
 # ===========================================================================
 # Routes — TestClient avec les DEUX bases temporaires
 # ===========================================================================
@@ -179,6 +247,44 @@ def test_suppression_double_confirmation(client):
                      follow_redirects=False)
     assert ok.status_code == 303 and ok.headers["location"] == "/tournois"
     assert client.get(f"/tournoi/{tid}").status_code == 404
+
+
+def test_high_score_route_complet(client):
+    # Création + ouverture + 2 participants manuels.
+    r = client.post("/tournoi/nouveau", data={"nom": "HS Route"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    client.post(f"/tournoi/{tid}/participant", data={"pseudo": "Alice"})
+    client.post(f"/tournoi/{tid}/participant", data={"pseudo": "Bob"})
+
+    # Lancement high score -> redirige vers la saisie des scores.
+    lance = client.post(f"/tournoi/{tid}/lancer",
+                        data={"mode_scoring": "high_score"}, follow_redirects=False)
+    assert lance.status_code == 303 and lance.headers["location"].endswith("/scores")
+
+    # Récupère les id d'inscription pour nommer les champs score_<id>.
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    ids = {row["pseudo"]: row["id_inscription"] for row in
+           c.execute("SELECT id_inscription, pseudo FROM inscriptions WHERE id_tournoi = ?", (tid,))}
+    c.close()
+
+    save = client.post(f"/tournoi/{tid}/scores", data={
+        f"score_{ids['Alice']}": "12", f"score_{ids['Bob']}": "30"})
+    assert save.status_code == 200 and "enregistrés" in save.text.lower()
+
+    # Le classement public montre Bob en tête (30 > 12).
+    detail = client.get(f"/tournoi/{tid}").text
+    assert "Classement" in detail
+    pos_bob, pos_alice = detail.index("Bob"), detail.index("Alice")
+    assert pos_bob < pos_alice
+
+
+def test_lancer_protege_par_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-hs-secret-123")
+    assert client.post("/tournoi/1/lancer", data={"mode_scoring": "high_score"}).status_code == 403
+    assert client.get("/tournoi/1/scores").status_code == 403
 
 
 def test_routes_benevole_protegees(client, monkeypatch):

@@ -42,18 +42,40 @@
     {% endif %}
   </section>
 
-  <section class="carte">
-    <h2>Participants</h2>
-    {% if participants %}
-      <ul class="catalogue-liste">
-        {% for p in participants %}
-          <li class="jeu"><span class="jeu-nom">{{ p.pseudo }}</span></li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p><em>Aucun participant inscrit pour l'instant.</em></p>
-    {% endif %}
-  </section>
+  {% if classement is not none %}
+    <section class="carte">
+      <h2>Classement</h2>
+      {% if classement %}
+        <table class="detail">
+          <thead><tr><th>Rang</th><th>Participant</th><th>Points</th></tr></thead>
+          <tbody>
+            {% for c in classement %}
+              <tr>
+                <td>{{ c.rang if c.rang is not none else "—" }}</td>
+                <td>{{ c.pseudo }}</td>
+                <td>{{ c.score if c.score is not none else "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p><em>Aucun participant.</em></p>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="carte">
+      <h2>Participants</h2>
+      {% if participants %}
+        <ul class="catalogue-liste">
+          {% for p in participants %}
+            <li class="jeu"><span class="jeu-nom">{{ p.pseudo }}</span></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p><em>Aucun participant inscrit pour l'instant.</em></p>
+      {% endif %}
+    </section>
+  {% endif %}
 
   <p class="lien-fiche"><a class="lien" href="/tournois">← Tous les tournois</a></p>
 {% endif %}

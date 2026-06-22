@@ -32,14 +32,19 @@ from app.tournoi.models import ETATS
 PSEUDO_MAX = 40           # longueur maximale d'un pseudo
 CODE_OCTETS = 8           # entropie du code de désinscription (token_urlsafe)
 
-# Transitions d'état autorisées (machine à états, conception §5). La transition
-# vers 'lance' existe pour l'étape « modes de scoring » (non offerte dans le
-# socle, mais validée ici pour le futur).
+# Transitions d'état autorisées (machine à états, conception §5). Le lancement
+# (passage à 'lance') se fait toujours depuis 'inscriptions', via lancer_tournoi.
 TRANSITIONS = {
     "brouillon": {"inscriptions"},
     "inscriptions": {"brouillon", "lance", "termine"},
     "lance": {"termine"},
     "termine": set(),
+}
+
+# Modes de scoring disponibles (conception §6). Implémentés un par un : pour
+# l'instant seul 'high_score'. Les libellés servent à l'affichage et aux menus.
+MODES_SCORING = {
+    "high_score": "High score (points cumulés)",
 }
 
 
@@ -347,3 +352,137 @@ def desinscrire(conn: sqlite3.Connection, code: str) -> dict:
     )
     conn.commit()
     return {"ok": True, "pseudo": row["pseudo"], "id_tournoi": row["id_tournoi"]}
+
+
+# ===========================================================================
+# Lancement + modes de scoring
+# ===========================================================================
+def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
+                   mode_scoring: str) -> dict:
+    """
+    Lance un tournoi : passe de 'inscriptions' à 'lance' et fixe le mode de
+    scoring, puis initialise les structures propres au mode.
+
+    Returns:
+        {"ok": True} en cas de succès ; sinon {"ok": False, "raison":
+        "introuvable"|"mode_inconnu"|"etat"|"sans_participant"}.
+    """
+    t = get_tournoi(conn, id_tournoi)
+    if t is None:
+        return {"ok": False, "raison": "introuvable"}
+    if mode_scoring not in MODES_SCORING:
+        return {"ok": False, "raison": "mode_inconnu"}
+    if "lance" not in TRANSITIONS.get(t["etat"], set()):
+        return {"ok": False, "raison": "etat"}
+    if compter_inscriptions(conn, id_tournoi) == 0:
+        return {"ok": False, "raison": "sans_participant"}
+
+    conn.execute(
+        "UPDATE tournois SET etat = 'lance', mode_scoring = ? WHERE id_tournoi = ?",
+        (mode_scoring, id_tournoi),
+    )
+    if mode_scoring == "high_score":
+        _init_high_score(conn, id_tournoi)
+    conn.commit()
+    return {"ok": True}
+
+
+# --- High score ------------------------------------------------------------
+# Représentation : UNE ligne `rencontres` par participant (participant_a = le
+# joueur, participant_b NULL, score_a = ses points, ronde NULL). Simple, et
+# réutilise la table déjà prévue. Le classement = tri par score_a décroissant.
+def _init_high_score(conn: sqlite3.Connection, id_tournoi: int) -> None:
+    """Crée une ligne de score (score_a NULL) pour chaque participant sans ligne."""
+    manquants = conn.execute(
+        """
+        SELECT i.id_inscription
+        FROM inscriptions i
+        WHERE i.id_tournoi = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM rencontres r
+            WHERE r.id_tournoi = i.id_tournoi AND r.participant_a = i.id_inscription
+          )
+        """,
+        (id_tournoi,),
+    ).fetchall()
+    conn.executemany(
+        "INSERT INTO rencontres (id_tournoi, participant_a) VALUES (?, ?)",
+        [(id_tournoi, r["id_inscription"]) for r in manquants],
+    )
+
+
+def lignes_high_score(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
+    """
+    Lignes de saisie des scores (un par participant), triées par pseudo.
+
+    Chaque dict : {id_inscription, pseudo, score} (score = None si pas encore saisi).
+    """
+    # On s'assure d'abord qu'aucun participant ajouté après le lancement n'est
+    # oublié (création paresseuse de sa ligne).
+    _init_high_score(conn, id_tournoi)
+    conn.commit()
+    return [
+        {"id_inscription": r["id_inscription"], "pseudo": r["pseudo"],
+         "score": r["score_a"]}
+        for r in conn.execute(
+            """
+            SELECT i.id_inscription, i.pseudo, r.score_a
+            FROM inscriptions i
+            LEFT JOIN rencontres r
+              ON r.id_tournoi = i.id_tournoi AND r.participant_a = i.id_inscription
+            WHERE i.id_tournoi = ?
+            ORDER BY i.pseudo COLLATE NOCASE
+            """,
+            (id_tournoi,),
+        )
+    ]
+
+
+def enregistrer_scores_high_score(conn: sqlite3.Connection, id_tournoi: int,
+                                  scores: dict[int, int | None]) -> None:
+    """
+    Enregistre les scores saisis. `scores` mappe id_inscription -> points (ou
+    None pour effacer). Crée la ligne si besoin avant la mise à jour.
+    """
+    _init_high_score(conn, id_tournoi)
+    for id_inscription, points in scores.items():
+        conn.execute(
+            "UPDATE rencontres SET score_a = ? "
+            "WHERE id_tournoi = ? AND participant_a = ?",
+            (points, id_tournoi, id_inscription),
+        )
+    conn.commit()
+
+
+def classement_high_score(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
+    """
+    Classement par points décroissants. Les participants sans score saisi sont
+    placés en fin de liste, sans rang.
+
+    Chaque dict : {rang, pseudo, score}. Rang en « ranking sportif » : les ex
+    æquo partagent le même rang, le suivant saute d'autant (1, 2, 2, 4…). Rang
+    None pour les participants sans score.
+    """
+    lignes = conn.execute(
+        """
+        SELECT i.pseudo, r.score_a
+        FROM inscriptions i
+        LEFT JOIN rencontres r
+          ON r.id_tournoi = i.id_tournoi AND r.participant_a = i.id_inscription
+        WHERE i.id_tournoi = ?
+        ORDER BY (r.score_a IS NULL), r.score_a DESC, i.pseudo COLLATE NOCASE
+        """,
+        (id_tournoi,),
+    ).fetchall()
+
+    classement, position, precedent = [], 0, object()
+    for r in lignes:
+        score = r["score_a"]
+        if score is None:
+            classement.append({"rang": None, "pseudo": r["pseudo"], "score": None})
+            continue
+        position += 1
+        rang = position if score != precedent else classement[-1]["rang"]
+        precedent = score
+        classement.append({"rang": rang, "pseudo": r["pseudo"], "score": score})
+    return classement
