@@ -58,10 +58,24 @@ affiche classement + rondes en lecture publique ; `tournoi_gerer.html` adapté.
 **Suite globale : 64 tests verts** (cas limites vérifiés : revanche forcée si
 rondes > round-robin, rotation des byes).
 
-**Reste en phase 1 : élimination directe** (arbre, byes si pas une puissance de 2,
-option BO3) — lancement + génération de l'arbre + saisie des résultats par tour.
-Puis phase 2 (double élimination, e-mails robustes, sauvegarde externe). Points
-CA encore ouverts : voir §11 de `docs/conception-tournois.md`.
+**Mode de scoring ÉLIMINATION DIRECTE : FAIT.** Arbre à élimination simple dans
+`rencontres` (`ronde`=n° de tour, B NULL=bye victoire auto, resultat 'a'/'b').
+`lancer_tournoi(..., "elimination")` (refus si < 2 → `pas_assez`) : seeding par
+ordre d'inscription vers la **puissance de 2 supérieure**, byes aux mieux classés
+et **répartis** via `_ordre_places` (seeding standard 1-8-4-5-2-7-3-6…),
+`nb_rondes` = nombre de tours déduit (`_nb_tours_elimination`). Fonctions :
+`_generer_premier_tour_elimination`, `_gagnants_du_tour`, `generer_tour_suivant`
+(apparie les vainqueurs ; refus si incomplet/terminé), `vainqueur`, `nom_tour`
+(Finale/Demi-finales/Quarts…), `arbre`. Routes bénévole : lancement,
+`GET /tournoi/{id}/arbre`, `POST .../arbre/{tour}/resultats` (vainqueur a/b, pas
+de nul), `POST .../arbre/suivant`. Gabarit `tournoi_arbre.html` ; page publique
+affiche l'arbre + le vainqueur. **Suite globale : 71 tests verts.**
+
+**PHASE 1 COMPLÈTE** (tournois + inscription + suivi + high score + ronde suisse
++ élimination directe). Reste la **phase 2** : double élimination (looser
+bracket), affinements BO3 (manches), e-mails robustes (envoi du code), sauvegarde
+externe automatisée. Points CA encore ouverts : voir §11 de
+`docs/conception-tournois.md`.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,

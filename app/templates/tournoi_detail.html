@@ -92,6 +92,36 @@
         </section>
       {% endfor %}
     {% endif %}
+  {% elif tours is not none %}
+    {% if vainqueur %}
+      <section class="resultat resultat-ok">
+        <p class="resultat-libelle">Vainqueur</p>
+        <p class="pochette-num">{{ vainqueur }}</p>
+      </section>
+    {% endif %}
+    {% for tr in tours | reverse %}
+      <section class="carte">
+        <h2>{{ tr.nom }}</h2>
+        <table class="detail">
+          <tbody>
+            {% for m in tr.rencontres %}
+              <tr>
+                {% if m.bye %}
+                  <td>{{ m.pseudo_a }}</td><td><em>exempt (bye)</em></td>
+                {% else %}
+                  <td>{{ m.pseudo_a }} <span class="palmares-val">vs</span> {{ m.pseudo_b }}</td>
+                  <td>
+                    {% if m.resultat == "a" %}<strong>{{ m.pseudo_a }}</strong>
+                    {% elif m.resultat == "b" %}<strong>{{ m.pseudo_b }}</strong>
+                    {% else %}—{% endif %}
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endfor %}
   {% else %}
     <section class="carte">
       <h2>Participants</h2>

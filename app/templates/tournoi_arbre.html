@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block titre %}Arbre — {{ t.nom }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Élimination directe</h1>
+  <p class="dispo-titre">{{ t.nom }} · {{ t.nb_rondes }} tour(s){% if t.bo3 %} · BO3{% endif %}</p>
+
+  {% if message %}
+    <div class="resultat {{ 'resultat-info' if message[0] == 'succes' else 'resultat-attention' }}">
+      <p>{{ message[1] }}</p>
+    </div>
+  {% endif %}
+
+  {% if vainqueur %}
+    <div class="resultat resultat-ok">
+      <p class="resultat-libelle">Vainqueur</p>
+      <p class="pochette-num">{{ vainqueur }}</p>
+    </div>
+  {% elif peut_generer %}
+    <form method="post" action="/tournoi/{{ t.id_tournoi }}/arbre/suivant">
+      <button type="submit" class="bouton bouton-principal"
+              {{ 'disabled' if tour_courant and not tour_courant_complet else '' }}>
+        Générer le tour suivant
+      </button>
+    </form>
+    {% if tour_courant and not tour_courant_complet %}
+      <p class="stats-note">Désignez tous les vainqueurs du tour en cours avant de générer le suivant.</p>
+    {% endif %}
+  {% endif %}
+</section>
+
+{% for tr in tours | reverse %}
+  <section class="carte">
+    <h2>{{ tr.nom }}{% if tr.complete %} <small>(complet)</small>{% endif %}</h2>
+    <form method="post" action="/tournoi/{{ t.id_tournoi }}/arbre/{{ tr.tour }}/resultats">
+      <table class="detail">
+        <tbody>
+          {% for m in tr.rencontres %}
+            <tr>
+              {% if m.bye %}
+                <td>{{ m.pseudo_a }}</td>
+                <td><em>exempt (bye) — qualifié</em></td>
+              {% else %}
+                <td>{{ m.pseudo_a }} <span class="palmares-val">vs</span> {{ m.pseudo_b }}</td>
+                <td>
+                  <select name="res_{{ m.id_rencontre }}">
+                    <option value="" {{ 'selected' if not m.resultat else '' }}>— vainqueur ? —</option>
+                    <option value="a" {{ 'selected' if m.resultat == 'a' else '' }}>{{ m.pseudo_a }}</option>
+                    <option value="b" {{ 'selected' if m.resultat == 'b' else '' }}>{{ m.pseudo_b }}</option>
+                  </select>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit" class="bouton bouton-secondaire">Enregistrer {{ tr.nom | lower }}</button>
+    </form>
+  </section>
+{% endfor %}
+
+<p class="lien-fiche">
+  <a class="lien" href="/tournoi/{{ t.id_tournoi }}">Voir la page publique</a>
+  &nbsp;·&nbsp;
+  <a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Retour à la gestion</a>
+</p>
+{% endblock %}
