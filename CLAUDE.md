@@ -26,6 +26,10 @@ Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
 
+**Étude à mener (nouveau chat) : choix de l'hébergement** — cadrée dans
+`docs/etude-hebergement-brief.md` (comparatif avec recherche web + reco, à partir
+de `docs/budget.md` et spec §10).
+
 ## Le projet
 
 Application web de **prêt de jeux de société** pour l'événement annuel d'une
