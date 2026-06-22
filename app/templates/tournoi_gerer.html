@@ -50,10 +50,36 @@
         <button class="bouton bouton-secondaire" type="submit">Terminer le tournoi</button>
       </form>
     {% endif %}
-    <p class="stats-note">
-      Le lancement avec un mode de scoring (high score, élimination directe,
-      ronde suisse) et la saisie des résultats seront ajoutés à l'étape suivante.
-    </p>
+
+    {% if "lance" in transitions %}
+      <h3>Lancer le tournoi</h3>
+      {% if participants %}
+        <form method="post" action="/tournoi/{{ t.id_tournoi }}/lancer" class="recherche-form">
+          <div class="champ">
+            <label for="mode_scoring">Mode de scoring</label>
+            <select id="mode_scoring" name="mode_scoring">
+              {% for cle, libelle in modes.items() %}
+                <option value="{{ cle }}">{{ libelle }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button class="bouton bouton-principal" type="submit">Lancer</button>
+        </form>
+        <p class="stats-note">
+          Le mode se choisit au lancement. Élimination directe et ronde suisse
+          seront ajoutées prochainement.
+        </p>
+      {% else %}
+        <p class="stats-note">Ajoutez au moins un participant pour pouvoir lancer.</p>
+      {% endif %}
+    {% endif %}
+
+    {% if t.etat in ("lance", "termine") and t.mode_scoring == "high_score" %}
+      <p class="lien-fiche">
+        <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/scores">
+          Saisir les scores</a>
+      </p>
+    {% endif %}
   </section>
 
   {# --- Participants --- #}

@@ -101,22 +101,32 @@ def desinscription_action(request: Request, code: str = Form("")):
 
 @router.get("/tournoi/{id_tournoi:int}")
 def detail(request: Request, id_tournoi: int):
-    """Page publique d'un tournoi : infos, participants, état d'inscription."""
+    """
+    Page publique d'un tournoi : infos, participants, état d'inscription. Une
+    fois le tournoi lancé/terminé en mode high score, le CLASSEMENT remplace la
+    simple liste des participants.
+    """
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
         if t is None:
-            participants, ouverte, restantes = [], False, None
+            participants, ouverte, restantes, classement = [], False, None, None
         else:
             participants = services.lister_inscriptions(conn, id_tournoi)
             ouverte = services.inscription_ouverte(conn, t)
             restantes = services.places_restantes(conn, t)
+            classement = (
+                services.classement_high_score(conn, id_tournoi)
+                if t["mode_scoring"] == "high_score" and t["etat"] in ("lance", "termine")
+                else None
+            )
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "tournoi_detail.html",
         {"t": t, "participants": participants,
-         "inscription_ouverte": ouverte, "places_restantes": restantes},
+         "inscription_ouverte": ouverte, "places_restantes": restantes,
+         "classement": classement},
         status_code=200 if t else 404,
     )
 
@@ -236,7 +246,8 @@ def gerer(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
     return templates.TemplateResponse(
         request, "tournoi_gerer.html",
         {"t": t, "participants": participants, "places_restantes": restantes,
-         "transitions": services.TRANSITIONS.get(t["etat"], set()) if t else set()},
+         "transitions": services.TRANSITIONS.get(t["etat"], set()) if t else set(),
+         "modes": services.MODES_SCORING},
         status_code=200 if t else 404,
     )
 
@@ -370,3 +381,74 @@ def supprimer_action(request: Request, id_tournoi: int,
     finally:
         conn.close()
     return RedirectResponse("/tournois", status_code=303)
+
+
+# ===========================================================================
+# BÉNÉVOLE — lancement + saisie des scores (modes de scoring)
+# ===========================================================================
+@router.post("/tournoi/{id_tournoi:int}/lancer")
+def lancer_action(request: Request, id_tournoi: int,
+                  _=Depends(exiger_jeton), mode_scoring: str = Form("")):
+    """
+    Lance le tournoi avec le mode choisi. En cas de succès (high score), bascule
+    vers l'écran de saisie des scores ; sinon, revient à la gestion.
+    """
+    conn = get_connection()
+    try:
+        res = services.lancer_tournoi(conn, id_tournoi, mode_scoring.strip())
+    finally:
+        conn.close()
+    if res.get("ok") and mode_scoring.strip() == "high_score":
+        return RedirectResponse(f"/tournoi/{id_tournoi}/scores", status_code=303)
+    return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
+
+
+@router.get("/tournoi/{id_tournoi:int}/scores")
+def scores_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """Écran de saisie des scores (high score)."""
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        lignes = (services.lignes_high_score(conn, id_tournoi)
+                  if t and t["mode_scoring"] == "high_score" else [])
+    finally:
+        conn.close()
+    if t is None:
+        return RedirectResponse("/tournois", status_code=303)
+    if t["mode_scoring"] != "high_score":
+        return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
+    return templates.TemplateResponse(
+        request, "tournoi_scores.html", {"t": t, "lignes": lignes, "enregistre": False}
+    )
+
+
+@router.post("/tournoi/{id_tournoi:int}/scores")
+async def scores_action(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """
+    Enregistre les scores saisis. Les champs du formulaire sont nommés
+    `score_<id_inscription>` (vide = score effacé/non saisi).
+    """
+    form = await request.form()
+    scores: dict[int, int | None] = {}
+    for cle, valeur in form.items():
+        if not cle.startswith("score_"):
+            continue
+        try:
+            id_inscription = int(cle.removeprefix("score_"))
+        except ValueError:
+            continue
+        scores[id_inscription] = _int_ou_none(str(valeur))
+
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+        if t and t["mode_scoring"] == "high_score":
+            services.enregistrer_scores_high_score(conn, id_tournoi, scores)
+        lignes = services.lignes_high_score(conn, id_tournoi) if t else []
+    finally:
+        conn.close()
+    if t is None:
+        return RedirectResponse("/tournois", status_code=303)
+    return templates.TemplateResponse(
+        request, "tournoi_scores.html", {"t": t, "lignes": lignes, "enregistre": True}
+    )

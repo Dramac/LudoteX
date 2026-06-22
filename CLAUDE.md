@@ -28,14 +28,26 @@ gestion manuelle des participants, liste publique + page de suivi. Liens
 de `app/services.py`. **12 tests dédiés** (`tests/test_tournoi.py`), suite
 globale **49 tests verts**.
 
-**Prochaines étapes (nouveau chat) : modes de scoring**, un par un, sur la table
-`rencontres` déjà en place : (1) **high score**, (2) **élimination directe**
-(byes, option BO3), (3) **ronde suisse simple**. Chaque mode = lancement
-(`etat='lance'` + `mode_scoring`), génération des appariements et **saisie des
-résultats**. Puis phase 2 (double élimination, e-mails robustes, sauvegarde
-externe). La transition vers `lance` est déjà autorisée dans
-`services.TRANSITIONS` (non offerte dans l'UI tant qu'aucun mode n'existe).
-Points CA encore ouverts : voir §11 de `docs/conception-tournois.md`.
+**Mode de scoring HIGH SCORE : FAIT.** `services.lancer_tournoi(conn, id, mode)`
+(transition `inscriptions→lance` + `mode_scoring`, refus si 0 participant /
+mauvais état / mode inconnu) + init high score = **une ligne `rencontres` par
+participant** (`participant_a`=joueur, `score_a`=points, `ronde` NULL).
+`lignes_high_score` (création paresseuse des lignes manquantes, ex. participant
+ajouté après lancement), `enregistrer_scores_high_score`, `classement_high_score`
+(tri décroissant, **ex æquo en ranking sportif** 1-2-2-4, scores manquants en
+fin sans rang). Routes bénévole `POST /tournoi/{id}/lancer` (menu de modes) et
+`GET|POST /tournoi/{id}/scores` ; **classement public** sur la page de suivi dès
+`lance`/`termine`. Gabarit `tournoi_scores.html`, `tournoi_gerer.html` (lancement
++ lien scores) et `tournoi_detail.html` (classement) mis à jour.
+`MODES_SCORING` = {`high_score`} pour l'instant. **Suite globale : 57 tests verts.**
+
+**Prochaines étapes : modes de scoring restants**, sur la même table `rencontres` :
+(2) **élimination directe** (arbre, byes si pas une puissance de 2, option BO3),
+(3) **ronde suisse simple** (appariement par score, sans rejouer, bye si impair,
+nb de rondes fixé). Chaque mode = lancement + génération des appariements +
+saisie des résultats par ronde. Puis phase 2 (double élimination, e-mails
+robustes, sauvegarde externe). Points CA encore ouverts : voir §11 de
+`docs/conception-tournois.md`.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,

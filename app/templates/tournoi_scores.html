@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titre %}Scores — {{ t.nom }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Saisie des scores</h1>
+  <p class="dispo-titre">{{ t.nom }} · High score (points cumulés)</p>
+
+  {% if enregistre %}
+    <div class="resultat resultat-info"><p>Scores enregistrés.</p></div>
+  {% endif %}
+
+  {% if lignes %}
+    <form method="post" action="/tournoi/{{ t.id_tournoi }}/scores">
+      <table class="detail">
+        <thead><tr><th>Participant</th><th>Points</th></tr></thead>
+        <tbody>
+          {% for l in lignes %}
+            <tr>
+              <td>{{ l.pseudo }}</td>
+              <td>
+                <input type="number" name="score_{{ l.id_inscription }}" min="0"
+                       value="{{ l.score if l.score is not none else '' }}"
+                       style="width: 6rem;">
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit" class="bouton bouton-principal">Enregistrer les scores</button>
+    </form>
+  {% else %}
+    <p><em>Aucun participant à scorer.</em></p>
+  {% endif %}
+
+  <p class="lien-fiche">
+    <a class="lien" href="/tournoi/{{ t.id_tournoi }}">Voir le classement public</a>
+    &nbsp;·&nbsp;
+    <a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Retour à la gestion</a>
+  </p>
+</section>
+{% endblock %}
