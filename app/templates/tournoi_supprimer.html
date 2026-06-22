@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titre %}Supprimer — {{ t.nom }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Supprimer le tournoi</h1>
+  <div class="resultat resultat-attention">
+    <p>
+      Vous êtes sur le point de supprimer définitivement « <strong>{{ t.nom }}</strong> »
+      {% if nb_inscrits %}et ses <strong>{{ nb_inscrits }}</strong> inscription(s){% endif %}.
+      Cette action est irréversible.
+    </p>
+  </div>
+
+  <form method="post" action="/tournoi/{{ t.id_tournoi }}/supprimer">
+    <label class="case">
+      <input type="checkbox" name="confirmation" value="oui" required>
+      Je confirme vouloir supprimer ce tournoi.
+    </label>
+    <button type="submit" class="bouton bouton-principal"
+            onclick="return confirm('Confirmer la suppression définitive ?');">
+      Supprimer définitivement
+    </button>
+  </form>
+
+  <p class="lien-fiche"><a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Annuler</a></p>
+</section>
+{% endblock %}

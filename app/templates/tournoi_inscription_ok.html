@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titre %}Inscription confirmée — {{ t.nom }}{% endblock %}
+
+{% block contenu %}
+<section class="resultat resultat-ok">
+  <p class="resultat-libelle">Inscription confirmée</p>
+  <p class="resultat-consigne">{{ pseudo }} — {{ t.nom }}</p>
+</section>
+
+<section class="carte">
+  <h1>Votre code de désinscription</h1>
+  <p class="pochette-num">{{ code }}</p>
+  <p class="resultat-consigne">
+    Notez ce code. Il est le seul moyen de vous désinscrire (aucune adresse
+    e-mail n'a été conservée).
+  </p>
+  <p class="lien-fiche">
+    <a class="lien" href="/tournoi/desinscription?code={{ code }}">Se désinscrire avec ce code</a>
+    &nbsp;·&nbsp;
+    <a class="lien" href="/tournoi/{{ t.id_tournoi }}">Retour au tournoi</a>
+  </p>
+</section>
+{% endblock %}

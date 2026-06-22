@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set edition = t is not none %}
+{% block titre %}{{ "Modifier" if edition else "Nouveau" }} tournoi{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>{{ "Modifier le tournoi" if edition else "Nouveau tournoi" }}</h1>
+
+  {% if erreur %}
+    <div class="resultat resultat-attention"><p>{{ erreur }}</p></div>
+  {% endif %}
+
+  <form method="post"
+        action="{{ '/tournoi/' ~ t.id_tournoi ~ '/editer' if edition else '/tournoi/nouveau' }}"
+        class="recherche-form">
+    <div class="champ">
+      <label for="nom">Nom du tournoi *</label>
+      <input type="text" id="nom" name="nom" required value="{{ t.nom if edition else '' }}">
+    </div>
+    <div class="champ">
+      <label for="jeu">Jeu</label>
+      <input type="text" id="jeu" name="jeu" value="{{ t.jeu if edition and t.jeu else '' }}"
+             placeholder="Nom du jeu (texte libre)">
+    </div>
+    <div class="champ">
+      <label for="date_heure">Date et heure de début</label>
+      <input type="datetime-local" id="date_heure" name="date_heure" value="{{ valeur_date }}">
+    </div>
+    <div class="champ">
+      <label for="duree_min">Durée approximative (minutes)</label>
+      <input type="number" id="duree_min" name="duree_min" min="0"
+             value="{{ t.duree_min if edition and t.duree_min else '' }}">
+    </div>
+    <div class="champ">
+      <label for="nb_places">Nombre de places (vide = illimité)</label>
+      <input type="number" id="nb_places" name="nb_places" min="0"
+             value="{{ t.nb_places if edition and t.nb_places else '' }}">
+    </div>
+    <div class="champ">
+      <label for="emplacement">Emplacement / table</label>
+      <input type="text" id="emplacement" name="emplacement"
+             value="{{ t.emplacement if edition and t.emplacement else '' }}">
+    </div>
+    <label class="case">
+      <input type="checkbox" name="inscription_en_ligne"
+             {{ 'checked' if (not edition) or t.inscription_en_ligne else '' }}>
+      Inscription en ligne possible
+    </label>
+    <label class="case">
+      <input type="checkbox" name="bo3" {{ 'checked' if edition and t.bo3 else '' }}>
+      Best of 3 par rencontre (BO3)
+    </label>
+
+    <button type="submit" class="bouton bouton-principal">
+      {{ "Enregistrer" if edition else "Créer le tournoi" }}
+    </button>
+  </form>
+
+  <p class="lien-fiche">
+    <a class="lien" href="{{ '/tournoi/' ~ t.id_tournoi ~ '/gerer' if edition else '/tournois' }}">
+      Annuler</a>
+  </p>
+</section>
+{% endblock %}

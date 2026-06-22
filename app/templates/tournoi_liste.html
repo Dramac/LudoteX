@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block titre %}Tournois — Des jeux plein la Manche{% endblock %}
+
+{% macro carte_tournoi(t) %}
+  <li class="jeu">
+    <a class="jeu-lien" href="/tournoi/{{ t.id_tournoi }}">
+      <span class="jeu-nom">{{ t.nom }}</span>
+      <span class="jeu-categorie">
+        {% if t.jeu %}{{ t.jeu }}{% endif %}
+        {% if t.date_heure %} · {{ t.date_heure | dt_local }}{% endif %}
+        {% if t.emplacement %} · {{ t.emplacement }}{% endif %}
+      </span>
+    </a>
+    {% if t.etat == "brouillon" %}
+      <span class="badge badge-sorti">brouillon</span>
+    {% elif t.places_restantes is not none %}
+      <span class="badge {{ 'badge-dispo' if t.places_restantes > 0 else 'badge-sorti' }}">
+        {{ t.nb_inscrits }} / {{ t.nb_places }} inscrits</span>
+    {% else %}
+      <span class="badge badge-dispo">{{ t.nb_inscrits }} inscrit{{ 's' if t.nb_inscrits > 1 else '' }}</span>
+    {% endif %}
+    {% if est_benevole(request) %}
+      <a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Gérer</a>
+    {% endif %}
+  </li>
+{% endmacro %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Tournois</h1>
+  {% if est_benevole(request) %}
+    <p><a class="bouton bouton-principal" href="/tournoi/nouveau">+ Nouveau tournoi</a></p>
+  {% endif %}
+  {% if not tournois %}
+    <p><em>Aucun tournoi pour le moment.</em></p>
+  {% endif %}
+</section>
+
+{% set a_venir = tournois | selectattr('phase', 'equalto', 'a_venir') | list %}
+{% set en_cours = tournois | selectattr('phase', 'equalto', 'en_cours') | list %}
+{% set termines = tournois | selectattr('phase', 'equalto', 'termine') | list %}
+
+{% if en_cours %}
+  <h2 class="dispo-titre">En cours</h2>
+  <ul class="catalogue-liste">{% for t in en_cours %}{{ carte_tournoi(t) }}{% endfor %}</ul>
+{% endif %}
+{% if a_venir %}
+  <h2 class="dispo-titre">À venir</h2>
+  <ul class="catalogue-liste">{% for t in a_venir %}{{ carte_tournoi(t) }}{% endfor %}</ul>
+{% endif %}
+{% if termines %}
+  <h2 class="dispo-titre">Terminés</h2>
+  <ul class="catalogue-liste">{% for t in termines %}{{ carte_tournoi(t) }}{% endfor %}</ul>
+{% endif %}
+{% endblock %}

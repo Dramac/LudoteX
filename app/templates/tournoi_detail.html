@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block titre %}{{ t.nom if t else "Tournoi inconnu" }} — Tournoi{% endblock %}
+
+{% block contenu %}
+{% if t is none %}
+  <section class="carte">
+    <h1>Tournoi inconnu</h1>
+    <p>Ce tournoi n'existe pas (ou plus).</p>
+    <p><a class="lien" href="/tournois">Retour aux tournois</a></p>
+  </section>
+{% else %}
+  <section class="carte">
+    <h1>{{ t.nom }}</h1>
+
+    {% if t.etat == "termine" %}
+      <p class="etat etat-sorti">Terminé</p>
+    {% elif t.etat == "lance" %}
+      <p class="etat etat-sorti">En cours</p>
+    {% elif t.etat == "inscriptions" %}
+      <p class="etat etat-dispo">Inscriptions ouvertes</p>
+    {% else %}
+      <p class="etat">À venir</p>
+    {% endif %}
+
+    <dl class="caracteristiques">
+      {% if t.jeu %}<dt>Jeu</dt><dd>{{ t.jeu }}</dd>{% endif %}
+      {% if t.date_heure %}<dt>Début</dt><dd>{{ t.date_heure | dt_local }}</dd>{% endif %}
+      {% if t.duree_min %}<dt>Durée</dt><dd>{{ t.duree_min }} min</dd>{% endif %}
+      {% if t.emplacement %}<dt>Lieu</dt><dd>{{ t.emplacement }}</dd>{% endif %}
+      <dt>Inscrits</dt>
+      <dd>{{ participants | length }}{% if t.nb_places %} / {{ t.nb_places }}{% endif %}</dd>
+    </dl>
+
+    {% if inscription_ouverte %}
+      <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/inscription">S'inscrire</a>
+    {% elif t.etat == "inscriptions" and places_restantes == 0 %}
+      <p class="etat etat-sorti">Complet</p>
+    {% endif %}
+
+    {% if est_benevole(request) %}
+      <p class="lien-fiche"><a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Gérer ce tournoi</a></p>
+    {% endif %}
+  </section>
+
+  <section class="carte">
+    <h2>Participants</h2>
+    {% if participants %}
+      <ul class="catalogue-liste">
+        {% for p in participants %}
+          <li class="jeu"><span class="jeu-nom">{{ p.pseudo }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p><em>Aucun participant inscrit pour l'instant.</em></p>
+    {% endif %}
+  </section>
+
+  <p class="lien-fiche"><a class="lien" href="/tournois">← Tous les tournois</a></p>
+{% endif %}
+{% endblock %}

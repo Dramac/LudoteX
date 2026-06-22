@@ -13,14 +13,29 @@ artefacts de déploiement (`deploy/` + `docs/deploiement.md`). 37 tests verts.
 Reste, côté Simon : exécuter le déploiement VPS, et imprimer les QR une fois le
 domaine figé.
 
-**Prochain chantier : module TOURNOIS** — à développer dans un **nouveau chat du
-même projet**. Tout est cadré dans **`docs/conception-tournois.md`** (module
-`app/tournoi/` intégré, **base SQLite séparée** `data/tournoi.db`, **mêmes jeton
-bénévole + mot de passe admin**, RGPD minimal : on stocke pseudo + code de
-désinscription, jamais l'e-mail). Phase 1 d'abord (tournois + inscription +
-high score + élimination directe + suisse simple) ; phase 2 ensuite (double
-élimination, e-mails, sauvegarde externe). Points encore à trancher par le CA :
-voir §11 de la note.
+**Module TOURNOIS — SOCLE de la phase 1 : FAIT.** Sous-paquet `app/tournoi/`
+(`models.py`, `db.py`, `services.py`, `routes.py`) + gabarits `tournoi_*.html`,
+sur une **base SQLite séparée** `data/tournoi.db` (var. `.env`
+`TOURNOI_DATABASE_PATH`, init au démarrage dans `main.py`, **mêmes jeton bénévole
++ mot de passe admin**). Trois tables (`tournois`, `inscriptions`, `rencontres` —
+cette dernière créée d'avance pour les modes de scoring). Réalisé : CRUD bénévole
+(créer/éditer/supprimer avec **double confirmation**), machine à états
+`brouillon↔inscriptions(+termine)`, **inscription publique** (pseudo + **code de
+désinscription** affiché à l'écran ; **e-mail jamais stocké**, champ non utilisé
+en phase 1 par décision — envoi reporté en phase 2), désinscription par code,
+gestion manuelle des participants, liste publique + page de suivi. Liens
+`/tournois` ajoutés au menu bénévole et au pied de page. Helpers dates réutilisés
+de `app/services.py`. **12 tests dédiés** (`tests/test_tournoi.py`), suite
+globale **49 tests verts**.
+
+**Prochaines étapes (nouveau chat) : modes de scoring**, un par un, sur la table
+`rencontres` déjà en place : (1) **high score**, (2) **élimination directe**
+(byes, option BO3), (3) **ronde suisse simple**. Chaque mode = lancement
+(`etat='lance'` + `mode_scoring`), génération des appariements et **saisie des
+résultats**. Puis phase 2 (double élimination, e-mails robustes, sauvegarde
+externe). La transition vers `lance` est déjà autorisée dans
+`services.TRANSITIONS` (non offerte dans l'UI tant qu'aucun mode n'existe).
+Points CA encore ouverts : voir §11 de `docs/conception-tournois.md`.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,

@@ -7,11 +7,15 @@ import pytest
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    # Base SQLite temporaire isolée par test.
+    # Bases SQLite temporaires isolées par test (prêt + tournois, séparées).
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("TOURNOI_DATABASE_PATH", str(tmp_path / "tournoi.db"))
     from app import db
+    from app.tournoi import db as tdb
 
     monkeypatch.setattr(db, "get_database_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(tdb, "get_database_path", lambda: tmp_path / "tournoi.db")
+    tdb.init_db()
     conn = db.get_connection()
     db.init_db(conn)
     conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('CATAN', 'Catan')")
