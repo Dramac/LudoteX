@@ -83,6 +83,7 @@
                       {% elif m.resultat == "b" %}{{ m.pseudo_b }}
                       {% elif m.resultat == "nul" %}nul
                       {% else %}—{% endif %}
+                      {% if m.score_a is not none %}<span class="palmares-val">({{ m.score_a }}–{{ m.score_b }})</span>{% endif %}
                     </td>
                   {% endif %}
                 </tr>
@@ -114,6 +115,7 @@
                     {% if m.resultat == "a" %}<strong>{{ m.pseudo_a }}</strong>
                     {% elif m.resultat == "b" %}<strong>{{ m.pseudo_b }}</strong>
                     {% else %}—{% endif %}
+                    {% if m.score_a is not none %}<span class="palmares-val">({{ m.score_a }}–{{ m.score_b }})</span>{% endif %}
                   </td>
                 {% endif %}
               </tr>
