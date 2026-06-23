@@ -328,6 +328,56 @@ def test_planning_route_accueil(client, monkeypatch):
     assert "samedi 13 juin" in page.lower()
 
 
+# --- Agenda (.ics) ---
+def test_ical_contenu(conn):
+    iso = app_services.local_vers_utc_iso("2026-06-13T14:00")
+    tid = services.creer_tournoi(conn, "Soirée, jeux", jeu="Catan",
+                                 date_heure=iso, duree_min=90, emplacement="Table 3")
+    ics = services.ical_tournoi(conn, tid)
+    assert "BEGIN:VCALENDAR" in ics and "BEGIN:VEVENT" in ics
+    # 14:00 heure locale (été = UTC+2) -> 12:00 UTC ; fin +90 min -> 13:30 UTC.
+    assert "DTSTART:20260613T120000Z" in ics
+    assert "DTEND:20260613T133000Z" in ics
+    # La virgule du titre est échappée (RFC 5545).
+    assert "SUMMARY:Soirée\\, jeux" in ics
+    assert "LOCATION:Table 3" in ics
+
+
+def test_ical_none_sans_date(conn):
+    tid = services.creer_tournoi(conn, "Sans date")
+    assert services.ical_tournoi(conn, tid) is None
+
+
+def test_ical_duree_par_defaut(conn):
+    iso = app_services.local_vers_utc_iso("2026-06-13T14:00")
+    tid = services.creer_tournoi(conn, "T", date_heure=iso)  # pas de durée
+    ics = services.ical_tournoi(conn, tid)
+    # Durée par défaut 60 min -> fin 13:00 UTC.
+    assert "DTEND:20260613T130000Z" in ics
+
+
+def test_agenda_route_et_bouton(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Avec date", "date_heure": "2026-06-13T14:00",
+                          "duree_min": "60"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+
+    ics = client.get(f"/tournoi/{tid}/agenda.ics")
+    assert ics.status_code == 200
+    assert ics.headers["content-type"].startswith("text/calendar")
+    assert "BEGIN:VEVENT" in ics.text
+    # Le bouton apparaît sur la page publique du tournoi.
+    assert "Ajouter à mon agenda" in client.get(f"/tournoi/{tid}").text
+
+
+def test_agenda_route_404_sans_date(client):
+    r = client.post("/tournoi/nouveau", data={"nom": "Sans date"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    assert client.get(f"/tournoi/{tid}/agenda.ics").status_code == 404
+
+
 # --- Élimination directe ---
 def _tournoi_elim(conn, pseudos):
     tid = services.creer_tournoi(conn, "Elim")

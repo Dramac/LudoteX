@@ -37,6 +37,11 @@
       <p class="etat etat-sorti">Complet</p>
     {% endif %}
 
+    {% if t.date_heure %}
+      <a class="bouton bouton-secondaire" href="/tournoi/{{ t.id_tournoi }}/agenda.ics">
+        📅 Ajouter à mon agenda</a>
+    {% endif %}
+
     {% if est_benevole(request) %}
       <p class="lien-fiche"><a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Gérer ce tournoi</a></p>
     {% endif %}

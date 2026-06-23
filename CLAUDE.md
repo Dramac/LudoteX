@@ -93,6 +93,13 @@ couloirs en colonnes) sur grand écran, agenda empilé chronologique sous 640 px
 (styles `.planning-*`). La section n'apparaît que si la fenêtre contient des
 tournois. **84 tests verts.**
 
+**« Ajouter à mon agenda » (.ics) : FAIT.** `services.ical_tournoi(conn, id)`
+génère un VEVENT iCalendar (début UTC, fin = durée ou défaut 60, titre, jeu en
+description, lieu ; échappement RFC 5545 ; None sans date). Route publique
+`GET /tournoi/{id}/agenda.ics` (`text/calendar`, attachment ; 404 sans date).
+Bouton « 📅 Ajouter à mon agenda » sur la confirmation d'inscription et la page
+du tournoi (si date). Aucune donnée perso. **89 tests verts.**
+
 **Aide dédiée** : page publique `GET /tournoi/aide` (`tournoi_aide.html`, mode
 d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
 liée depuis `/tournois` (bénévole) et l'écran de gestion.
