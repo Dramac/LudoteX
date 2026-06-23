@@ -361,6 +361,38 @@ def editer_action(
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
+@router.get("/tournoi/{id_tournoi:int}/dupliquer")
+def dupliquer_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
+    """Formulaire de duplication : seul l'horaire change (le reste est recopié)."""
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, id_tournoi)
+    finally:
+        conn.close()
+    if t is None:
+        return RedirectResponse("/tournois", status_code=303)
+    return templates.TemplateResponse(
+        request, "tournoi_dupliquer.html",
+        {"t": t, "valeur_date": services.iso_utc_vers_datetime_local(t["date_heure"])},
+    )
+
+
+@router.post("/tournoi/{id_tournoi:int}/dupliquer")
+def dupliquer_action(request: Request, id_tournoi: int,
+                     _=Depends(exiger_jeton), date_heure: str = Form("")):
+    """Crée la copie au nouvel horaire (état brouillon) puis ouvre sa gestion."""
+    conn = get_connection()
+    try:
+        nouveau = services.dupliquer_tournoi(
+            conn, id_tournoi, local_vers_utc_iso(date_heure.strip() or None)
+        )
+    finally:
+        conn.close()
+    if nouveau is None:
+        return RedirectResponse("/tournois", status_code=303)
+    return RedirectResponse(f"/tournoi/{nouveau}/gerer", status_code=303)
+
+
 @router.post("/tournoi/{id_tournoi:int}/etat")
 def changer_etat_action(request: Request, id_tournoi: int,
                         _=Depends(exiger_jeton), etat: str = Form("")):

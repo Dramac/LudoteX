@@ -328,6 +328,50 @@ def test_planning_route_accueil(client, monkeypatch):
     assert "samedi 13 juin" in page.lower()
 
 
+# --- Duplication ---
+def test_dupliquer_copie_caracteristiques(conn):
+    iso = app_services.local_vers_utc_iso("2026-06-13T14:00")
+    src = services.creer_tournoi(conn, "Catan Cup", jeu="Catan", date_heure=iso,
+                                 duree_min=90, nb_places=8, emplacement="Table 3",
+                                 inscription_en_ligne=False)
+    services.changer_etat(conn, src, "inscriptions")
+    services.ajouter_participant(conn, src, "Alice")   # ne doit PAS être copié
+
+    nouvel_iso = app_services.local_vers_utc_iso("2026-06-13T17:00")
+    new = services.dupliquer_tournoi(conn, src, nouvel_iso)
+    t = services.get_tournoi(conn, new)
+    assert new != src
+    assert (t["nom"], t["jeu"], t["duree_min"], t["nb_places"], t["emplacement"]) \
+        == ("Catan Cup", "Catan", 90, 8, "Table 3")
+    assert t["inscription_en_ligne"] == 0
+    # Repart propre : brouillon, nouvel horaire, sans inscrit.
+    assert t["etat"] == "brouillon"
+    assert t["date_heure"] == nouvel_iso
+    assert services.compter_inscriptions(conn, new) == 0
+
+
+def test_dupliquer_source_absente(conn):
+    assert services.dupliquer_tournoi(conn, 999, None) is None
+
+
+def test_dupliquer_route(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Modèle", "jeu": "Carcassonne",
+                          "date_heure": "2026-06-13T14:00", "duree_min": "60",
+                          "nb_places": "6"}, follow_redirects=False)
+    src = r.headers["location"].split("/")[2]
+    # Duplication vers un nouvel horaire -> redirige vers la gestion de la copie.
+    dup = client.post(f"/tournoi/{src}/dupliquer",
+                      data={"date_heure": "2026-06-13T18:00"}, follow_redirects=False)
+    assert dup.status_code == 303
+    new = dup.headers["location"].split("/")[2]
+    assert new != src
+    page = client.get(f"/tournoi/{new}/gerer").text
+    assert "Modèle" in page and "Carcassonne" in page
+    # Le bouton Dupliquer est présent sur la gestion de la source.
+    assert "Dupliquer à un autre horaire" in client.get(f"/tournoi/{src}/gerer").text
+
+
 # --- Agenda (.ics) ---
 def test_ical_contenu(conn):
     iso = app_services.local_vers_utc_iso("2026-06-13T14:00")

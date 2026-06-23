@@ -100,6 +100,15 @@ description, lieu ; échappement RFC 5545 ; None sans date). Route publique
 Bouton « 📅 Ajouter à mon agenda » sur la confirmation d'inscription et la page
 du tournoi (si date). Aucune donnée perso. **89 tests verts.**
 
+**Dupliquer un tournoi (programmer à plusieurs horaires) : FAIT.**
+`services.dupliquer_tournoi(conn, id, date_heure)` recopie nom/jeu/durée/places/
+emplacement/inscription_en_ligne dans une **copie indépendante** repartant en
+brouillon (sans inscrit, sans mode/BO3/rondes ; seul l'horaire change). Routes
+bénévole `GET|POST /tournoi/{id}/dupliquer` (formulaire minimal : nouvel
+horaire), gabarit `tournoi_dupliquer.html`, lien « Dupliquer à un autre horaire »
+sur l'écran de gestion. Pour plusieurs créneaux : dupliquer autant de fois.
+**92 tests verts.**
+
 **Aide dédiée** : page publique `GET /tournoi/aide` (`tournoi_aide.html`, mode
 d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
 liée depuis `/tournois` (bénévole) et l'écran de gestion.

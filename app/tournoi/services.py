@@ -136,6 +136,36 @@ def get_tournoi(conn: sqlite3.Connection, id_tournoi: int) -> dict | None:
     )
 
 
+def dupliquer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
+                      date_heure: str | None = None) -> int | None:
+    """
+    Crée une COPIE d'un tournoi pour la programmer à un autre horaire.
+
+    Recopie les caractéristiques (nom, jeu, durée, places, emplacement,
+    inscription en ligne) et repart « propre » : état brouillon, AUCUN inscrit,
+    mode de scoring / BO3 / nombre de rondes non définis (ils se choisissent au
+    lancement de chaque créneau). Seule la date change.
+
+    Args:
+        date_heure: nouvel horaire (UTC ISO) ; None autorisé (à régler ensuite).
+
+    Returns:
+        L'id du nouveau tournoi, ou None si la source est introuvable.
+    """
+    t = get_tournoi(conn, id_tournoi)
+    if t is None:
+        return None
+    return creer_tournoi(
+        conn, t["nom"],
+        jeu=t["jeu"],
+        date_heure=date_heure,
+        duree_min=t["duree_min"],
+        nb_places=t["nb_places"],
+        emplacement=t["emplacement"],
+        inscription_en_ligne=bool(t["inscription_en_ligne"]),
+    )
+
+
 def modifier_tournoi(conn: sqlite3.Connection, id_tournoi: int, **champs) -> None:
     """
     Met à jour les champs fournis d'un tournoi (édition bénévole).
