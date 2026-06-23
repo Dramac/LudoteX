@@ -84,6 +84,14 @@ le suivi public. Sans BO3, saisie « vainqueur » inchangée. **77 tests verts.*
 d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
 liée depuis `/tournois` (bénévole) et l'écran de gestion.
 
+**Page d'accueil publique : FAIT.** `GET /` ne redirige plus vers `/catalogue`
+mais sert `accueil.html` (route dans `routes/catalogue.py`) : liens vers les
+outils publics (catalogue, tournois), rappel du **nombre de jeux disponibles au
+prêt** (`services.compter_exemplaires_disponibles` → total/dispo, tous motifs) et
+**tournois imminents** (`tournoi.services.tournois_imminents`, fenêtre 1 h :
+publiés, non-brouillon, début entre maintenant et +60 min). Le titre du bandeau
+pointe désormais vers `/`. **Suite globale : 79 tests verts.**
+
 **PHASE 1 COMPLÈTE** (tournois + inscription + suivi + high score + ronde suisse
 + élimination directe). Reste la **phase 2** : double élimination (looser
 bracket), affinements BO3 (manches), e-mails robustes (envoi du code), sauvegarde
