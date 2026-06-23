@@ -12,7 +12,7 @@ RÔLE
 
 CARTE DES URL
 -------------
-    /                 -> redirige vers /catalogue
+    /                 -> page d'accueil publique (outils + dispo + tournois) [public]
     /catalogue        -> liste publique des jeux (+ recherche/filtres)   [public]
     /jeu/<id>         -> fiche d'un exemplaire (encodée dans le QR)       [public]
     /stats            -> statistiques de prêt                             [public]
@@ -30,7 +30,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -114,12 +113,6 @@ if _jeton_absent:
         "sont OUVERTS. Définir PRET_TOKEN dans .env ou réinitialiser le jeton "
         "depuis /admin pour la production."
     )
-
-
-@app.get("/")
-def racine():
-    """Page d'accueil : redirige vers le catalogue public."""
-    return RedirectResponse(url="/catalogue")
 
 
 @app.get("/sante", tags=["meta"])

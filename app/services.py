@@ -533,6 +533,27 @@ def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
     }
 
 
+def compter_exemplaires_disponibles(conn: sqlite3.Connection) -> tuple[int, int]:
+    """
+    Disponibilité globale du fonds (utilisée par la page d'accueil).
+
+    Returns:
+        Un tuple (total_exemplaires, exemplaires_disponibles), où « disponible »
+        signifie : aucun prêt en cours (date_retour IS NULL), tous motifs
+        confondus (prêt public ou sortie tournoi).
+    """
+    total = conn.execute("SELECT COUNT(*) FROM exemplaires").fetchone()[0]
+    sortis = conn.execute(
+        """
+        SELECT COUNT(*) FROM exemplaires e
+        WHERE EXISTS (SELECT 1 FROM prets p
+                      WHERE p.id_exemplaire = e.id_exemplaire
+                        AND p.date_retour IS NULL)
+        """
+    ).fetchone()[0]
+    return total, total - sortis
+
+
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
     """
     Disponibilité d'un titre donné (utilisé par la fiche d'un exemplaire).
