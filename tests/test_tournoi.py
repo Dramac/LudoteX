@@ -4,9 +4,11 @@ mémoire) + routes (public/bénévole) via TestClient.
 """
 
 import sqlite3
+from datetime import date
 
 import pytest
 
+from app import services as app_services
 from app.tournoi import models, services
 
 
@@ -258,6 +260,72 @@ def test_suisse_bye_donne_un_point_et_classement(conn):
     assert cl[0]["rang"] == 1
     # Le dernier a 0 point.
     assert cl[-1]["points"] == 0.0
+
+
+# --- Planning ---
+JOUR1 = date(2026, 6, 13)
+JOUR2 = date(2026, 6, 14)
+
+
+def _tournoi_planifie(conn, nom, jour, heure_min, duree=60, etat="inscriptions"):
+    """Crée un tournoi avec une date/heure locale données puis le sort de brouillon."""
+    iso = app_services.local_vers_utc_iso(f"{jour.isoformat()}T{heure_min}")
+    tid = services.creer_tournoi(conn, nom, date_heure=iso, duree_min=duree)
+    if etat != "brouillon":
+        services.changer_etat(conn, tid, "inscriptions")
+    return tid
+
+
+def test_planning_couloirs_paralleles(conn):
+    # 4 tournois au même créneau -> 4 couloirs sur le jour 1.
+    for n in ("A", "B", "C", "D"):
+        _tournoi_planifie(conn, n, JOUR1, "14:00", duree=60)
+    plan = services.planning(conn, [JOUR1, JOUR2])
+    j1, j2 = plan
+    assert j1["nb_couloirs"] == 4
+    assert {b["couloir"] for b in j1["blocs"]} == {0, 1, 2, 3}
+    assert j2["vide"] is True
+
+
+def test_planning_sans_chevauchement_un_couloir(conn):
+    _tournoi_planifie(conn, "Matin", JOUR1, "10:00", duree=60)   # 10:00–11:00
+    _tournoi_planifie(conn, "Suite", JOUR1, "11:00", duree=60)   # 11:00–12:00
+    j1 = services.planning(conn, [JOUR1])[0]
+    assert j1["nb_couloirs"] == 1
+    # Deux créneaux d'une heure (2 slots) qui se suivent.
+    assert [b["row_span"] for b in j1["blocs"]] == [2, 2]
+
+
+def test_planning_filtre_par_jour_et_brouillon(conn):
+    _tournoi_planifie(conn, "Jour2", JOUR2, "15:00")
+    # Un brouillon le jour 1 ne doit pas apparaître.
+    _tournoi_planifie(conn, "Cache", JOUR1, "15:00", etat="brouillon")
+    plan = services.planning(conn, [JOUR1, JOUR2])
+    assert plan[0]["vide"] is True
+    assert [b["nom"] for b in plan[1]["blocs"]] == ["Jour2"]
+
+
+def test_label_jour():
+    assert services.label_jour(date(2026, 6, 13)) == "samedi 13 juin"
+
+
+def test_planning_route_accueil(client, monkeypatch):
+    # Règle la date d'événement dans la base de prêt.
+    from app import db
+    c = db.get_connection()
+    app_services.ecrire_parametre(c, "evenement_date", JOUR1.isoformat())
+    c.close()
+    # Crée un tournoi ce jour-là (non brouillon).
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Grand Tournoi", "date_heure": f"{JOUR1.isoformat()}T14:00",
+                          "duree_min": "90"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+
+    page = client.get("/").text
+    assert "Planning des tournois" in page
+    assert "Grand Tournoi" in page
+    assert "samedi 13 juin" in page.lower()
 
 
 # --- Élimination directe ---

@@ -33,19 +33,37 @@ def accueil(request: Request):
     nombre de jeux disponibles au prêt et liste les tournois imminents (qui
     commencent dans l'heure).
     """
+    from datetime import datetime, timedelta
+
     conn = get_connection()
     try:
         total, disponible = services.compter_exemplaires_disponibles(conn)
+        date_evenement = services.lire_parametre(conn, "evenement_date")
     finally:
         conn.close()
+
+    # Planning sur 2 jours (jour de l'événement + lendemain), si une date est
+    # réglée en admin. La frise n'apparaît que si elle contient des tournois.
+    jours = []
+    if date_evenement:
+        try:
+            jour1 = datetime.strptime(date_evenement, "%Y-%m-%d").date()
+            jours = [jour1, jour1 + timedelta(days=1)]
+        except ValueError:
+            jours = []
+
     conn_t = get_tournoi_connection()
     try:
         imminents = tournoi_services.tournois_imminents(conn_t)
+        planning = tournoi_services.planning(conn_t, jours) if jours else []
     finally:
         conn_t.close()
+
+    planning_non_vide = any(not j["vide"] for j in planning)
     return templates.TemplateResponse(
         request, "accueil.html",
-        {"total": total, "disponible": disponible, "imminents": imminents},
+        {"total": total, "disponible": disponible, "imminents": imminents,
+         "planning": planning, "planning_non_vide": planning_non_vide},
     )
 
 

@@ -313,6 +313,55 @@ def jeton_page(request: Request):
     )
 
 
+@router.get("/evenement")
+def evenement_formulaire(request: Request):
+    """Réglage de la date de l'événement (jour 1 du planning public sur 2 jours)."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        valeur = services.lire_parametre(conn, "evenement_date")
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_evenement.html", {"date_evenement": valeur, "message": None}
+    )
+
+
+@router.post("/evenement")
+def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
+    """
+    Enregistre (ou efface si vide) la date de l'événement. Le planning public
+    couvre ce jour-là et le lendemain. Format attendu : AAAA-MM-JJ.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from datetime import datetime as _dt
+
+    saisie = date_evenement.strip()
+    if saisie:
+        try:
+            _dt.strptime(saisie, "%Y-%m-%d")
+        except ValueError:
+            return templates.TemplateResponse(
+                request, "admin_evenement.html",
+                {"date_evenement": saisie,
+                 "message": ("erreur", "Date invalide (format attendu : AAAA-MM-JJ).")},
+                status_code=400,
+            )
+    conn = get_connection()
+    try:
+        services.ecrire_parametre(conn, "evenement_date", saisie or None)
+    finally:
+        conn.close()
+    message = (("succes", "Date enregistrée.") if saisie
+               else ("succes", "Date effacée — le planning est masqué."))
+    return templates.TemplateResponse(
+        request, "admin_evenement.html",
+        {"date_evenement": saisie or None, "message": message}
+    )
+
+
 @router.post("/cloturer-prets")
 def cloturer_prets(request: Request):
     """Clôture tous les prêts/sorties en cours (fin d'événement) ; garde l'historique."""

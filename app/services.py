@@ -932,3 +932,25 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
         (reference_titre,),
     ).fetchall()
     return [{"id_exemplaire": r[0], "sorti": est_sorti(conn, r[0])} for r in rows]
+
+
+# ===========================================================================
+# Paramètres applicatifs génériques (table parametres, clé/valeur)
+# ===========================================================================
+def lire_parametre(conn: sqlite3.Connection, cle: str,
+                   defaut: str | None = None) -> str | None:
+    """Lit un réglage de la table `parametres` (ou `defaut` s'il est absent/vide)."""
+    row = conn.execute(
+        "SELECT valeur FROM parametres WHERE cle = ?", (cle,)
+    ).fetchone()
+    return row[0] if row and row[0] else defaut
+
+
+def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> None:
+    """Écrit (ou remplace) un réglage dans la table `parametres`."""
+    conn.execute(
+        "INSERT INTO parametres (cle, valeur) VALUES (?, ?) "
+        "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+        (cle, valeur),
+    )
+    conn.commit()

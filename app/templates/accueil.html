@@ -18,6 +18,37 @@
   </nav>
 </section>
 
+{% if planning_non_vide %}
+<section class="carte">
+  <h2 class="dispo-titre">Planning des tournois</h2>
+  {% for jour in planning %}
+    <h3 class="planning-jour-titre">{{ jour.label | capitalize }}</h3>
+    {% if jour.vide %}
+      <p class="stats-note">Aucun tournoi ce jour-là.</p>
+    {% else %}
+      <div class="planning-grille"
+           style="grid-template-columns: auto repeat({{ jour.nb_couloirs }}, minmax(0, 1fr));
+                  grid-template-rows: repeat({{ jour.nb_slots }}, var(--slot-h));">
+        {% for h in jour.heures %}
+          <div class="planning-heure" style="grid-row: {{ h.row }};">{{ h.label }}</div>
+        {% endfor %}
+        {% for b in jour.blocs %}
+          <a class="planning-bloc planning-bloc--{{ b.etat }}"
+             style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};"
+             href="/tournoi/{{ b.id_tournoi }}">
+            <span class="planning-heure-bloc">{{ b.heure_txt }}</span>
+            <span class="planning-nom">{{ b.nom }}</span>
+            {% if b.emplacement %}<span class="planning-lieu">{{ b.emplacement }}</span>{% endif %}
+            <span class="planning-inscrits">
+              {{ b.nb_inscrits }}{% if b.nb_places %}/{{ b.nb_places }}{% endif %} inscrits</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+
 {% if imminents %}
 <section class="carte">
   <h2 class="dispo-titre">Ça commence bientôt</h2>

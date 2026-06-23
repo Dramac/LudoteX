@@ -80,6 +80,19 @@ en élimination ; `enregistrer_manches`). Les écrans rondes/arbre affichent deu
 champs `ma_<id>`/`mb_<id>` au lieu du sélecteur ; le score « 2–1 » apparaît dans
 le suivi public. Sans BO3, saisie « vainqueur » inchangée. **77 tests verts.**
 
+**Planning public (vue 2 jours) : FAIT.** Sur la page d'accueil (`/`,
+`accueil.html`). Date de l'événement réglée en admin (`GET|POST /admin/evenement`,
+clé `parametres.evenement_date` dans la base de PRÊT ; helpers
+`services.lire_parametre`/`ecrire_parametre`). La frise couvre ce jour + le
+lendemain. `tournoi.services.planning(conn, jours)` : tournois non-brouillon
+groupés par jour local, **couloirs calculés par chevauchement**
+(`_calculer_couloirs`, partition d'intervalles), coordonnées de grille (slots de
+`SLOT_MIN`=30 min, durée par défaut `DUREE_DEFAUT_MIN`=60), étiquettes d'heures,
+`label_jour` (FR). Rendu **hybride sans JS** : CSS grid (gouttière d'heures +
+couloirs en colonnes) sur grand écran, agenda empilé chronologique sous 640 px
+(styles `.planning-*`). La section n'apparaît que si la fenêtre contient des
+tournois. **84 tests verts.**
+
 **Aide dédiée** : page publique `GET /tournoi/aide` (`tournoi_aide.html`, mode
 d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
 liée depuis `/tournois` (bénévole) et l'écran de gestion.
