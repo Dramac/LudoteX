@@ -52,6 +52,37 @@ def test_aide_page(client):
     assert r.status_code == 200 and "Mode d'emploi" in r.text
 
 
+def test_accueil(client):
+    # La racine sert la page d'accueil (plus de redirection vers /catalogue).
+    r = client.get("/")
+    assert r.status_code == 200
+    # 1 exemplaire de test (Catan), disponible.
+    assert "disponible" in r.text.lower()
+    assert "/catalogue" in r.text and "/tournois" in r.text
+
+
+def test_accueil_tournoi_imminent(client):
+    # Un tournoi publié commençant dans 30 min apparaît ; un autre dans 3 h non.
+    from datetime import datetime, timedelta, timezone
+
+    from app.tournoi import db as tdb
+    from app.tournoi import services as ts
+
+    conn = tdb.get_connection()
+    try:
+        proche = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+        loin = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(timespec="seconds")
+        idp = ts.creer_tournoi(conn, "Tournoi proche", date_heure=proche)
+        ts.creer_tournoi(conn, "Tournoi lointain", date_heure=loin)
+        ts.changer_etat(conn, idp, "inscriptions")
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.get("/")
+    assert "Tournoi proche" in r.text
+    assert "Tournoi lointain" not in r.text
+
+
 def test_menu_benevole_conditionnel(client, monkeypatch):
     monkeypatch.setenv("PRET_TOKEN", "jeton-menu-xyz")
     # Appareil non activé : pas de menu bénévole sur le catalogue public.
@@ -81,10 +112,11 @@ def test_catalogue_filtre_joueurs_exclut_hors_bornes(client):
     assert "Catan" not in r.text
 
 
-def test_catalogue_redirige_depuis_racine(client):
+def test_racine_sert_accueil(client):
+    # La racine sert désormais la page d'accueil directement (plus de redirection).
     r = client.get("/", follow_redirects=False)
-    assert r.status_code in (307, 308)
-    assert r.headers["location"] == "/catalogue"
+    assert r.status_code == 200
+    assert "Des jeux plein la Manche" in r.text
 
 
 def test_stats_page(client):

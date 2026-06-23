@@ -18,9 +18,35 @@ from fastapi import APIRouter, Request
 from app import services
 from app.db import get_connection
 from app.templating import templates
+from app.tournoi import services as tournoi_services
+from app.tournoi.db import get_connection as get_tournoi_connection
 
 # `tags` regroupe ces routes dans la doc auto (/docs).
 router = APIRouter(tags=["catalogue"])
+
+
+@router.get("/")
+def accueil(request: Request):
+    """
+    Page d'accueil publique du système (remplace le catalogue comme point
+    d'entrée). Donne accès aux outils publics (catalogue, tournois), rappelle le
+    nombre de jeux disponibles au prêt et liste les tournois imminents (qui
+    commencent dans l'heure).
+    """
+    conn = get_connection()
+    try:
+        total, disponible = services.compter_exemplaires_disponibles(conn)
+    finally:
+        conn.close()
+    conn_t = get_tournoi_connection()
+    try:
+        imminents = tournoi_services.tournois_imminents(conn_t)
+    finally:
+        conn_t.close()
+    return templates.TemplateResponse(
+        request, "accueil.html",
+        {"total": total, "disponible": disponible, "imminents": imminents},
+    )
 
 
 @router.get("/aide")

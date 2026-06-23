@@ -103,6 +103,14 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .bouton-principal { background: var(--vert); }
 .bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord); }
 
+/* Page d'accueil */
+.accueil { text-align: center; }
+.accueil-dispo { font-size: 1.2rem; margin: 8px 0 20px; }
+.accueil-dispo strong { font-size: 1.6rem; color: var(--vert); }
+.accueil-dispo-total { color: var(--gris); font-size: 0.95rem; }
+.accueil-outils { display: flex; flex-wrap: wrap; gap: 12px; }
+.accueil-outils .bouton { flex: 1 1 200px; margin: 0; }
+
 /* Résultat d'action */
 .resultat {
   border-radius: 12px;

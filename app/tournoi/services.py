@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from app.services import FUSEAU_LOCAL, maintenant  # fuseau + horodatage UTC ISO partagés
+from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant  # fuseau + horodatage UTC ISO partagés
 from app.tournoi.models import ETATS
 
 # Bornes de saisie.
@@ -231,6 +231,45 @@ def lister_tournois(
         )
         tournois.append(d)
     return tournois
+
+
+def tournois_imminents(
+    conn: sqlite3.Connection, fenetre_minutes: int = 60
+) -> list[dict]:
+    """
+    Tournois publics dont le début est PROCHE : compris entre maintenant et
+    maintenant + `fenetre_minutes` (1 h par défaut). Sert à la page d'accueil.
+
+    Les brouillons sont exclus (jamais publics) ainsi que les tournois sans date
+    ou déjà commencés/passés. Triés par heure de début croissante.
+    """
+    maintenant_dt = datetime.now(FUSEAU_UTC)
+    limite = maintenant_dt + timedelta(minutes=fenetre_minutes)
+    lignes = conn.execute(
+        """
+        SELECT t.*, (
+            SELECT COUNT(*) FROM inscriptions i WHERE i.id_tournoi = t.id_tournoi
+        ) AS nb_inscrits
+        FROM tournois t
+        WHERE t.etat != 'brouillon' AND t.date_heure IS NOT NULL
+        ORDER BY t.date_heure ASC
+        """
+    ).fetchall()
+    imminents = []
+    for r in lignes:
+        d = dict(r)
+        try:
+            dt = datetime.fromisoformat(d["date_heure"])
+        except (ValueError, TypeError):
+            continue
+        if maintenant_dt <= dt <= limite:
+            d["phase"] = phase(d["etat"])
+            d["places_restantes"] = (
+                None if d["nb_places"] is None
+                else max(0, d["nb_places"] - d["nb_inscrits"])
+            )
+            imminents.append(d)
+    return imminents
 
 
 # ===========================================================================
