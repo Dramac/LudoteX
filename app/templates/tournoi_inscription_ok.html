@@ -14,6 +14,11 @@
     Notez ce code. Il est le seul moyen de vous désinscrire (aucune adresse
     e-mail n'a été conservée).
   </p>
+  {% if t.date_heure %}
+    <a class="bouton bouton-secondaire" href="/tournoi/{{ t.id_tournoi }}/agenda.ics">
+      📅 Ajouter à mon agenda</a>
+  {% endif %}
+
   <p class="lien-fiche">
     <a class="lien" href="/tournoi/desinscription?code={{ code }}">Se désinscrire avec ce code</a>
     &nbsp;·&nbsp;

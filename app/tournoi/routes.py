@@ -31,7 +31,7 @@ collision avec les segments littéraux (`nouveau`, `desinscription`).
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from app import auth
 from app.auth import exiger_jeton
@@ -156,6 +156,26 @@ def detail(request: Request, id_tournoi: int):
          "classement": classement, "rondes": rondes,
          "tours": tours, "vainqueur": vainqueur},
         status_code=200 if t else 404,
+    )
+
+
+@router.get("/tournoi/{id_tournoi:int}/agenda.ics")
+def agenda_ics(request: Request, id_tournoi: int):
+    """
+    Télécharge l'événement du tournoi au format iCalendar (.ics) — « Ajouter à
+    mon agenda ». Public, sans donnée personnelle. 404 si pas de date.
+    """
+    conn = get_connection()
+    try:
+        ics = services.ical_tournoi(conn, id_tournoi)
+    finally:
+        conn.close()
+    if ics is None:
+        return Response(status_code=404)
+    return Response(
+        content=ics,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="tournoi-{id_tournoi}.ics"'},
     )
 
 

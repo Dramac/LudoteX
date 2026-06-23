@@ -1143,3 +1143,61 @@ def planning(conn: sqlite3.Connection, jours: list[date]) -> list[dict]:
             jour["heures"] = heures
         resultat.append(jour)
     return resultat
+
+
+# ===========================================================================
+# Export iCalendar (.ics) — « Ajouter à mon agenda »
+# ===========================================================================
+def _ics_echappe(texte: str | None) -> str:
+    """Échappe un texte pour un champ iCalendar (RFC 5545)."""
+    return (
+        (texte or "")
+        .replace("\\", "\\\\").replace(";", "\\;")
+        .replace(",", "\\,").replace("\n", "\\n")
+    )
+
+
+def _ics_horodatage(dt: datetime) -> str:
+    """Formate un datetime aware en horodatage UTC iCalendar (AAAAMMJJTHHMMSSZ)."""
+    return dt.astimezone(FUSEAU_UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
+    """
+    Construit le contenu iCalendar (.ics) d'un tournoi pour « Ajouter à mon
+    agenda ». Aucune donnée personnelle. Renvoie None si le tournoi est
+    introuvable ou n'a pas de date (pas d'événement à planifier).
+    """
+    t = get_tournoi(conn, id_tournoi)
+    if t is None or not t["date_heure"]:
+        return None
+    try:
+        debut = datetime.fromisoformat(t["date_heure"])
+    except (ValueError, TypeError):
+        return None
+    fin = debut + timedelta(minutes=t["duree_min"] or DUREE_DEFAUT_MIN)
+
+    description = []
+    if t["jeu"]:
+        description.append(f"Jeu : {t['jeu']}")
+    description.append("Tournoi — Des jeux plein la Manche")
+
+    lignes = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Des jeux plein la Manche//Tournois//FR",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:tournoi-{id_tournoi}-{_ics_horodatage(debut)}@desjeuxpleinlamanche",
+        f"DTSTAMP:{_ics_horodatage(datetime.now(FUSEAU_UTC))}",
+        f"DTSTART:{_ics_horodatage(debut)}",
+        f"DTEND:{_ics_horodatage(fin)}",
+        f"SUMMARY:{_ics_echappe(t['nom'])}",
+        f"DESCRIPTION:{_ics_echappe(' — '.join(description))}",
+    ]
+    if t["emplacement"]:
+        lignes.append(f"LOCATION:{_ics_echappe(t['emplacement'])}")
+    lignes += ["END:VEVENT", "END:VCALENDAR"]
+    # iCalendar impose des fins de ligne CRLF.
+    return "\r\n".join(lignes) + "\r\n"
