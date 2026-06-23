@@ -52,6 +52,23 @@ def _int_ou_none(v: str) -> int | None:
     return int(v) if v.isdigit() else None
 
 
+def _parser_manches(form) -> dict[int, tuple[int | None, int | None]]:
+    """
+    Extrait les manches gagnées (mode BO3) d'un formulaire : champs `ma_<id>`
+    (manches A) et `mb_<id>` (manches B). Renvoie {id_rencontre: (a, b)}.
+    """
+    paires: dict[int, list] = {}
+    for cle, valeur in form.items():
+        for prefixe, index in (("ma_", 0), ("mb_", 1)):
+            if cle.startswith(prefixe):
+                try:
+                    rid = int(cle.removeprefix(prefixe))
+                except ValueError:
+                    continue
+                paires.setdefault(rid, [None, None])[index] = _int_ou_none(str(valeur))
+    return {rid: (v[0], v[1]) for rid, v in paires.items()}
+
+
 # ===========================================================================
 # PUBLIC — liste, page de suivi, inscription, désinscription
 # ===========================================================================
@@ -218,9 +235,12 @@ def nouveau_creer(
     nb_places: str = Form(""),
     emplacement: str = Form(""),
     inscription_en_ligne: str = Form(""),
-    bo3: str = Form(""),
 ):
-    """Crée le tournoi (état 'brouillon') puis ouvre son tableau de gestion."""
+    """Crée le tournoi (état 'brouillon') puis ouvre son tableau de gestion.
+
+    Le format BO3 n'est PAS choisi ici : il se décide au lancement (voir
+    lancer_action), car il ne concerne que les modes à base de matchs.
+    """
     if not nom.strip():
         return templates.TemplateResponse(
             request, "tournoi_form.html",
@@ -237,7 +257,6 @@ def nouveau_creer(
             nb_places=_int_ou_none(nb_places),
             emplacement=emplacement,
             inscription_en_ligne=bool(inscription_en_ligne),
-            bo3=bool(bo3),
         )
     finally:
         conn.close()
@@ -292,7 +311,6 @@ def editer_action(
     nb_places: str = Form(""),
     emplacement: str = Form(""),
     inscription_en_ligne: str = Form(""),
-    bo3: str = Form(""),
 ):
     """Applique les modifications d'un tournoi puis revient à la gestion."""
     if not nom.strip():
@@ -317,7 +335,6 @@ def editer_action(
             nb_places=_int_ou_none(nb_places),
             emplacement=(emplacement or "").strip() or None,
             inscription_en_ligne=1 if inscription_en_ligne else 0,
-            bo3=1 if bo3 else 0,
         )
     finally:
         conn.close()
@@ -400,16 +417,17 @@ def supprimer_action(request: Request, id_tournoi: int,
 @router.post("/tournoi/{id_tournoi:int}/lancer")
 def lancer_action(request: Request, id_tournoi: int,
                   _=Depends(exiger_jeton), mode_scoring: str = Form(""),
-                  nb_rondes: str = Form("")):
+                  nb_rondes: str = Form(""), bo3: str = Form("")):
     """
-    Lance le tournoi avec le mode choisi. En cas de succès, bascule vers l'écran
-    de saisie adapté (scores pour high score, rondes pour la ronde suisse) ;
-    sinon, revient à la gestion.
+    Lance le tournoi avec le mode choisi (et l'option BO3). En cas de succès,
+    bascule vers l'écran de saisie adapté (scores pour high score, rondes pour la
+    ronde suisse, arbre pour l'élimination) ; sinon, revient à la gestion.
     """
     mode = mode_scoring.strip()
     conn = get_connection()
     try:
-        res = services.lancer_tournoi(conn, id_tournoi, mode, _int_ou_none(nb_rondes))
+        res = services.lancer_tournoi(conn, id_tournoi, mode,
+                                      _int_ou_none(nb_rondes), bo3=bool(bo3))
     finally:
         conn.close()
     if res.get("ok") and mode == "high_score":
@@ -507,24 +525,25 @@ def rondes_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)
 @router.post("/tournoi/{id_tournoi:int}/rondes/{ronde:int}/resultats")
 async def rondes_resultats(request: Request, id_tournoi: int, ronde: int,
                            _=Depends(exiger_jeton)):
-    """Enregistre les résultats d'une ronde (champs `res_<id_rencontre>`)."""
+    """
+    Enregistre les résultats d'une ronde. En BO3 : manches gagnées (champs
+    `ma_<id>`/`mb_<id>`, vainqueur déduit, nul autorisé). Sinon : vainqueur
+    direct (champs `res_<id_rencontre>` ∈ {a,b,nul}).
+    """
     form = await request.form()
-    resultats: dict[int, str | None] = {}
-    for cle, valeur in form.items():
-        if not cle.startswith("res_"):
-            continue
-        try:
-            id_rencontre = int(cle.removeprefix("res_"))
-        except ValueError:
-            continue
-        resultats[id_rencontre] = (str(valeur).strip() or None)
-
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
         if t is None:
             return RedirectResponse("/tournois", status_code=303)
-        services.enregistrer_resultats_suisse(conn, id_tournoi, ronde, resultats)
+        if t["bo3"]:
+            services.enregistrer_manches(conn, id_tournoi, ronde,
+                                         _parser_manches(form), autoriser_nul=True)
+        else:
+            resultats = {int(c.removeprefix("res_")): (str(v).strip() or None)
+                         for c, v in form.items()
+                         if c.startswith("res_") and c.removeprefix("res_").isdigit()}
+            services.enregistrer_resultats_suisse(conn, id_tournoi, ronde, resultats)
         contexte = _contexte_rondes(conn, t, message=("succes", "Résultats enregistrés."))
     finally:
         conn.close()
@@ -588,26 +607,26 @@ def arbre_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton))
 @router.post("/tournoi/{id_tournoi:int}/arbre/{tour:int}/resultats")
 async def arbre_resultats(request: Request, id_tournoi: int, tour: int,
                           _=Depends(exiger_jeton)):
-    """Enregistre les vainqueurs d'un tour (champs `res_<id_rencontre>` ∈ {a,b})."""
+    """
+    Enregistre les vainqueurs d'un tour. En BO3 : manches gagnées (`ma_`/`mb_`,
+    pas de nul → égalité = pas de vainqueur). Sinon : vainqueur direct
+    (`res_<id_rencontre>` ∈ {a,b}).
+    """
     form = await request.form()
-    resultats: dict[int, str | None] = {}
-    for cle, valeur in form.items():
-        if not cle.startswith("res_"):
-            continue
-        try:
-            id_rencontre = int(cle.removeprefix("res_"))
-        except ValueError:
-            continue
-        v = str(valeur).strip()
-        # Pas de match nul en élimination : on n'accepte que 'a' ou 'b'.
-        resultats[id_rencontre] = v if v in ("a", "b") else None
-
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
         if t is None:
             return RedirectResponse("/tournois", status_code=303)
-        services.enregistrer_resultats_suisse(conn, id_tournoi, tour, resultats)
+        if t["bo3"]:
+            services.enregistrer_manches(conn, id_tournoi, tour,
+                                         _parser_manches(form), autoriser_nul=False)
+        else:
+            # Pas de match nul en élimination : on n'accepte que 'a' ou 'b'.
+            resultats = {int(c.removeprefix("res_")): (str(v).strip() if str(v).strip() in ("a", "b") else None)
+                         for c, v in form.items()
+                         if c.startswith("res_") and c.removeprefix("res_").isdigit()}
+            services.enregistrer_resultats_suisse(conn, id_tournoi, tour, resultats)
         contexte = _contexte_arbre(conn, t, message=("succes", "Résultats enregistrés."))
     finally:
         conn.close()

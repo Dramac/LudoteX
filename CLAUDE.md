@@ -71,6 +71,15 @@ et **répartis** via `_ordre_places` (seeding standard 1-8-4-5-2-7-3-6…),
 de nul), `POST .../arbre/suivant`. Gabarit `tournoi_arbre.html` ; page publique
 affiche l'arbre + le vainqueur. **Suite globale : 71 tests verts.**
 
+**Option BO3 (best of 3) : FONCTIONNELLE.** Choisie **au lancement** (plus à la
+création : `bo3` retiré du formulaire), via `lancer_tournoi(..., bo3=True)` —
+n'a d'effet que pour suisse/élimination. Quand activée, la saisie d'une rencontre
+se fait en **manches gagnées** A–B (`score_a`/`score_b`) et le vainqueur est
+déduit (`_resultat_depuis_manches` : égalité = `nul` en suisse, pas de vainqueur
+en élimination ; `enregistrer_manches`). Les écrans rondes/arbre affichent deux
+champs `ma_<id>`/`mb_<id>` au lieu du sélecteur ; le score « 2–1 » apparaît dans
+le suivi public. Sans BO3, saisie « vainqueur » inchangée. **77 tests verts.**
+
 **Aide dédiée** : page publique `GET /tournoi/aide` (`tournoi_aide.html`, mode
 d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
 liée depuis `/tournois` (bénévole) et l'écran de gestion.

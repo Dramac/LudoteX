@@ -69,11 +69,16 @@
             <label for="nb_rondes">Nombre de rondes <small>(ronde suisse uniquement)</small></label>
             <input type="number" id="nb_rondes" name="nb_rondes" min="1" value="3">
           </div>
+          <label class="case">
+            <input type="checkbox" name="bo3">
+            Best of 3 <small>(saisie des manches gagnées ; suisse et élimination)</small>
+          </label>
           <button class="bouton bouton-principal" type="submit">Lancer</button>
         </form>
         <p class="stats-note">
-          Le mode se choisit au lancement. Le nombre de rondes ne concerne que la
-          ronde suisse (l'élimination directe déduit ses tours de l'effectif).
+          Le mode et le format se choisissent au lancement. Le nombre de rondes ne
+          concerne que la ronde suisse (l'élimination déduit ses tours de
+          l'effectif) ; le BO3 ne s'applique qu'aux modes à base de matchs.
         </p>
       {% else %}
         <p class="stats-note">Ajoutez au moins un participant pour pouvoir lancer.</p>

@@ -366,13 +366,17 @@ def desinscrire(conn: sqlite3.Connection, code: str) -> dict:
 # Lancement + modes de scoring
 # ===========================================================================
 def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
-                   mode_scoring: str, nb_rondes: int | None = None) -> dict:
+                   mode_scoring: str, nb_rondes: int | None = None,
+                   bo3: bool = False) -> dict:
     """
     Lance un tournoi : passe de 'inscriptions' à 'lance' et fixe le mode de
-    scoring, puis initialise les structures propres au mode.
+    scoring (et l'option BO3), puis initialise les structures propres au mode.
 
     Args:
         nb_rondes: requis pour 'ronde_suisse' (>= 1) ; ignoré pour 'high_score'.
+        bo3: best of 3 — la saisie se fait alors en MANCHES gagnées (vainqueur
+            déduit). N'a de sens que pour les modes à base de matchs (ronde
+            suisse, élimination) ; ignoré en high score. Choisi AU LANCEMENT.
 
     Returns:
         {"ok": True} en cas de succès ; sinon {"ok": False, "raison":
@@ -407,10 +411,13 @@ def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
     else:
         nb_rondes_stocke = None
 
+    # Le BO3 n'a de sens que pour les modes à base de matchs.
+    bo3_stocke = 1 if (bo3 and mode_scoring in ("ronde_suisse", "elimination")) else 0
+
     conn.execute(
-        "UPDATE tournois SET etat = 'lance', mode_scoring = ?, nb_rondes = ? "
+        "UPDATE tournois SET etat = 'lance', mode_scoring = ?, nb_rondes = ?, bo3 = ? "
         "WHERE id_tournoi = ?",
-        (mode_scoring, nb_rondes_stocke, id_tournoi),
+        (mode_scoring, nb_rondes_stocke, bo3_stocke, id_tournoi),
     )
     if mode_scoring == "high_score":
         _init_high_score(conn, id_tournoi)
@@ -710,9 +717,47 @@ def rencontres_de_ronde(conn: sqlite3.Connection, id_tournoi: int,
             "pseudo_a": noms.get(r["participant_a"], "?"),
             "pseudo_b": noms.get(r["participant_b"]) if r["participant_b"] else None,
             "resultat": r["resultat"],
+            "score_a": r["score_a"],
+            "score_b": r["score_b"],
             "bye": r["participant_b"] is None,
         })
     return lignes
+
+
+def _resultat_depuis_manches(a: int | None, b: int | None,
+                             autoriser_nul: bool) -> str | None:
+    """
+    Déduit le résultat ('a'/'b'/'nul'/None) d'un nombre de manches gagnées.
+
+    Égalité : 'nul' si autorisé (ronde suisse), sinon None — pas de vainqueur
+    désigné (élimination : la rencontre reste « à jouer »).
+    """
+    if a is None or b is None:
+        return None
+    if a > b:
+        return "a"
+    if b > a:
+        return "b"
+    return "nul" if autoriser_nul else None
+
+
+def enregistrer_manches(conn: sqlite3.Connection, id_tournoi: int, ronde: int,
+                        manches: dict[int, tuple[int | None, int | None]],
+                        autoriser_nul: bool) -> None:
+    """
+    Enregistre les manches gagnées (mode BO3) d'une ronde/tour et en déduit le
+    résultat. `manches` mappe id_rencontre -> (manches_a, manches_b). Les byes ne
+    sont pas modifiables.
+    """
+    for id_rencontre, (a, b) in manches.items():
+        resultat = _resultat_depuis_manches(a, b, autoriser_nul)
+        conn.execute(
+            "UPDATE rencontres SET score_a = ?, score_b = ?, resultat = ? "
+            "WHERE id_rencontre = ? AND id_tournoi = ? AND ronde = ? "
+            "AND participant_b IS NOT NULL",
+            (a, b, resultat, id_rencontre, id_tournoi, ronde),
+        )
+    conn.commit()
 
 
 def toutes_les_rondes(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:

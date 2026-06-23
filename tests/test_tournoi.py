@@ -371,6 +371,70 @@ def test_elim_route_complet(client):
     assert "Vainqueur" in client.get(f"/tournoi/{tid}").text
 
 
+# --- BO3 (manches) ---
+def test_bo3_au_lancement_pas_a_la_creation(conn):
+    tid = services.creer_tournoi(conn, "T")
+    # À la création, bo3 vaut 0 par défaut.
+    assert services.get_tournoi(conn, tid)["bo3"] == 0
+    services.changer_etat(conn, tid, "inscriptions")
+    for p in ("A", "B"):
+        services.ajouter_participant(conn, tid, p)
+    services.lancer_tournoi(conn, tid, "ronde_suisse", 1, bo3=True)
+    assert services.get_tournoi(conn, tid)["bo3"] == 1
+
+
+def test_bo3_ignore_en_high_score(conn):
+    tid = services.creer_tournoi(conn, "T")
+    services.changer_etat(conn, tid, "inscriptions")
+    services.ajouter_participant(conn, tid, "A")
+    services.lancer_tournoi(conn, tid, "high_score", bo3=True)
+    assert services.get_tournoi(conn, tid)["bo3"] == 0
+
+
+def test_bo3_manches_deduit_le_vainqueur_suisse(conn):
+    tid = _tournoi_suisse(conn, ["A", "B"], 1)  # lancé sans bo3
+    # On force le mode BO3 pour le test de saisie des manches.
+    conn.execute("UPDATE tournois SET bo3=1 WHERE id_tournoi=?", (tid,)); conn.commit()
+    m = [x for x in services.rencontres_de_ronde(conn, tid, 1) if not x["bye"]][0]
+    services.enregistrer_manches(conn, tid, 1, {m["id_rencontre"]: (2, 1)},
+                                 autoriser_nul=True)
+    lignes = services.rencontres_de_ronde(conn, tid, 1)
+    saisi = [x for x in lignes if x["id_rencontre"] == m["id_rencontre"]][0]
+    assert saisi["resultat"] == "a" and saisi["score_a"] == 2 and saisi["score_b"] == 1
+
+
+def test_bo3_egalite_nul_autorise_ou_non(conn):
+    assert services._resultat_depuis_manches(1, 1, autoriser_nul=True) == "nul"
+    # En élimination, égalité => pas de vainqueur (None).
+    assert services._resultat_depuis_manches(1, 1, autoriser_nul=False) is None
+    assert services._resultat_depuis_manches(2, 0, autoriser_nul=False) == "a"
+    assert services._resultat_depuis_manches(0, 2, autoriser_nul=True) == "b"
+
+
+def test_bo3_route_elimination_saisie_manches(client):
+    r = client.post("/tournoi/nouveau", data={"nom": "Elim BO3"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    for p in ("A", "B"):
+        client.post(f"/tournoi/{tid}/participant", data={"pseudo": p})
+    # Lancement en BO3.
+    client.post(f"/tournoi/{tid}/lancer",
+                data={"mode_scoring": "elimination", "bo3": "on"})
+
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    rid = c.execute("SELECT id_rencontre FROM rencontres WHERE id_tournoi=? AND ronde=1",
+                    (tid,)).fetchone()["id_rencontre"]
+    c.close()
+    # Saisie en manches : 2–1 -> A gagne la finale (arbre de 2 = 1 tour).
+    fin = client.post(f"/tournoi/{tid}/arbre/1/resultats",
+                      data={f"ma_{rid}": "2", f"mb_{rid}": "1"})
+    assert "Vainqueur" in fin.text
+    # Le score 2–1 apparaît sur la page publique.
+    assert "2–1" in client.get(f"/tournoi/{tid}").text
+
+
 def test_suisse_route_complet(client):
     r = client.post("/tournoi/nouveau", data={"nom": "Suisse Route"},
                     follow_redirects=False)

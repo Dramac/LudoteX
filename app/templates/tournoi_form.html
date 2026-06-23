@@ -46,10 +46,6 @@
              {{ 'checked' if (not edition) or t.inscription_en_ligne else '' }}>
       Inscription en ligne possible
     </label>
-    <label class="case">
-      <input type="checkbox" name="bo3" {{ 'checked' if edition and t.bo3 else '' }}>
-      Best of 3 par rencontre (BO3)
-    </label>
 
     <button type="submit" class="bouton bouton-principal">
       {{ "Enregistrer" if edition else "Créer le tournoi" }}

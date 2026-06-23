@@ -43,13 +43,24 @@
                 <td><em>exempt (bye) — qualifié</em></td>
               {% else %}
                 <td>{{ m.pseudo_a }} <span class="palmares-val">vs</span> {{ m.pseudo_b }}</td>
-                <td>
-                  <select name="res_{{ m.id_rencontre }}">
-                    <option value="" {{ 'selected' if not m.resultat else '' }}>— vainqueur ? —</option>
-                    <option value="a" {{ 'selected' if m.resultat == 'a' else '' }}>{{ m.pseudo_a }}</option>
-                    <option value="b" {{ 'selected' if m.resultat == 'b' else '' }}>{{ m.pseudo_b }}</option>
-                  </select>
-                </td>
+                {% if t.bo3 %}
+                  <td>
+                    <input type="number" name="ma_{{ m.id_rencontre }}" min="0" max="2"
+                           value="{{ m.score_a if m.score_a is not none else '' }}" style="width:3.5rem;">
+                    <span class="palmares-val">–</span>
+                    <input type="number" name="mb_{{ m.id_rencontre }}" min="0" max="2"
+                           value="{{ m.score_b if m.score_b is not none else '' }}" style="width:3.5rem;">
+                    <span class="palmares-val">manches</span>
+                  </td>
+                {% else %}
+                  <td>
+                    <select name="res_{{ m.id_rencontre }}">
+                      <option value="" {{ 'selected' if not m.resultat else '' }}>— vainqueur ? —</option>
+                      <option value="a" {{ 'selected' if m.resultat == 'a' else '' }}>{{ m.pseudo_a }}</option>
+                      <option value="b" {{ 'selected' if m.resultat == 'b' else '' }}>{{ m.pseudo_b }}</option>
+                    </select>
+                  </td>
+                {% endif %}
               {% endif %}
             </tr>
           {% endfor %}
