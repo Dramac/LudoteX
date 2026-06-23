@@ -27,20 +27,23 @@
       <p class="stats-note">Aucun tournoi ce jour-là.</p>
     {% else %}
       <div class="planning-grille"
-           style="grid-template-columns: auto repeat({{ jour.nb_couloirs }}, minmax(0, 1fr));
+           style="grid-template-columns: var(--gutter-w) repeat({{ jour.nb_couloirs }}, minmax(0, 1fr));
                   grid-template-rows: repeat({{ jour.nb_slots }}, var(--slot-h));">
+        {# Lignes d'heures (fond) + étiquette dans la gouttière de gauche. #}
         {% for h in jour.heures %}
+          <div class="planning-ligne" style="grid-row: {{ h.row }};"></div>
           <div class="planning-heure" style="grid-row: {{ h.row }};">{{ h.label }}</div>
         {% endfor %}
+        {# Cartes des tournois, positionnées selon début/durée et couloir. #}
         {% for b in jour.blocs %}
           <a class="planning-bloc planning-bloc--{{ b.etat }}"
              style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};"
              href="/tournoi/{{ b.id_tournoi }}">
-            <span class="planning-heure-bloc">{{ b.heure_txt }}</span>
-            <span class="planning-nom">{{ b.nom }}</span>
-            {% if b.emplacement %}<span class="planning-lieu">{{ b.emplacement }}</span>{% endif %}
-            <span class="planning-inscrits">
-              {{ b.nb_inscrits }}{% if b.nb_places %}/{{ b.nb_places }}{% endif %} inscrits</span>
+            <span class="planning-bloc-heure">{{ b.heure_txt }}</span>
+            <span class="planning-bloc-nom">{{ b.nom }}</span>
+            {% if b.jeu %}<span class="planning-bloc-meta">{{ b.jeu }}</span>{% endif %}
+            {% if b.emplacement %}<span class="planning-bloc-meta">📍 {{ b.emplacement }}</span>{% endif %}
+            <span class="planning-bloc-meta">{{ b.nb_inscrits }}{% if b.nb_places %}/{{ b.nb_places }}{% endif %} inscrits</span>
           </a>
         {% endfor %}
       </div>

@@ -276,55 +276,67 @@ button.lien {
   text-decoration: underline;
 }
 
-/* --- Planning des tournois (page d'accueil) --- */
-:root { --slot-h: 1.5rem; }                 /* hauteur d'un créneau de 30 min */
-.planning-jour-titre { margin: 16px 0 6px; color: var(--gris); font-size: 1rem; }
+/* --- Planning des tournois (page d'accueil, façon agenda) --- */
+:root { --slot-h: 1.6rem; --gutter-w: 3rem; }   /* hauteur d'un créneau 30 min ; largeur gouttière heures */
+.planning-jour-titre { margin: 20px 0 8px; font-size: 1.05rem; }
 
-/* Grand écran : vraie frise (heures en gouttière, couloirs en colonnes). */
+/* Grand écran : frise calendrier (gouttière d'heures + couloirs en colonnes). */
 .planning-grille {
   display: grid;
-  gap: 4px;
-  align-items: stretch;
+  position: relative;
+  column-gap: 6px;
+  row-gap: 0;
+  margin-bottom: 8px;
 }
+/* Filets horizontaux à chaque heure (fond), sur toute la largeur. */
+.planning-ligne {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--bord);
+  z-index: 0;
+}
+/* Étiquette d'heure, alignée sur le filet. */
 .planning-heure {
   grid-column: 1;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--gris);
   white-space: nowrap;
-  padding-right: 6px;
-  border-top: 1px solid var(--bord);
+  transform: translateY(-0.55rem);
+  z-index: 1;
 }
+/* Carte d'un tournoi. */
 .planning-bloc {
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 1px;
   overflow: hidden;
   text-decoration: none;
   color: var(--texte);
-  background: #e8f0fe;
-  border: 1px solid #1a73e8;
+  background: #eef3fe;
+  border-left: 4px solid #1a73e8;
   border-radius: 8px;
-  padding: 4px 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+  padding: 4px 8px;
+  margin: 1px 0;
   font-size: 0.78rem;
-  line-height: 1.15;
+  line-height: 1.2;
 }
-.planning-bloc:hover { filter: brightness(0.97); }
-.planning-bloc--lance   { background: var(--orange-clair); border-color: var(--orange); }
-.planning-bloc--termine { background: #f1f3f4; border-color: var(--bord); color: var(--gris); }
-.planning-heure-bloc { font-weight: 700; }
-.planning-nom { font-weight: 600; }
-.planning-lieu, .planning-inscrits { color: var(--gris); font-size: 0.72rem; }
+.planning-bloc:hover { box-shadow: 0 2px 6px rgba(0,0,0,.16); }
+.planning-bloc--lance   { background: var(--orange-clair); border-left-color: var(--orange); }
+.planning-bloc--termine { background: #f1f3f4; border-left-color: #9aa0a6; color: var(--gris); }
+.planning-bloc-heure { font-weight: 700; font-size: 0.72rem; color: var(--gris); }
+.planning-bloc-nom { font-weight: 700; }
+.planning-bloc-meta { color: var(--gris); font-size: 0.72rem; }
 
-/* Mobile : on abandonne la grille -> agenda empilé, lisible et qui reflue.
-   Les blocs sont déjà dans l'ordre chronologique dans le HTML. */
+/* Mobile : agenda empilé (cartes chronologiques pleine largeur). */
 @media (max-width: 640px) {
   .planning-grille { display: flex; flex-direction: column; gap: 8px; }
-  .planning-heure { display: none; }        /* la gouttière d'heures n'a pas de sens empilée */
+  .planning-ligne, .planning-heure { display: none; }
   .planning-bloc {
-    /* neutralise le placement de grille hérité des styles inline */
     grid-column: auto !important;
     grid-row: auto !important;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    padding: 8px 12px;
   }
-  .planning-lieu, .planning-inscrits { font-size: 0.8rem; }
+  .planning-bloc-heure, .planning-bloc-meta { font-size: 0.82rem; }
 }

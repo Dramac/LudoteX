@@ -38,3 +38,9 @@ templates.env.globals["est_benevole"] = auth.acces_valide
 # Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
 # Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).
 templates.env.filters["dt_local"] = services.format_local
+
+# Version du CSS pour « casser » le cache navigateur : la date de modification du
+# fichier style.css. Recalculée au démarrage (uvicorn --reload redémarre quand le
+# fichier change), donc le navigateur recharge automatiquement la bonne version.
+_CSS = BASE_DIR / "static" / "css" / "style.css"
+templates.env.globals["static_v"] = int(_CSS.stat().st_mtime) if _CSS.exists() else 0
