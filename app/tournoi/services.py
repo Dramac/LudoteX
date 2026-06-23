@@ -21,9 +21,10 @@ le seul jeton conservé (et affiché à l'écran à l'inscription).
 
 from __future__ import annotations
 
+import math
 import secrets
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant  # fuseau + horodatage UTC ISO partagés
 from app.tournoi.models import ETATS
@@ -1023,3 +1024,122 @@ def vainqueur(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
     if len(gagnants) == 1 and gagnants[0] is not None:
         return _participants(conn, id_tournoi).get(gagnants[0])
     return None
+
+
+# ===========================================================================
+# Planning de l'événement (vue 2 jours, tournois en parallèle)
+# ===========================================================================
+# Sert la frise de la page d'accueil. Granularité d'une « ligne » = SLOT_MIN ;
+# un tournoi sans durée renseignée occupe DUREE_DEFAUT_MIN.
+SLOT_MIN = 30
+DUREE_DEFAUT_MIN = 60
+
+_JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_MOIS_FR = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+            "août", "septembre", "octobre", "novembre", "décembre"]
+
+
+def label_jour(j: date) -> str:
+    """Libellé lisible d'une date, ex. « samedi 13 juin »."""
+    return f"{_JOURS_FR[j.weekday()]} {j.day} {_MOIS_FR[j.month]}"
+
+
+def _local_naive(iso_utc: str) -> datetime:
+    """Horodatage UTC ISO -> datetime local NAÏF (sans tz, pour l'arithmétique de grille)."""
+    return datetime.fromisoformat(iso_utc).astimezone(FUSEAU_LOCAL).replace(tzinfo=None)
+
+
+def _calculer_couloirs(blocs: list[dict]) -> int:
+    """
+    Affecte un couloir (colonne) à chaque bloc pour gérer les chevauchements, par
+    partition d'intervalles : chaque bloc prend le premier couloir libre (dont le
+    dernier bloc est terminé). `blocs` doit être trié par début. Modifie chaque
+    bloc (clé 'couloir') et renvoie le nombre de couloirs utilisés.
+    """
+    fins_couloirs: list[datetime] = []
+    for b in blocs:
+        place = False
+        for i, fin in enumerate(fins_couloirs):
+            if b["debut_dt"] >= fin:        # ce couloir s'est libéré
+                b["couloir"] = i
+                fins_couloirs[i] = b["fin_dt"]
+                place = True
+                break
+        if not place:
+            b["couloir"] = len(fins_couloirs)
+            fins_couloirs.append(b["fin_dt"])
+    return len(fins_couloirs)
+
+
+def planning(conn: sqlite3.Connection, jours: list[date]) -> list[dict]:
+    """
+    Construit le planning des `jours` donnés (heure locale).
+
+    Pour chaque jour : la liste des tournois (non-brouillon, avec date) triés par
+    début, répartis en couloirs pour les chevauchements, et toutes les
+    coordonnées de grille (lignes/colonnes en pas de SLOT_MIN) + les étiquettes
+    d'heures. Les tournois sans durée occupent DUREE_DEFAUT_MIN.
+
+    Renvoie une liste de dicts par jour (même ordre que `jours`).
+    """
+    lignes = conn.execute(
+        """
+        SELECT t.*, (
+            SELECT COUNT(*) FROM inscriptions i WHERE i.id_tournoi = t.id_tournoi
+        ) AS nb_inscrits
+        FROM tournois t
+        WHERE t.etat != 'brouillon' AND t.date_heure IS NOT NULL
+        ORDER BY t.date_heure ASC
+        """
+    ).fetchall()
+
+    par_jour: dict[date, list] = {j: [] for j in jours}
+    for r in lignes:
+        try:
+            debut = _local_naive(r["date_heure"])
+        except (ValueError, TypeError):
+            continue
+        j = debut.date()
+        if j not in par_jour:
+            continue
+        duree = r["duree_min"] or DUREE_DEFAUT_MIN
+        fin = debut + timedelta(minutes=duree)
+        minuit_suivant = datetime.combine(j, time()) + timedelta(days=1)
+        if fin > minuit_suivant:             # on ne déborde pas sur le lendemain
+            fin = minuit_suivant
+        nb_places = r["nb_places"]
+        par_jour[j].append({
+            "id_tournoi": r["id_tournoi"], "nom": r["nom"], "jeu": r["jeu"],
+            "emplacement": r["emplacement"], "etat": r["etat"],
+            "nb_inscrits": r["nb_inscrits"], "nb_places": nb_places,
+            "places_restantes": (None if nb_places is None
+                                 else max(0, nb_places - r["nb_inscrits"])),
+            "debut_dt": debut, "fin_dt": fin,
+            "heure_txt": f'{debut.strftime("%H:%M")}–{fin.strftime("%H:%M")}',
+        })
+
+    resultat = []
+    for j in jours:
+        blocs = sorted(par_jour[j], key=lambda b: (b["debut_dt"], b["nom"]))
+        jour = {"date": j, "label": label_jour(j), "blocs": blocs, "vide": not blocs}
+        if blocs:
+            jour["nb_couloirs"] = _calculer_couloirs(blocs)
+            h0 = min(b["debut_dt"] for b in blocs).replace(minute=0, second=0, microsecond=0)
+            fin_max = max(b["fin_dt"] for b in blocs)
+            if fin_max.minute or fin_max.second:      # arrondi à l'heure supérieure
+                fin_max = fin_max.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            jour["nb_slots"] = int((fin_max - h0).total_seconds() // 60 // SLOT_MIN)
+            for b in blocs:
+                debut_min = (b["debut_dt"] - h0).total_seconds() / 60
+                duree_min = (b["fin_dt"] - b["debut_dt"]).total_seconds() / 60
+                b["row_debut"] = int(debut_min // SLOT_MIN) + 1
+                b["row_span"] = max(1, math.ceil(duree_min / SLOT_MIN))
+                b["col"] = b["couloir"] + 2            # colonne 1 = gouttière des heures
+            heures, h = [], h0
+            while h < fin_max:
+                heures.append({"row": int((h - h0).total_seconds() // 60 // SLOT_MIN) + 1,
+                               "label": h.strftime("%Hh")})
+                h += timedelta(hours=1)
+            jour["heures"] = heures
+        resultat.append(jour)
+    return resultat
