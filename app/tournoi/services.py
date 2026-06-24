@@ -98,6 +98,7 @@ def creer_tournoi(
     nom: str,
     *,
     jeu: str | None = None,
+    age: str | None = None,
     date_heure: str | None = None,
     duree_min: int | None = None,
     nb_places: int | None = None,
@@ -109,17 +110,18 @@ def creer_tournoi(
     """
     Crée un tournoi à l'état 'brouillon' et renvoie son id.
 
+    `age` est une indication libre (ex. « 10+ », « tout public »).
     `date_heure` est attendu en UTC ISO (la route convertit la saisie locale).
     """
     cur = conn.execute(
         """
         INSERT INTO tournois
-            (nom, jeu, date_heure, duree_min, nb_places, emplacement,
+            (nom, jeu, age, date_heure, duree_min, nb_places, emplacement,
              inscription_en_ligne, etat, bo3, restriction_nombre, date_creation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?)
         """,
-        (nom.strip(), (jeu or "").strip() or None, date_heure, duree_min,
-         nb_places, (emplacement or "").strip() or None,
+        (nom.strip(), (jeu or "").strip() or None, (age or "").strip() or None,
+         date_heure, duree_min, nb_places, (emplacement or "").strip() or None,
          1 if inscription_en_ligne else 0, 1 if bo3 else 0,
          restriction_nombre, maintenant()),
     )
@@ -158,6 +160,7 @@ def dupliquer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
     return creer_tournoi(
         conn, t["nom"],
         jeu=t["jeu"],
+        age=t["age"],
         date_heure=date_heure,
         duree_min=t["duree_min"],
         nb_places=t["nb_places"],
@@ -173,7 +176,7 @@ def modifier_tournoi(conn: sqlite3.Connection, id_tournoi: int, **champs) -> Non
     Seules les colonnes connues sont prises en compte ; les autres sont ignorées.
     """
     colonnes = {
-        "nom", "jeu", "date_heure", "duree_min", "nb_places", "emplacement",
+        "nom", "jeu", "age", "date_heure", "duree_min", "nb_places", "emplacement",
         "inscription_en_ligne", "bo3", "restriction_nombre",
     }
     maj = {c: v for c, v in champs.items() if c in colonnes}

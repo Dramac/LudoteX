@@ -100,6 +100,11 @@ description, lieu ; échappement RFC 5545 ; None sans date). Route publique
 Bouton « 📅 Ajouter à mon agenda » sur la confirmation d'inscription et la page
 du tournoi (si date). Aucune donnée perso. **89 tests verts.**
 
+**Champ « âge » (info, texte libre) : FAIT.** Colonne `tournois.age` TEXT (schéma
++ migration `app/tournoi/db.py`), propagée à `creer_tournoi`/`modifier_tournoi`/
+`dupliquer_tournoi`, au formulaire création/édition et à l'affichage (page
+publique, gestion, duplication). Indication libre type « 10+ », « tout public ».
+
 **Ouverture groupée du jour : FAIT.** `services.ouvrir_tournois_du_jour(conn,
 jour)` passe en 'inscriptions' tous les tournois EN BROUILLON datés ce jour-là
 (heure locale ; ignore autres jours / sans date / déjà ouverts). Route bénévole

@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS tournois (
     id_tournoi            INTEGER PRIMARY KEY AUTOINCREMENT,
     nom                   TEXT NOT NULL,                 -- intitulé du tournoi
     jeu                   TEXT,                          -- jeu concerné (texte libre)
+    age                   TEXT,                          -- âge conseillé (texte libre, ex. « 10+ »)
     date_heure            TEXT,                          -- début prévu (ISO 8601 UTC), nullable
     duree_min             INTEGER,                       -- durée approximative (minutes)
     nb_places             INTEGER,                       -- nombre de places (NULL = illimité)

@@ -23,6 +23,11 @@
              placeholder="Nom du jeu (texte libre)">
     </div>
     <div class="champ">
+      <label for="age">Âge</label>
+      <input type="text" id="age" name="age" value="{{ t.age if edition and t.age else '' }}"
+             placeholder="ex. 10+, tout public, ados…">
+    </div>
+    <div class="champ">
       <label for="date_heure">Date et heure de début</label>
       <input type="datetime-local" id="date_heure" name="date_heure" value="{{ valeur_date }}">
     </div>

@@ -12,6 +12,7 @@
 
   <dl class="caracteristiques">
     {% if t.jeu %}<dt>Jeu</dt><dd>{{ t.jeu }}</dd>{% endif %}
+    {% if t.age %}<dt>Âge</dt><dd>{{ t.age }}</dd>{% endif %}
     {% if t.duree_min %}<dt>Durée</dt><dd>{{ t.duree_min }} min</dd>{% endif %}
     <dt>Places</dt><dd>{% if t.nb_places %}{{ t.nb_places }}{% else %}illimité{% endif %}</dd>
     {% if t.emplacement %}<dt>Lieu</dt><dd>{{ t.emplacement }}</dd>{% endif %}
