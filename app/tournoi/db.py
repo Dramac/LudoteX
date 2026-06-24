@@ -76,6 +76,7 @@ def get_connection() -> sqlite3.Connection:
 # colonne, type_sql). Vide pour l'instant — à étendre à chaque évolution.
 _MIGRATIONS_COLONNES: list[tuple[str, str, str]] = [
     ("tournois", "nb_rondes", "INTEGER"),
+    ("tournois", "age", "TEXT"),
 ]
 
 

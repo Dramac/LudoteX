@@ -27,6 +27,16 @@ def conn():
     c.close()
 
 
+def test_champ_age(conn):
+    tid = services.creer_tournoi(conn, "T", age="10+")
+    assert services.get_tournoi(conn, tid)["age"] == "10+"
+    # Édition + duplication conservent l'âge.
+    services.modifier_tournoi(conn, tid, age="tout public")
+    assert services.get_tournoi(conn, tid)["age"] == "tout public"
+    new = services.dupliquer_tournoi(conn, tid, None)
+    assert services.get_tournoi(conn, new)["age"] == "tout public"
+
+
 def test_creer_et_get(conn):
     tid = services.creer_tournoi(conn, "Carcassonne du soir", jeu="Carcassonne",
                                  nb_places=8, emplacement="Table 3")
@@ -700,6 +710,16 @@ def client(tmp_path, monkeypatch):
 def test_liste_publique(client):
     r = client.get("/tournois")
     assert r.status_code == 200 and "Tournois" in r.text
+
+
+def test_age_route_creation_et_affichage(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Famille", "age": "8+",
+                          "date_heure": "2026-06-13T14:00"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    # L'âge apparaît sur la gestion et la page publique.
+    assert "8+" in client.get(f"/tournoi/{tid}/gerer").text
+    assert "8+" in client.get(f"/tournoi/{tid}").text
 
 
 def test_aide_tournois(client):
