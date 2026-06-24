@@ -328,6 +328,53 @@ def test_planning_route_accueil(client, monkeypatch):
     assert "samedi 13 juin" in page.lower()
 
 
+# --- Ouverture groupée du jour ---
+def test_ouvrir_tournois_du_jour(conn):
+    from datetime import datetime as _dt
+    from app.services import FUSEAU_LOCAL
+    aujourdhui = _dt.now(FUSEAU_LOCAL).date()
+    iso_today_1 = app_services.local_vers_utc_iso(f"{aujourdhui.isoformat()}T10:00")
+    iso_today_2 = app_services.local_vers_utc_iso(f"{aujourdhui.isoformat()}T15:00")
+
+    t1 = services.creer_tournoi(conn, "Matin", date_heure=iso_today_1)      # brouillon, aujourd'hui
+    t2 = services.creer_tournoi(conn, "Aprem", date_heure=iso_today_2)      # brouillon, aujourd'hui
+    # Déjà ouvert aujourd'hui -> inchangé, non recompté.
+    t3 = services.creer_tournoi(conn, "Déjà", date_heure=iso_today_1)
+    services.changer_etat(conn, t3, "inscriptions")
+    # Brouillon mais sans date -> ignoré.
+    t4 = services.creer_tournoi(conn, "Sans date")
+
+    n = services.ouvrir_tournois_du_jour(conn, aujourdhui)
+    assert n == 2
+    assert services.get_tournoi(conn, t1)["etat"] == "inscriptions"
+    assert services.get_tournoi(conn, t2)["etat"] == "inscriptions"
+    assert services.get_tournoi(conn, t4)["etat"] == "brouillon"
+
+
+def test_ouvrir_tournois_autre_jour_ignore(conn):
+    iso_passe = app_services.local_vers_utc_iso("2020-01-01T10:00")
+    t = services.creer_tournoi(conn, "Vieux", date_heure=iso_passe)
+    from datetime import datetime as _dt
+    from app.services import FUSEAU_LOCAL
+    n = services.ouvrir_tournois_du_jour(conn, _dt.now(FUSEAU_LOCAL).date())
+    assert n == 0
+    assert services.get_tournoi(conn, t)["etat"] == "brouillon"
+
+
+def test_ouvrir_aujourdhui_route(client):
+    from datetime import datetime as _dt
+    from app.services import FUSEAU_LOCAL
+    today = _dt.now(FUSEAU_LOCAL).date().isoformat()
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Du jour", "date_heure": f"{today}T11:00"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    res = client.post("/tournoi/ouvrir-aujourdhui")
+    assert res.status_code == 200 and "ouvert(s)" in res.text
+    # Le tournoi est désormais ouvert aux inscriptions.
+    assert "Inscriptions ouvertes" in client.get(f"/tournoi/{tid}").text
+
+
 # --- Duplication ---
 def test_dupliquer_copie_caracteristiques(conn):
     iso = app_services.local_vers_utc_iso("2026-06-13T14:00")

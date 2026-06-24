@@ -219,6 +219,32 @@ def changer_etat(conn: sqlite3.Connection, id_tournoi: int, nouvel_etat: str) ->
     return True
 
 
+def ouvrir_tournois_du_jour(conn: sqlite3.Connection, jour: date) -> int:
+    """
+    Ouvre les inscriptions de tous les tournois EN BROUILLON dont la date (heure
+    locale) tombe le `jour` donné. Gain de temps le jour de l'événement.
+
+    Ne touche pas aux tournois déjà ouverts/lancés/terminés ni à ceux d'un autre
+    jour ou sans date. Renvoie le nombre de tournois ouverts.
+    """
+    ids = []
+    for r in conn.execute(
+        "SELECT id_tournoi, date_heure FROM tournois "
+        "WHERE etat = 'brouillon' AND date_heure IS NOT NULL"
+    ):
+        try:
+            if _local_naive(r["date_heure"]).date() == jour:
+                ids.append(r["id_tournoi"])
+        except (ValueError, TypeError):
+            continue
+    for tid in ids:
+        conn.execute(
+            "UPDATE tournois SET etat = 'inscriptions' WHERE id_tournoi = ?", (tid,)
+        )
+    conn.commit()
+    return len(ids)
+
+
 def phase(etat: str) -> str:
     """
     Range un état dans une phase d'affichage public : 'a_venir', 'en_cours' ou

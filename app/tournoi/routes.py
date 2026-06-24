@@ -85,7 +85,31 @@ def liste(request: Request):
     finally:
         conn.close()
     return templates.TemplateResponse(
-        request, "tournoi_liste.html", {"tournois": tournois}
+        request, "tournoi_liste.html", {"tournois": tournois, "message": None}
+    )
+
+
+@router.post("/tournoi/ouvrir-aujourdhui")
+def ouvrir_aujourdhui(request: Request, _=Depends(exiger_jeton)):
+    """
+    Ouvre d'un coup les inscriptions de tous les tournois en brouillon programmés
+    aujourd'hui (heure locale). Réservé aux bénévoles ; bouton avec confirmation.
+    """
+    from datetime import datetime
+
+    from app.services import FUSEAU_LOCAL
+
+    jour = datetime.now(FUSEAU_LOCAL).date()
+    conn = get_connection()
+    try:
+        n = services.ouvrir_tournois_du_jour(conn, jour)
+        tournois = services.lister_tournois(conn, inclure_brouillons=True)
+    finally:
+        conn.close()
+    message = (("succes", f"{n} tournoi(s) ouvert(s) aux inscriptions.") if n
+               else ("attention", "Aucun tournoi en brouillon programmé aujourd'hui."))
+    return templates.TemplateResponse(
+        request, "tournoi_liste.html", {"tournois": tournois, "message": message}
     )
 
 
