@@ -168,9 +168,9 @@
         <div class="sous">prêts à emprunter</div>
       </div>
       <div class="carte">
-        <div class="libelle">Pochettes occupées</div>
-        <div class="grand poch" id="c-poch">–</div>
-        <div class="sous">pièces d'identité déposées</div>
+        <div class="libelle">Tournois en cours</div>
+        <div class="grand poch" id="c-tournois">–</div>
+        <div class="sous">en ce moment</div>
       </div>
     </section>
 
@@ -244,12 +244,10 @@
         const libelle = estPret
           ? (m.motif === "tournoi" ? "SORTIE TOURNOI" : "PRÊT")
           : "RETOUR";
-        const poch = (m.numero_pochette && m.motif !== "tournoi")
-          ? ` · pochette ${m.numero_pochette}` : "";
         return `
         <div class="mouv">
           <span class="badge ${estPret ? "pret" : "retour"}">${libelle}</span>
-          <span class="nom">${echapper(m.nom)}${poch}</span>
+          <span class="nom">${echapper(m.nom)}</span>
           <span class="quand">${echapper(m.heure)}</span>
         </div>`;
       }).join("");
@@ -259,7 +257,7 @@
       document.getElementById("c-sortis").textContent = d.jeux.sortis;
       document.getElementById("c-dispo").textContent = d.jeux.disponibles;
       document.getElementById("c-total").textContent = d.jeux.total;
-      document.getElementById("c-poch").textContent = d.pochettes_occupees;
+      document.getElementById("c-tournois").textContent = d.nb_tournois_en_cours;
       document.getElementById("horloge").textContent = d.horodatage;
       rendreTournoisEnCours(d.tournois_en_cours);
       rendreTournoisAVenir(d.tournois_a_venir);

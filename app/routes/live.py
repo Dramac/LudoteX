@@ -2,9 +2,10 @@
 Route du TABLEAU DE BORD TEMPS RÉEL `/live` (affichage salle, écran 16:9).
 
 But : projeter en salle, pendant l'événement, un panorama qui se rafraîchit tout
-seul — jeux sortis / disponibles, pochettes occupées, tournois en cours et à
-venir, et le flux des derniers prêts/retours. Page PUBLIQUE en LECTURE SEULE :
-aucune action, aucun jeton bénévole requis, aucune donnée personnelle.
+seul — jeux sortis / disponibles, tournois en cours et à venir, et le flux des
+derniers prêts/retours. Page PUBLIQUE en LECTURE SEULE : aucune action, aucun
+jeton bénévole requis, aucune donnée personnelle (le numéro de pochette, lié à
+une pièce d'identité, n'est volontairement jamais affiché ici).
 
 Deux routes :
 - GET /live      : la page (HTML plein écran, mise en page 16:9).
@@ -50,11 +51,10 @@ def _collecter_donnees() -> dict:
     Rassemble toutes les données du tableau de bord (partagé par la page et
     l'endpoint JSON, pour garantir des chiffres identiques).
     """
-    # --- Base de PRÊT : disponibilité, pochettes, derniers mouvements ---
+    # --- Base de PRÊT : disponibilité + derniers mouvements ---
     conn = get_connection()
     try:
         total, disponibles = services.compter_exemplaires_disponibles(conn)
-        pochettes = services.compter_pochettes_occupees(conn)
         mouvements = services.derniers_mouvements(conn, NB_MOUVEMENTS)
     finally:
         conn.close()
@@ -90,14 +90,13 @@ def _collecter_donnees() -> dict:
     return {
         "jeux": {"total": total, "disponibles": disponibles,
                  "sortis": total - disponibles},
-        "pochettes_occupees": pochettes,
+        "nb_tournois_en_cours": len(en_cours),
         "tournois_en_cours": en_cours,
         "tournois_a_venir": a_venir,
         "mouvements": [
             {
                 "type": m["type"],
                 "nom": m["nom"],
-                "numero_pochette": m["numero_pochette"],
                 "motif": m["motif"],
                 "heure": m["heure_locale"],
             }

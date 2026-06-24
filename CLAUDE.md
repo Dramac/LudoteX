@@ -133,6 +133,21 @@ prêt** (`services.compter_exemplaires_disponibles` → total/dispo, tous motifs
 publiés, non-brouillon, début entre maintenant et +60 min). Le titre du bandeau
 pointe désormais vers `/`. **Suite globale : 79 tests verts.**
 
+**Tableau de bord temps réel `/live` (écran salle 16:9) : FAIT.** Page PUBLIQUE
+en lecture seule (aucune action, aucun jeton) destinée à un projecteur/TV.
+`routes/live.py` : `GET /live` (gabarit `live.html`, plein cadre, grandes
+polices, fort contraste, autonome — CSS/JS inline, aucune dépendance externe) +
+`GET /live/data` (JSON). La page s'auto-rafraîchit par **polling AJAX** toutes
+les 10 s (pas de rechargement). Affiche : jeux sortis / disponibles / total,
+nombre de tournois en cours, tournois en cours (`lance`), prochains tournois sur
+2 h, et le flux des 10 derniers prêts/retours. **SÉCURITÉ : aucune mention du
+numéro de pochette** (rattaché à une pièce d'identité) sur cet écran public — ni
+carte « pochettes », ni numéro dans le flux. Nouveau service (réutilisé, pas de
+logique dupliquée) : `services.derniers_mouvements` (fusion sorties/retours triée
+par instant, sans n° de pochette). Lien « Écran salle » au pied de page.
+**2 tests** (route 200 + endpoint données, dont l'absence de pochette).
+**Suite globale : 99 tests verts.**
+
 **PHASE 1 COMPLÈTE** (tournois + inscription + suivi + high score + ronde suisse
 + élimination directe). Reste la **phase 2** : double élimination (looser
 bracket), affinements BO3 (manches), e-mails robustes (envoi du code), sauvegarde
