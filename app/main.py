@@ -16,6 +16,8 @@ CARTE DES URL
     /catalogue        -> liste publique des jeux (+ recherche/filtres)   [public]
     /jeu/<id>         -> fiche d'un exemplaire (encodée dans le QR)       [public]
     /stats            -> statistiques de prêt                             [public]
+    /live             -> tableau de bord temps réel (écran salle 16:9)    [public]
+    /live/data        -> données JSON du tableau de bord (auto-refresh)   [public]
     /scanner          -> scanner caméra (ouvre /pret/<id>)              [bénévole]
     /pret/<id>        -> écran prêt/retour + actions POST               [bénévole]
     /acces?jeton=...  -> active l'accès bénévole (pose le cookie)
@@ -35,7 +37,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import auth
 from app.db import get_connection, init_db
-from app.routes import acces, admin, catalogue, pret, scanner, stats
+from app.routes import acces, admin, catalogue, live, pret, scanner, stats
 from app.templating import templates
 from app.tournoi import routes as tournoi_routes
 from app.tournoi.db import init_db as init_tournoi_db
@@ -57,6 +59,7 @@ app.include_router(catalogue.router)   # /catalogue, /jeu/<id>   (public)
 app.include_router(pret.router)        # /pret/<id> + actions     (bénévole)
 app.include_router(scanner.router)     # /scanner                 (bénévole)
 app.include_router(stats.router)       # /stats                   (public)
+app.include_router(live.router)        # /live, /live/data        (public, salle)
 app.include_router(acces.router)       # /acces                   (activation)
 app.include_router(admin.router)       # /admin                   (mot de passe)
 app.include_router(tournoi_routes.router)  # /tournois, /tournoi/* (module tournois)

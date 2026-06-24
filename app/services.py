@@ -554,6 +554,73 @@ def compter_exemplaires_disponibles(conn: sqlite3.Connection) -> tuple[int, int]
     return total, total - sortis
 
 
+def compter_pochettes_occupees(conn: sqlite3.Connection) -> int:
+    """
+    Nombre de pochettes actuellement occupées (utilisé par le tableau de bord
+    temps réel `/live`).
+
+    On compte les pochettes marquées `occupe = 1` dans la table `pochettes`,
+    qui reflète l'occupation du moment (numéros attribués et non encore libérés).
+    Les sorties tournoi n'occupent PAS de pochette (numéro 0, sans emplacement),
+    elles ne sont donc pas comptées ici.
+
+    Returns:
+        Un entier (nombre de pochettes occupées).
+    """
+    return conn.execute(
+        "SELECT COUNT(*) FROM pochettes WHERE occupe = 1"
+    ).fetchone()[0]
+
+
+def derniers_mouvements(conn: sqlite3.Connection, limite: int = 10) -> list[dict]:
+    """
+    Flux des derniers mouvements (prêts ET retours), du plus récent au plus ancien.
+
+    Pour le tableau de bord temps réel `/live` : on fusionne les sorties
+    (`date_sortie`) et les retours (`date_retour` non NULL) en un seul flux trié
+    par instant décroissant. Chaque retour et chaque sortie est un événement
+    distinct, même s'ils proviennent du même prêt. À instant égal (même seconde),
+    un retour est affiché avant un prêt (tri secondaire sur `type`).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        limite: nombre maximal d'événements renvoyés.
+
+    Returns:
+        Liste de dicts {type ('pret'|'retour'), nom, numero_pochette, motif,
+        instant (UTC ISO), heure_locale ('HH:MM')}, triée par instant décroissant.
+    """
+    rows = conn.execute(
+        """
+        SELECT type, instant, numero_pochette, motif, nom FROM (
+            SELECT 'pret' AS type, p.date_sortie AS instant,
+                   p.numero_pochette, p.motif, t.nom
+            FROM prets p
+            JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
+            JOIN titres t ON t.reference_titre = e.reference_titre
+            UNION ALL
+            SELECT 'retour' AS type, p.date_retour AS instant,
+                   p.numero_pochette, p.motif, t.nom
+            FROM prets p
+            JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
+            JOIN titres t ON t.reference_titre = e.reference_titre
+            WHERE p.date_retour IS NOT NULL
+        )
+        ORDER BY instant DESC, type DESC
+        LIMIT ?
+        """,
+        (limite,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        dt = format_local(d["instant"])
+        # format_local renvoie 'JJ/MM/AAAA HH:MM' ; on ne garde que l'heure.
+        d["heure_locale"] = dt.split(" ")[-1] if dt else ""
+        out.append(d)
+    return out
+
+
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
     """
     Disponibilité d'un titre donné (utilisé par la fiche d'un exemplaire).

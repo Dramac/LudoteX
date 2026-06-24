@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tableau de bord — Des jeux plein la Manche</title>
+  <style>
+    /* ===================================================================
+       Tableau de bord salle (écran 16:9, projecteur / TV).
+       Lecture seule, aucune interaction. Grandes polices, fort contraste.
+       Tout est inline pour rester autonome (style.css de l'appli est
+       pensé mobile-first ; cet écran a sa propre mise en page plein cadre).
+       =================================================================== */
+    :root {
+      --fond: #0f172a;          /* bleu nuit */
+      --carte: #1e293b;
+      --carte-2: #243349;
+      --texte: #f1f5f9;
+      --attenue: #94a3b8;
+      --accent: #38bdf8;
+      --vert: #4ade80;
+      --orange: #fbbf24;
+      --rouge: #f87171;
+      --bordure: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      /* On dimensionne tout en vmin/vw pour rester lisible à toute échelle. */
+      font-size: clamp(14px, 1.6vw, 30px);
+    }
+
+    .ecran {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 1.2vw;
+      padding: 1.4vw 1.8vw;
+    }
+
+    /* --- En-tête --- */
+    .entete {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+    .entete h1 { font-size: 2.2em; letter-spacing: -0.5px; }
+    .entete .horloge {
+      font-size: 2.2em;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .entete .horloge .point {
+      display: inline-block; width: 0.45em; height: 0.45em;
+      border-radius: 50%; background: var(--vert);
+      margin-right: 0.5em; vertical-align: middle;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    /* --- Grandes cartes de chiffres --- */
+    .chiffres {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.2vw;
+    }
+    .carte {
+      background: var(--carte);
+      border: 1px solid var(--bordure);
+      border-radius: 1vw;
+      padding: 1.2vw 1.5vw;
+    }
+    .carte .libelle {
+      font-size: 1.05em; color: var(--attenue);
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .carte .grand {
+      font-size: 4.6em; font-weight: 800; line-height: 1.05;
+      font-variant-numeric: tabular-nums;
+    }
+    .carte .sous { font-size: 1.2em; color: var(--attenue); }
+    .grand.sortis { color: var(--orange); }
+    .grand.dispo  { color: var(--vert); }
+    .grand.poch   { color: var(--accent); }
+
+    /* --- Deux colonnes du bas --- */
+    .colonnes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2vw;
+      min-height: 0;            /* autorise le défilement interne */
+    }
+    .panneau {
+      background: var(--carte);
+      border: 1px solid var(--bordure);
+      border-radius: 1vw;
+      padding: 1.2vw 1.5vw;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .panneau h2 {
+      font-size: 1.5em; margin-bottom: 0.7vw;
+      border-bottom: 2px solid var(--bordure); padding-bottom: 0.5vw;
+    }
+    .panneau .liste { overflow: hidden; flex: 1; min-height: 0; }
+
+    /* Tournois */
+    .bloc-titre {
+      font-size: 1.05em; color: var(--attenue); margin: 0.8vw 0 0.4vw;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .tournoi {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 1em; padding: 0.5vw 0; border-bottom: 1px solid var(--bordure);
+    }
+    .tournoi .nom { font-size: 1.35em; font-weight: 700; }
+    .tournoi .meta { font-size: 1.05em; color: var(--attenue); white-space: nowrap; }
+    .puce {
+      display: inline-block; padding: 0.1em 0.6em; border-radius: 0.5em;
+      font-size: 0.85em; font-weight: 700; vertical-align: middle;
+    }
+    .puce.live { background: rgba(74,222,128,0.18); color: var(--vert); }
+    .puce.heure { background: rgba(56,189,248,0.18); color: var(--accent); }
+
+    /* Flux des mouvements */
+    .mouv {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center; gap: 1em;
+      padding: 0.55vw 0; border-bottom: 1px solid var(--bordure);
+    }
+    .mouv .badge {
+      font-size: 0.95em; font-weight: 800; padding: 0.15em 0.7em;
+      border-radius: 0.5em; white-space: nowrap;
+    }
+    .mouv .badge.pret   { background: rgba(251,191,36,0.18); color: var(--orange); }
+    .mouv .badge.retour { background: rgba(74,222,128,0.18); color: var(--vert); }
+    .mouv .nom {
+      font-size: 1.3em; font-weight: 600; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .mouv .quand { font-size: 1.1em; color: var(--attenue); font-variant-numeric: tabular-nums; }
+    .vide { color: var(--attenue); font-size: 1.2em; padding: 1vw 0; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="ecran">
+    <header class="entete">
+      <h1>Des jeux plein la Manche</h1>
+      <div class="horloge"><span class="point"></span><span id="horloge">--:--:--</span></div>
+    </header>
+
+    <section class="chiffres">
+      <div class="carte">
+        <div class="libelle">Jeux sortis</div>
+        <div class="grand sortis" id="c-sortis">–</div>
+        <div class="sous"><span id="c-total">–</span> au total</div>
+      </div>
+      <div class="carte">
+        <div class="libelle">Jeux disponibles</div>
+        <div class="grand dispo" id="c-dispo">–</div>
+        <div class="sous">prêts à emprunter</div>
+      </div>
+      <div class="carte">
+        <div class="libelle">Pochettes occupées</div>
+        <div class="grand poch" id="c-poch">–</div>
+        <div class="sous">pièces d'identité déposées</div>
+      </div>
+    </section>
+
+    <section class="colonnes">
+      <div class="panneau">
+        <h2>🏆 Tournois</h2>
+        <div class="liste">
+          <div class="bloc-titre">En cours</div>
+          <div id="t-en-cours"></div>
+          <div class="bloc-titre">Prochains (2 h)</div>
+          <div id="t-a-venir"></div>
+        </div>
+      </div>
+
+      <div class="panneau">
+        <h2>🔄 Derniers prêts &amp; retours</h2>
+        <div class="liste" id="mouvements"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Données initiales rendues côté serveur (évite un écran vide au chargement).
+    let DONNEES = {{ data | tojson }};
+    const INTERVALLE_MS = 10000;   // rafraîchissement toutes les 10 s
+
+    function echapper(s) {
+      const d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
+    }
+
+    function rendreTournoisEnCours(liste) {
+      const el = document.getElementById("t-en-cours");
+      if (!liste.length) {
+        el.innerHTML = '<div class="vide">Aucun tournoi en cours.</div>';
+        return;
+      }
+      el.innerHTML = liste.map(t => `
+        <div class="tournoi">
+          <span class="nom">${echapper(t.nom)} <span class="puce live">EN COURS</span></span>
+          <span class="meta">${echapper(t.mode)} · ${t.nb_inscrits} inscrits</span>
+        </div>`).join("");
+    }
+
+    function rendreTournoisAVenir(liste) {
+      const el = document.getElementById("t-a-venir");
+      if (!liste.length) {
+        el.innerHTML = '<div class="vide">Rien dans les 2 prochaines heures.</div>';
+        return;
+      }
+      el.innerHTML = liste.map(t => {
+        const places = (t.places_restantes == null)
+          ? "" : ` · ${t.places_restantes} place${t.places_restantes > 1 ? "s" : ""}`;
+        return `
+        <div class="tournoi">
+          <span class="nom">${echapper(t.nom)}</span>
+          <span class="meta"><span class="puce heure">${echapper(t.heure)}</span>${places}</span>
+        </div>`;
+      }).join("");
+    }
+
+    function rendreMouvements(liste) {
+      const el = document.getElementById("mouvements");
+      if (!liste.length) {
+        el.innerHTML = '<div class="vide">Aucun mouvement pour l\'instant.</div>';
+        return;
+      }
+      el.innerHTML = liste.map(m => {
+        const estPret = m.type === "pret";
+        const libelle = estPret
+          ? (m.motif === "tournoi" ? "SORTIE TOURNOI" : "PRÊT")
+          : "RETOUR";
+        const poch = (m.numero_pochette && m.motif !== "tournoi")
+          ? ` · pochette ${m.numero_pochette}` : "";
+        return `
+        <div class="mouv">
+          <span class="badge ${estPret ? "pret" : "retour"}">${libelle}</span>
+          <span class="nom">${echapper(m.nom)}${poch}</span>
+          <span class="quand">${echapper(m.heure)}</span>
+        </div>`;
+      }).join("");
+    }
+
+    function rendre(d) {
+      document.getElementById("c-sortis").textContent = d.jeux.sortis;
+      document.getElementById("c-dispo").textContent = d.jeux.disponibles;
+      document.getElementById("c-total").textContent = d.jeux.total;
+      document.getElementById("c-poch").textContent = d.pochettes_occupees;
+      document.getElementById("horloge").textContent = d.horodatage;
+      rendreTournoisEnCours(d.tournois_en_cours);
+      rendreTournoisAVenir(d.tournois_a_venir);
+      rendreMouvements(d.mouvements);
+    }
+
+    async function rafraichir() {
+      try {
+        const r = await fetch("/live/data", { cache: "no-store" });
+        if (r.ok) { DONNEES = await r.json(); rendre(DONNEES); }
+      } catch (e) {
+        // Réseau momentanément indisponible : on garde l'affichage précédent.
+      }
+    }
+
+    rendre(DONNEES);                       // affichage immédiat (données serveur)
+    setInterval(rafraichir, INTERVALLE_MS); // puis mise à jour en boucle
+  </script>
+</body>
+</html>
