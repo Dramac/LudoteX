@@ -100,6 +100,13 @@ description, lieu ; échappement RFC 5545 ; None sans date). Route publique
 Bouton « 📅 Ajouter à mon agenda » sur la confirmation d'inscription et la page
 du tournoi (si date). Aucune donnée perso. **89 tests verts.**
 
+**Ouverture groupée du jour : FAIT.** `services.ouvrir_tournois_du_jour(conn,
+jour)` passe en 'inscriptions' tous les tournois EN BROUILLON datés ce jour-là
+(heure locale ; ignore autres jours / sans date / déjà ouverts). Route bénévole
+`POST /tournoi/ouvrir-aujourdhui` + bouton « Ouvrir tous les tournois du jour »
+(avec confirmation JS) sur `/tournois`, message de retour. Gain de temps le jour
+de l'événement.
+
 **Dupliquer un tournoi (programmer à plusieurs horaires) : FAIT.**
 `services.dupliquer_tournoi(conn, id, date_heure)` recopie nom/jeu/durée/places/
 emplacement/inscription_en_ligne dans une **copie indépendante** repartant en
