@@ -25,6 +25,7 @@ body {
   padding: 12px 16px;
   position: sticky;
   top: 0;
+  z-index: 100;            /* reste au-dessus du contenu lors du défilement */
 }
 .bandeau-titre {
   color: #fff;
@@ -284,6 +285,7 @@ button.lien {
 .planning-grille {
   display: grid;
   position: relative;
+  isolation: isolate;      /* confine le z-index interne des blocs (pas de débordement sur le bandeau) */
   column-gap: 6px;
   row-gap: 0;
   margin-bottom: 8px;
