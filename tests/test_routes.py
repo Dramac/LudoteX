@@ -327,8 +327,10 @@ def test_live_page(client):
     r = client.get("/live")
     assert r.status_code == 200
     assert "Tableau de bord" in r.text
-    assert "Jeux sortis" in r.text and "Pochettes occupées" in r.text
+    assert "Jeux sortis" in r.text and "Tournois en cours" in r.text
     assert "/live/data" in r.text          # le polling JS pointe bien vers l'endpoint
+    # Sécurité : aucune mention de pochette sur l'écran public.
+    assert "pochette" not in r.text.lower()
 
 
 def test_live_data(client):
@@ -336,24 +338,23 @@ def test_live_data(client):
     d0 = client.get("/live/data").json()
     assert d0["jeux"]["total"] == 1
     assert d0["jeux"]["sortis"] == 0
-    assert d0["pochettes_occupees"] == 0
     assert d0["mouvements"] == []
+    # Sécurité : le numéro de pochette n'est jamais exposé dans les données.
+    assert "pochette" not in client.get("/live/data").text.lower()
 
-    # On prête l'exemplaire de test : un jeu sort, une pochette s'occupe, un
-    # mouvement « prêt » apparaît dans le flux.
+    # On prête l'exemplaire de test : un jeu sort, un mouvement « prêt » apparaît.
     client.post("/pret/001/preter")
     d1 = client.get("/live/data").json()
     assert d1["jeux"]["sortis"] == 1
     assert d1["jeux"]["disponibles"] == 0
-    assert d1["pochettes_occupees"] == 1
     assert len(d1["mouvements"]) == 1
     assert d1["mouvements"][0]["type"] == "pret"
     assert d1["mouvements"][0]["nom"] == "Catan"
+    assert "numero_pochette" not in d1["mouvements"][0]
 
     # Après retour : deux mouvements (prêt + retour), le plus récent en tête.
     client.post("/pret/001/rendre")
     d2 = client.get("/live/data").json()
     assert d2["jeux"]["sortis"] == 0
-    assert d2["pochettes_occupees"] == 0
     assert len(d2["mouvements"]) == 2
     assert d2["mouvements"][0]["type"] == "retour"
