@@ -154,6 +154,30 @@ bracket), affinements BO3 (manches), e-mails robustes (envoi du code), sauvegard
 externe automatisée. Points CA encore ouverts : voir §11 de
 `docs/conception-tournois.md`.
 
+**Module PLANNING BÉNÉVOLE — SOCLE (data + logique) : FAIT.** Cadré dans
+`docs/conception-planning.md` (remplace le tableur Excel du bureau ; collecte des
+souhaits → préremplissage dégrossi → validation admin → publication). Sous-paquet
+`app/planning/` (`models.py`, `db.py`, `services.py`) sur une **base SQLite
+séparée** `data/planning.db` (var. `.env` `PLANNING_DATABASE_PATH`). **8 tables**
+(`evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`,
+`preferences`, `affectations`). RGPD : **rupture assumée** avec le « zéro donnée
+perso » du prêt (noms + contact + dispos stockés), base séparée à finalité unique,
+`purger_evenement`. Réalisé : machine à états `collecte→brouillon→publie` ; trame
+admin (postes, créneaux poste/tâche, besoins par case, `dupliquer_trame`) ;
+collecte (`enregistrer_souhaits` : dispos + préférences **prefere/ok/si_vraiment/
+surtout_pas** + plafond d'heures `max_heures`, édition par `code_modif`) ;
+**préremplissage GLOUTON dégrossi** (`prefiller`) respectant les contraintes
+DURES (disponibilité, surtout_pas, plafond d'heures, pas deux postes en même
+temps) et **laissant les trous** ; grille (`construire_grille`), couverture
+(`analyser_couverture`), « mon planning » (`planning_du_benevole`), verrouillage
+de cases. Créneaux stockés en UTC ISO (durée déduite), helpers de fuseau
+réutilisés. **13 tests dédiés** (`tests/test_planning.py`), suite globale
+**112 tests verts.** RESTE pour ce module : routes (collecte publique, écran
+admin d'édition de grille, vue bénévole publiée), gabarits `planning_*.html`,
+exports PDF & Excel (§8 du brief), et le branchement dans `app/main.py`
+(`init_db` au démarrage + routeur). Affinements (continuité, expérience, équité)
+= phase 2.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
