@@ -322,9 +322,9 @@ button.lien {
   margin: 1px 0;
   font-size: 0.78rem;
   line-height: 1.15;
-  /* Hauteur mini pour rester lisible même quand la durée est courte (≤ 30 min) :
-     on garde la hauteur proportionnelle pour les tournois plus longs. */
-  min-height: 3rem;
+  /* Hauteur mini = ~2 lignes (heure + titre) pour les tournois courts (≤ 30 min) ;
+     la hauteur reste proportionnelle pour les tournois plus longs. */
+  min-height: 2.2rem;
 }
 .planning-bloc:hover { box-shadow: 0 2px 6px rgba(0,0,0,.16); }
 .planning-bloc--lance   { background: var(--orange-clair); border-left-color: var(--orange); }
