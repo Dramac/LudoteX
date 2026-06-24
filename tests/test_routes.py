@@ -320,3 +320,40 @@ def test_cycle_preter_puis_rendre(client):
     # Après retour : de nouveau disponible
     r4 = client.get("/pret/001")
     assert "Disponible" in r4.text
+
+
+def test_live_page(client):
+    # La page du tableau de bord salle répond et contient ses sections clés.
+    r = client.get("/live")
+    assert r.status_code == 200
+    assert "Tableau de bord" in r.text
+    assert "Jeux sortis" in r.text and "Pochettes occupées" in r.text
+    assert "/live/data" in r.text          # le polling JS pointe bien vers l'endpoint
+
+
+def test_live_data(client):
+    # Sans aucun prêt : tout est disponible, aucun mouvement.
+    d0 = client.get("/live/data").json()
+    assert d0["jeux"]["total"] == 1
+    assert d0["jeux"]["sortis"] == 0
+    assert d0["pochettes_occupees"] == 0
+    assert d0["mouvements"] == []
+
+    # On prête l'exemplaire de test : un jeu sort, une pochette s'occupe, un
+    # mouvement « prêt » apparaît dans le flux.
+    client.post("/pret/001/preter")
+    d1 = client.get("/live/data").json()
+    assert d1["jeux"]["sortis"] == 1
+    assert d1["jeux"]["disponibles"] == 0
+    assert d1["pochettes_occupees"] == 1
+    assert len(d1["mouvements"]) == 1
+    assert d1["mouvements"][0]["type"] == "pret"
+    assert d1["mouvements"][0]["nom"] == "Catan"
+
+    # Après retour : deux mouvements (prêt + retour), le plus récent en tête.
+    client.post("/pret/001/rendre")
+    d2 = client.get("/live/data").json()
+    assert d2["jeux"]["sortis"] == 0
+    assert d2["pochettes_occupees"] == 0
+    assert len(d2["mouvements"]) == 2
+    assert d2["mouvements"][0]["type"] == "retour"
