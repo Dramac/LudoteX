@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titre %}Souhaits enregistrés{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Merci {{ benevole.nom if benevole else '' }} !</h1>
+  <p>Vos disponibilités ont bien été enregistrées
+    {% if ev %}pour « {{ ev.nom }} »{% endif %}.</p>
+
+  <p class="resultat resultat-ok">
+    Votre code pour revenir modifier votre réponse :
+    <strong class="pl-code">{{ code }}</strong>
+  </p>
+  <p class="stats-note">Conservez ce code. Il sert aussi à consulter votre
+    planning une fois publié.</p>
+
+  <p>
+    <a class="lien" href="/planning/collecte/{{ ev.id_evenement }}?code={{ code }}">✏️ Modifier ma réponse</a>
+    &nbsp;·&nbsp;
+    <a class="lien" href="/planning/mon?code={{ code }}">📋 Voir mon planning</a>
+  </p>
+</section>
+{% endblock %}

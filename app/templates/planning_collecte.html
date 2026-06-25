@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titre %}Mes disponibilités — {{ ev.nom }}{% endblock %}
+
+{% set libelles = {"prefere": "Préféré", "ok": "OK", "si_vraiment": "Si vraiment", "surtout_pas": "Surtout pas"} %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Mes disponibilités</h1>
+  <p class="stats-note">{{ ev.nom }}</p>
+
+  {% if ev.etat != "collecte" %}
+    <p class="resultat resultat-attention">
+      La collecte est fermée pour cet événement.</p>
+  {% else %}
+  <p class="stats-note">
+    Vos données (nom, contact, disponibilités) servent uniquement à organiser
+    cet événement et sont supprimées ensuite. Vous recevrez un code pour revenir
+    modifier votre réponse.
+  </p>
+
+  <form method="post" action="/planning/collecte/{{ ev.id_evenement }}">
+    {% if code %}<input type="hidden" name="code" value="{{ code }}">{% endif %}
+
+    <label class="champ">
+      Nom (ou pseudo)
+      <input type="text" name="nom" required maxlength="60"
+             value="{{ benevole.nom if benevole else '' }}">
+    </label>
+    <label class="champ">
+      Contact (e-mail ou téléphone, facultatif)
+      <input type="text" name="contact" maxlength="120"
+             value="{{ benevole.contact if benevole else '' }}">
+    </label>
+    <label class="champ">
+      Nombre d'heures maximum (facultatif)
+      <input type="number" name="max_heures" min="1" step="0.5"
+             value="{{ benevole.max_heures if benevole and benevole.max_heures else '' }}">
+    </label>
+
+    <h2>Quand suis-je disponible&nbsp;?</h2>
+    {% for jour in jours %}
+      <h3>{{ jour.libelle }}</h3>
+      <div class="pl-cases">
+        {% for c in jour.creneaux %}
+          <label class="pl-case-dispo">
+            <input type="checkbox" name="dispo" value="{{ c.id_creneau }}"
+                   {{ 'checked' if c.id_creneau in dispos }}>
+            {{ c.debut | heure_local }}–{{ c.fin | heure_local }}
+            {% if c.type == "tache" %}<span class="pl-tag">{{ c.libelle or "tâche" }}</span>{% endif %}
+          </label>
+        {% endfor %}
+      </div>
+    {% endfor %}
+
+    <h2>Mes préférences de poste</h2>
+    <table class="pl-prefs">
+      <thead>
+        <tr><th>Poste</th>{% for n in niveaux %}<th>{{ libelles[n] }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for p in postes %}
+          <tr>
+            <th>{{ p.nom }}</th>
+            {% for n in niveaux %}
+              <td>
+                <input type="radio" name="pref_{{ p.id_poste }}" value="{{ n }}"
+                       {{ 'checked' if prefs.get(p.id_poste) == n }}>
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <label class="champ">
+      Remarque (facultatif)
+      <textarea name="note" rows="2" maxlength="500">{{ benevole.note if benevole and benevole.note else '' }}</textarea>
+    </label>
+
+    <button type="submit" class="bouton">Envoyer mes souhaits</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block titre %}Planning — administration{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Planning bénévole — administration</h1>
+  {% if message %}<p class="resultat resultat-ok">{{ message }}</p>{% endif %}
+
+  <h2>Créer un planning</h2>
+  <form method="post" action="/planning/admin/creer" class="pl-recherche">
+    <label class="champ">
+      Nom
+      <input type="text" name="nom" placeholder="ex. Festival 2026" required>
+    </label>
+    <button type="submit" class="bouton">Créer</button>
+  </form>
+
+  <form method="post" action="/planning/admin/demo"
+        onsubmit="return confirm('Créer un planning de démonstration (données fictives) ?');">
+    <button type="submit" class="bouton bouton-secondaire">
+      🎬 Créer un planning de démonstration
+    </button>
+  </form>
+</section>
+
+<section class="carte">
+  <h2>Plannings existants</h2>
+  {% if evenements %}
+    <ul class="pl-liste-ev">
+      {% for e in evenements %}
+        <li>
+          <a class="lien" href="/planning/admin/{{ e.id_evenement }}">{{ e.nom }}</a>
+          <span class="pl-tag">{{ e.etat }}</span>
+          <span class="stats-note">{{ e.nb_reponses }} réponse(s)</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Aucun planning pour l'instant.</p>
+  {% endif %}
+  <p><a class="lien" href="/admin">← Retour à l'administration</a></p>
+</section>
+{% endblock %}

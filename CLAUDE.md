@@ -171,12 +171,30 @@ DURES (disponibilité, surtout_pas, plafond d'heures, pas deux postes en même
 temps) et **laissant les trous** ; grille (`construire_grille`), couverture
 (`analyser_couverture`), « mon planning » (`planning_du_benevole`), verrouillage
 de cases. Créneaux stockés en UTC ISO (durée déduite), helpers de fuseau
-réutilisés. **13 tests dédiés** (`tests/test_planning.py`), suite globale
-**112 tests verts.** RESTE pour ce module : routes (collecte publique, écran
-admin d'édition de grille, vue bénévole publiée), gabarits `planning_*.html`,
-exports PDF & Excel (§8 du brief), et le branchement dans `app/main.py`
-(`init_db` au démarrage + routeur). Affinements (continuité, expérience, équité)
-= phase 2.
+réutilisés.
+
+**Module PLANNING BÉNÉVOLE — ROUTES & ÉCRANS : FAIT.** `app/planning/routes.py`
+branché dans `app/main.py` (init au démarrage + routeur). PUBLIC : `/planning`
+(grille publiée en lecture seule + lien collecte si une édition est en collecte),
+`/planning/collecte/{ev}` (formulaire de souhaits : dispos cochées par jour,
+préférences 4 niveaux en radios, plafond d'heures ; ré-édition par `?code=`),
+`/planning/collecte/{ev}/merci` (affiche le code), `/planning/mon?code=` (mon
+planning). ADMIN (mot de passe, garde `_garde` comme `routes/admin.py`) :
+`/planning/admin` (liste + création + **bouton démo**), `/planning/admin/{ev}`
+(écran tout-en-un : trame postes/créneaux, matrice de besoins, préremplissage,
+**grille éditable** avec ajout/retrait/verrou par case, transitions d'état,
+purge) + exports `export.xlsx`/`export.pdf`. Exports dans `app/planning/exports.py`
+(Excel une feuille/jour façon tableur ; PDF A4 paysage imprimable), filtre Jinja
+`heure_local` ajouté. CSS préfixé **`pl-*`** (évite la collision avec la frise
+`planning-*` des tournois). Démo `app/planning/demo.py` (reproduit le tableur du
+bureau : 6 postes, créneaux samedi/dimanche, tâches, ~28 bénévoles fictifs,
+préremplissage laissant 3 trous réalistes, publication + jumeau resté en
+collecte) ; lançable aussi via `python -m app.planning.demo`. Liens « Planning »
+au menu bénévole, au pied de page et au dashboard admin. **17 tests planning**
+(13 services + 4 routes via TestClient, dont démo + exports), fixtures de
+`test_routes.py`/`test_tournoi.py` étendues à `PLANNING_DATABASE_PATH`. Suite
+globale **116 tests verts.** RESTE : aide dédiée, et affinements phase 2
+(continuité, expérience, équité fine).
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,

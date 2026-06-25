@@ -10,12 +10,16 @@ def client(tmp_path, monkeypatch):
     # Bases SQLite temporaires isolées par test (prêt + tournois, séparées).
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("TOURNOI_DATABASE_PATH", str(tmp_path / "tournoi.db"))
+    monkeypatch.setenv("PLANNING_DATABASE_PATH", str(tmp_path / "planning.db"))
     from app import db
     from app.tournoi import db as tdb
+    from app.planning import db as pdb
 
     monkeypatch.setattr(db, "get_database_path", lambda: tmp_path / "test.db")
     monkeypatch.setattr(tdb, "get_database_path", lambda: tmp_path / "tournoi.db")
+    monkeypatch.setattr(pdb, "get_database_path", lambda: tmp_path / "planning.db")
     tdb.init_db()
+    pdb.init_db()
     conn = db.get_connection()
     db.init_db(conn)
     conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('CATAN', 'Catan')")
