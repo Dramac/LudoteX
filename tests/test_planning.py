@@ -334,3 +334,8 @@ def test_flux_collecte_publique(client):
                       data={"nom": "Alice", "dispo": str(cr),
                             f"pref_{po}": "prefere"}, follow_redirects=False)
     assert rep.status_code == 303 and "/merci?code=" in rep.headers["location"]
+
+
+def test_route_aide(client):
+    r = client.get("/planning/aide")
+    assert r.status_code == 200 and "mode d'emploi" in r.text

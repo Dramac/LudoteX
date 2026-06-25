@@ -48,6 +48,10 @@ body {
   padding: 16px;
 }
 
+/* Pages riches en tableau (grille du planning) : conteneur élargi sur grand
+   écran pour éviter le défilement horizontal, tout en restant fluide sur mobile. */
+.contenu-large { max-width: min(1180px, 96vw); }
+
 .carte {
   background: #fff;
   border: 1px solid var(--bord);

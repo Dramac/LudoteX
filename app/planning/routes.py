@@ -79,6 +79,12 @@ def public(request: Request):
     )
 
 
+@router.get("/planning/aide")
+def aide(request: Request):
+    """Aide / mode d'emploi du module planning (publique)."""
+    return templates.TemplateResponse(request, "planning_aide.html", {})
+
+
 @router.get("/planning/collecte/{ev:int}")
 def collecte_form(request: Request, ev: int, code: str = ""):
     """Formulaire de souhaits. Avec `?code=`, recharge une réponse pour l'éditer."""

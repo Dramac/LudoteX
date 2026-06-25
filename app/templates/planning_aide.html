@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block titre %}Aide — Planning bénévole{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Planning bénévole — mode d'emploi</h1>
+  <p class="stats-note">Comment ça marche, du recueil des disponibilités jusqu'au
+    planning affiché le jour J.</p>
+</section>
+
+<section class="carte">
+  <h2>Le cycle d'un planning</h2>
+  <p>Un planning passe par trois étapes :</p>
+  <ol>
+    <li><strong>Collecte</strong> — chaque bénévole indique ses disponibilités et
+      ses préférences de poste via un lien partagé.</li>
+    <li><strong>Brouillon</strong> — l'organisateur lance le préremplissage
+      automatique, puis ajuste la grille à la main.</li>
+    <li><strong>Publié</strong> — le planning devient visible des bénévoles
+      (lecture seule), et chacun peut consulter « son planning ».</li>
+  </ol>
+</section>
+
+<section class="carte">
+  <h2>Pour les bénévoles : déclarer ses disponibilités</h2>
+  <p>Depuis la page <a class="lien" href="/planning">Planning</a>, suivez le lien
+    « Déclarer mes disponibilités » (proposé tant que la collecte est ouverte).</p>
+  <p>Vous renseignez :</p>
+  <ul>
+    <li>les <strong>créneaux</strong> où vous êtes disponible (cases à cocher,
+      par jour) ;</li>
+    <li>pour chaque poste, votre <strong>préférence</strong> :
+      <em>Préféré</em>, <em>OK</em>, <em>Si vraiment</em> ou
+      <em>Surtout pas</em> ;</li>
+    <li>éventuellement un <strong>nombre d'heures maximum</strong> à ne pas
+      dépasser, et une remarque libre.</li>
+  </ul>
+  <p>À l'envoi, un <strong>code personnel</strong> s'affiche. Conservez-le : il
+    permet de <strong>revenir modifier</strong> votre réponse tant que la collecte
+    est ouverte, et de <strong>consulter votre planning</strong> une fois publié
+    (page <a class="lien" href="/planning/mon">Mon planning</a>).</p>
+</section>
+
+<section class="carte">
+  <h2>Que veulent dire les préférences&nbsp;?</h2>
+  <ul>
+    <li><strong>Préféré</strong> — vous aimeriez ce poste ; il vous est attribué
+      en priorité.</li>
+    <li><strong>OK</strong> — sans préférence particulière, cela vous convient.</li>
+    <li><strong>Si vraiment</strong> — en dépannage seulement, si personne d'autre
+      n'est disponible.</li>
+    <li><strong>Surtout pas</strong> — à éviter : vous n'y serez pas placé(e)
+      automatiquement.</li>
+  </ul>
+  <p class="stats-note">Un poste laissé sans réponse est considéré comme neutre
+    (entre « OK » et « Si vraiment »).</p>
+</section>
+
+<section class="carte">
+  <h2>Pour l'organisateur : le préremplissage</h2>
+  <p>Le bouton « Générer le brouillon » propose une <strong>première ébauche
+    dégrossie</strong>. Elle respecte des règles strictes :</p>
+  <ul>
+    <li>on ne place quelqu'un que sur un créneau où il est <strong>disponible</strong> ;</li>
+    <li>jamais sur un poste marqué <strong>« Surtout pas »</strong> ;</li>
+    <li>jamais au-delà de son <strong>plafond d'heures</strong> ;</li>
+    <li>jamais sur <strong>deux postes en même temps</strong>.</li>
+  </ul>
+  <p>L'ébauche <strong>laisse volontairement des trous</strong> quand personne ne
+    convient, plutôt que de forcer un placement. Les cases en manque sont
+    listées : à vous de les compléter à la main, d'ajouter ou retirer des
+    personnes, et de <strong>verrouiller</strong> 🔒 les cases sûres (le
+    re-préremplissage les conserve).</p>
+  <p>Quand la grille vous convient, <strong>publiez</strong>. Vous pouvez aussi
+    l'<strong>exporter</strong> en Excel (une feuille par jour) ou en PDF
+    imprimable.</p>
+</section>
+
+<section class="carte">
+  <h2>Données personnelles (RGPD)</h2>
+  <p>Contrairement au reste de l'application de prêt, ce module enregistre des
+    <strong>données personnelles</strong> (nom, contact, disponibilités) — c'est
+    nécessaire pour organiser les équipes. Elles servent <strong>uniquement</strong>
+    à cet événement, sont conservées dans une base dédiée, et sont
+    <strong>supprimées</strong> ensuite (purge de l'événement).</p>
+</section>
+
+<section class="carte">
+  <p><a class="lien" href="/planning">← Retour au planning</a></p>
+</section>
+{% endblock %}

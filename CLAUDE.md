@@ -192,8 +192,17 @@ préremplissage laissant 3 trous réalistes, publication + jumeau resté en
 collecte) ; lançable aussi via `python -m app.planning.demo`. Liens « Planning »
 au menu bénévole, au pied de page et au dashboard admin. **17 tests planning**
 (13 services + 4 routes via TestClient, dont démo + exports), fixtures de
-`test_routes.py`/`test_tournoi.py` étendues à `PLANNING_DATABASE_PATH`. Suite
-globale **116 tests verts.** RESTE : aide dédiée, et affinements phase 2
+`test_routes.py`/`test_tournoi.py` étendues à `PLANNING_DATABASE_PATH`.
+
+**Planning — aide + largeur d'écran : FAIT.** Page publique `GET /planning/aide`
+(`planning_aide.html` : cycle collecte→brouillon→publié, déclaration des
+souhaits, sens des 4 niveaux de préférence, fonctionnement du préremplissage
+dégrossi, note RGPD), liée depuis `/planning`, `/planning/admin` et l'écran de
+gestion. Correctif d'affichage : `.contenu` est limité à 540 px (mobile-first),
+ce qui bridait la grille sur ordinateur (scroll horizontal) ; ajout d'un bloc
+Jinja `conteneur_extra` dans `base.html` + classe `.contenu-large`
+(`max-width: min(1180px, 96vw)`) appliquée aux pages grille (`planning_public`,
+`planning_gerer`). Suite globale **117 tests verts.** RESTE : affinements phase 2
 (continuité, expérience, équité fine).
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
