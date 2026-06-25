@@ -202,8 +202,12 @@ gestion. Correctif d'affichage : `.contenu` est limité à 540 px (mobile-first)
 ce qui bridait la grille sur ordinateur (scroll horizontal) ; ajout d'un bloc
 Jinja `conteneur_extra` dans `base.html` + classe `.contenu-large`
 (`max-width: min(1180px, 96vw)`) appliquée aux pages grille (`planning_public`,
-`planning_gerer`). Suite globale **117 tests verts.** RESTE : affinements phase 2
-(continuité, expérience, équité fine).
+`planning_gerer`). **Généralisé** ensuite aux autres écrans à tableaux larges
+(même cause, le 540px global) : `stats`, `tournoi_arbre`, `tournoi_rondes`,
+`tournoi_scores`, `tournoi_detail`. Les pages de lecture/formulaires (catalogue,
+fiche, prêt, formulaires admin, collecte) restent **volontairement étroites**
+(mobile-first, confort de lecture). Suite globale **117 tests verts.** RESTE :
+affinements phase 2 (continuité, expérience, équité fine).
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
