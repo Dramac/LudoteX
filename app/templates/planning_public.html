@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Planning bénévole{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
 <section class="carte">
@@ -14,7 +15,8 @@
     </p>
   {% endif %}
 
-  <p><a class="lien" href="/planning/mon">🔎 Voir mon planning (avec mon code)</a></p>
+  <p><a class="lien" href="/planning/mon">🔎 Voir mon planning (avec mon code)</a>
+    &nbsp;·&nbsp; <a class="lien" href="/planning/aide">❓ Aide</a></p>
 </section>
 
 {% if publie and grille.jours %}

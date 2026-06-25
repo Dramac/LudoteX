@@ -11,7 +11,7 @@
     <a class="bandeau-titre" href="/">Des jeux plein la Manche</a>
     {% if est_benevole(request) %}{% include "_menu_benevole.html" %}{% endif %}
   </header>
-  <main class="contenu">
+  <main class="contenu {% block conteneur_extra %}{% endblock %}">
     {% block contenu %}{% endblock %}
   </main>
   <footer class="pied">
