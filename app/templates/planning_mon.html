@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titre %}Mon planning{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Mon planning</h1>
+
+  <form method="get" action="/planning/mon" class="pl-recherche">
+    <label class="champ">
+      Mon code
+      <input type="text" name="code" value="{{ code }}" placeholder="ex. abc123">
+    </label>
+    <button type="submit" class="bouton bouton-secondaire">Afficher</button>
+  </form>
+
+  {% if code and not benevole %}
+    <p class="resultat resultat-attention">Code inconnu.</p>
+  {% elif benevole %}
+    <h2>{{ benevole.nom }} — {{ ev.nom }}</h2>
+    {% if mon %}
+      <ul class="pl-mon-liste">
+        {% for m in mon %}
+          <li>
+            <strong>{{ m.creneau.libelle_jour }}</strong>
+            {{ m.creneau.debut | heure_local }}–{{ m.creneau.fin | heure_local }} :
+            {% if m.poste %}{{ m.poste.nom }}{% else %}{{ m.creneau.libelle or "Tâche" }}{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Aucune affectation pour l'instant. Le planning n'est peut-être pas
+        encore publié.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

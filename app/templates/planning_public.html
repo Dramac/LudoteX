@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titre %}Planning bénévole{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Planning bénévole</h1>
+
+  {% if collecte %}
+    <p class="resultat resultat-ok">
+      La collecte des disponibilités est ouverte pour
+      « {{ collecte.nom }} ».
+      <a class="lien" href="/planning/collecte/{{ collecte.id_evenement }}">
+        ➡️ Déclarer mes disponibilités</a>
+    </p>
+  {% endif %}
+
+  <p><a class="lien" href="/planning/mon">🔎 Voir mon planning (avec mon code)</a></p>
+</section>
+
+{% if publie and grille.jours %}
+  <section class="carte">
+    <h2>{{ publie.nom }}</h2>
+    {% for jour in grille.jours %}
+      <h3>{{ jour.libelle }}</h3>
+      <div class="pl-scroll">
+        <table class="pl-grille">
+          <thead>
+            <tr>
+              <th>Horaire</th>
+              {% for p in grille.postes %}<th>{{ p.nom }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for ligne in jour.creneaux %}
+              <tr>
+                <th class="pl-horaire">
+                  {{ ligne.creneau.debut | heure_local }}–{{ ligne.creneau.fin | heure_local }}
+                </th>
+                {% for case in ligne.cases %}
+                  <td class="{{ 'pl-grise' if case.nb_requis == 0 }}">
+                    {% for a in case.affectations %}
+                      <span class="pl-nom">{{ a.nom }}</span>
+                    {% endfor %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+
+    {% if grille.taches %}
+      <h3>Tâches</h3>
+      <ul>
+        {% for t in grille.taches %}
+          <li><strong>{{ t.creneau.libelle or "Tâche" }}</strong>
+            ({{ t.creneau.libelle_jour }}
+            {{ t.creneau.debut | heure_local }}–{{ t.creneau.fin | heure_local }}) :
+            {{ t.affectations | map(attribute="nom") | join(", ") or "—" }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+{% elif not collecte %}
+  <section class="carte">
+    <p>Aucun planning publié pour le moment.</p>
+  </section>
+{% endif %}
+{% endblock %}

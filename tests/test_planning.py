@@ -245,3 +245,92 @@ def test_planning_du_benevole_et_taches(conn):
     # La grille expose la tâche séparément.
     grille = services.construire_grille(conn, ev)
     assert grille["taches"][0]["affectations"][0]["id_benevole"] == ra["id"]
+
+
+# ===========================================================================
+# Routes — via TestClient, bases temporaires séparées
+# ===========================================================================
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "pret.db"))
+    monkeypatch.setenv("TOURNOI_DATABASE_PATH", str(tmp_path / "tournoi.db"))
+    monkeypatch.setenv("PLANNING_DATABASE_PATH", str(tmp_path / "planning.db"))
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+
+    from app import db
+    from app.tournoi import db as tdb
+    from app.planning import db as pdb
+
+    monkeypatch.setattr(db, "get_database_path", lambda: tmp_path / "pret.db")
+    monkeypatch.setattr(tdb, "get_database_path", lambda: tmp_path / "tournoi.db")
+    monkeypatch.setattr(pdb, "get_database_path", lambda: tmp_path / "planning.db")
+    db.init_db()
+    tdb.init_db()
+    pdb.init_db()
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    return TestClient(app)
+
+
+def _login_admin(client):
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+
+def test_route_public_vide(client):
+    r = client.get("/planning")
+    assert r.status_code == 200
+
+
+def test_route_admin_protegee(client):
+    # Sans connexion admin -> redirection vers /admin.
+    r = client.get("/planning/admin", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+
+def test_flux_demo_publie_et_exports(client):
+    _login_admin(client)
+    # Crée la démo (redirige vers la gestion de l'événement).
+    r = client.post("/planning/admin/demo", follow_redirects=False)
+    assert r.status_code == 303
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+
+    # L'écran de gestion répond.
+    assert client.get(f"/planning/admin/{ev}").status_code == 200
+    # La page publique montre le planning publié (un nom de poste y figure).
+    pub = client.get("/planning")
+    assert pub.status_code == 200 and "Accueil" in pub.text
+    # Exports.
+    x = client.get(f"/planning/admin/{ev}/export.xlsx")
+    assert x.status_code == 200 and "spreadsheet" in x.headers["content-type"]
+    p = client.get(f"/planning/admin/{ev}/export.pdf")
+    assert p.status_code == 200 and p.headers["content-type"] == "application/pdf"
+    assert p.content[:4] == b"%PDF"
+
+
+def test_flux_collecte_publique(client):
+    _login_admin(client)
+    # Crée un événement vide (état collecte) + une trame minimale.
+    r = client.post("/planning/admin/creer", data={"nom": "Test"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                      "fin": "2026-09-12T16:00", "type_creneau": "poste"})
+
+    # Le formulaire public répond et l'envoi redirige vers la confirmation.
+    assert client.get(f"/planning/collecte/{ev}").status_code == 200
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        cr = services.lister_creneaux(conn, ev)[0]["id_creneau"]
+        po = services.lister_postes(conn, ev)[0]["id_poste"]
+    finally:
+        conn.close()
+    rep = client.post(f"/planning/collecte/{ev}",
+                      data={"nom": "Alice", "dispo": str(cr),
+                            f"pref_{po}": "prefere"}, follow_redirects=False)
+    assert rep.status_code == 303 and "/merci?code=" in rep.headers["location"]

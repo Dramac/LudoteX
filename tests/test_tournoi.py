@@ -692,14 +692,18 @@ def test_suisse_route_complet(client):
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "pret.db"))
     monkeypatch.setenv("TOURNOI_DATABASE_PATH", str(tmp_path / "tournoi.db"))
+    monkeypatch.setenv("PLANNING_DATABASE_PATH", str(tmp_path / "planning.db"))
 
     from app import db
     from app.tournoi import db as tdb
+    from app.planning import db as pdb
 
     monkeypatch.setattr(db, "get_database_path", lambda: tmp_path / "pret.db")
     monkeypatch.setattr(tdb, "get_database_path", lambda: tmp_path / "tournoi.db")
+    monkeypatch.setattr(pdb, "get_database_path", lambda: tmp_path / "planning.db")
     db.init_db()
     tdb.init_db()
+    pdb.init_db()
 
     from fastapi.testclient import TestClient
     from app.main import app

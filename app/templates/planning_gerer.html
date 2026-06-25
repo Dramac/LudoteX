@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block titre %}{{ ev.nom }} — gestion{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>{{ ev.nom }}</h1>
+  <p>État : <span class="pl-tag">{{ ev.etat }}</span>
+    &nbsp;·&nbsp; {{ benevoles | length }} réponse(s)
+    &nbsp;·&nbsp; <a class="lien" href="/planning/admin">tous les plannings</a></p>
+  {% if message %}<p class="resultat resultat-ok">{{ message }}</p>{% endif %}
+
+  <div class="pl-actions">
+    {% if ev.etat == "collecte" %}
+      <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
+        <input type="hidden" name="etat" value="brouillon">
+        <button class="bouton">Clore la collecte → brouillon</button>
+      </form>
+    {% elif ev.etat == "brouillon" %}
+      <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
+        <input type="hidden" name="etat" value="collecte">
+        <button class="bouton bouton-secondaire">↩ Rouvrir la collecte</button>
+      </form>
+      <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
+        <input type="hidden" name="etat" value="publie">
+        <button class="bouton">📢 Publier</button>
+      </form>
+    {% elif ev.etat == "publie" %}
+      <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
+        <input type="hidden" name="etat" value="brouillon">
+        <button class="bouton bouton-secondaire">Dépublier (→ brouillon)</button>
+      </form>
+      <a class="lien" href="/planning">Voir la page publique →</a>
+    {% endif %}
+    <a class="bouton bouton-secondaire" href="/planning/admin/{{ ev.id_evenement }}/export.xlsx">⬇ Excel</a>
+    <a class="bouton bouton-secondaire" href="/planning/admin/{{ ev.id_evenement }}/export.pdf">⬇ PDF</a>
+  </div>
+</section>
+
+<!-- ===================== TRAME : postes & créneaux ===================== -->
+<section class="carte">
+  <details>
+    <summary><strong>1. Trame — postes &amp; créneaux</strong></summary>
+
+    <h3>Postes</h3>
+    <ul class="pl-inline-liste">
+      {% for p in postes %}
+        <li>
+          {{ p.nom }}{% if p.demande_experience %} <span class="pl-tag">expérience</span>{% endif %}
+          <form method="post" action="/planning/admin/{{ ev.id_evenement }}/poste/{{ p.id_poste }}/supprimer"
+                onsubmit="return confirm('Supprimer ce poste ?');" class="pl-inline-form">
+            <button class="pl-x" title="Supprimer">✕</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/planning/admin/{{ ev.id_evenement }}/poste" class="pl-recherche">
+      <input type="text" name="nom" placeholder="Nouveau poste" required>
+      <label class="pl-check"><input type="checkbox" name="experience" value="1"> expérience</label>
+      <button class="bouton bouton-secondaire">Ajouter</button>
+    </form>
+
+    <h3>Créneaux</h3>
+    <ul class="pl-inline-liste">
+      {% for c in creneaux_service %}
+        <li>
+          {{ c.libelle_jour }} {{ c.debut | heure_local }}–{{ c.fin | heure_local }}
+          <form method="post" action="/planning/admin/{{ ev.id_evenement }}/creneau/{{ c.id_creneau }}/supprimer"
+                onsubmit="return confirm('Supprimer ce créneau ?');" class="pl-inline-form">
+            <button class="pl-x" title="Supprimer">✕</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/planning/admin/{{ ev.id_evenement }}/creneau" class="pl-recherche">
+      <input type="text" name="libelle_jour" placeholder="Jour (ex. Samedi)" required>
+      <input type="datetime-local" name="debut" required>
+      <input type="datetime-local" name="fin" required>
+      <select name="type_creneau">
+        <option value="poste">Service</option>
+        <option value="tache">Tâche</option>
+      </select>
+      <input type="text" name="libelle" placeholder="Libellé (si tâche)">
+      <button class="bouton bouton-secondaire">Ajouter</button>
+    </form>
+  </details>
+</section>
+
+<!-- ===================== BESOINS ===================== -->
+<section class="carte">
+  <details>
+    <summary><strong>2. Besoins par case</strong> (nombre de personnes ; 0 = grisé)</summary>
+    {% if creneaux_service and postes %}
+    <form method="post" action="/planning/admin/{{ ev.id_evenement }}/besoins">
+      <div class="pl-scroll">
+        <table class="pl-grille">
+          <thead>
+            <tr><th>Horaire</th>{% for p in postes %}<th>{{ p.nom }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for c in creneaux_service %}
+              <tr>
+                <th class="pl-horaire">{{ c.libelle_jour }}<br>{{ c.debut | heure_local }}</th>
+                {% for p in postes %}
+                  <td>
+                    <input type="number" min="0" class="pl-besoin"
+                           name="b_{{ c.id_creneau }}_{{ p.id_poste }}"
+                           value="{{ besoins.get((c.id_creneau, p.id_poste), 0) }}">
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button class="bouton">Enregistrer les besoins</button>
+    </form>
+    {% else %}
+      <p>Définissez d'abord des postes et des créneaux.</p>
+    {% endif %}
+  </details>
+</section>
+
+<!-- ===================== PRÉREMPLISSAGE + COUVERTURE ===================== -->
+<section class="carte">
+  <h2>3. Préremplissage</h2>
+  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/prefiller">
+    <button class="bouton">⚙️ Générer le brouillon (dégrossi)</button>
+  </form>
+  <p class="stats-note">
+    Couverture : {{ couverture.total_places }} / {{ couverture.total_requis }} places pourvues.
+    {% if couverture.trous %}<strong>{{ couverture.trous | length }} case(s) en manque.</strong>{% endif %}
+  </p>
+  {% if couverture.trous %}
+    <details>
+      <summary>Voir les trous</summary>
+      <ul>
+        {% for t in couverture.trous %}
+          <li>{{ t.libelle_jour }} {{ t.creneau.debut | heure_local }} —
+            {{ t.poste.nom }} : {{ t.places }}/{{ t.requis }}
+            (manque {{ t.manque }})</li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</section>
+
+<!-- ===================== GRILLE ÉDITABLE ===================== -->
+<section class="carte">
+  <h2>4. Grille</h2>
+  {% for jour in grille.jours %}
+    <h3>{{ jour.libelle }}</h3>
+    <div class="pl-scroll">
+      <table class="pl-grille">
+        <thead>
+          <tr><th>Horaire</th>{% for p in grille.postes %}<th>{{ p.nom }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for ligne in jour.creneaux %}
+            <tr>
+              <th class="pl-horaire">{{ ligne.creneau.debut | heure_local }}–{{ ligne.creneau.fin | heure_local }}</th>
+              {% for case in ligne.cases %}
+                <td class="{{ 'pl-grise' if case.nb_requis == 0 }}">
+                  {% if case.nb_requis > 0 %}
+                    {% for a in case.affectations %}
+                      <span class="pl-nom {{ 'pl-verrou' if a.verrouille }}">
+                        {{ a.nom }}
+                        <form method="post" class="pl-inline-form"
+                              action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/verrou">
+                          <button class="pl-mini" title="Verrouiller/déverrouiller">{{ '🔒' if a.verrouille else '🔓' }}</button>
+                        </form>
+                        <form method="post" class="pl-inline-form"
+                              action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/retirer">
+                          <button class="pl-x" title="Retirer">✕</button>
+                        </form>
+                      </span>
+                    {% endfor %}
+                    <span class="pl-compte">{{ case.affectations | length }}/{{ case.nb_requis }}</span>
+                    <form method="post" class="pl-add"
+                          action="/planning/admin/{{ ev.id_evenement }}/affecter">
+                      <input type="hidden" name="id_creneau" value="{{ ligne.creneau.id_creneau }}">
+                      <input type="hidden" name="id_poste" value="{{ case.poste.id_poste }}">
+                      <select name="id_benevole">
+                        {% for b in benevoles %}
+                          <option value="{{ b.id_benevole }}">{{ b.nom }}</option>
+                        {% endfor %}
+                      </select>
+                      <button class="pl-mini" title="Ajouter">＋</button>
+                    </form>
+                  {% endif %}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>Aucun créneau de service. Définissez la trame puis les besoins.</p>
+  {% endfor %}
+
+  {% if grille.taches %}
+    <h3>Tâches</h3>
+    <ul>
+      {% for t in grille.taches %}
+        <li><strong>{{ t.creneau.libelle or "Tâche" }}</strong>
+          ({{ t.creneau.libelle_jour }} {{ t.creneau.debut | heure_local }}) :
+          {{ t.affectations | map(attribute="nom") | join(", ") or "—" }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<!-- ===================== RÉPONSES + PURGE ===================== -->
+<section class="carte">
+  <details>
+    <summary><strong>Réponses des bénévoles</strong> ({{ benevoles | length }})</summary>
+    <ul>
+      {% for b in benevoles %}
+        <li>{{ b.nom }}{% if b.contact %} — {{ b.contact }}{% endif %}
+          {% if b.max_heures %} (max {{ b.max_heures }} h){% endif %}</li>
+      {% endfor %}
+    </ul>
+  </details>
+</section>
+
+<section class="carte">
+  <h2>Fin d'événement</h2>
+  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/purger"
+        onsubmit="return confirm('Purger DÉFINITIVEMENT cet événement et toutes ses données (RGPD) ?');">
+    <button class="bouton bouton-secondaire">🗑️ Purger cet événement</button>
+  </form>
+</section>
+{% endblock %}
