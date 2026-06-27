@@ -206,8 +206,22 @@ Jinja `conteneur_extra` dans `base.html` + classe `.contenu-large`
 (même cause, le 540px global) : `stats`, `tournoi_arbre`, `tournoi_rondes`,
 `tournoi_scores`, `tournoi_detail`. Les pages de lecture/formulaires (catalogue,
 fiche, prêt, formulaires admin, collecte) restent **volontairement étroites**
-(mobile-first, confort de lecture). Suite globale **117 tests verts.** RESTE :
-affinements phase 2 (continuité, expérience, équité fine).
+(mobile-first, confort de lecture). Suite globale **117 tests verts.**
+
+**Planning — PHASE 2 (qualité du préremplissage) : continuité + équité FAIT.**
+`prefiller` enrichi (mêmes contraintes dures) : à préférence égale, l'arbitrage
+se fait sur une **charge effective** = heures déjà affectées (équité, le moins
+chargé d'abord) MOINS un **rabais de continuité** `CONTINUITE_BONUS_H` (=2 h)
+accordé au bénévole déjà sur le **même poste à un créneau CONTIGU** (fin d'un =
+début de l'autre, comparaison ISO UTC ; carte `adjacents`). La continuité
+l'emporte à charge comparable, l'équité reprend le dessus si un autre est
+nettement moins chargé (écart > rabais). Suivi par `place_sur`
+(bénévole → {(créneau, poste)}). **3 tests dédiés** (continuité sur créneaux
+contigus, équité si non contigus, équité prime si écart > rabais). Démo : 96/99
+couvert, heures réparties 4–12 h. Suite globale **120 tests verts.** RESTE
+phase 2 : prise en compte de l'expérience (postes « expérience » ; nécessite de
+collecter qui est expérimenté), équité encore plus fine, notifications/PDF
+individuel.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,

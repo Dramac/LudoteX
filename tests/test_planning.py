@@ -248,6 +248,71 @@ def test_planning_du_benevole_et_taches(conn):
 
 
 # ===========================================================================
+# Préremplissage — continuité & équité (phase 2)
+# ===========================================================================
+def _qui_sur(conn, ev, id_creneau, id_poste):
+    """Ensemble des id de bénévoles affectés à une case (créneau × poste)."""
+    grille = services.construire_grille(conn, ev)
+    for jour in grille["jours"]:
+        for ligne in jour["creneaux"]:
+            if ligne["creneau"]["id_creneau"] == id_creneau:
+                for case in ligne["cases"]:
+                    if case["poste"]["id_poste"] == id_poste:
+                        return {a["id_benevole"] for a in case["affectations"]}
+    return set()
+
+
+def test_prefiller_continuite_creneaux_contigus(conn):
+    # 2 créneaux CONTIGUS (14-16 puis 16-18), 1 poste, besoin 1, deux bénévoles
+    # neutres dispos sur les deux : la même personne enchaîne (continuité).
+    ev, poste, cr1, cr2 = _evenement_simple(conn)  # cr1 14-16, cr2 16-18
+    services.definir_besoin(conn, cr1, poste, 1)
+    services.definir_besoin(conn, cr2, poste, 1)
+    services.enregistrer_souhaits(conn, ev, "Alice", dispos={cr1, cr2})
+    services.enregistrer_souhaits(conn, ev, "Bob", dispos={cr1, cr2})
+    services.prefiller(conn, ev)
+    sur1 = _qui_sur(conn, ev, cr1, poste)
+    sur2 = _qui_sur(conn, ev, cr2, poste)
+    assert len(sur1) == 1 and len(sur2) == 1
+    assert sur1 == sur2  # continuité : même bénévole sur les deux créneaux
+
+
+def test_prefiller_equite_si_creneaux_non_contigus(conn):
+    # 2 créneaux NON contigus (trou entre les deux) : pas de continuité possible,
+    # l'équité répartit sur deux bénévoles différents.
+    ev = services.creer_evenement(conn, "T")
+    poste = services.ajouter_poste(conn, ev, "Accueil")
+    cr1 = _creneau(conn, ev, "Samedi", 14, 16)
+    cr2 = _creneau(conn, ev, "Samedi", 18, 20)  # non contigu (16 != 18)
+    services.definir_besoin(conn, cr1, poste, 1)
+    services.definir_besoin(conn, cr2, poste, 1)
+    services.enregistrer_souhaits(conn, ev, "Alice", dispos={cr1, cr2})
+    services.enregistrer_souhaits(conn, ev, "Bob", dispos={cr1, cr2})
+    services.prefiller(conn, ev)
+    sur1 = _qui_sur(conn, ev, cr1, poste)
+    sur2 = _qui_sur(conn, ev, cr2, poste)
+    assert len(sur1) == 1 and len(sur2) == 1
+    assert sur1 != sur2  # équité : deux bénévoles différents
+
+
+def test_prefiller_equite_prime_continuite_si_ecart_important(conn):
+    # Créneau long (4 h) contigu à un autre : l'écart de charge (4 h) dépasse le
+    # rabais de continuité (2 h), donc l'équité l'emporte (autre bénévole).
+    ev = services.creer_evenement(conn, "T")
+    poste = services.ajouter_poste(conn, ev, "Accueil")
+    cr1 = _creneau(conn, ev, "Samedi", 12, 16)  # 4 h
+    cr2 = _creneau(conn, ev, "Samedi", 16, 18)  # 2 h, contigu à cr1
+    services.definir_besoin(conn, cr1, poste, 1)
+    services.definir_besoin(conn, cr2, poste, 1)
+    services.enregistrer_souhaits(conn, ev, "Alice", dispos={cr1, cr2})
+    services.enregistrer_souhaits(conn, ev, "Bob", dispos={cr1, cr2})
+    services.prefiller(conn, ev)
+    # cr1 (4 h) traité en premier (cases égales -> ordre) ; sur cr2, le titulaire
+    # de cr1 a 4 h, l'autre 0 h : malgré la continuité (rabais 2 h), l'autre gagne.
+    assert _qui_sur(conn, ev, cr1, poste) != _qui_sur(conn, ev, cr2, poste)
+
+
+# ===========================================================================
 # Routes — via TestClient, bases temporaires séparées
 # ===========================================================================
 @pytest.fixture

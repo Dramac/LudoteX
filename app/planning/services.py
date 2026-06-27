@@ -48,6 +48,13 @@ TRANSITIONS = {
 # « si_vraiment »). « surtout_pas » est exclu en amont (contrainte dure).
 _RANG_PREFERENCE = {"prefere": 0, "ok": 1, None: 2, "si_vraiment": 3}
 
+# Phase 2 — CONTINUITÉ : « rabais » d'heures (en heures) accordé à un bénévole
+# déjà placé sur le MÊME poste à un créneau CONTIGU (préférer la continuité).
+# Réglé sur une durée de créneau typique : la continuité l'emporte à charge
+# comparable, mais l'équité reprend le dessus si un autre bénévole est nettement
+# moins chargé (écart > ce rabais). Voir prefiller().
+CONTINUITE_BONUS_H = 2.0
+
 
 # ===========================================================================
 # Helpers
@@ -618,13 +625,20 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
       3. Pour chaque case, on complète jusqu'au besoin en piochant parmi les
          bénévoles disponibles, par ordre de préférence
          (prefere → ok → neutre → si_vraiment), en EXCLUANT « surtout_pas » et
-         ceux qui dépasseraient leur plafond d'heures, et en départageant par le
-         MOINS d'heures déjà affectées (équité de base).
-      4. On LAISSE VIDE toute case qu'on ne peut pas remplir proprement.
+         ceux qui dépasseraient leur plafond d'heures.
+      4. À préférence égale, on arbitre par une charge « effective » mêlant
+         ÉQUITÉ et CONTINUITÉ (phase 2) : on part des heures déjà affectées
+         (le moins chargé d'abord = équité) et on accorde un RABAIS
+         `CONTINUITE_BONUS_H` au bénévole déjà placé sur le MÊME poste à un
+         créneau CONTIGU (on garde la même personne sur des créneaux qui se
+         suivent). L'équité reprend le dessus si un autre bénévole est nettement
+         moins chargé (écart supérieur au rabais).
+      5. On LAISSE VIDE toute case qu'on ne peut pas remplir proprement.
 
     Contraintes DURES respectées : disponibilité, « surtout_pas », plafond
-    d'heures, pas deux postes en même temps. Contraintes molles (continuité,
-    expérience, équité fine) = phase 2.
+    d'heures, pas deux postes en même temps. Contraintes MOLLES prises en compte :
+    continuité sur créneaux contigus + équité de répartition des heures.
+    L'expérience requise reste un affinement ultérieur.
 
     Returns:
         {places: int, cases_completes: int, cases_total: int} (bilan rapide).
@@ -633,6 +647,16 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
     creneaux = {c["id_creneau"]: c for c in lister_creneaux(conn, id_evenement, "poste")}
     besoins = matrice_besoins(conn, id_evenement)
     benevoles = lister_benevoles(conn, id_evenement)
+
+    # Adjacence des créneaux : deux créneaux sont CONTIGUS si la fin de l'un est
+    # le début de l'autre (comparaison de chaînes ISO UTC, même format partout).
+    adjacents: dict[int, set[int]] = {cid: set() for cid in creneaux}
+    _liste_cr = list(creneaux.values())
+    for i, a in enumerate(_liste_cr):
+        for b in _liste_cr[i + 1:]:
+            if a["fin"] == b["debut"] or b["fin"] == a["debut"]:
+                adjacents[a["id_creneau"]].add(b["id_creneau"])
+                adjacents[b["id_creneau"]].add(a["id_creneau"])
 
     # Souhaits chargés une fois en mémoire (perf + lisibilité de l'algorithme).
     dispo = {b["id_benevole"]: dispos_du_benevole(conn, b["id_benevole"]) for b in benevoles}
@@ -651,6 +675,7 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
     heures: dict[int, float] = {b["id_benevole"]: 0.0 for b in benevoles}
     occupe: dict[int, set[int]] = {}                 # id_creneau -> {id_benevole}
     rempli: dict[tuple[int, int], int] = {}          # (creneau, poste) -> count
+    place_sur: dict[int, set[tuple[int, int]]] = {}  # id_benevole -> {(creneau, poste)}
     for a in _affectations_evenement(conn, id_evenement):
         occupe.setdefault(a["id_creneau"], set()).add(a["id_benevole"])
         if a["id_creneau"] in creneaux:
@@ -661,6 +686,16 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
             rempli[(a["id_creneau"], a["id_poste"])] = (
                 rempli.get((a["id_creneau"], a["id_poste"]), 0) + 1
             )
+            place_sur.setdefault(a["id_benevole"], set()).add(
+                (a["id_creneau"], a["id_poste"])
+            )
+
+    def _continuite(bid: int, id_creneau: int, id_poste: int) -> bool:
+        """Vrai si le bénévole tient déjà le MÊME poste sur un créneau contigu."""
+        return any(
+            (voisin, id_poste) in place_sur.get(bid, set())
+            for voisin in adjacents.get(id_creneau, set())
+        )
 
     def candidats(id_creneau: int, id_poste: int) -> list[int]:
         """Bénévoles éligibles à une case (contraintes dures), sans tri."""
@@ -702,14 +737,18 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
                 if plafond is not None and heures[bid] + duree > plafond + 1e-9:
                     continue                          # dépasserait le plafond
                 libres.append(bid)
-            return sorted(
-                libres,
-                key=lambda bid: (
+            def cle(bid: int):
+                continu = _continuite(bid, id_creneau, id_poste)
+                return (
                     _RANG_PREFERENCE.get(prefs[bid].get(id_poste), 2),  # préférence
-                    heures[bid],                       # le moins chargé d'abord
+                    # Charge effective : équité (moins d'heures) avec un rabais
+                    # de continuité si déjà sur le même poste à un créneau contigu.
+                    heures[bid] - (CONTINUITE_BONUS_H if continu else 0.0),
+                    0 if continu else 1,               # à effet égal, continuité d'abord
                     bid,                               # déterministe
-                ),
-            )
+                )
+
+            return sorted(libres, key=cle)
 
         while rempli.get((id_creneau, id_poste), 0) < besoin:
             ordre = triables()
@@ -718,6 +757,7 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
             bid = ordre[0]
             affecter(conn, id_creneau, id_poste, bid, origine="auto", verrouille=False)
             occupe.setdefault(id_creneau, set()).add(bid)
+            place_sur.setdefault(bid, set()).add((id_creneau, id_poste))
             heures[bid] += duree
             rempli[(id_creneau, id_poste)] = rempli.get((id_creneau, id_poste), 0) + 1
             places += 1

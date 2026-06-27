@@ -47,7 +47,7 @@
     <ul class="pl-inline-liste">
       {% for p in postes %}
         <li>
-          {{ p.nom }}{% if p.demande_experience %} <span class="pl-tag">expérience</span>{% endif %}
+          {{ p.nom }}
           <form method="post" action="/planning/admin/{{ ev.id_evenement }}/poste/{{ p.id_poste }}/supprimer"
                 onsubmit="return confirm('Supprimer ce poste ?');" class="pl-inline-form">
             <button class="pl-x" title="Supprimer">✕</button>
@@ -57,7 +57,6 @@
     </ul>
     <form method="post" action="/planning/admin/{{ ev.id_evenement }}/poste" class="pl-recherche">
       <input type="text" name="nom" placeholder="Nouveau poste" required>
-      <label class="pl-check"><input type="checkbox" name="experience" value="1"> expérience</label>
       <button class="bouton bouton-secondaire">Ajouter</button>
     </form>
 

@@ -18,12 +18,12 @@ from app.planning import services
 
 # Postes (colonnes du tableau) + besoin de personnes par créneau de service.
 _POSTES = [
-    ("Accueil", 2, False),
-    ("Ludothèque", 3, False),
-    ("Inscription tournois", 1, False),
-    ("Bar", 2, False),
-    ("Explication jeux", 2, True),
-    ("Partage un jeu", 1, False),
+    ("Accueil", 2),
+    ("Ludothèque", 3),
+    ("Inscription tournois", 1),
+    ("Bar", 2),
+    ("Explication jeux", 2),
+    ("Partage un jeu", 1),
 ]
 
 # Créneaux de service (heures locales). (jour, heure_debut, heure_fin).
@@ -65,8 +65,8 @@ def creer_demo(conn: sqlite3.Connection) -> int:
 
     # Postes.
     id_postes = [
-        services.ajouter_poste(conn, ev, nom, demande_experience=exp)
-        for (nom, _besoin, exp) in _POSTES
+        services.ajouter_poste(conn, ev, nom)
+        for (nom, _besoin) in _POSTES
     ]
 
     # Créneaux de service + besoins par poste.
@@ -74,7 +74,7 @@ def creer_demo(conn: sqlite3.Connection) -> int:
     for (jour, debut, fin) in _CRENEAUX:
         cr = services.ajouter_creneau(conn, ev, jour, debut, fin, type_creneau="poste")
         id_creneaux.append(cr)
-        for (id_poste, (_nom, besoin, _exp)) in zip(id_postes, _POSTES):
+        for (id_poste, (_nom, besoin)) in zip(id_postes, _POSTES):
             services.definir_besoin(conn, cr, id_poste, besoin)
 
     # Tâches ponctuelles.
