@@ -262,7 +262,10 @@ def admin_gerer(request: Request, ev: int):
     )
 
 
-def _retour(ev: int, msg: str | None = None) -> RedirectResponse:
+def _retour(ev: int, msg: str | None = None, retour: str = "") -> RedirectResponse:
+    """Redirige vers `retour` (s'il est fourni et interne), sinon vers la grille."""
+    if retour.startswith("/planning/"):
+        return RedirectResponse(retour, status_code=303)
     url = f"/planning/admin/{ev}"
     if msg:
         from urllib.parse import quote
@@ -357,7 +360,8 @@ def admin_prefiller(request: Request, ev: int):
 
 @router.post("/planning/admin/{ev:int}/affecter")
 def admin_affecter(request: Request, ev: int, id_creneau: int = Form(...),
-                   id_poste: str = Form(""), id_benevole: int = Form(...)):
+                   id_poste: str = Form(""), id_benevole: int = Form(...),
+                   retour: str = Form("")):
     if (r := _garde(request)) is not None:
         return r
     poste = _int(id_poste) if id_poste.strip() else None
@@ -367,11 +371,11 @@ def admin_affecter(request: Request, ev: int, id_creneau: int = Form(...),
                           verrouille=True)
     finally:
         conn.close()
-    return _retour(ev)
+    return _retour(ev, retour=retour)
 
 
 @router.post("/planning/admin/{ev:int}/affectation/{id_aff:int}/retirer")
-def admin_aff_retirer(request: Request, ev: int, id_aff: int):
+def admin_aff_retirer(request: Request, ev: int, id_aff: int, retour: str = Form("")):
     if (r := _garde(request)) is not None:
         return r
     conn = get_connection()
@@ -379,11 +383,11 @@ def admin_aff_retirer(request: Request, ev: int, id_aff: int):
         services.retirer_affectation(conn, id_aff)
     finally:
         conn.close()
-    return _retour(ev)
+    return _retour(ev, retour=retour)
 
 
 @router.post("/planning/admin/{ev:int}/affectation/{id_aff:int}/verrou")
-def admin_aff_verrou(request: Request, ev: int, id_aff: int):
+def admin_aff_verrou(request: Request, ev: int, id_aff: int, retour: str = Form("")):
     if (r := _garde(request)) is not None:
         return r
     conn = get_connection()
@@ -391,7 +395,96 @@ def admin_aff_verrou(request: Request, ev: int, id_aff: int):
         services.basculer_verrou(conn, id_aff)
     finally:
         conn.close()
-    return _retour(ev)
+    return _retour(ev, retour=retour)
+
+
+@router.post("/planning/admin/{ev:int}/affectation/{id_aff:int}/remplacer")
+def admin_aff_remplacer(request: Request, ev: int, id_aff: int,
+                        nouveau: int = Form(...), retour: str = Form("")):
+    """Remplace le bénévole d'une affectation par un autre (même case)."""
+    if (r := _garde(request)) is not None:
+        return r
+    conn = get_connection()
+    try:
+        services.remplacer_affectation(conn, id_aff, nouveau)
+    finally:
+        conn.close()
+    return _retour(ev, retour=retour)
+
+
+# ---------------------------------------------------------------------------
+# Édition « au clic » : page d'une case (créneau × poste) et d'un créneau.
+# « Boîte de dialogue » rendue côté serveur (POST classiques, sans JS).
+# ---------------------------------------------------------------------------
+@router.get("/planning/admin/{ev:int}/case/{id_creneau:int}/{id_poste:int}")
+def admin_case(request: Request, ev: int, id_creneau: int, id_poste: int):
+    if (r := _garde(request)) is not None:
+        return r
+    conn = get_connection()
+    try:
+        evenement = services.get_evenement(conn, ev)
+        creneau = services.get_creneau(conn, id_creneau)
+        poste = next((p for p in services.lister_postes(conn, ev)
+                      if p["id_poste"] == id_poste), None)
+        if evenement is None or creneau is None or poste is None:
+            conn.close()
+            return RedirectResponse(f"/planning/admin/{ev}", status_code=303)
+        besoin = services.matrice_besoins(conn, ev).get((id_creneau, id_poste), 0)
+        affectes = services.affectations_de_case(conn, id_creneau, id_poste)
+        ids_pris = {a["id_benevole"] for a in affectes}
+        # Bénévoles proposables : disponibles sur ce créneau, pas « surtout pas »,
+        # pas déjà sur la case. Les autres restent ajoutables via « tous ».
+        benevoles = services.lister_benevoles(conn, ev)
+        dispo_ids = {
+            b["id_benevole"] for b in benevoles
+            if id_creneau in services.dispos_du_benevole(conn, b["id_benevole"])
+            and services.prefs_du_benevole(conn, b["id_benevole"]).get(id_poste)
+            != "surtout_pas"
+        }
+        proposables = [b for b in benevoles
+                       if b["id_benevole"] in dispo_ids and b["id_benevole"] not in ids_pris]
+        autres = [b for b in benevoles
+                  if b["id_benevole"] not in dispo_ids and b["id_benevole"] not in ids_pris]
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "planning_case.html",
+        {"ev": evenement, "creneau": creneau, "poste": poste, "besoin": besoin,
+         "affectes": affectes, "proposables": proposables, "autres": autres},
+    )
+
+
+@router.get("/planning/admin/{ev:int}/creneau/{id_creneau:int}/editer")
+def admin_creneau_editer(request: Request, ev: int, id_creneau: int):
+    if (r := _garde(request)) is not None:
+        return r
+    conn = get_connection()
+    try:
+        evenement = services.get_evenement(conn, ev)
+        creneau = services.get_creneau(conn, id_creneau)
+    finally:
+        conn.close()
+    if evenement is None or creneau is None:
+        return RedirectResponse(f"/planning/admin/{ev}", status_code=303)
+    return templates.TemplateResponse(
+        request, "planning_creneau.html", {"ev": evenement, "creneau": creneau}
+    )
+
+
+@router.post("/planning/admin/{ev:int}/creneau/{id_creneau:int}/editer")
+def admin_creneau_modifier(request: Request, ev: int, id_creneau: int,
+                           libelle_jour: str = Form(""), debut: str = Form(""),
+                           fin: str = Form(""), libelle: str = Form("")):
+    if (r := _garde(request)) is not None:
+        return r
+    conn = get_connection()
+    try:
+        ok = services.modifier_creneau(conn, id_creneau, libelle_jour=libelle_jour,
+                                       debut_local=debut, fin_local=fin,
+                                       libelle=libelle or None)
+    finally:
+        conn.close()
+    return _retour(ev, None if ok else "Horaires invalides : créneau inchangé.")
 
 
 @router.post("/planning/admin/{ev:int}/etat")

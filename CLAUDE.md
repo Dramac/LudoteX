@@ -223,6 +223,27 @@ phase 2 : prise en compte de l'expérience (postes « expérience » ; nécessit
 collecter qui est expérimenté), équité encore plus fine, notifications/PDF
 individuel.
 
+**Planning — PHASE 2 (pilotage + grille d'ajustement SANS JS) : FAIT.**
+Déroulé cible gravé dans `docs/conception-planning.md` (compte admin = bureau ;
+pas de date limite : boutons explicites). Écran de gestion : **« Fermer le
+questionnaire »** (collecte→brouillon, avec confirmation) puis **« Générer le
+planning »** (préremplissage). **Édition « au clic » rendue côté serveur**
+(POST classiques, aucun JS lourd) : chaque case de la grille est un lien vers
+`GET /planning/admin/{ev}/case/{cr}/{poste}` (`planning_case.html`) qui permet
+de **remplacer** un bénévole (`remplacer_affectation` : même case, verrou
+conservé), ajouter, retirer, verrouiller — toutes ces actions acceptent un champ
+`retour` pour revenir à la page de la case (`_retour` redirige si l'URL commence
+par `/planning/`). L'horaire de chaque ligne est un lien vers
+`GET|POST /planning/admin/{ev}/creneau/{cr}/editer` (`planning_creneau.html`,
+`modifier_creneau` : jour/début/fin → la durée en découle ; bornes invalidées
+refusées). **Couleurs par ÉTAT de case** (CSS pur `pl-etat-*`) : grisé / trou
+(rouge) / partiel (orange) / complet (vert) / surcharge (bleu). Filtre Jinja
+`dt_input` (UTC→`datetime-local`). Drag'n'drop renvoyé à plus tard (assumé).
+**Expérience abandonnée** : case retirée de l'UI, colonne `demande_experience`
+conservée au schéma mais non exposée/exploitée. Helpers ajoutés : `get_creneau`,
+`get_affectation`, `affectations_de_case`. **7 nouveaux tests** (remplacement,
+durée, pages d'édition, redirection `retour`). Suite globale **124 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

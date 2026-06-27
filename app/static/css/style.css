@@ -411,3 +411,18 @@ button.lien {
 .pl-liste-ev, .pl-mon-liste { list-style: none; padding: 0; }
 .pl-liste-ev li { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--bord); }
 .pl-mon-liste li { padding: 6px 0; border-bottom: 1px solid var(--bord); }
+
+/* Planning — couleurs par ÉTAT de case (grille de gestion) + cases cliquables. */
+.pl-etat-grise     { background: repeating-linear-gradient(45deg,#eee,#eee 6px,#e3e3e3 6px,#e3e3e3 12px); }
+.pl-etat-trou      { background: var(--rouge-clair); }
+.pl-etat-partiel   { background: var(--orange-clair); }
+.pl-etat-complet   { background: var(--vert-clair); }
+.pl-etat-surcharge { background: #e8eefc; }            /* trop de monde : bleu doux */
+
+.pl-case-lien {
+  display: block; text-decoration: none; color: inherit; min-height: 1.6rem;
+  padding: 2px; border-radius: 6px;
+}
+.pl-case-lien:hover { outline: 2px solid var(--vert); outline-offset: -2px; }
+.pl-horaire-lien { text-decoration: none; color: var(--gris); white-space: nowrap; }
+.pl-horaire-lien:hover { color: var(--vert); }

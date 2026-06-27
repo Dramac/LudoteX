@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titre %}Modifier le créneau{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Modifier le créneau</h1>
+  <p class="stats-note">
+    Actuel : {{ creneau.libelle_jour }} · {{ creneau.debut | heure_local }}–{{ creneau.fin | heure_local }}
+  </p>
+
+  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/creneau/{{ creneau.id_creneau }}/editer">
+    <label class="champ">
+      Jour
+      <input type="text" name="libelle_jour" value="{{ creneau.libelle_jour }}" required>
+    </label>
+    <label class="champ">
+      Début
+      <input type="datetime-local" name="debut" value="{{ creneau.debut | dt_input }}" required>
+    </label>
+    <label class="champ">
+      Fin (la durée en découle)
+      <input type="datetime-local" name="fin" value="{{ creneau.fin | dt_input }}" required>
+    </label>
+    {% if creneau.type == "tache" %}
+      <label class="champ">
+        Libellé de la tâche
+        <input type="text" name="libelle" value="{{ creneau.libelle or '' }}">
+      </label>
+    {% endif %}
+    <button type="submit" class="bouton">Enregistrer</button>
+  </form>
+
+  <h2>Supprimer</h2>
+  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/creneau/{{ creneau.id_creneau }}/supprimer"
+        onsubmit="return confirm('Supprimer ce créneau et ses affectations ?');">
+    <button class="bouton bouton-secondaire">🗑️ Supprimer ce créneau</button>
+  </form>
+
+  <p><a class="lien" href="/planning/admin/{{ ev.id_evenement }}">← Retour à la grille</a></p>
+</section>
+{% endblock %}

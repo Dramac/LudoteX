@@ -13,9 +13,10 @@
 
   <div class="pl-actions">
     {% if ev.etat == "collecte" %}
-      <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
+      <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat"
+            onsubmit="return confirm('Fermer le questionnaire ? Les bénévoles ne pourront plus déclarer leurs disponibilités.');">
         <input type="hidden" name="etat" value="brouillon">
-        <button class="bouton">Clore la collecte → brouillon</button>
+        <button class="bouton">🔒 Fermer le questionnaire</button>
       </form>
     {% elif ev.etat == "brouillon" %}
       <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
@@ -123,10 +124,13 @@
 
 <!-- ===================== PRÉREMPLISSAGE + COUVERTURE ===================== -->
 <section class="carte">
-  <h2>3. Préremplissage</h2>
-  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/prefiller">
-    <button class="bouton">⚙️ Générer le brouillon (dégrossi)</button>
+  <h2>3. Générer le planning</h2>
+  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/prefiller"
+        onsubmit="return confirm('Générer le planning ? Les cases non verrouillées seront recalculées.');">
+    <button class="bouton">⚙️ Générer le planning</button>
   </form>
+  <p class="stats-note">Brouillon dégrossi : remplit au mieux et laisse les trous.
+    Les cases <strong>verrouillées</strong> sont conservées.</p>
   <p class="stats-note">
     Couverture : {{ couverture.total_places }} / {{ couverture.total_requis }} places pourvues.
     {% if couverture.trous %}<strong>{{ couverture.trous | length }} case(s) en manque.</strong>{% endif %}
@@ -148,6 +152,8 @@
 <!-- ===================== GRILLE ÉDITABLE ===================== -->
 <section class="carte">
   <h2>4. Grille</h2>
+  <p class="stats-note">Cliquez sur une case pour la modifier (remplacer,
+    ajouter, retirer, verrouiller). Cliquez sur un horaire pour changer la durée.</p>
   {% for jour in grille.jours %}
     <h3>{{ jour.libelle }}</h3>
     <div class="pl-scroll">
@@ -158,35 +164,34 @@
         <tbody>
           {% for ligne in jour.creneaux %}
             <tr>
-              <th class="pl-horaire">{{ ligne.creneau.debut | heure_local }}–{{ ligne.creneau.fin | heure_local }}</th>
+              <th class="pl-horaire">
+                <a class="pl-horaire-lien"
+                   href="/planning/admin/{{ ev.id_evenement }}/creneau/{{ ligne.creneau.id_creneau }}/editer">
+                  {{ ligne.creneau.debut | heure_local }}–{{ ligne.creneau.fin | heure_local }} ✎
+                </a>
+              </th>
               {% for case in ligne.cases %}
-                <td class="{{ 'pl-grise' if case.nb_requis == 0 }}">
+                {% set n = case.affectations | length %}
+                {% if case.nb_requis == 0 %}
+                  {% set etat = "grise" %}
+                {% elif n == 0 %}
+                  {% set etat = "trou" %}
+                {% elif n < case.nb_requis %}
+                  {% set etat = "partiel" %}
+                {% elif n > case.nb_requis %}
+                  {% set etat = "surcharge" %}
+                {% else %}
+                  {% set etat = "complet" %}
+                {% endif %}
+                <td class="pl-etat-{{ etat }}">
                   {% if case.nb_requis > 0 %}
-                    {% for a in case.affectations %}
-                      <span class="pl-nom {{ 'pl-verrou' if a.verrouille }}">
-                        {{ a.nom }}
-                        <form method="post" class="pl-inline-form"
-                              action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/verrou">
-                          <button class="pl-mini" title="Verrouiller/déverrouiller">{{ '🔒' if a.verrouille else '🔓' }}</button>
-                        </form>
-                        <form method="post" class="pl-inline-form"
-                              action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/retirer">
-                          <button class="pl-x" title="Retirer">✕</button>
-                        </form>
-                      </span>
-                    {% endfor %}
-                    <span class="pl-compte">{{ case.affectations | length }}/{{ case.nb_requis }}</span>
-                    <form method="post" class="pl-add"
-                          action="/planning/admin/{{ ev.id_evenement }}/affecter">
-                      <input type="hidden" name="id_creneau" value="{{ ligne.creneau.id_creneau }}">
-                      <input type="hidden" name="id_poste" value="{{ case.poste.id_poste }}">
-                      <select name="id_benevole">
-                        {% for b in benevoles %}
-                          <option value="{{ b.id_benevole }}">{{ b.nom }}</option>
-                        {% endfor %}
-                      </select>
-                      <button class="pl-mini" title="Ajouter">＋</button>
-                    </form>
+                    <a class="pl-case-lien"
+                       href="/planning/admin/{{ ev.id_evenement }}/case/{{ ligne.creneau.id_creneau }}/{{ case.poste.id_poste }}">
+                      {% for a in case.affectations %}
+                        <span class="pl-nom {{ 'pl-verrou' if a.verrouille }}">{{ a.nom }}{{ ' 🔒' if a.verrouille }}</span>
+                      {% endfor %}
+                      <span class="pl-compte">{{ n }}/{{ case.nb_requis }}{{ ' ✎' if n == 0 }}</span>
+                    </a>
                   {% endif %}
                 </td>
               {% endfor %}

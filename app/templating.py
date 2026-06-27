@@ -45,6 +45,24 @@ templates.env.filters["heure_local"] = (
     lambda iso: (services.format_local(iso).split(" ")[-1] if iso else "")
 )
 
+
+def _dt_input(iso_utc: str | None) -> str:
+    """UTC ISO -> 'AAAA-MM-JJTHH:MM' (heure locale) pour un input datetime-local."""
+    if not iso_utc:
+        return ""
+    from datetime import datetime
+
+    from app.services import FUSEAU_LOCAL
+    try:
+        dt = datetime.fromisoformat(iso_utc)
+    except ValueError:
+        return ""
+    return dt.astimezone(FUSEAU_LOCAL).strftime("%Y-%m-%dT%H:%M")
+
+
+# Filtre : pré-remplir un champ <input type="datetime-local"> depuis l'UTC ISO.
+templates.env.filters["dt_input"] = _dt_input
+
 # Version du CSS pour « casser » le cache navigateur : la date de modification du
 # fichier style.css. Recalculée au démarrage (uvicorn --reload redémarre quand le
 # fichier change), donc le navigateur recharge automatiquement la bonne version.
