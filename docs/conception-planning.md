@@ -22,8 +22,31 @@ Remplacer le tableur Excel préparé à la main par le bureau. Trois temps :
    seule sur l'interface bénévole, avec un « mon planning » par personne.
 
 Parti pris assumé (cf. §6) : l'auto-remplissage vise une **ébauche honnête qui
-montre clairement les trous**, retouchée à la main par l'admin. Un vrai moteur
-d'optimisation (équité fine, continuité, expérience) est renvoyé en phase 2.
+montre clairement les trous**, retouchée à la main par l'admin.
+
+### Déroulé cible (validé)
+
+Le « bureau » = **un compte administrateur** de l'app (mot de passe). Pas de
+date limite automatique : le bureau gère lui-même les délais, par deux boutons
+explicites.
+
+1. **Ouvrir le questionnaire.** Le bureau crée le « questionnaire dispo et
+   choix » dans l'app et obtient un **lien unique, à usage multiple**.
+2. **Partager le lien** aux bénévoles. Chacun déclare ses disponibilités et ses
+   préférences ; il repart avec un code personnel pour revenir se corriger.
+3. **Fermer le questionnaire** quand le bureau le décide (bouton dédié) : la
+   collecte n'accepte plus de réponses.
+4. **Générer le planning** (autre bouton) : l'app produit le brouillon dégrossi.
+5. **Ajuster** dans une grille pratique (voir §7), puis **publier**.
+
+Note : l'enchaînement « fermer » puis « générer » reste **manuel** — pas
+d'échéance datée, le bureau pilote le rythme. (Décision : on a écarté la date
+limite automatique au profit de ces deux boutons.)
+
+Hors périmètre (décision) : la **prise en compte automatique de l'expérience**
+est **abandonnée** — le bureau l'ajuste à la main lors de la retouche. Le drapeau
+`postes.demande_experience` reste dans le schéma mais **n'est ni exposé ni
+exploité**.
 
 ## 2. Ce que dit le tableur actuel
 
@@ -110,7 +133,7 @@ Esquisse (à affiner) :
 | `id_poste` | PK |
 | `id_evenement` | FK |
 | `nom` | Accueil, Ludothèque, Bar… |
-| `demande_experience` | 0/1 (info, exploitée en phase 2) |
+| `demande_experience` | 0/1 — **déprécié** : conservé au schéma mais non exposé ni exploité (expérience abandonnée) |
 
 **`besoins`** — combien de personnes par (créneau × poste)
 | champ | rôle |
@@ -167,8 +190,13 @@ Principe pressenti :
    de forcer.
 
 Contraintes **dures** respectées : disponibilité, `surtout_pas`, plafond
-d'heures, pas deux postes en même temps. Contraintes **molles** reportées en
-phase 2 : continuité sur créneaux consécutifs, expérience requise, équité fine.
+d'heures, pas deux postes en même temps.
+
+Contraintes **molles** (phase 2, **faites**) : à préférence égale, l'arbitrage
+combine **équité** (le moins chargé d'abord) et **continuité** (rabais d'heures
+au bénévole déjà sur le même poste à un créneau contigu ; l'équité reprend le
+dessus si l'écart de charge dépasse le rabais). L'**expérience requise** est
+**abandonnée** (ajustée à la main par le bureau).
 
 L'admin obtient une grille partiellement remplie + une **liste claire des trous
 et sur-affectations** à corriger.
@@ -188,11 +216,23 @@ et sur-affectations** à corriger.
   tâches ponctuelles. Possibilité de **dupliquer la trame** de l'édition
   précédente (gain de temps annuel).
 - Voir qui a répondu, le **taux de couverture prévisible** par créneau.
-- **Lancer le préremplissage** → brouillon.
-- **Éditer la grille** facon Excel : ajouter/retirer un nom, **verrouiller** une
-  case, « régénérer le reste », visualiser trous et conflits.
+- **Fermer le questionnaire** (bouton dédié) puis **Générer le planning** (autre
+  bouton) → brouillon. Les deux gestes sont manuels (pas de date limite).
+- **Éditer la grille** (cible) : on **clique sur une case** → une **boîte de
+  dialogue** permet de changer le bénévole (remplacer une personne par une
+  autre), retirer/ajouter, modifier la **durée** du créneau, verrouiller. Le
+  **drag'n'drop** (glisser un nom, étirer un créneau comme dans un agenda) est
+  l'objectif visuel ; on **commence par la boîte de dialogue** si le drag'n'drop
+  s'avère trop lourd. **Couleurs par ÉTAT** de case : verrouillé / auto / trou
+  (manque) / complet.
+- « Régénérer le reste » conserve les cases **verrouillées**.
 - **Publier** (passe l'état à `publie`).
 - **Purger** les données après l'événement.
+
+Note technique : cette grille interactive introduit du **JavaScript** plus
+conséquent que le reste de l'app (jusqu'ici quasi sans JS, hors scanner). Étape
+1 = boîte de dialogue au clic (POST classiques, peu de JS) ; étape 2 = drag'n'drop
+(plus de JS, mais sans framework lourd).
 
 **Bénévole (jeton) — après publication**
 - Vue d'ensemble du planning publié (grille en lecture seule, proche du tableur).
@@ -221,15 +261,24 @@ les stats.
 admin) → `publie` (visible des bénévoles). Retours en arrière possibles côté
 admin tant que ce n'est pas figé.
 
-## 10. Phasage proposé
+## 10. Phasage
 
-- **Phase 1** : trame admin (postes/créneaux/besoins + tâches ponctuelles) ;
-  formulaire de collecte (dispos + préférences 4 niveaux + plafond d'heures) ;
-  préremplissage **dégrossi** ; édition admin avec verrouillage ; publication +
-  « mon planning » ; **exports PDF & Excel**.
-- **Phase 2** : continuité sur créneaux consécutifs, prise en compte de
-  l'expérience requise, équité fine, relances/notifications, PDF individuel
-  automatisé.
+- **Phase 1 (FAITE)** : trame admin (postes/créneaux/besoins + tâches
+  ponctuelles) ; formulaire de collecte (dispos + préférences 4 niveaux +
+  plafond d'heures) ; préremplissage **dégrossi** ; édition admin avec
+  verrouillage ; publication + « mon planning » ; **exports PDF & Excel** ;
+  aide.
+- **Phase 2 — qualité du préremplissage (FAITE)** : continuité sur créneaux
+  contigus + équité de répartition.
+- **Phase 2 — reste à faire** :
+  1. **Boutons de pilotage** : « Fermer le questionnaire » puis « Générer le
+     planning » (déjà partiellement là via les transitions d'état, à rendre
+     explicites).
+  2. **Grille d'ajustement interactive** : boîte de dialogue au clic
+     (remplacer le bénévole, durée, retrait, verrou) ; couleurs par état ;
+     drag'n'drop dans un second temps.
+  3. **Notifications / PDF individuel** (e-mail, plus tard).
+- **Abandonné** : prise en compte automatique de l'expérience.
 
 ## 11. Points à trancher
 
