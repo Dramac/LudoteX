@@ -6,6 +6,7 @@
 {% block contenu %}
 <section class="carte">
   <h1>{{ poste.nom }}</h1>
+  {% if message %}<p class="resultat resultat-attention">{{ message }}</p>{% endif %}
   <p class="stats-note">
     {{ creneau.libelle_jour }} · {{ creneau.debut | heure_local }}–{{ creneau.fin | heure_local }}
     · besoin : {{ affectes | length }}/{{ besoin }}
