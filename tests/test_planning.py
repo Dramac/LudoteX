@@ -328,6 +328,36 @@ def test_remplacer_affectation(conn):
     assert sur[0]["verrouille"] == 1  # le verrouillage est conservé
 
 
+def test_affecter_refuse_deux_postes_meme_creneau(conn):
+    # Une personne ne peut pas tenir deux postes sur le même créneau (ajout manuel).
+    ev = services.creer_evenement(conn, "T")
+    accueil = services.ajouter_poste(conn, ev, "Accueil")
+    bar = services.ajouter_poste(conn, ev, "Bar")
+    cr = _creneau(conn, ev, "Samedi", 14, 16)
+    ra = services.enregistrer_souhaits(conn, ev, "Alice")
+    assert services.affecter(conn, cr, accueil, ra["id"]) is not None
+    # Même créneau, autre poste -> refusé.
+    assert services.affecter(conn, cr, bar, ra["id"]) is None
+    assert len(services.affectations_de_case(conn, cr, bar)) == 0
+
+
+def test_remplacer_refuse_si_deja_sur_le_creneau(conn):
+    # Remplacer par quelqu'un déjà placé ailleurs sur le créneau est refusé,
+    # sans perdre l'affectation d'origine.
+    ev = services.creer_evenement(conn, "T")
+    accueil = services.ajouter_poste(conn, ev, "Accueil")
+    bar = services.ajouter_poste(conn, ev, "Bar")
+    cr = _creneau(conn, ev, "Samedi", 14, 16)
+    ra = services.enregistrer_souhaits(conn, ev, "Alice")
+    rb = services.enregistrer_souhaits(conn, ev, "Bob")
+    aff_a = services.affecter(conn, cr, accueil, ra["id"])
+    services.affecter(conn, cr, bar, rb["id"])
+    # Remplacer Alice (Accueil) par Bob, déjà au Bar sur ce créneau -> refus.
+    assert services.remplacer_affectation(conn, aff_a, rb["id"]) is None
+    sur = services.affectations_de_case(conn, cr, accueil)
+    assert len(sur) == 1 and sur[0]["id_benevole"] == ra["id"]  # Alice conservée
+
+
 def test_modifier_creneau_duree(conn):
     ev = services.creer_evenement(conn, "T")
     cr = _creneau(conn, ev, "Samedi", 14, 16)  # 2 h

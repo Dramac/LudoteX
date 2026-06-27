@@ -615,13 +615,16 @@ def affecter(
 ) -> int | None:
     """
     Place un bénévole sur une case (créneau × poste ; poste None = tâche).
-    Idempotent : ne crée pas de doublon exact. Renvoie l'id d'affectation, ou
-    None si elle existait déjà.
+
+    Contrainte DURE « pas deux postes en même temps » : on REFUSE si le bénévole
+    a déjà une affectation sur ce même créneau (quel que soit le poste). Cela
+    couvre aussi le doublon exact. Renvoie l'id d'affectation, ou None si l'ajout
+    est refusé (déjà présent sur le créneau).
     """
     deja = conn.execute(
-        "SELECT id_affectation FROM affectations WHERE id_creneau = ? "
-        "AND id_benevole = ? AND (id_poste IS ? OR id_poste = ?)",
-        (id_creneau, id_benevole, id_poste, id_poste),
+        "SELECT id_affectation FROM affectations "
+        "WHERE id_creneau = ? AND id_benevole = ?",
+        (id_creneau, id_benevole),
     ).fetchone()
     if deja:
         return None
@@ -668,10 +671,19 @@ def remplacer_affectation(
 
     Returns:
         L'id de la nouvelle affectation, ou None (affectation introuvable, ou le
-        nouveau bénévole est déjà placé sur cette case).
+        nouveau bénévole est déjà placé sur ce créneau ailleurs).
     """
     a = get_affectation(conn, id_affectation)
     if a is None:
+        return None
+    # Refuse AVANT de supprimer si le nouveau est déjà sur ce créneau (sur une
+    # autre case) : sinon on perdrait l'affectation d'origine sans la remplacer.
+    conflit = conn.execute(
+        "SELECT 1 FROM affectations WHERE id_creneau = ? AND id_benevole = ? "
+        "AND id_affectation <> ?",
+        (a["id_creneau"], nouveau_benevole, id_affectation),
+    ).fetchone()
+    if conflit:
         return None
     conn.execute("DELETE FROM affectations WHERE id_affectation = ?", (id_affectation,))
     conn.commit()

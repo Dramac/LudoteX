@@ -244,6 +244,16 @@ conservée au schéma mais non exposée/exploitée. Helpers ajoutés : `get_cren
 `get_affectation`, `affectations_de_case`. **7 nouveaux tests** (remplacement,
 durée, pages d'édition, redirection `retour`). Suite globale **124 tests verts.**
 
+**Planning — correctif « une personne par créneau » : FAIT.** Bug : l'ajout/
+remplacement manuel passait par `affecter()` qui ne refusait qu'un doublon
+EXACT (même créneau+poste+bénévole), permettant de placer quelqu'un sur deux
+postes du même créneau (le préremplissage, lui, l'évitait via son suivi
+`occupe`). Désormais `affecter()` REFUSE si le bénévole a déjà une affectation
+sur ce créneau (quel que soit le poste) ; `remplacer_affectation()` vérifie le
+conflit **avant** de supprimer l'ancienne (sinon perte de la case). La page de
+case exclut des propositions les bénévoles déjà occupés sur le créneau et affiche
+un message si l'action est refusée. **2 tests** ajoutés. Suite **126 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

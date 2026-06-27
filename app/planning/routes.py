@@ -264,11 +264,14 @@ def admin_gerer(request: Request, ev: int):
 
 def _retour(ev: int, msg: str | None = None, retour: str = "") -> RedirectResponse:
     """Redirige vers `retour` (s'il est fourni et interne), sinon vers la grille."""
+    from urllib.parse import quote
+
     if retour.startswith("/planning/"):
+        if msg:
+            retour += ("&" if "?" in retour else "?") + f"msg={quote(msg)}"
         return RedirectResponse(retour, status_code=303)
     url = f"/planning/admin/{ev}"
     if msg:
-        from urllib.parse import quote
         url += f"?msg={quote(msg)}"
     return RedirectResponse(url, status_code=303)
 
@@ -367,11 +370,12 @@ def admin_affecter(request: Request, ev: int, id_creneau: int = Form(...),
     poste = _int(id_poste) if id_poste.strip() else None
     conn = get_connection()
     try:
-        services.affecter(conn, id_creneau, poste, id_benevole, origine="manuel",
-                          verrouille=True)
+        res = services.affecter(conn, id_creneau, poste, id_benevole,
+                                origine="manuel", verrouille=True)
     finally:
         conn.close()
-    return _retour(ev, retour=retour)
+    msg = None if res else "Ce bénévole est déjà affecté sur ce créneau."
+    return _retour(ev, msg, retour)
 
 
 @router.post("/planning/admin/{ev:int}/affectation/{id_aff:int}/retirer")
@@ -406,10 +410,11 @@ def admin_aff_remplacer(request: Request, ev: int, id_aff: int,
         return r
     conn = get_connection()
     try:
-        services.remplacer_affectation(conn, id_aff, nouveau)
+        res = services.remplacer_affectation(conn, id_aff, nouveau)
     finally:
         conn.close()
-    return _retour(ev, retour=retour)
+    msg = None if res else "Ce bénévole est déjà affecté sur ce créneau."
+    return _retour(ev, msg, retour)
 
 
 # ---------------------------------------------------------------------------
@@ -431,9 +436,15 @@ def admin_case(request: Request, ev: int, id_creneau: int, id_poste: int):
             return RedirectResponse(f"/planning/admin/{ev}", status_code=303)
         besoin = services.matrice_besoins(conn, ev).get((id_creneau, id_poste), 0)
         affectes = services.affectations_de_case(conn, id_creneau, id_poste)
-        ids_pris = {a["id_benevole"] for a in affectes}
-        # Bénévoles proposables : disponibles sur ce créneau, pas « surtout pas »,
-        # pas déjà sur la case. Les autres restent ajoutables via « tous ».
+        # Bénévoles DÉJÀ occupés sur CE créneau (quel que soit le poste) : exclus
+        # des propositions (un bénévole ne peut pas tenir deux postes à la fois).
+        occupes = {
+            r["id_benevole"] for r in conn.execute(
+                "SELECT id_benevole FROM affectations WHERE id_creneau = ?",
+                (id_creneau,),
+            )
+        }
+        # Proposables : disponibles sur ce créneau, pas « surtout pas », et libres.
         benevoles = services.lister_benevoles(conn, ev)
         dispo_ids = {
             b["id_benevole"] for b in benevoles
@@ -442,15 +453,16 @@ def admin_case(request: Request, ev: int, id_creneau: int, id_poste: int):
             != "surtout_pas"
         }
         proposables = [b for b in benevoles
-                       if b["id_benevole"] in dispo_ids and b["id_benevole"] not in ids_pris]
+                       if b["id_benevole"] in dispo_ids and b["id_benevole"] not in occupes]
         autres = [b for b in benevoles
-                  if b["id_benevole"] not in dispo_ids and b["id_benevole"] not in ids_pris]
+                  if b["id_benevole"] not in dispo_ids and b["id_benevole"] not in occupes]
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "planning_case.html",
         {"ev": evenement, "creneau": creneau, "poste": poste, "besoin": besoin,
-         "affectes": affectes, "proposables": proposables, "autres": autres},
+         "affectes": affectes, "proposables": proposables, "autres": autres,
+         "message": request.query_params.get("msg")},
     )
 
 
