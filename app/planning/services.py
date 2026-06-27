@@ -293,6 +293,59 @@ def supprimer_creneau(conn: sqlite3.Connection, id_creneau: int) -> None:
     conn.commit()
 
 
+def get_creneau(conn: sqlite3.Connection, id_creneau: int) -> dict | None:
+    """Renvoie un créneau (dict) ou None."""
+    return _row(
+        conn.execute(
+            "SELECT * FROM creneaux WHERE id_creneau = ?", (id_creneau,)
+        ).fetchone()
+    )
+
+
+def modifier_creneau(
+    conn: sqlite3.Connection,
+    id_creneau: int,
+    libelle_jour: str | None = None,
+    debut_local: str | None = None,
+    fin_local: str | None = None,
+    libelle: str | None = None,
+) -> bool:
+    """
+    Modifie l'horaire (donc la durée) et/ou le libellé d'un créneau. Les bornes
+    sont des saisies locales (`datetime-local`) reconverties en UTC. Un argument
+    laissé à None n'est pas touché.
+
+    Returns:
+        True si au moins un champ a été modifié, False si les bornes fournies
+        sont invalides (rien n'est alors écrit).
+    """
+    champs, valeurs = [], []
+    if libelle_jour is not None:
+        champs.append("libelle_jour = ?")
+        valeurs.append(_nettoyer(libelle_jour) or "Jour")
+    if debut_local is not None:
+        debut = local_vers_utc_iso(debut_local)
+        if not debut:
+            return False
+        champs.append("debut = ?")
+        valeurs.append(debut)
+    if fin_local is not None:
+        fin = local_vers_utc_iso(fin_local)
+        if not fin:
+            return False
+        champs.append("fin = ?")
+        valeurs.append(fin)
+    if libelle is not None:
+        champs.append("libelle = ?")
+        valeurs.append(_nettoyer(libelle) or None)
+    if not champs:
+        return False
+    valeurs.append(id_creneau)
+    conn.execute(f"UPDATE creneaux SET {', '.join(champs)} WHERE id_creneau = ?", valeurs)
+    conn.commit()
+    return True
+
+
 def lister_creneaux(
     conn: sqlite3.Connection, id_evenement: int, type_creneau: str | None = None
 ) -> list[dict]:
@@ -594,6 +647,53 @@ def basculer_verrou(conn: sqlite3.Connection, id_affectation: int) -> None:
         (id_affectation,),
     )
     conn.commit()
+
+
+def get_affectation(conn: sqlite3.Connection, id_affectation: int) -> dict | None:
+    """Renvoie une affectation (dict) ou None."""
+    return _row(
+        conn.execute(
+            "SELECT * FROM affectations WHERE id_affectation = ?", (id_affectation,)
+        ).fetchone()
+    )
+
+
+def remplacer_affectation(
+    conn: sqlite3.Connection, id_affectation: int, nouveau_benevole: int
+) -> int | None:
+    """
+    Remplace le bénévole d'une affectation par un autre, en gardant la même case
+    (créneau × poste) et l'état de verrouillage. Sert au geste « remplacer Jeanne
+    par Juliette » sur la grille.
+
+    Returns:
+        L'id de la nouvelle affectation, ou None (affectation introuvable, ou le
+        nouveau bénévole est déjà placé sur cette case).
+    """
+    a = get_affectation(conn, id_affectation)
+    if a is None:
+        return None
+    conn.execute("DELETE FROM affectations WHERE id_affectation = ?", (id_affectation,))
+    conn.commit()
+    return affecter(
+        conn, a["id_creneau"], a["id_poste"], nouveau_benevole,
+        origine="manuel", verrouille=bool(a["verrouille"]),
+    )
+
+
+def affectations_de_case(
+    conn: sqlite3.Connection, id_creneau: int, id_poste: int | None
+) -> list[dict]:
+    """Affectations d'une case (créneau × poste ; poste None = tâche), avec nom."""
+    return _rows(
+        conn.execute(
+            "SELECT a.*, b.nom AS nom_benevole FROM affectations a "
+            "JOIN benevoles b ON b.id_benevole = a.id_benevole "
+            "WHERE a.id_creneau = ? AND (a.id_poste IS ? OR a.id_poste = ?) "
+            "ORDER BY b.nom COLLATE NOCASE",
+            (id_creneau, id_poste, id_poste),
+        )
+    )
 
 
 def _affectations_evenement(conn: sqlite3.Connection, id_evenement: int) -> list[dict]:

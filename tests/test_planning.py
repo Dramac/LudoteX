@@ -313,6 +313,34 @@ def test_prefiller_equite_prime_continuite_si_ecart_important(conn):
 
 
 # ===========================================================================
+# Édition : remplacer un bénévole, modifier un créneau (durée)
+# ===========================================================================
+def test_remplacer_affectation(conn):
+    ev, poste, cr1, _ = _evenement_simple(conn)
+    services.definir_besoin(conn, cr1, poste, 1)
+    ra = services.enregistrer_souhaits(conn, ev, "Alice", dispos={cr1})
+    rb = services.enregistrer_souhaits(conn, ev, "Bob", dispos={cr1})
+    aff = services.affecter(conn, cr1, poste, ra["id"], origine="manuel", verrouille=True)
+    new = services.remplacer_affectation(conn, aff, rb["id"])
+    assert new is not None
+    sur = services.affectations_de_case(conn, cr1, poste)
+    assert len(sur) == 1 and sur[0]["id_benevole"] == rb["id"]
+    assert sur[0]["verrouille"] == 1  # le verrouillage est conservé
+
+
+def test_modifier_creneau_duree(conn):
+    ev = services.creer_evenement(conn, "T")
+    cr = _creneau(conn, ev, "Samedi", 14, 16)  # 2 h
+    assert services.duree_heures(services.get_creneau(conn, cr)) == 2.0
+    ok = services.modifier_creneau(conn, cr, fin_local="2026-09-12T18:00")  # -> 4 h
+    assert ok is True
+    assert services.duree_heures(services.get_creneau(conn, cr)) == 4.0
+    # Borne invalide -> refus, créneau inchangé.
+    assert services.modifier_creneau(conn, cr, debut_local="n'importe quoi") is False
+    assert services.duree_heures(services.get_creneau(conn, cr)) == 4.0
+
+
+# ===========================================================================
 # Routes — via TestClient, bases temporaires séparées
 # ===========================================================================
 @pytest.fixture
@@ -404,3 +432,67 @@ def test_flux_collecte_publique(client):
 def test_route_aide(client):
     r = client.get("/planning/aide")
     assert r.status_code == 200 and "mode d'emploi" in r.text
+
+
+def test_route_edition_case_et_creneau(client):
+    _login_admin(client)
+    # Événement minimal avec une case à pourvoir.
+    r = client.post("/planning/admin/creer", data={"nom": "Test"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                      "fin": "2026-09-12T16:00", "type_creneau": "poste"})
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        cr = services.lister_creneaux(conn, ev)[0]["id_creneau"]
+        po = services.lister_postes(conn, ev)[0]["id_poste"]
+        services.definir_besoin(conn, cr, po, 1)
+        ra = services.enregistrer_souhaits(conn, ev, "Alice")  # refusée si fermé ?
+    finally:
+        conn.close()
+
+    # Page d'édition de la case répond.
+    page = client.get(f"/planning/admin/{ev}/case/{cr}/{po}")
+    assert page.status_code == 200 and "Accueil" in page.text
+
+    # Page d'édition du créneau répond, et la modification d'horaire fonctionne.
+    assert client.get(f"/planning/admin/{ev}/creneau/{cr}/editer").status_code == 200
+    rmod = client.post(f"/planning/admin/{ev}/creneau/{cr}/editer",
+                       data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                             "fin": "2026-09-12T17:00"}, follow_redirects=False)
+    assert rmod.status_code == 303
+    conn = get_connection()
+    try:
+        assert services.duree_heures(services.get_creneau(conn, cr)) == 3.0
+    finally:
+        conn.close()
+
+
+def test_route_affecter_avec_retour(client):
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": "Test"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                      "fin": "2026-09-12T16:00", "type_creneau": "poste"})
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        cr = services.lister_creneaux(conn, ev)[0]["id_creneau"]
+        po = services.lister_postes(conn, ev)[0]["id_poste"]
+        services.definir_besoin(conn, cr, po, 1)
+        b = services.enregistrer_souhaits(conn, ev, "Alice")["id"]
+    finally:
+        conn.close()
+    retour = f"/planning/admin/{ev}/case/{cr}/{po}"
+    rep = client.post(f"/planning/admin/{ev}/affecter",
+                      data={"id_creneau": cr, "id_poste": po, "id_benevole": b,
+                            "retour": retour}, follow_redirects=False)
+    assert rep.status_code == 303 and rep.headers["location"] == retour

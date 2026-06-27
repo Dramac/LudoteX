@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block titre %}Modifier une case — {{ poste.nom }}{% endblock %}
+
+{% set retour = "/planning/admin/" ~ ev.id_evenement ~ "/case/" ~ creneau.id_creneau ~ "/" ~ poste.id_poste %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>{{ poste.nom }}</h1>
+  <p class="stats-note">
+    {{ creneau.libelle_jour }} · {{ creneau.debut | heure_local }}–{{ creneau.fin | heure_local }}
+    · besoin : {{ affectes | length }}/{{ besoin }}
+    · <a class="lien" href="/planning/admin/{{ ev.id_evenement }}/creneau/{{ creneau.id_creneau }}/editer">modifier l'horaire</a>
+  </p>
+
+  <h2>Affecté(s)</h2>
+  {% if affectes %}
+    <ul class="pl-inline-liste">
+      {% for a in affectes %}
+        <li>
+          <span class="pl-nom {{ 'pl-verrou' if a.verrouille }}">{{ a.nom_benevole }}</span>
+
+          {# Remplacer cette personne par une autre (Jeanne -> Juliette). #}
+          <form method="post" class="pl-inline-form"
+                action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/remplacer">
+            <input type="hidden" name="retour" value="{{ retour }}">
+            <select name="nouveau" required>
+              <option value="" disabled selected>Remplacer par…</option>
+              {% for b in proposables %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
+              {% if autres %}
+                <optgroup label="Non disponibles / non souhaité">
+                  {% for b in autres %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
+                </optgroup>
+              {% endif %}
+            </select>
+            <button class="bouton bouton-secondaire">Remplacer</button>
+          </form>
+
+          <form method="post" class="pl-inline-form"
+                action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/verrou">
+            <input type="hidden" name="retour" value="{{ retour }}">
+            <button class="bouton bouton-secondaire">{{ '🔒 déverrouiller' if a.verrouille else '🔓 verrouiller' }}</button>
+          </form>
+          <form method="post" class="pl-inline-form"
+                action="/planning/admin/{{ ev.id_evenement }}/affectation/{{ a.id_affectation }}/retirer">
+            <input type="hidden" name="retour" value="{{ retour }}">
+            <button class="bouton bouton-secondaire">Retirer</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Personne pour l'instant.</p>
+  {% endif %}
+
+  <h2>Ajouter</h2>
+  <form method="post" action="/planning/admin/{{ ev.id_evenement }}/affecter"
+        class="pl-recherche">
+    <input type="hidden" name="id_creneau" value="{{ creneau.id_creneau }}">
+    <input type="hidden" name="id_poste" value="{{ poste.id_poste }}">
+    <input type="hidden" name="retour" value="{{ retour }}">
+    <select name="id_benevole" required>
+      <option value="" disabled selected>Choisir un bénévole…</option>
+      {% for b in proposables %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
+      {% if autres %}
+        <optgroup label="Non disponibles / non souhaité">
+          {% for b in autres %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
+        </optgroup>
+      {% endif %}
+    </select>
+    <button class="bouton">Ajouter</button>
+  </form>
+  <p class="stats-note">« Proposables » = disponibles sur ce créneau et n'ayant pas
+    coché « surtout pas » pour ce poste. Les autres restent ajoutables si besoin.</p>
+
+  <p><a class="lien" href="/planning/admin/{{ ev.id_evenement }}">← Retour à la grille</a></p>
+</section>
+{% endblock %}
