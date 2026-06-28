@@ -25,7 +25,7 @@ from fastapi.responses import RedirectResponse, Response
 from app import admin_auth, auth, services
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.db import get_connection
-from app.etiquettes import charger_logo, image_etiquette, url_fiche
+from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
 from app.templating import templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -180,6 +180,95 @@ def etiquette_png(request: Request, id_exemplaire: str):
     buf = BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
+
+
+# ---------------------------------------------------------------------------
+# Impression d'étiquettes en lot
+# ---------------------------------------------------------------------------
+@router.get("/etiquettes")
+def etiquettes_selection(request: Request, categorie: str | None = None,
+                         message: str | None = None):
+    """
+    Page de sélection des jeux à imprimer + paramètres de planche.
+
+    Filtre optionnel par catégorie. Chaque jeu coché imprimera les étiquettes de
+    TOUS ses exemplaires.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        categories = services.lister_categories(conn)
+        filtre = categorie if categorie in categories else None
+        jeux = services.titres_pour_etiquettes(conn, filtre)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_etiquettes.html",
+        {"jeux": jeux, "categories": categories, "filtre": filtre,
+         "base_url": _base_url(request), "message": message},
+    )
+
+
+def _float_ou(defaut: float, valeur: str) -> float:
+    """Convertit une saisie en flottant ≥ 0, ou renvoie `defaut`."""
+    try:
+        v = float((valeur or "").replace(",", ".").strip())
+        return v if v >= 0 else defaut
+    except ValueError:
+        return defaut
+
+
+@router.post("/etiquettes/pdf")
+def etiquettes_pdf(
+    request: Request,
+    references: list[str] = Form(default=[]),
+    lignes: int = Form(8),
+    colonnes: int = Form(2),
+    marge_gauche: str = Form("8"),
+    marge_droite: str = Form("8"),
+    marge_haut: str = Form("8"),
+    marge_bas: str = Form("8"),
+):
+    """
+    Génère et télécharge la planche PDF couleur des étiquettes des jeux cochés.
+
+    En cas de sélection vide ou de paramètres invalides, réaffiche la page de
+    sélection avec un message (jamais d'erreur brute).
+    """
+    if (garde := _garde(request)):
+        return garde
+    if not references:
+        return etiquettes_selection(
+            request, message="Sélectionnez au moins un jeu.")
+    if lignes < 1 or colonnes < 1:
+        return etiquettes_selection(
+            request, message="Le nombre de lignes et de colonnes doit être ≥ 1.")
+
+    conn = get_connection()
+    try:
+        exemplaires = services.exemplaires_pour_etiquettes(conn, references)
+    finally:
+        conn.close()
+    if not exemplaires:
+        return etiquettes_selection(request, message="Aucune étiquette à imprimer.")
+
+    try:
+        pdf = planche_pdf(
+            exemplaires, _base_url(request), charger_logo(),
+            lignes=lignes, colonnes=colonnes,
+            marge_gauche_mm=_float_ou(8, marge_gauche),
+            marge_droite_mm=_float_ou(8, marge_droite),
+            marge_haut_mm=_float_ou(8, marge_haut),
+            marge_bas_mm=_float_ou(8, marge_bas),
+        )
+    except ValueError as exc:
+        return etiquettes_selection(request, message=str(exc))
+
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="etiquettes.pdf"'},
+    )
 
 
 # ---------------------------------------------------------------------------
