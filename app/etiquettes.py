@@ -227,3 +227,85 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     _texte_centre(d, panel_cx, cy + 11, code_classement(ex), f_classif)
 
     return img
+
+
+# Espace intérieur de chaque cellule (mm) pour ne pas coller les étiquettes.
+ESPACE_CELLULE_MM = 1.5
+
+
+def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
+                marge_gauche_mm=8.0, marge_droite_mm=8.0,
+                marge_haut_mm=8.0, marge_bas_mm=8.0) -> bytes:
+    """
+    Construit une planche A4 d'étiquettes (PDF couleur) et renvoie les octets.
+
+    La zone utile = A4 moins les 4 marges de page ; elle est découpée en une
+    grille `lignes` x `colonnes`. Chaque étiquette est mise à l'échelle pour
+    tenir dans sa cellule (proportions conservées), avec un petit espace
+    intérieur (ESPACE_CELLULE_MM).
+
+    Utilise reportlab (gère la couleur du logo, sans dépendre du codec JPEG).
+
+    Args:
+        exemplaires: liste de dicts (nom + champs de code_classement + id).
+        base_url: base de l'URL encodée dans le QR.
+        logo: image PIL du logo, ou None.
+        lignes, colonnes: disposition de la grille (≥ 1).
+        marge_*_mm: marges de page en millimètres.
+
+    Returns:
+        Le contenu binaire du PDF.
+
+    Raises:
+        ValueError: si la grille est invalide ou si les marges ne laissent pas de
+            place utile sur la page.
+    """
+    from io import BytesIO
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    if lignes < 1 or colonnes < 1:
+        raise ValueError("Le nombre de lignes et de colonnes doit être ≥ 1.")
+
+    page_w, page_h = A4
+    ml, mr, mt, mb = (v * mm for v in
+                      (marge_gauche_mm, marge_droite_mm, marge_haut_mm, marge_bas_mm))
+    zone_w = page_w - ml - mr
+    zone_h = page_h - mt - mb
+    if zone_w <= 0 or zone_h <= 0:
+        raise ValueError("Les marges sont trop grandes pour la page A4.")
+
+    cw, ch = zone_w / colonnes, zone_h / lignes
+    pad = ESPACE_CELLULE_MM * mm
+    par_page = lignes * colonnes
+
+    def lecteur_png(im) -> ImageReader:
+        buf = BytesIO()
+        im.save(buf, format="PNG")
+        buf.seek(0)
+        return ImageReader(buf)
+
+    sortie = BytesIO()
+    c = canvas.Canvas(sortie, pagesize=A4)
+    for i in range(0, len(exemplaires), par_page):
+        for j, ex in enumerate(exemplaires[i:i + par_page]):
+            url = url_fiche(base_url, ex["id_exemplaire"])
+            label = image_etiquette(url, ex, logo)
+            iw, ih = label.size
+            col, row = j % colonnes, j // colonnes
+            avail_w, avail_h = cw - 2 * pad, ch - 2 * pad
+            scale = min(avail_w / iw, avail_h / ih)
+            w, h = iw * scale, ih * scale
+            # Origine reportlab en bas-gauche : on calcule depuis le haut de la
+            # zone utile (page_h - marge_haut).
+            cell_x = ml + col * cw
+            cell_haut = page_h - mt - row * ch
+            x = cell_x + (cw - w) / 2
+            y = cell_haut - ch + (ch - h) / 2
+            c.drawImage(lecteur_png(label), x, y, w, h, preserveAspectRatio=True)
+        c.showPage()
+    c.save()
+    return sortie.getvalue()

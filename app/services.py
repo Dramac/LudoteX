@@ -985,6 +985,62 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
     return [{"id_exemplaire": r[0], "sorti": est_sorti(conn, r[0])} for r in rows]
 
 
+def titres_pour_etiquettes(conn: sqlite3.Connection,
+                           categorie: str | None = None) -> list[dict]:
+    """
+    Liste les titres (avec leur nombre d'exemplaires) pour l'écran de sélection
+    d'impression d'étiquettes en lot. Filtrable par catégorie.
+
+    Returns:
+        Liste de dicts {reference_titre, nom, categorie, nb_exemplaires}, triée
+        par nom.
+    """
+    sql = """
+        SELECT t.reference_titre, t.nom, t.categorie,
+               COUNT(e.id_exemplaire) AS nb_exemplaires
+        FROM titres t
+        JOIN exemplaires e ON e.reference_titre = t.reference_titre
+    """
+    params: list = []
+    if categorie:
+        sql += " WHERE t.categorie = ?"
+        params.append(categorie)
+    sql += (" GROUP BY t.reference_titre, t.nom, t.categorie "
+            "ORDER BY t.nom COLLATE NOCASE")
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
+def exemplaires_pour_etiquettes(conn: sqlite3.Connection,
+                                references: list[str] | None) -> list[dict]:
+    """
+    Renvoie les exemplaires (avec les champs utiles à l'étiquette) des titres
+    demandés, pour générer une planche d'étiquettes.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        references: liste de `reference_titre` à inclure ; None/[] = tout le
+            catalogue.
+
+    Returns:
+        Liste de dicts {id_exemplaire, nom, categorie, age_min, nb_joueurs_min,
+        nb_joueurs_max, duree_min}, triée par nom puis id (étiquettes d'un même
+        jeu groupées).
+    """
+    sql = """
+        SELECT e.id_exemplaire, t.nom, t.categorie, t.age_min,
+               t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min
+        FROM exemplaires e
+        JOIN titres t ON t.reference_titre = e.reference_titre
+    """
+    params: list = []
+    if references:
+        marques = ",".join("?" * len(references))
+        sql += f" WHERE e.reference_titre IN ({marques})"
+        params = list(references)
+    sql += " ORDER BY t.nom COLLATE NOCASE, e.id_exemplaire"
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
 # ===========================================================================
 # Paramètres applicatifs génériques (table parametres, clé/valeur)
 # ===========================================================================

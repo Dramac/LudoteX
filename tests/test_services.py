@@ -139,6 +139,15 @@ def test_cloturer_tous_les_prets(conn):
     assert occupees == 0
 
 
+def test_selection_etiquettes(conn):
+    titres = services.titres_pour_etiquettes(conn)
+    assert titres and titres[0]["reference_titre"] == "CATAN"
+    assert titres[0]["nb_exemplaires"] == 3
+    ex = services.exemplaires_pour_etiquettes(conn, ["CATAN"])
+    assert {e["id_exemplaire"] for e in ex} == {"001", "002", "003"}
+    assert len(services.exemplaires_pour_etiquettes(conn, None)) == 3   # tout
+
+
 def test_prets_par_heure(conn):
     services.preter(conn, "001")
     services.preter(conn, "002")

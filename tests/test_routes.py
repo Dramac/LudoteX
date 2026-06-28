@@ -240,6 +240,30 @@ def test_admin_cloture_prets(client, monkeypatch):
     assert "Disponible" in client.get("/pret/001").text
 
 
+def test_admin_etiquettes_lot(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    page = client.get("/admin/etiquettes")
+    assert page.status_code == 200 and "Imprimer des étiquettes" in page.text
+
+    # Sélection vide -> message, jamais d'erreur.
+    vide = client.post("/admin/etiquettes/pdf", data={})
+    assert vide.status_code == 200 and "au moins un jeu" in vide.text
+
+    # Génération PDF couleur pour un jeu (toutes ses boîtes).
+    pdf = client.post("/admin/etiquettes/pdf",
+                      data={"references": "CATAN", "colonnes": "2", "lignes": "8"})
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content[:4] == b"%PDF"
+
+    # Marges absurdes (> largeur A4) -> message clair (pas d'erreur 500).
+    big = client.post("/admin/etiquettes/pdf",
+                      data={"references": "CATAN", "marge_gauche": "300"})
+    assert big.status_code == 200 and "marges" in big.text.lower()
+
+
 def test_admin_changement_mdp(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "initial-123")
     client.post("/admin/login", data={"mot_de_passe": "initial-123"})

@@ -438,7 +438,12 @@ du `.env`, sessions en mémoire + cookie), `routes/admin.py`, templates `admin_*
 Permet : créer une fiche de jeu (id_exemplaire AUTO, préfixe `A` via
 `services.prochain_id_exemplaire`, voir `creer_jeu`/`ajouter_exemplaire`),
 consulter une fiche et **(ré)imprimer l'étiquette** de chaque exemplaire
-(`GET /admin/etiquette/<id>.png`), changer le mot de passe. Le **dessin
+(`GET /admin/etiquette/<id>.png`), **imprimer des étiquettes EN LOT**
+(`/admin/etiquettes` : sélection de jeux cochables + filtre catégorie + tout/aucun ;
+mise en page A4 réglable — 4 marges mm + colonnes×lignes, compteur live JS ;
+`POST /admin/etiquettes/pdf` → PDF couleur via `etiquettes.planche_pdf`, qui
+imprime toutes les boîtes des jeux choisis ; services `titres_pour_etiquettes` /
+`exemplaires_pour_etiquettes`), changer le mot de passe. Le **dessin
 d'étiquette est mutualisé** dans `app/etiquettes.py` (partagé avec
 `scripts/generate_qr.py`). Accès non authentifié → redirection vers /admin (pas
 de 403). Le **tableau de bord** propose un menu vers les modules (catalogue,
