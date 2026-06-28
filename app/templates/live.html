@@ -152,8 +152,8 @@
 <body>
   <div class="ecran">
     <header class="entete">
-      <h1>Des jeux plein la Manche</h1>
-      <div class="horloge"><span class="point"></span><span id="horloge">--:--:--</span></div>
+      <h1 id="titre">{{ data.titre }}</h1>
+      <div class="horloge"><span class="point"></span><span id="horloge">--:--</span></div>
     </header>
 
     <section class="chiffres">
@@ -254,6 +254,10 @@
     }
 
     function rendre(d) {
+      if (d.titre) {
+        document.getElementById("titre").textContent = d.titre;
+        document.title = d.titre + " — Tableau de bord";
+      }
       document.getElementById("c-sortis").textContent = d.jeux.sortis;
       document.getElementById("c-dispo").textContent = d.jeux.disponibles;
       document.getElementById("c-total").textContent = d.jeux.total;

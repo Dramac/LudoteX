@@ -386,3 +386,25 @@ def test_live_data(client):
     assert d2["jeux"]["sortis"] == 0
     assert len(d2["mouvements"]) == 2
     assert d2["mouvements"][0]["type"] == "retour"
+
+
+def test_live_horodatage_sans_secondes(client):
+    # L'heure est au format HH:MM (pas de secondes).
+    import re
+    h = client.get("/live/data").json()["horodatage"]
+    assert re.fullmatch(r"\d{2}:\d{2}", h), h
+
+
+def test_live_titre_configurable(client):
+    # Titre par défaut quand rien n'est réglé.
+    assert client.get("/live/data").json()["titre"] == "Des jeux plein la Manche"
+    # Réglage du titre (comme le ferait l'admin) -> répercuté sur page et données.
+    from app import db, services
+
+    conn = db.get_connection()
+    try:
+        services.ecrire_parametre(conn, "live_titre", "Festival du Jeu 2026")
+    finally:
+        conn.close()
+    assert client.get("/live/data").json()["titre"] == "Festival du Jeu 2026"
+    assert "Festival du Jeu 2026" in client.get("/live").text

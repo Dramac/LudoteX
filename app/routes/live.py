@@ -33,6 +33,10 @@ router = APIRouter(tags=["live"])
 FENETRE_A_VENIR_MIN = 120
 # Nombre de lignes du flux des derniers mouvements.
 NB_MOUVEMENTS = 10
+# Clé du paramètre « titre de l'écran salle » (réglable en admin) + valeur par
+# défaut si rien n'est encore renseigné.
+CLE_TITRE = "live_titre"
+TITRE_DEFAUT = "Des jeux plein la Manche"
 
 
 def _heure_locale(date_heure_utc: str | None) -> str:
@@ -56,6 +60,7 @@ def _collecter_donnees() -> dict:
     try:
         total, disponibles = services.compter_exemplaires_disponibles(conn)
         mouvements = services.derniers_mouvements(conn, NB_MOUVEMENTS)
+        titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
     finally:
         conn.close()
 
@@ -88,6 +93,7 @@ def _collecter_donnees() -> dict:
     ]
 
     return {
+        "titre": titre,
         "jeux": {"total": total, "disponibles": disponibles,
                  "sortis": total - disponibles},
         "nb_tournois_en_cours": len(en_cours),
@@ -102,7 +108,7 @@ def _collecter_donnees() -> dict:
             }
             for m in mouvements
         ],
-        "horodatage": datetime.now(FUSEAU_LOCAL).strftime("%H:%M:%S"),
+        "horodatage": datetime.now(FUSEAU_LOCAL).strftime("%H:%M"),
     }
 
 

@@ -451,6 +451,48 @@ def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
     )
 
 
+@router.get("/ecran-salle")
+def ecran_salle_formulaire(request: Request):
+    """Réglage du titre affiché en haut de l'écran de salle (/live)."""
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.live import CLE_TITRE, TITRE_DEFAUT
+
+    conn = get_connection()
+    try:
+        titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_live.html",
+        {"titre": titre, "titre_defaut": TITRE_DEFAUT, "message": None},
+    )
+
+
+@router.post("/ecran-salle")
+def ecran_salle_enregistrer(request: Request, titre: str = Form("")):
+    """
+    Enregistre le titre de l'écran de salle. Vide => retour au titre par défaut.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.live import CLE_TITRE, TITRE_DEFAUT
+
+    saisie = " ".join(titre.split())[:80]   # espaces normalisés, longueur bornée
+    conn = get_connection()
+    try:
+        services.ecrire_parametre(conn, CLE_TITRE, saisie or None)
+    finally:
+        conn.close()
+    message = (("succes", "Titre enregistré.") if saisie
+               else ("succes", "Titre effacé — le titre par défaut est utilisé."))
+    return templates.TemplateResponse(
+        request, "admin_live.html",
+        {"titre": saisie or TITRE_DEFAUT, "titre_defaut": TITRE_DEFAUT,
+         "message": message},
+    )
+
+
 @router.post("/cloturer-prets")
 def cloturer_prets(request: Request):
     """Clôture tous les prêts/sorties en cours (fin d'événement) ; garde l'historique."""
