@@ -444,24 +444,39 @@ def admin_case(request: Request, ev: int, id_creneau: int, id_poste: int):
                 (id_creneau,),
             )
         }
-        # Proposables : disponibles sur ce créneau, pas « surtout pas », et libres.
+        # Dispo + préférence de chacun pour CE poste (chargés une fois).
         benevoles = services.lister_benevoles(conn, ev)
-        dispo_ids = {
-            b["id_benevole"] for b in benevoles
-            if id_creneau in services.dispos_du_benevole(conn, b["id_benevole"])
-            and services.prefs_du_benevole(conn, b["id_benevole"]).get(id_poste)
-            != "surtout_pas"
-        }
-        proposables = [b for b in benevoles
-                       if b["id_benevole"] in dispo_ids and b["id_benevole"] not in occupes]
+        info = {}
+        for b in benevoles:
+            bid = b["id_benevole"]
+            dispo = id_creneau in services.dispos_du_benevole(conn, bid)
+            niveau = services.prefs_du_benevole(conn, bid).get(id_poste)
+            info[bid] = (dispo, niveau)
+
+        def _libre(b):
+            return b["id_benevole"] not in occupes
+
+        # Proposables (disponibles, pas « surtout pas ») GROUPÉS par préférence,
+        # pour voir d'un coup d'œil qui mettre en priorité sur ce créneau.
+        ordre = [("prefere", "⭐ Préféré"), ("ok", "OK"),
+                 (None, "Sans préférence"), ("si_vraiment", "Si nécessaire")]
+        groupes = []
+        for niveau, label in ordre:
+            membres = [b for b in benevoles
+                       if _libre(b) and info[b["id_benevole"]][0]
+                       and info[b["id_benevole"]][1] == niveau]
+            if membres:
+                groupes.append({"label": label, "benevoles": membres})
+        # Au fond : non disponibles sur ce créneau, ou ayant coché « surtout pas ».
         autres = [b for b in benevoles
-                  if b["id_benevole"] not in dispo_ids and b["id_benevole"] not in occupes]
+                  if _libre(b) and (not info[b["id_benevole"]][0]
+                                    or info[b["id_benevole"]][1] == "surtout_pas")]
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "planning_case.html",
         {"ev": evenement, "creneau": creneau, "poste": poste, "besoin": besoin,
-         "affectes": affectes, "proposables": proposables, "autres": autres,
+         "affectes": affectes, "groupes": groupes, "autres": autres,
          "message": request.query_params.get("msg")},
     )
 
