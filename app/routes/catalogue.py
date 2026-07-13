@@ -4,9 +4,10 @@ Routes du CATALOGUE PUBLIC — consultation en lecture seule (spec §5.2).
 Ces écrans sont PUBLICS : aucune donnée personnelle, aucun bouton d'action, pas
 de jeton requis. Ils constituent la « couche de lecture » réutilisable.
 
-Deux routes :
+Routes principales :
 - GET /jeu/<id_exemplaire> : fiche d'un exemplaire (URL encodée dans le QR).
 - GET /catalogue          : liste des titres + recherche/filtres.
+- GET /apropos            : page « À propos » (association, contact, licence…).
 
 Pattern commun : on ouvre une connexion, on délègue tout le calcul à
 `app.services`, on ferme la connexion (try/finally), puis on rend un gabarit.
@@ -20,6 +21,7 @@ from app.db import get_connection
 from app.templating import templates
 from app.tournoi import services as tournoi_services
 from app.tournoi.db import get_connection as get_tournoi_connection
+from app.version import APP_VERSION
 
 # `tags` regroupe ces routes dans la doc auto (/docs).
 router = APIRouter(tags=["catalogue"])
@@ -71,6 +73,17 @@ def accueil(request: Request):
 def aide(request: Request):
     """Page d'aide / mode d'emploi bénévole (publique, liée depuis le menu)."""
     return templates.TemplateResponse(request, "aide.html", {})
+
+
+@router.get("/apropos")
+def apropos(request: Request):
+    """Page « À propos » (publique) : association, objet du site, contact,
+    crédits, auteur, licence et version. Contenu statique, sans base de
+    données ni jeton requis."""
+    return templates.TemplateResponse(
+        request, "apropos.html",
+        {"version": APP_VERSION, "depot_url": "https://github.com/dramac/pret-jeux"},
+    )
 
 
 @router.get("/jeu/{id_exemplaire}")
@@ -162,6 +175,7 @@ def catalogue(request: Request, categorie: str | None = None, q: str | None = No
         # (une valeur inconnue dans l'URL revient à « pas de filtre catégorie »).
         filtre_cat = categorie if categorie in categories else None
         jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i)
+        derniers = services.derniers_achats(conn, 10)
     finally:
         conn.close()
 
@@ -173,5 +187,5 @@ def catalogue(request: Request, categorie: str | None = None, q: str | None = No
         "catalogue.html",
         {"jeux": jeux, "categories": categories, "ages": ages, "max_joueurs": max_j,
          "filtre": filtre_cat, "q": q, "age": age_i, "joueurs": joueurs_i,
-         "filtres_actifs": actifs},
+         "filtres_actifs": actifs, "derniers_achats": derniers},
     )

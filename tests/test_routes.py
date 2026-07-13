@@ -110,6 +110,17 @@ def test_menu_benevole_conditionnel(client, monkeypatch):
     assert 'class="menu-benevole"' in client.get("/catalogue").text
 
 
+def test_catalogue_derniers_achats(client):
+    from app import db
+    conn = db.get_connection()
+    conn.execute("UPDATE titres SET date_achat = '2021-03-04' WHERE reference_titre = 'CATAN'")
+    conn.commit()
+    conn.close()
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert "Dernières acquisitions" in r.text and "04/03/2021" in r.text
+
+
 def test_catalogue(client):
     r = client.get("/catalogue")
     assert r.status_code == 200

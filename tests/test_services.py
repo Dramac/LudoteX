@@ -139,6 +139,23 @@ def test_cloturer_tous_les_prets(conn):
     assert occupees == 0
 
 
+def test_parse_date_achat():
+    from scripts.import_csv import parse_date_achat
+    assert parse_date_achat("16-sept-19") == "2019-09-16"
+    assert parse_date_achat("16/09/2019") == "2019-09-16"
+    assert parse_date_achat("1-déc-2020") == "2020-12-01"
+    assert parse_date_achat("") is None
+    assert parse_date_achat("bidon") is None
+
+
+def test_derniers_achats(conn):
+    conn.execute("UPDATE titres SET date_achat = '2020-05-01' WHERE reference_titre = 'CATAN'")
+    d = services.derniers_achats(conn)
+    assert d and d[0]["reference_titre"] == "CATAN"
+    assert d[0]["date_achat_txt"] == "01/05/2020"
+    assert d[0]["id_repr"] == "001"
+
+
 def test_selection_etiquettes(conn):
     titres = services.titres_pour_etiquettes(conn)
     assert titres and titres[0]["reference_titre"] == "CATAN"

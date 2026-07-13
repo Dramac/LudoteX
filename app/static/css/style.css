@@ -180,6 +180,9 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
   cursor: pointer;
 }
 .catalogue-compte { color: var(--gris); margin: 12px 0 0; }
+.derniers-achats { margin: 8px 0 0; padding-left: 20px; }
+.derniers-achats li { margin: 4px 0; display: flex; justify-content: space-between; gap: 12px; }
+.achat-date { color: var(--gris); font-size: 0.85rem; white-space: nowrap; }
 
 .catalogue-liste { list-style: none; margin: 0; padding: 0; }
 .jeu {

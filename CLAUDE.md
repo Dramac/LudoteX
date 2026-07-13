@@ -317,7 +317,9 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 
 - `titres` : `reference_titre` (PK), `nom`, `type_jeu` ("Jeu"/"Extension"),
   `categorie` + colonnes optionnelles nullables (`nb_joueurs_min/max`,
-  `duree_min`, `age_min`, `editeur`, `auteur`, `annee_edition`, `descriptif`).
+  `duree_min`, `age_min`, `editeur`, `auteur`, `annee_edition`, `descriptif`,
+  `date_achat` — ISO, la + récente des exemplaires ; alimente
+  `services.derniers_achats` → panneau « Dernières acquisitions » du catalogue).
   Migration : `db._appliquer_migrations` ajoute les colonnes apparues après coup
   (ex. `type_jeu`) aux bases existantes via ALTER TABLE.
 - `exemplaires` : `id_exemplaire` (PK, TEXT), `reference_titre` (FK).
