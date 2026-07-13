@@ -614,6 +614,60 @@ def _date_fr(iso: str | None) -> str:
         return iso or ""
 
 
+# En-têtes de l'export catalogue — choisis pour être RÉ-IMPORTABLES (mêmes
+# intitulés que ceux reconnus par scripts/import_csv.COLONNES).
+EN_TETES_CATALOGUE = [
+    "Code jeu", "Nom jeu", "Type", "Type jeu", "Nb joueurs", "Age joueurs",
+    "Temps jeu", "Marque", "Auteur", "Année édition", "Date achat", "Descriptif",
+]
+
+
+def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[dict]]:
+    """
+    Prépare l'export du catalogue (une ligne par exemplaire), au format
+    ré-importable par `scripts/import_csv.py`.
+
+    Les valeurs normalisées en base sont re-sérialisées dans un format que les
+    parseurs de l'import savent relire : joueurs « 2 - 4 », âge « 10 », durée
+    « 30 », date d'achat « JJ/MM/AAAA ».
+
+    Returns:
+        (en-têtes, lignes) où chaque ligne est un dict clé=en-tête.
+    """
+    def joueurs(a, b):
+        if a and b and b != a:
+            return f"{a} - {b}"
+        return str(a) if a else ""
+
+    rows = conn.execute(
+        """
+        SELECT e.id_exemplaire, t.nom, t.type_jeu, t.categorie,
+               t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
+               t.editeur, t.auteur, t.annee_edition, t.descriptif, t.date_achat
+        FROM exemplaires e
+        JOIN titres t ON t.reference_titre = e.reference_titre
+        ORDER BY t.nom COLLATE NOCASE, e.id_exemplaire
+        """
+    ).fetchall()
+    lignes = []
+    for r in rows:
+        lignes.append({
+            "Code jeu": r["id_exemplaire"],
+            "Nom jeu": r["nom"],
+            "Type": r["type_jeu"] or "",
+            "Type jeu": r["categorie"] or "",
+            "Nb joueurs": joueurs(r["nb_joueurs_min"], r["nb_joueurs_max"]),
+            "Age joueurs": str(r["age_min"]) if r["age_min"] is not None else "",
+            "Temps jeu": str(r["duree_min"]) if r["duree_min"] is not None else "",
+            "Marque": r["editeur"] or "",
+            "Auteur": r["auteur"] or "",
+            "Année édition": str(r["annee_edition"]) if r["annee_edition"] is not None else "",
+            "Date achat": _date_fr(r["date_achat"]),
+            "Descriptif": r["descriptif"] or "",
+        })
+    return EN_TETES_CATALOGUE, lignes
+
+
 def derniers_achats(conn: sqlite3.Connection, n: int = 10) -> list[dict]:
     """
     Les `n` jeux les plus récemment achetés (d'après `titres.date_achat`).

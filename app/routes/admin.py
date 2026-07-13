@@ -19,10 +19,10 @@ import os
 from io import BytesIO
 from urllib.parse import quote
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, auth, services
+from app import admin_auth, auth, exports, services
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.db import get_connection
 from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
@@ -268,6 +268,106 @@ def etiquettes_pdf(
     return Response(
         content=pdf, media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="etiquettes.pdf"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Base de données : import d'un catalogue CSV, export CSV / Excel
+# ---------------------------------------------------------------------------
+def _page_donnees(request: Request, message: tuple | None = None):
+    """Rend la page « Base de données » avec les compteurs actuels."""
+    conn = get_connection()
+    try:
+        nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
+        nb_ex = conn.execute("SELECT COUNT(*) FROM exemplaires").fetchone()[0]
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_donnees.html",
+        {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message},
+    )
+
+
+@router.get("/donnees")
+def donnees(request: Request):
+    """Page d'import / export du catalogue."""
+    if (garde := _garde(request)):
+        return garde
+    return _page_donnees(request)
+
+
+@router.post("/donnees/import")
+def donnees_import(request: Request, fichier: UploadFile = File(...)):
+    """
+    Importe un catalogue CSV téléversé (mêmes règles que scripts/import_csv :
+    tolérant aux colonnes, idempotent en UPSERT). Réaffiche la page avec un
+    compte rendu ; jamais d'erreur brute.
+    """
+    if (garde := _garde(request)):
+        return garde
+
+    import tempfile
+    from pathlib import Path
+
+    from scripts import import_csv
+
+    contenu = fichier.file.read()
+    if not contenu:
+        return _page_donnees(request, ("erreur", "Fichier vide ou absent."))
+
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        tmp.write(contenu)
+        chemin = Path(tmp.name)
+    try:
+        res = import_csv.importer(chemin)
+        texte = (f"Import réussi : {res['exemplaires']} exemplaire(s) / "
+                 f"{res['titres']} titre(s).")
+        if res["ignores"]:
+            texte += f" {len(res['ignores'])} ligne(s) ignorée(s)."
+        message = ("succes", texte)
+    except SystemExit as exc:            # colonnes clés absentes
+        message = ("erreur", str(exc))
+    except Exception as exc:             # tout autre souci de lecture
+        message = ("erreur", f"Import impossible : {exc}")
+    finally:
+        try:
+            chemin.unlink()
+        except OSError:
+            pass
+    return _page_donnees(request, message)
+
+
+@router.get("/donnees/export.csv")
+def donnees_export_csv(request: Request):
+    """Télécharge le catalogue au format CSV (ré-importable)."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        entetes, lignes = services.lignes_export_catalogue(conn)
+    finally:
+        conn.close()
+    return Response(
+        content=exports.catalogue_csv(entetes, lignes),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="catalogue.csv"'},
+    )
+
+
+@router.get("/donnees/export.xlsx")
+def donnees_export_xlsx(request: Request):
+    """Télécharge le catalogue au format Excel."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        entetes, lignes = services.lignes_export_catalogue(conn)
+    finally:
+        conn.close()
+    return Response(
+        content=exports.catalogue_xlsx(entetes, lignes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="catalogue.xlsx"'},
     )
 
 

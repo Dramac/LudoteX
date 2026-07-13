@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titre %}Administration — base de données{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Base de données (catalogue)</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+
+  {% if message %}
+    <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
+      {{ message[1] }}
+    </p>
+  {% endif %}
+
+  <p class="dispo-titre">Actuellement : {{ nb_titres }} jeu(x), {{ nb_ex }} exemplaire(s).</p>
+</section>
+
+<section class="carte">
+  <h2>Importer un catalogue (CSV)</h2>
+  <p class="stats-note">
+    L'import est <strong>idempotent</strong> : il met à jour les jeux existants et
+    ajoute les nouveaux, sans doublon. Formats de colonnes tolérés (mêmes en-têtes
+    que l'export ci-dessous).
+  </p>
+  <form method="post" action="/admin/donnees/import" enctype="multipart/form-data"
+        onsubmit="return confirm('Importer ce fichier et mettre à jour le catalogue ?');">
+    <div class="champ">
+      <label for="fichier">Fichier CSV</label>
+      <input type="file" id="fichier" name="fichier" accept=".csv,text/csv" required>
+    </div>
+    <button type="submit" class="bouton-filtrer">Importer</button>
+  </form>
+</section>
+
+<section class="carte">
+  <h2>Exporter le catalogue</h2>
+  <p class="stats-note">Export d'une ligne par exemplaire, ré-importable ci-dessus.</p>
+  <p class="stats-export">
+    <a class="lien" href="/admin/donnees/export.csv">⬇️ Télécharger en CSV</a>
+    &nbsp;·&nbsp;
+    <a class="lien" href="/admin/donnees/export.xlsx">⬇️ Télécharger en Excel</a>
+  </p>
+</section>
+{% endblock %}

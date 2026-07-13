@@ -453,7 +453,11 @@ consulter une fiche et **(ré)imprimer l'étiquette** de chaque exemplaire
 mise en page A4 réglable — 4 marges mm + colonnes×lignes, compteur live JS ;
 `POST /admin/etiquettes/pdf` → PDF couleur via `etiquettes.planche_pdf`, qui
 imprime toutes les boîtes des jeux choisis ; services `titres_pour_etiquettes` /
-`exemplaires_pour_etiquettes`), changer le mot de passe. Le **dessin
+`exemplaires_pour_etiquettes`), **importer/exporter le catalogue**
+(`/admin/donnees` : import d'un CSV téléversé via `scripts.import_csv.importer` ;
+export CSV/Excel ré-importable via `services.lignes_export_catalogue` +
+`exports.catalogue_csv`/`catalogue_xlsx`, en-têtes = `EN_TETES_CATALOGUE`),
+changer le mot de passe. Le **dessin
 d'étiquette est mutualisé** dans `app/etiquettes.py` (partagé avec
 `scripts/generate_qr.py`). Accès non authentifié → redirection vers /admin (pas
 de 403). Le **tableau de bord** propose un menu vers les modules (catalogue,
