@@ -43,6 +43,7 @@ from app.tournoi import routes as tournoi_routes
 from app.tournoi.db import init_db as init_tournoi_db
 from app.planning import routes as planning_routes
 from app.planning.db import init_db as init_planning_db
+from app.version import APP_VERSION
 
 # Répertoire du paquet `app/`, pour localiser le dossier static/.
 BASE_DIR = Path(__file__).resolve().parent
@@ -50,7 +51,7 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(
     title="Prêt de jeux",
     description="Système de prêt de jeux de société par QR code (brique de prêt).",
-    version="0.1.0",
+    version=APP_VERSION,
 )
 
 # Sert les ressources statiques (style.css, jsQR.js, scanner.js) sous /static.

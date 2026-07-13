@@ -28,6 +28,7 @@ import argparse
 import csv
 import re
 import sys
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
@@ -56,6 +57,16 @@ COLONNES = {
     "auteur":        ["auteur", "auteurs"],
     "annee":         ["année édition", "annee edition", "année", "annee"],
     "descriptif":    ["descriptif", "description"],
+    "date_achat":    ["date achat", "date d'achat", "achat"],
+}
+
+# Mois français (abrégés ou complets, sans accents) -> numéro, pour parser les
+# dates d'achat du type « 16-sept-19 ».
+_MOIS_FR = {
+    "janv": 1, "janvier": 1, "fevr": 2, "fev": 2, "fevrier": 2, "mars": 3,
+    "avr": 4, "avril": 4, "mai": 5, "juin": 6, "juil": 7, "juillet": 7,
+    "aout": 8, "sept": 9, "septembre": 9, "oct": 10, "octobre": 10,
+    "nov": 11, "novembre": 11, "dec": 12, "decembre": 12,
 }
 
 
@@ -122,6 +133,38 @@ def parse_annee(valeur: str) -> int | None:
     """Premier nombre à 4 chiffres trouvé (année), sinon None."""
     m = re.search(r"(19|20)\d{2}", valeur or "")
     return int(m.group(0)) if m else None
+
+
+def parse_date_achat(valeur: str) -> str | None:
+    """
+    Convertit une date d'achat en ISO 'AAAA-MM-JJ', ou None.
+
+    Gère « 16-sept-19 » (jour-mois_fr-année 2 chiffres), « 16/09/2019 »,
+    « 16-09-19 »… Le mois peut être un nombre ou un mois français (abrégé/complet,
+    accents ignorés). Une année à 2 chiffres est interprétée en 20xx.
+
+    Returns:
+        La date ISO triable (ex. '2019-09-16'), ou None si non reconnue.
+    """
+    v = unicodedata.normalize("NFKD", (valeur or "").strip())
+    v = v.encode("ascii", "ignore").decode("ascii").lower()
+    if not v:
+        return None
+    parts = re.split(r"[\s/.\-]+", v)
+    if len(parts) != 3:
+        return None
+    jour_s, mois_s, an_s = parts
+    try:
+        jour = int(jour_s)
+        mois = int(mois_s) if mois_s.isdigit() else _MOIS_FR.get(mois_s[:4]) or _MOIS_FR.get(mois_s)
+        an = int(an_s)
+    except (ValueError, TypeError):
+        return None
+    if not mois or not (1 <= mois <= 12) or not (1 <= jour <= 31):
+        return None
+    if an < 100:
+        an += 2000
+    return f"{an:04d}-{mois:02d}-{jour:02d}"
 
 
 def _ou_none(valeur: str) -> str | None:
@@ -217,6 +260,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
             "auteur": _ou_none(val(ligne, "auteur")),
             "annee_edition": parse_annee(val(ligne, "annee")),
             "descriptif": _ou_none(val(ligne, "descriptif")),
+            "date_achat": parse_date_achat(val(ligne, "date_achat")),
         }
         # Agrégation au niveau titre : on conserve la 1re valeur non vide
         # rencontrée parmi les exemplaires d'un même titre.
@@ -226,6 +270,11 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
             for k, v in champs.items():
                 if titres[ref].get(k) in (None, "") and v not in (None, ""):
                     titres[ref][k] = v
+        # Exception : date_achat = la PLUS RÉCENTE parmi les exemplaires du titre
+        # (dernière acquisition). Les dates ISO se comparent comme des chaînes.
+        da = champs["date_achat"]
+        if da and (titres[ref].get("date_achat") is None or da > titres[ref]["date_achat"]):
+            titres[ref]["date_achat"] = da
 
     return exemplaires, titres, groupes, ignores
 
@@ -262,10 +311,10 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
                 """
                 INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
                     nb_joueurs_min, nb_joueurs_max, duree_min, age_min,
-                    editeur, auteur, annee_edition, descriptif)
+                    editeur, auteur, annee_edition, descriptif, date_achat)
                 VALUES (:reference_titre, :nom, :type_jeu, :categorie,
                     :nb_joueurs_min, :nb_joueurs_max, :duree_min, :age_min,
-                    :editeur, :auteur, :annee_edition, :descriptif)
+                    :editeur, :auteur, :annee_edition, :descriptif, :date_achat)
                 ON CONFLICT(reference_titre) DO UPDATE SET
                     nom=excluded.nom, type_jeu=excluded.type_jeu,
                     categorie=excluded.categorie,
@@ -274,7 +323,8 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
                     duree_min=excluded.duree_min, age_min=excluded.age_min,
                     editeur=excluded.editeur, auteur=excluded.auteur,
                     annee_edition=excluded.annee_edition,
-                    descriptif=excluded.descriptif
+                    descriptif=excluded.descriptif,
+                    date_achat=excluded.date_achat
                 """,
                 list(titres.values()),
             )

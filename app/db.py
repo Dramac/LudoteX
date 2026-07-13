@@ -90,6 +90,7 @@ def get_connection() -> sqlite3.Connection:
 _MIGRATIONS_COLONNES = [
     ("titres", "type_jeu", "TEXT"),
     ("prets", "motif", "TEXT NOT NULL DEFAULT 'pret'"),
+    ("titres", "date_achat", "TEXT"),
 ]
 
 

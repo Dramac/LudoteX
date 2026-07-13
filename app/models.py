@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS titres (
     editeur          TEXT,                        -- CSV "Marque"
     auteur           TEXT,                        -- CSV "Auteur"
     annee_edition    INTEGER,                     -- CSV "Année édition"
-    descriptif       TEXT                         -- CSV "Descriptif" (affiché sur la fiche)
+    descriptif       TEXT,                        -- CSV "Descriptif" (affiché sur la fiche)
+    date_achat       TEXT                         -- CSV "Date achat", ISO AAAA-MM-JJ (la + récente des exemplaires)
 );
 """
 

@@ -52,6 +52,20 @@
     </form>
   </details>
 
+  {% if derniers_achats %}
+  <details class="recherche">
+    <summary>🆕 Dernières acquisitions</summary>
+    <ol class="derniers-achats">
+      {% for jeu in derniers_achats %}
+        <li>
+          <a class="lien" href="/jeu/{{ jeu.id_repr }}">{{ jeu.nom }}</a>
+          <span class="achat-date">{{ jeu.date_achat_txt }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+
   <p class="catalogue-compte">{{ jeux | length }} jeu(x)</p>
 </section>
 

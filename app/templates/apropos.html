@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block titre %}À propos — Des jeux plein la Manche{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>À propos</h1>
+  <p class="dispo-titre">D'où vient cette application, et à qui elle s'adresse.</p>
+
+  <h2>L'association</h2>
+  <p><strong>Des jeux plein la Manche</strong> est une association qui organise
+     chaque année un événement de prêt de jeux de société, avec un parc d'environ
+     700 jeux. Sa mission : faire découvrir et partager le jeu de société au plus
+     grand nombre, le temps d'un événement convivial.</p>
+
+  <h2>À quoi sert ce site</h2>
+  <p>Cette application remplace la feuille de prêt papier par un système
+     numérique : chaque boîte de jeu porte un QR code, scanné par les bénévoles
+     pour enregistrer prêts et retours en temps réel. Elle propose aussi un
+     <strong>catalogue public</strong> des jeux, des <strong>tournois</strong>
+     (inscription, suivi, classements) et un <strong>planning bénévole</strong>
+     pour l'organisation de l'événement.</p>
+
+  <h2>Pour qui</h2>
+  <p>Le site s'adresse à trois publics : les <strong>visiteurs</strong>, qui
+     consultent le catalogue et s'inscrivent aux tournois avant ou pendant
+     l'événement ; les <strong>bénévoles</strong>, qui enregistrent les prêts et
+     gèrent les tournois depuis leur smartphone ; et les <strong>organisateurs</strong>,
+     qui pilotent l'événement (statistiques, planning, administration).</p>
+
+  <h2>Accès par niveau</h2>
+  <p>Aucun compte individuel : la distinction se fait entre trois niveaux
+     d'accès, du plus ouvert au plus restreint.</p>
+
+  <h3>Visiteur</h3>
+  <p>Accessible à tous, sans rien installer ni activer :</p>
+  <ul>
+    <li>page d'accueil, <a class="lien" href="/catalogue">catalogue</a> et
+        fiche de chaque jeu, avec recherche et filtres ;</li>
+    <li><a class="lien" href="/stats">statistiques</a> de prêt (palmarès,
+        histogramme, durées) et leurs exports Excel/PDF ;</li>
+    <li><a class="lien" href="/live">écran salle</a> (tableau de bord temps
+        réel, pensé pour un projecteur) ;</li>
+    <li><a class="lien" href="/tournois">tournois</a> : liste, page de suivi
+        d'un tournoi (classement ou arbre en lecture), inscription et
+        désinscription par code, ajout à l'agenda (.ics) ;</li>
+    <li><a class="lien" href="/planning">planning</a> : consultation de la
+        grille publiée, déclaration de ses disponibilités, et « mon planning »
+        via un code personnel ;</li>
+    <li>pages d'aide (<a class="lien" href="/aide">bénévoles</a>,
+        <a class="lien" href="/tournoi/aide">tournois</a>,
+        <a class="lien" href="/planning/aide">planning</a>) et cette page.</li>
+  </ul>
+
+  <h3>Bénévole</h3>
+  <p>En plus de tout ce qui précède, un bénévole peut :</p>
+  <ul>
+    <li>scanner un jeu et enregistrer prêt / retour / re-prêt / sortie pour un
+        tournoi ;</li>
+    <li>créer, éditer, dupliquer et supprimer un tournoi, gérer ses
+        participants, l'ouvrir/le lancer, saisir les scores, les rondes ou les
+        résultats de l'arbre selon le mode choisi ;</li>
+    <li>ouvrir en un clic tous les tournois programmés le jour même.</li>
+  </ul>
+
+  <h3>Administrateur</h3>
+  <p>En plus de tout ce qui précède, un administrateur peut :</p>
+  <ul>
+    <li>créer une fiche de jeu et (ré)imprimer des étiquettes QR, à l'unité ou
+        en lot ;</li>
+    <li>consulter, régénérer et partager le jeton bénévole (avec expiration) ;</li>
+    <li>changer le mot de passe administrateur ;</li>
+    <li>régler la date de l'événement et clôturer tous les prêts en fin
+        d'événement ;</li>
+    <li>piloter le module planning : trame des postes/créneaux/besoins,
+        préremplissage automatique, édition de la grille, publication,
+        exports et purge des données (RGPD).</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Pour toute question sur l'association ou l'application, plus d'informations
+     par e-mail : <a class="lien" href="mailto:contact@djplm.fr">contact@djplm.fr</a>.</p>
+
+  <h2>Crédits</h2>
+  <p>Application conçue et développée par <strong>Simon</strong>, pour
+     l'association Des jeux plein la Manche.</p>
+
+  <h2>Licence et code source</h2>
+  <p>Le code de cette application est disponible sur
+     <a class="lien" href="{{ depot_url }}">{{ depot_url }}</a>, sous licence
+     <strong>GNU General Public License v3.0 (GPLv3)</strong> : libre de
+     réutilisation, modification et redistribution, à condition que toute
+     version modifiée et redistribuée reste elle aussi publiée sous GPLv3.
+     Texte complet :
+     <a class="lien" href="https://www.gnu.org/licenses/gpl-3.0.html">gnu.org/licenses/gpl-3.0</a>.</p>
+
+  <h2>Version</h2>
+  <p>Version actuelle de l'application : <strong>{{ version }}</strong>.</p>
+</section>
+{% endblock %}

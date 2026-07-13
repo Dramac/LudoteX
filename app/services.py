@@ -605,6 +605,47 @@ def derniers_mouvements(conn: sqlite3.Connection, limite: int = 10) -> list[dict
     return out
 
 
+def _date_fr(iso: str | None) -> str:
+    """Formate une date ISO 'AAAA-MM-JJ' en 'JJ/MM/AAAA' (ou '' si vide/invalide)."""
+    try:
+        a, m, j = iso.split("-")
+        return f"{j}/{m}/{a}"
+    except (ValueError, AttributeError):
+        return iso or ""
+
+
+def derniers_achats(conn: sqlite3.Connection, n: int = 10) -> list[dict]:
+    """
+    Les `n` jeux les plus récemment achetés (d'après `titres.date_achat`).
+
+    Au niveau titre : un jeu = une ligne, date = la plus récente de ses
+    exemplaires (calculée à l'import). Les titres sans date d'achat sont ignorés.
+
+    Returns:
+        Liste de dicts {reference_titre, nom, date_achat, date_achat_txt,
+        id_repr} triée du plus récent au plus ancien.
+    """
+    rows = conn.execute(
+        """
+        SELECT t.reference_titre, t.nom, t.date_achat,
+               MIN(e.id_exemplaire) AS id_repr
+        FROM titres t
+        JOIN exemplaires e ON e.reference_titre = t.reference_titre
+        WHERE t.date_achat IS NOT NULL AND t.date_achat <> ''
+        GROUP BY t.reference_titre, t.nom, t.date_achat
+        ORDER BY t.date_achat DESC, t.nom COLLATE NOCASE
+        LIMIT ?
+        """,
+        (n,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["date_achat_txt"] = _date_fr(d["date_achat"])
+        out.append(d)
+    return out
+
+
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
     """
     Disponibilité d'un titre donné (utilisé par la fiche d'un exemplaire).
