@@ -3,6 +3,20 @@
 
 {% set retour = "/planning/admin/" ~ ev.id_evenement ~ "/case/" ~ creneau.id_creneau ~ "/" ~ poste.id_poste %}
 
+{# Options d'un menu de bénévoles, groupées par niveau de préférence. #}
+{% macro options_benevoles(groupes, autres) %}
+  {% for g in groupes %}
+    <optgroup label="{{ g.label }}">
+      {% for b in g.benevoles %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
+    </optgroup>
+  {% endfor %}
+  {% if autres %}
+    <optgroup label="Non disponible sur ce créneau / à éviter">
+      {% for b in autres %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
+    </optgroup>
+  {% endif %}
+{% endmacro %}
+
 {% block contenu %}
 <section class="carte">
   <h1>{{ poste.nom }}</h1>
@@ -26,12 +40,7 @@
             <input type="hidden" name="retour" value="{{ retour }}">
             <select name="nouveau" required>
               <option value="" disabled selected>Remplacer par…</option>
-              {% for b in proposables %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
-              {% if autres %}
-                <optgroup label="Non disponibles / non souhaité">
-                  {% for b in autres %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
-                </optgroup>
-              {% endif %}
+              {{ options_benevoles(groupes, autres) }}
             </select>
             <button class="bouton bouton-secondaire">Remplacer</button>
           </form>
@@ -61,17 +70,13 @@
     <input type="hidden" name="retour" value="{{ retour }}">
     <select name="id_benevole" required>
       <option value="" disabled selected>Choisir un bénévole…</option>
-      {% for b in proposables %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
-      {% if autres %}
-        <optgroup label="Non disponibles / non souhaité">
-          {% for b in autres %}<option value="{{ b.id_benevole }}">{{ b.nom }}</option>{% endfor %}
-        </optgroup>
-      {% endif %}
+      {{ options_benevoles(groupes, autres) }}
     </select>
     <button class="bouton">Ajouter</button>
   </form>
-  <p class="stats-note">« Proposables » = disponibles sur ce créneau et n'ayant pas
-    coché « surtout pas » pour ce poste. Les autres restent ajoutables si besoin.</p>
+  <p class="stats-note">Les bénévoles sont classés par préférence déclarée pour ce
+    poste (Préféré → OK → Sans préférence → Si nécessaire). En bas : ceux non
+    disponibles sur ce créneau ou ayant coché « surtout pas ».</p>
 
   <p><a class="lien" href="/planning/admin/{{ ev.id_evenement }}">← Retour à la grille</a></p>
 </section>

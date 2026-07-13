@@ -254,6 +254,14 @@ conflit **avant** de supprimer l'ancienne (sinon perte de la case). La page de
 case exclut des propositions les bénévoles déjà occupés sur le créneau et affiche
 un message si l'action est refusée. **2 tests** ajoutés. Suite **126 tests verts.**
 
+**Planning — menus de case groupés par préférence : FAIT.** Sur la page d'édition
+de case, les menus « Ajouter » et « Remplacer par » classent les bénévoles par
+**niveau de préférence déclaré pour ce poste** (⭐ Préféré → OK → Sans préférence
+→ Si nécessaire), via des `<optgroup>` ; en bas, un groupe « Non disponible sur
+ce créneau / à éviter » (non dispos + « surtout pas »). La route `admin_case`
+construit ces groupes (`groupes` + `autres`) ; le gabarit `planning_case.html`
+utilise un macro Jinja `options_benevoles`. Aide à prioriser d'un coup d'œil.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
