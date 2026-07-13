@@ -37,6 +37,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 
+from app import admin_auth
 from app.db import get_connection
 
 # Durée de validité par défaut du jeton si aucune date de fin n'est choisie.
@@ -152,19 +153,36 @@ def acces_valide(request: Request) -> bool:
     return bool(presente) and secrets.compare_digest(presente, attendu)
 
 
+def peut_ecrire(request: Request) -> bool:
+    """
+    Autorisé à accéder aux écrans bénévole (prêt / retour / scanner) ?
+
+    Vrai si l'appareil a activé le **jeton bénévole**, OU si une **session admin**
+    est ouverte — un administrateur connecté accède directement aux écrans de
+    prêt sans avoir à activer le jeton. On teste l'admin d'abord (session en
+    mémoire, sans accès base).
+
+    Args:
+        request: la requête entrante.
+
+    Returns:
+        True si l'accès est autorisé.
+    """
+    return admin_auth.admin_connecte(request) or acces_valide(request)
+
+
 def exiger_jeton(request: Request) -> None:
     """
     Dépendance FastAPI protégeant un écran d'écriture/bénévole.
 
-    À brancher via ``Depends(exiger_jeton)`` sur une route. Si l'accès n'est pas
-    valide, lève une HTTPException 403 ; app/main.py intercepte ce 403 pour
-    afficher la page « accès réservé » (acces_refuse.html) plutôt qu'une erreur
-    brute.
+    À brancher via ``Depends(exiger_jeton)`` sur une route. Accès accordé au
+    bénévole (jeton) OU à l'admin connecté (voir `peut_ecrire`). Sinon, lève une
+    HTTPException 403 ; app/main.py affiche la page « accès réservé ».
 
     Raises:
-        HTTPException: 403 si l'appareil n'a pas activé l'accès.
+        HTTPException: 403 si ni jeton bénévole ni session admin.
     """
-    if not acces_valide(request):
+    if not peut_ecrire(request):
         raise HTTPException(status_code=403, detail="acces_reserve")
 
 

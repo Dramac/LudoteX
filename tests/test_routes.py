@@ -56,6 +56,20 @@ def test_aide_page(client):
     assert r.status_code == 200 and "Mode d'emploi" in r.text
 
 
+def test_apropos_page(client):
+    r = client.get("/apropos")
+    assert r.status_code == 200
+    assert "À propos" in r.text
+    assert "contact@djplm.fr" in r.text
+    assert "GPLv3" in r.text
+    # Topo des accès par niveau (visiteur / bénévole / admin).
+    assert "Visiteur" in r.text
+    assert "Bénévole" in r.text
+    assert "Administrateur" in r.text
+    from app.version import APP_VERSION
+    assert APP_VERSION in r.text
+
+
 def test_accueil(client):
     # La racine sert la page d'accueil (plus de redirection vers /catalogue).
     r = client.get("/")
@@ -240,6 +254,18 @@ def test_admin_cloture_prets(client, monkeypatch):
     assert "Disponible" in client.get("/pret/001").text
 
 
+def test_admin_accede_au_pret(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-benevole-xyz")
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    # Sans jeton ni session admin : écrans bénévole refusés.
+    assert client.get("/scanner").status_code == 403
+    assert client.get("/pret/001").status_code == 403
+    # Connexion admin -> accès direct au scanner et au prêt (sans activer le jeton).
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    assert client.get("/scanner").status_code == 200
+    assert client.get("/pret/001").status_code == 200
+
+
 def test_admin_etiquettes_lot(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
@@ -292,9 +318,11 @@ def test_admin_jeton_reinitialisation(client, monkeypatch):
 def test_jeton_expire_ferme_acces(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    # Réinitialisation avec une date de fin déjà passée -> accès fermé.
+    # Réinitialisation avec une date de fin déjà passée -> jeton expiré.
     client.post("/admin/jeton/reinitialiser", data={"expire": "2000-01-01T00:00"})
-    # Même avec un cookie (impossible à obtenir ici), l'accès est refusé : 403.
+    # On déconnecte l'admin (sinon la session admin ouvrirait l'accès) : côté
+    # bénévole, le jeton expiré ferme bien l'accès.
+    client.get("/admin/logout")
     assert client.get("/scanner").status_code == 403
 
 
