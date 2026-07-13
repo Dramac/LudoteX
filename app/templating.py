@@ -31,9 +31,9 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # Fonction disponible dans tous les gabarits : `est_benevole(request)` indique si
-# l'appareil a activé le jeton bénévole (cookie valide). Sert à n'afficher le
-# menu bénévole qu'aux appareils autorisés.
-templates.env.globals["est_benevole"] = auth.acces_valide
+# l'appareil peut accéder aux écrans bénévole — jeton bénévole activé OU session
+# admin ouverte. Sert à n'afficher le menu bénévole qu'aux personnes autorisées.
+templates.env.globals["est_benevole"] = auth.peut_ecrire
 
 # Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
 # Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).
