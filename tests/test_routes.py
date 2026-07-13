@@ -277,6 +277,26 @@ def test_admin_accede_au_pret(client, monkeypatch):
     assert client.get("/pret/001").status_code == 200
 
 
+def test_admin_donnees_import_export(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    # Page + export CSV / Excel.
+    assert client.get("/admin/donnees").status_code == 200
+    csv = client.get("/admin/donnees/export.csv")
+    assert csv.status_code == 200 and "text/csv" in csv.headers["content-type"]
+    assert "Code jeu" in csv.text and "Catan" in csv.text
+    xlsx = client.get("/admin/donnees/export.xlsx")
+    assert xlsx.status_code == 200 and xlsx.content[:2] == b"PK"
+
+    # Import d'un CSV téléversé -> nouveau jeu créé.
+    contenu = "Code jeu;Nom jeu;Type\n900;Jeu Importé;Jeu\n".encode("utf-8")
+    r = client.post("/admin/donnees/import",
+                    files={"fichier": ("cat.csv", contenu, "text/csv")})
+    assert r.status_code == 200 and "Import réussi" in r.text
+    assert client.get("/jeu/900").status_code == 200
+
+
 def test_admin_etiquettes_lot(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})

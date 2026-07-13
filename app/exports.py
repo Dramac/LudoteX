@@ -19,6 +19,46 @@ def _libelle_metrique(metrique: str) -> str:
     return "par exemplaire" if metrique == "exemplaire" else "par total"
 
 
+# ---------------------------------------------------------------------------
+# Export du CATALOGUE (une ligne par exemplaire) — CSV et Excel
+# ---------------------------------------------------------------------------
+def catalogue_csv(entetes: list[str], lignes: list[dict]) -> bytes:
+    """
+    Sérialise le catalogue en CSV (séparateur « ; », encodage UTF-8 avec BOM).
+
+    Le BOM (`utf-8-sig`) fait qu'Excel ouvre correctement les accents ; le « ; »
+    correspond au format des exports de l'association et est reconnu par l'import.
+    """
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=entetes, delimiter=";",
+                            extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(lignes)
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def catalogue_xlsx(entetes: list[str], lignes: list[dict]) -> bytes:
+    """Sérialise le catalogue en classeur Excel (une feuille « Catalogue »)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Catalogue"
+    for col, entete in enumerate(entetes, start=1):
+        cell = ws.cell(row=1, column=col, value=entete)
+        cell.font = Font(bold=True)
+    for i, ligne in enumerate(lignes, start=2):
+        for col, entete in enumerate(entetes, start=1):
+            ws.cell(row=i, column=col, value=ligne.get(entete, ""))
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     """
     Construit un classeur Excel à trois feuilles : Synthèse, Palmarès, Détail.
