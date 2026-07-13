@@ -1,5 +1,7 @@
 # Des jeux plein la Manche — brique de prêt
 
+[![Licence : GPLv3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE)
+
 Application web de **prêt de jeux de société** pour l'événement annuel d'une association
 (~700 jeux). Chaque exemplaire porte un QR code ; les bénévoles scannent avec leur
 smartphone pour enregistrer prêts et retours sur une base partagée, en remplacement de la
@@ -125,3 +127,9 @@ Brief de passation : [docs/brief-handoff.md](docs/brief-handoff.md).
   annuelle du jeton (réinitialisation depuis `/admin`).
 - L'espace d'administration est protégé par un **mot de passe distinct** du jeton bénévole.
 - **Zéro donnée personnelle** dans l'application : propriété centrale à préserver.
+
+## Licence
+
+Ce dépôt est publié sous licence **[GNU GPLv3](LICENSE)** : libre de
+réutilisation, modification et redistribution, à condition que toute version
+modifiée et redistribuée reste elle aussi publiée sous GPLv3 (copyleft).
