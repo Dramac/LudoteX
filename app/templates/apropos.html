@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block titre %}À propos — Des jeux plein la Manche{% endblock %}
+{% block titre %}À propos — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
@@ -7,7 +7,7 @@
   <p class="dispo-titre">D'où vient cette application, et à qui elle s'adresse.</p>
 
   <h2>L'association</h2>
-  <p><strong>Des jeux plein la Manche</strong> est une association qui organise
+  <p><strong>{{ nom_association }}</strong> est une association qui organise
      chaque année un événement de prêt de jeux de société, avec un parc d'environ
      700 jeux. Sa mission : faire découvrir et partager le jeu de société au plus
      grand nombre, le temps d'un événement convivial.</p>
@@ -82,7 +82,7 @@
 
   <h2>Crédits</h2>
   <p>Application conçue et développée par <strong>Simon</strong>, pour
-     l'association Des jeux plein la Manche.</p>
+     l'association {{ nom_association }}.</p>
 
   <h2>Licence et code source</h2>
   <p>Le code de cette application est disponible sur

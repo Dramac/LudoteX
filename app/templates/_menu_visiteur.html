@@ -1,13 +1,10 @@
-{# Fragment PARTAGÉ : menu de navigation bénévole.
-   Inclus par base.html (bandeau, si l'appareil est activé) et par le tableau de
-   bord admin. Définir les liens ICI uniquement → toute évolution se répercute
-   automatiquement aux deux endroits. #}
+{# Fragment PARTAGÉ : menu de navigation public (visiteurs non authentifiés).
+   Inclus par base.html quand l'appareil n'est pas activé comme bénévole.
+   Utilise la même classe CSS que le menu bénévole → mêmes styles sur le bandeau. #}
 <nav class="menu-benevole">
   <a href="/catalogue">Catalogue</a>
-  <a href="/scanner">Scanner</a>
   {% if module_visible(request, "stats") %}
   <a href="/stats">Statistiques</a>
-  <a href="/stats#sortis">Jeux sortis</a>
   {% endif %}
   {% if module_visible(request, "tournois") %}
   <a href="/tournois">Tournois</a>
@@ -18,5 +15,7 @@
   {% if module_visible(request, "live") %}
   <a href="/live">Écran salle</a>
   {% endif %}
-  <a href="/aide">Aide</a>
+  {% if module_visible(request, "apropos") %}
+  <a href="/apropos">À propos</a>
+  {% endif %}
 </nav>

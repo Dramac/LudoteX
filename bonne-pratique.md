@@ -1,4 +1,4 @@
-# Bonnes pratiques & conseils — projet pret-jeux
+# Bonnes pratiques & conseils — projet LudoteX
 
 Mémo des conseils accumulés au fil du développement. Complété à chaque étape.
 Pour le contexte technique du projet, voir `CLAUDE.md` ; pour la conception,
@@ -58,7 +58,7 @@ lancement). L'ouvrir sur le téléphone, ex. `https://….trycloudflare.com/pret
   C'est **toi** qui exécutes `git push` après validation de chaque étape.
 - **Authentification (remote HTTPS).** GitHub n'accepte plus le mot de passe
   de compte au push : il faut un **Personal Access Token**.
-  - *Fine-grained* limité au seul dépôt `pret-jeux`, permission
+  - *Fine-grained* limité au seul dépôt `LudoteX`, permission
     **Contents : Read and write** (le plus sûr), ou *classic* avec le scope `repo`.
   - Le token se colle comme « mot de passe » **dans le Terminal uniquement** —
     jamais dans le chat, jamais committé.

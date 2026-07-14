@@ -1,168 +1,338 @@
 # Déploiement — application de prêt de jeux (étape 10)
 
-Guide pas à pas pour mettre l'application en production sur un VPS Debian/Ubuntu,
-derrière nginx en HTTPS (Let's Encrypt). Les fichiers de configuration prêts à
-l'emploi sont dans `deploy/`.
+Guide pour mettre l'application en ligne sur un VPS, en HTTPS, à l'usage de
+quelqu'un qui n'est **pas développeur**. Un script (`deploy/install.sh`)
+automatise la quasi-totalité des étapes ; ce guide explique quoi faire avant,
+pendant et après son exécution.
 
-Conventions de ce guide (à adapter) :
-- Sous-domaine : `pret.example.fr`
-- Dossier de l'app : `/opt/pret-jeux`
-- Utilisateur système : `pretjeux`
-
-> Rappel : c'est **Simon** qui exécute ces commandes sur le serveur (l'assistant
-> n'a pas d'accès SSH). En cas de doute à une étape, demander.
+> Ce guide part du principe que quelqu'un (le bureau, un prestataire...) a
+> déjà souscrit un VPS et un nom de domaine. Le choix de l'hébergeur est
+> traité dans `docs/etude-hebergement.md` / `docs/budget.md`.
 
 ---
 
-## 0. Prérequis
+## 0. Ce qu'il faut avoir en main avant de commencer
 
-- Un **VPS** Debian 12 / Ubuntu 22.04+ avec accès SSH (sudo).
-- Un **nom de domaine** et un **sous-domaine** `pret.example.fr` dont
-  l'enregistrement DNS **A** (et **AAAA** si IPv6) pointe vers l'IP du VPS.
-- Le scénario d'hébergement choisi par le bureau (cf. `docs/budget.md`).
+- Un **VPS** Debian 12 ou Ubuntu 22.04 (ou plus récent), avec un accès **SSH**
+  (identifiant, adresse IP, et soit un mot de passe soit une clé fournis par
+  l'hébergeur).
+- Un **nom de domaine** (ou sous-domaine) déjà réservé, par exemple
+  `jeux.monasso.fr`, avec son enregistrement DNS **A** (et **AAAA** en IPv6 si
+  disponible) pointant vers l'adresse IP du VPS. C'est l'hébergeur du domaine
+  (souvent différent du VPS) qui permet de régler ça, dans une section
+  généralement appelée « zone DNS » ou « gestion DNS ».
+- Une **adresse e-mail** valide (sert uniquement aux alertes de renouvellement
+  du certificat HTTPS, envoyées par Let's Encrypt).
+- Le **mot de passe** que l'on souhaite donner à l'espace d'administration du
+  site (`/admin`) — à choisir dès maintenant, il sera demandé pendant
+  l'installation.
 
-Vérifier que le DNS est propagé avant de demander le certificat :
-`dig +short pret.example.fr` doit renvoyer l'IP du VPS.
+Avant d'aller plus loin, vérifier que le domaine pointe déjà vers le VPS
+(remplacer par le vrai domaine) :
 
-## 1. Préparer le serveur
+```bash
+dig +short jeux.monasso.fr
+```
+
+Le résultat doit être l'adresse IP du VPS. Si ce n'est pas encore le cas,
+attendre la propagation DNS (de quelques minutes à quelques heures) avant
+l'étape du certificat HTTPS — le reste de l'installation peut se faire entre
+temps.
+
+---
+
+## 1. Se connecter au VPS
+
+Depuis un ordinateur (Mac/Linux : Terminal ; Windows : PowerShell ou
+[PuTTY](https://www.putty.org/)) :
+
+```bash
+ssh root@ADRESSE_IP_DU_VPS
+```
+
+(remplacer `ADRESSE_IP_DU_VPS` par l'IP fournie par l'hébergeur ; sur certains
+hébergeurs le premier utilisateur n'est pas `root` mais `debian`/`ubuntu` — se
+référer à l'e-mail de bienvenue de l'hébergeur). Accepter l'empreinte du
+serveur si demandé, puis saisir le mot de passe (ou la clé sera utilisée
+automatiquement).
+
+Une fois connecté, toutes les commandes ci-dessous se tapent **dans ce
+terminal SSH**, sur le serveur.
+
+## 2. Récupérer le code de l'application
+
+```bash
+apt update && apt install -y git
+git clone https://github.com/Dramac/LudoteX.git
+cd LudoteX
+```
+
+## 3. Lancer le script d'installation
+
+```bash
+sudo ./deploy/install.sh
+```
+
+Le script est **interactif** : il pose des questions les unes après les
+autres, avec une valeur par défaut entre crochets (appuyer sur **Entrée**
+pour la garder). Dans l'ordre :
+
+1. **Domaine** : le nom de domaine préparé à l'étape 0 (ex. `jeux.monasso.fr`).
+2. **E-mail** : pour les alertes Let's Encrypt.
+3. **Nom de l'association** : affiché dans le bandeau du site (par défaut
+   « Des jeux plein la Manche »).
+4. **Mot de passe administrateur** (saisie masquée, demandée deux fois).
+5. **Chemin d'installation** : où vivra le code sur le serveur (par défaut
+   `/opt/ludotex` — garder la valeur par défaut sauf besoin particulier).
+6. **Chemin des bases SQLite** : où seront stockées les données (par défaut
+   `/var/lib/ludotex`).
+
+Un récapitulatif s'affiche avant de continuer — vérifier puis valider.
+
+Le script s'occupe ensuite, tout seul, de :
+
+- installer les paquets système nécessaires (Python 3.11+, nginx, certbot,
+  git, sqlite3...) ;
+- déployer le code à l'emplacement choisi et générer le fichier `.env` ;
+- créer l'environnement Python et installer les dépendances ;
+- initialiser les trois bases SQLite (prêt, tournois, planning) et générer un
+  jeton bénévole valable une semaine ;
+- installer le service systemd (l'application démarre automatiquement, y
+  compris après un redémarrage du serveur) ;
+- configurer nginx et obtenir le certificat HTTPS Let's Encrypt (si le DNS est
+  déjà propagé — sinon le script l'indique et donne la commande à relancer
+  plus tard) ;
+- proposer de programmer la sauvegarde quotidienne automatique.
+
+À la fin, le script affiche :
+
+- l'adresse du site,
+- le **lien d'activation bénévole** (`https://.../acces?jeton=...`) à
+  partager aux bénévoles le jour de l'événement,
+- les commandes pour importer le catalogue de jeux et imprimer les QR codes.
+
+**Durée** : quelques minutes (selon la vitesse du VPS et du réseau).
+
+> Le script peut être relancé sans risque si une étape a échoué : il ne
+> réécrase pas un `.env` déjà en place sans redemander confirmation, et les
+> autres étapes (paquets, service, nginx) sont sans effet si déjà en place.
+
+## 4. Importer le catalogue de jeux
+
+```bash
+cd /opt/ludotex   # ou le chemin choisi à l'étape 3
+sudo -u pretjeux .venv/bin/python -m scripts.import_csv chemin/vers/catalogue.csv
+```
+
+Le fichier CSV peut être envoyé sur le serveur avec `scp` depuis
+l'ordinateur qui le possède :
+
+```bash
+scp catalogue.csv root@ADRESSE_IP_DU_VPS:/opt/ludotex/
+```
+
+L'import est **idempotent** (peut être relancé, met à jour sans dupliquer).
+
+## 5. Vérifier que tout fonctionne
+
+Depuis un navigateur, en remplaçant par le vrai domaine :
+
+- `https://jeux.monasso.fr/sante` → doit afficher `{"statut":"ok"}`.
+- `https://jeux.monasso.fr/catalogue` → le catalogue s'affiche (vide tant que
+  l'étape 4 n'est pas faite).
+- `https://jeux.monasso.fr/admin` → se connecter avec le mot de passe défini
+  pendant l'installation.
+- Ouvrir sur un smartphone le **lien d'activation bénévole** affiché à la fin
+  du script (ou depuis `/admin` → Accès bénévole → partager le lien), puis
+  tester un scan depuis `/scanner`.
+
+## 6. QR définitifs
+
+**Une fois le domaine confirmé et le DNS/HTTPS actifs**, imprimer les
+étiquettes définitives (le QR encode l'URL du domaine — ne pas imprimer
+avant cette étape, sous peine de devoir tout réimprimer si le domaine change) :
+
+```bash
+cd /opt/ludotex
+sudo -u pretjeux .venv/bin/python -m scripts.generate_qr --planche --grille 8x2
+# le PDF qr/planche-qr.pdf encode https://jeux.monasso.fr/jeu/<id>
+```
+
+Ou depuis l'espace admin (`/admin/etiquettes`) pour une sélection de jeux à
+la carte.
+
+## 7. Sauvegarde de la base
+
+Si acceptée pendant l'installation, une sauvegarde quotidienne automatique
+(3h du matin) est déjà en place — vérifiable avec :
+
+```bash
+sudo crontab -u pretjeux -l
+```
+
+Pour une copie **hors serveur** (recommandé, protège contre une panne du VPS
+lui-même) : installer `rclone`, configurer une cible (Nextcloud, Google
+Drive...), puis décommenter la ligne `rclone copy` dans
+`deploy/sauvegarde.sh`. Test manuel d'une sauvegarde :
+
+```bash
+sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /var/lib/ludotex/pret-jeux.db /var/lib/ludotex/sauvegardes
+```
+
+## 8. Mises à jour ultérieures
+
+Quand du nouveau code est disponible (nouvelle fonctionnalité, correctif) :
+
+```bash
+cd /opt/ludotex
+sudo git pull
+sudo -u pretjeux .venv/bin/pip install -r requirements.txt
+sudo systemctl restart ludotex
+```
+
+Le schéma des bases se met à jour tout seul au redémarrage (migrations
+automatiques et sans perte de données). Vérifier ensuite que le service est
+bien reparti :
+
+```bash
+sudo systemctl status ludotex
+```
+
+## 9. En cas de problème
+
+- **Le site ne répond pas** : `sudo systemctl status ludotex` puis
+  `sudo journalctl -u ludotex -e` (dernières lignes de log).
+- **Erreur nginx** : `sudo nginx -t` (vérifie la configuration) puis
+  `sudo systemctl reload nginx`.
+- **Certificat HTTPS manquant ou expiré** :
+  `sudo certbot --nginx -d jeux.monasso.fr -m contact@monasso.fr`
+  (le renouvellement est normalement automatique, `certbot` programme sa
+  propre tâche).
+- **Mot de passe admin oublié** : pas de récupération automatique par
+  e-mail (aucune donnée personnelle stockée) — il faut réinitialiser le hash
+  en base ou redéfinir `ADMIN_PASSWORD` dans `.env` puis relancer
+  `sudo ./deploy/install.sh` en choisissant de conserver le `.env` existant
+  après y avoir édité la ligne à la main, ou demander de l'aide au référent
+  technique.
+- **Jeton bénévole expiré** : se reconnecter à `/admin` (le mot de passe
+  admin reste valide) → « Accès bénévole » → réinitialiser.
+
+## 10. Exploitation au quotidien
+
+- **Rotation du jeton bénévole** : depuis `/admin` → Accès bénévole, sans
+  avoir besoin de toucher au serveur.
+- **Logs** : `sudo journalctl -u ludotex -f` (suivi en direct).
+- **Référent technique** : prévoir une personne pour les mises à jour de
+  sécurité du système (`sudo apt update && sudo apt upgrade`) et la
+  surveillance des sauvegardes.
+
+---
+
+## Annexe — étapes manuelles équivalentes
+
+Cette section détaille ce que `deploy/install.sh` automatise, utile pour
+dépanner une étape précise ou personnaliser au-delà de ce que le script
+propose. Conventions utilisées ci-dessous (à adapter) : sous-domaine
+`pret.example.fr`, dossier `/opt/ludotex`, utilisateur système `pretjeux`.
+
+### A. Préparer le serveur
 
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y python3-venv python3-pip git nginx sqlite3 \
                     certbot python3-certbot-nginx ufw
 
-# Utilisateur système dédié (sans login)
 sudo adduser --system --group pretjeux
 
-# Pare-feu : SSH + web
 sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
 sudo ufw enable
 ```
 
-## 2. Récupérer le code
+### B. Récupérer le code
 
 ```bash
-sudo mkdir -p /opt/pret-jeux
-sudo chown pretjeux:pretjeux /opt/pret-jeux
-# Cloner le dépôt privé (HTTPS + token, ou clé de déploiement) :
-sudo -u pretjeux git clone https://github.com/<compte>/pret-jeux.git /opt/pret-jeux
+sudo mkdir -p /opt/ludotex
+sudo chown pretjeux:pretjeux /opt/ludotex
+sudo -u pretjeux git clone https://github.com/Dramac/LudoteX.git /opt/ludotex
 ```
 
-## 3. Environnement Python
+### C. Environnement Python
 
 ```bash
-cd /opt/pret-jeux
+cd /opt/ludotex
 sudo -u pretjeux python3 -m venv .venv
 sudo -u pretjeux .venv/bin/pip install -r requirements.txt
 ```
 
-## 4. Configuration (`.env`)
+### D. Configuration (`.env`)
 
 ```bash
 sudo -u pretjeux cp .env.example .env
 sudo -u pretjeux nano .env
 ```
 
-À renseigner :
-- `PRET_TOKEN` : générer un jeton —
-  `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
-  (on pourra ensuite le régénérer depuis `/admin`).
-- `ADMIN_PASSWORD` : mot de passe initial de l'espace admin (changeable ensuite
-  dans l'appli).
-- `BASE_URL` : **`https://pret.example.fr`** — l'URL DÉFINITIVE encodée dans les QR.
-- `DATABASE_PATH` : `data/pret-jeux.db` (défaut, sous `/opt/pret-jeux/data`).
-- `RATE_LIMIT_PER_MINUTE`, `APP_ENV=production`.
+À renseigner (voir `.env.example` pour la liste complète et à jour) :
+`PRET_TOKEN` (générer avec
+`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`),
+`ADMIN_PASSWORD`, `BASE_URL` (l'URL **définitive**, ex.
+`https://pret.example.fr`), `NOM_ASSOCIATION`, `DATABASE_PATH`,
+`TOURNOI_DATABASE_PATH`, `PLANNING_DATABASE_PATH`, `RATE_LIMIT_PER_MINUTE`,
+`APP_ENV=production`.
 
-Le `.env` n'est jamais committé (déjà dans `.gitignore`).
-
-## 5. Initialiser la base + importer le catalogue
+### E. Initialiser les bases
 
 ```bash
-cd /opt/pret-jeux
-sudo -u pretjeux .venv/bin/python -m app.db                    # crée la base
-sudo -u pretjeux .venv/bin/python -m scripts.import_csv chemin/vers/catalogue.csv
+cd /opt/ludotex
+sudo -u pretjeux .venv/bin/python -m app.db
+sudo -u pretjeux .venv/bin/python -m app.tournoi.db
+sudo -u pretjeux .venv/bin/python -m app.planning.db
 ```
 
-## 6. Service systemd (uvicorn)
+Puis générer le jeton bénévole définitif (expiration 1 semaine) :
 
 ```bash
-sudo cp deploy/pret-jeux.service /etc/systemd/system/pret-jeux.service
+cd /opt/ludotex
+sudo -u pretjeux .venv/bin/python -c "
+from app.db import get_connection
+from app import auth
+conn = get_connection()
+print(auth.reinitialiser_jeton(conn))
+conn.close()
+"
+```
+
+### F. Service systemd (uvicorn)
+
+```bash
+sudo cp deploy/ludotex.service /etc/systemd/system/ludotex.service
 # adapter User/WorkingDirectory/chemins dans le fichier si besoin
 sudo systemctl daemon-reload
-sudo systemctl enable --now pret-jeux
-sudo systemctl status pret-jeux        # doit être "active (running)"
+sudo systemctl enable --now ludotex
+sudo systemctl status ludotex
 ```
 
-## 7. nginx (reverse proxy)
+### G. nginx (reverse proxy)
 
 ```bash
-sudo cp deploy/nginx-pret-jeux.conf /etc/nginx/sites-available/pret-jeux
-sudo sed -i 's/pret.example.fr/VOTRE_SOUS_DOMAINE/' /etc/nginx/sites-available/pret-jeux
-sudo ln -s /etc/nginx/sites-available/pret-jeux /etc/nginx/sites-enabled/
+sudo cp deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludotex
+sudo sed -i 's/pret.example.fr/VOTRE_SOUS_DOMAINE/' /etc/nginx/sites-available/ludotex
+sudo ln -s /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-## 8. HTTPS (Let's Encrypt)
+### H. HTTPS (Let's Encrypt)
 
 ```bash
 sudo certbot --nginx -d pret.example.fr
 ```
 
-certbot ajoute le bloc HTTPS, la redirection 80→443, et programme le
-renouvellement automatique. Le **HTTPS est indispensable** : le scanner caméra ne
-fonctionne qu'en contexte sécurisé.
-
-## 9. Vérifier
-
-- `https://pret.example.fr/sante` → `{"statut":"ok"}`
-- `https://pret.example.fr/catalogue` → le catalogue s'affiche.
-- `https://pret.example.fr/admin` → connexion avec `ADMIN_PASSWORD`.
-- Activer un téléphone : `/admin` → Accès bénévole → partager le lien, l'ouvrir,
-  tester un scan.
-
-## 10. QR définitifs
-
-Le domaine est maintenant figé : on peut tirer les étiquettes définitives.
+### I. Sauvegarde de la base
 
 ```bash
-cd /opt/pret-jeux
-sudo -u pretjeux .venv/bin/python -m scripts.generate_qr --planche --grille 8x2
-# le PDF qr/planche-qr.pdf encode https://pret.example.fr/jeu/<id>
-```
-
-> Ne pas imprimer les étiquettes **avant** cette étape : l'URL du QR est définitive.
-
-## 11. Sauvegarde de la base
-
-```bash
-chmod +x /opt/pret-jeux/deploy/sauvegarde.sh
-sudo -u pretjeux /opt/pret-jeux/deploy/sauvegarde.sh        # test manuel
+chmod +x /opt/ludotex/deploy/sauvegarde.sh
+sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh
 sudo -u pretjeux crontab -e
 # ajouter (sauvegarde quotidienne à 3h) :
-# 0 3 * * * /opt/pret-jeux/deploy/sauvegarde.sh >> /var/log/pret-jeux-sauvegarde.log 2>&1
+# 0 3 * * * /opt/ludotex/deploy/sauvegarde.sh >> /var/log/ludotex-sauvegarde.log 2>&1
 ```
-
-Pour une copie **hors serveur** (recommandé) : installer `rclone`, configurer une
-cible (Nextcloud/Drive), puis décommenter la ligne `rclone copy` dans
-`deploy/sauvegarde.sh`.
-
-## 12. Mises à jour ultérieures
-
-```bash
-cd /opt/pret-jeux
-sudo -u pretjeux git pull
-sudo -u pretjeux .venv/bin/pip install -r requirements.txt
-sudo systemctl restart pret-jeux
-```
-
-Le schéma se met à jour tout seul au démarrage (`init_db` + migrations
-idempotentes). Aucune perte de données.
-
-## 13. Exploitation
-
-- **Rotation du jeton bénévole** : depuis `/admin` → Accès bénévole (pas besoin de
-  toucher au serveur).
-- **Logs** : `journalctl -u pret-jeux -f`.
-- **Référent technique** : prévoir une personne pour les mises à jour de sécurité
-  du VPS (`apt upgrade`) et la surveillance des sauvegardes.

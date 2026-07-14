@@ -8,21 +8,35 @@
 </head>
 <body>
   <header class="bandeau">
-    <a class="bandeau-titre" href="/">Des jeux plein la Manche</a>
-    {% if est_benevole(request) %}{% include "_menu_benevole.html" %}{% endif %}
+    <a class="bandeau-titre" href="/">{{ nom_association }}</a>
+    {% if est_benevole(request) %}
+      {% include "_menu_benevole.html" %}
+    {% else %}
+      {% include "_menu_visiteur.html" %}
+    {% endif %}
   </header>
   <main class="contenu {% block conteneur_extra %}{% endblock %}">
     {% block contenu %}{% endblock %}
   </main>
   <footer class="pied">
-    Des jeux plein la Manche — prêt de jeux
+    {{ nom_association }} — prêt de jeux
     &nbsp;·&nbsp; <a class="lien" href="/">Accueil</a>
     &nbsp;·&nbsp; <a class="lien" href="/catalogue">Catalogue</a>
+    {% if module_visible(request, "stats") %}
     &nbsp;·&nbsp; <a class="lien" href="/stats">Statistiques</a>
+    {% endif %}
+    {% if module_visible(request, "tournois") %}
     &nbsp;·&nbsp; <a class="lien" href="/tournois">Tournois</a>
+    {% endif %}
+    {% if module_visible(request, "planning") %}
     &nbsp;·&nbsp; <a class="lien" href="/planning">Planning</a>
+    {% endif %}
+    {% if module_visible(request, "live") %}
     &nbsp;·&nbsp; <a class="lien" href="/live">Écran salle</a>
+    {% endif %}
+    {% if module_visible(request, "apropos") %}
     &nbsp;·&nbsp; <a class="lien" href="/apropos">À propos</a>
+    {% endif %}
     &nbsp;·&nbsp; Licence GPLv3
   </footer>
 </body>

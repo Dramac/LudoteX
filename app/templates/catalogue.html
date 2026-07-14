@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block titre %}Catalogue — Des jeux plein la Manche{% endblock %}
+{% block titre %}Catalogue — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
   <img class="logo-catalogue" src="/static/img/logo_djplm.jpg"
-       alt="Des jeux plein la Manche">
+       alt="{{ nom_association }}">
   <h1>Catalogue des jeux</h1>
 
   <details class="recherche" {% if filtres_actifs %}open{% endif %}>

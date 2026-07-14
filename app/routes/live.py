@@ -21,6 +21,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 
 from app import services
+from app.config import NOM_ASSOCIATION
 from app.db import get_connection
 from app.services import FUSEAU_LOCAL
 from app.templating import templates
@@ -36,7 +37,7 @@ NB_MOUVEMENTS = 10
 # Clé du paramètre « titre de l'écran salle » (réglable en admin) + valeur par
 # défaut si rien n'est encore renseigné.
 CLE_TITRE = "live_titre"
-TITRE_DEFAUT = "Des jeux plein la Manche"
+TITRE_DEFAUT = NOM_ASSOCIATION
 
 
 def _heure_locale(date_heure_utc: str | None) -> str:

@@ -79,12 +79,34 @@ uvicorn app.main:app --reload
 > le scan depuis un smartphone, exposer `uvicorn` via un tunnel HTTPS
 > (Cloudflare Tunnel / ngrok). Déploiement VPS : voir `docs/deploiement.md`.
 
+## Installation en production (VPS)
+
+Prérequis : un VPS Debian 12 / Ubuntu 22.04+ avec accès SSH, et un nom de
+domaine dont le DNS pointe déjà vers le VPS.
+
+```bash
+git clone https://github.com/Dramac/LudoteX.git
+cd LudoteX
+sudo ./deploy/install.sh
+```
+
+Le script `deploy/install.sh` est **interactif** : il installe les paquets
+système nécessaires (Python 3.11+, nginx, certbot...), pose quelques
+questions (domaine, e-mail, nom de l'association, mot de passe admin,
+chemins d'installation), puis configure entièrement l'application — service
+systemd, reverse proxy nginx, certificat HTTPS Let's Encrypt, sauvegarde
+quotidienne — et affiche à la fin le lien d'activation bénévole.
+
+Guide détaillé (pas à pas, dépannage, mises à jour) :
+[docs/deploiement.md](docs/deploiement.md).
+
 ## Structure
 
 ```
 DJPLM/
 ├── app/
 │   ├── main.py          # point d'entrée FastAPI (routeurs, gestion d'erreurs)
+│   ├── config.py        # nom de l'association (NOM_ASSOCIATION), personnalisable
 │   ├── models.py        # schéma SQLite (base de prêt)
 │   ├── db.py            # init + accès base + migrations
 │   ├── services.py      # logique métier du prêt (état déduit, pochettes, stats)
@@ -99,7 +121,7 @@ DJPLM/
 ├── scripts/
 │   ├── import_csv.py    # import / mise à jour tolérant du catalogue (UPSERT)
 │   └── generate_qr.py   # génération des QR (PNG individuels + planche A4)
-├── deploy/              # systemd, nginx, script de sauvegarde
+├── deploy/              # install.sh (installation interactive), systemd, nginx, sauvegarde
 ├── data/                # bases SQLite (NON versionnées)
 ├── docs/                # spécification, conception tournois, déploiement, budget…
 ├── tests/               # test_services, test_routes, test_tournoi (79 tests)

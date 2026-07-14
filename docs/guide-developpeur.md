@@ -1,4 +1,4 @@
-# Guide développeur — pret-jeux
+# Guide développeur — LudoteX
 
 Point d'entrée pour toute personne (ou IA) qui reprend le code. Il donne la vue
 d'ensemble, les conventions, le flux d'une requête et la marche à suivre pour

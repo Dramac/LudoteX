@@ -12,24 +12,24 @@
 #   ./deploy/sauvegarde.sh /chemin/base.db /chemin/dossier_sauvegardes
 #
 # Planification (cron, tous les jours à 3h) — éditer avec `crontab -e` :
-#   0 3 * * * /opt/pret-jeux/deploy/sauvegarde.sh >> /var/log/pret-jeux-sauvegarde.log 2>&1
+#   0 3 * * * /opt/ludotex/deploy/sauvegarde.sh >> /var/log/ludotex-sauvegarde.log 2>&1
 
 set -euo pipefail
 
-DB="${1:-/opt/pret-jeux/data/pret-jeux.db}"
-DEST="${2:-/opt/pret-jeux/sauvegardes}"
+DB="${1:-/opt/ludotex/data/pret-jeux.db}"
+DEST="${2:-/opt/ludotex/sauvegardes}"
 GARDER=30
 
 mkdir -p "$DEST"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-FICHIER="$DEST/pret-jeux-$STAMP.db"
+FICHIER="$DEST/ludotex-$STAMP.db"
 
 sqlite3 "$DB" ".backup '$FICHIER'"
 
 # Rotation : supprime les plus anciennes au-delà de $GARDER.
-ls -1t "$DEST"/pret-jeux-*.db | tail -n "+$((GARDER + 1))" | xargs -r rm -f
+ls -1t "$DEST"/ludotex-*.db | tail -n "+$((GARDER + 1))" | xargs -r rm -f
 
 # --- Envoi externe optionnel (décommenter après avoir configuré rclone) ---
-# rclone copy "$FICHIER" nextcloud:sauvegardes/pret-jeux/ && echo "Copie externe OK"
+# rclone copy "$FICHIER" nextcloud:sauvegardes/ludotex/ && echo "Copie externe OK"
 
 echo "Sauvegarde créée : $FICHIER"

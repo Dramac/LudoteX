@@ -24,6 +24,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app import admin_auth, auth, exports, services
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
+from app.config import NOM_ASSOCIATION
 from app.db import get_connection
 from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
 from app.templating import templates
@@ -484,7 +485,7 @@ def jeton_page(request: Request):
     lien, partage = None, {}
     if jeton:
         lien = f"{_base_url(request)}/acces?jeton={jeton}"
-        message = f"Accès bénévole — Des jeux plein la Manche : {lien}"
+        message = f"Accès bénévole — {NOM_ASSOCIATION} : {lien}"
         partage = {
             "whatsapp": "https://wa.me/?text=" + quote(message),
             "mail": ("mailto:?subject=" + quote("Accès bénévole — prêt de jeux")
@@ -624,3 +625,64 @@ def jeton_reinitialiser(request: Request, expire: str = Form("")):
     finally:
         conn.close()
     return RedirectResponse("/admin/jeton", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Fonctionnalités : activer / désactiver les modules
+# ---------------------------------------------------------------------------
+def _page_fonctionnalites(request: Request, message: tuple | None = None):
+    """Rend la page de gestion des fonctionnalités (réutilisée par GET et POST)."""
+    from app.modules import (
+        DESCRIPTIONS_ETATS, ETATS_VALIDES, LABELS_ETATS, MODULES,
+        lire_etats_modules,
+    )
+
+    conn = get_connection()
+    try:
+        etats = lire_etats_modules(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_fonctionnalites.html",
+        {
+            "modules": MODULES,
+            "etats": etats,
+            "etats_valides": ETATS_VALIDES,
+            "labels_etats": LABELS_ETATS,
+            "descriptions_etats": DESCRIPTIONS_ETATS,
+            "message": message,
+        },
+    )
+
+
+@router.get("/fonctionnalites")
+def fonctionnalites_formulaire(request: Request):
+    """Affiche la page de gestion de la visibilité des modules."""
+    if (garde := _garde(request)):
+        return garde
+    message = None
+    if request.query_params.get("ok") == "1":
+        message = ("succes", "Réglages enregistrés.")
+    return _page_fonctionnalites(request, message)
+
+
+@router.post("/fonctionnalites")
+async def fonctionnalites_enregistrer(request: Request):
+    """
+    Enregistre l'état de chaque module soumis dans le formulaire,
+    puis redirige vers le GET (pattern POST-Redirect-GET).
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.modules import ETATS_VALIDES, MODULES, ecrire_etat_module
+
+    form = await request.form()
+    conn = get_connection()
+    try:
+        for nom in MODULES:
+            etat = str(form.get(f"module_{nom}", ""))
+            if etat in ETATS_VALIDES:
+                ecrire_etat_module(conn, nom, etat)
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/fonctionnalites?ok=1", status_code=303)

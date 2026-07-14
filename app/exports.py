@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
+from app.config import NOM_ASSOCIATION
+
 
 def _libelle_metrique(metrique: str) -> str:
     return "par exemplaire" if metrique == "exemplaire" else "par total"
@@ -80,7 +82,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     ws = wb.active
     ws.title = "Synthèse"
     g = data["globales"]
-    ws["A1"] = "Statistiques de prêt — Des jeux plein la Manche"
+    ws["A1"] = f"Statistiques de prêt — {NOM_ASSOCIATION}"
     ws["A1"].font = gras
     ws["A2"] = f"Période : {periode_txt}"
     lignes = [
@@ -185,7 +187,7 @@ def construire_pdf(data: dict, periode_txt: str,
         ]))
         return t
 
-    elements.append(Paragraph("Statistiques de prêt — Des jeux plein la Manche",
+    elements.append(Paragraph(f"Statistiques de prêt — {NOM_ASSOCIATION}",
                               styles["Title"]))
     elements.append(Paragraph(f"Période : {periode_txt}", styles["Normal"]))
     elements.append(Spacer(1, 0.4 * cm))

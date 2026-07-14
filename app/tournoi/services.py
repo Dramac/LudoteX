@@ -26,6 +26,7 @@ import secrets
 import sqlite3
 from datetime import date, datetime, time, timedelta
 
+from app.config import NOM_ASSOCIATION
 from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant  # fuseau + horodatage UTC ISO partagés
 from app.tournoi.models import ETATS
 
@@ -1239,12 +1240,12 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
     description = []
     if t["jeu"]:
         description.append(f"Jeu : {t['jeu']}")
-    description.append("Tournoi — Des jeux plein la Manche")
+    description.append(f"Tournoi — {NOM_ASSOCIATION}")
 
     lignes = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//Des jeux plein la Manche//Tournois//FR",
+        f"PRODID:-//{NOM_ASSOCIATION}//Tournois//FR",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",

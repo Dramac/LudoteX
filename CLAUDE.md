@@ -10,8 +10,8 @@ ce fichier en est un résumé opérationnel, pas une source concurrente.
 évolutions backlog (tournoi côté prêt, durées, jeux sortis, clôture, expiration
 du jeton, menus, page d'aide), la gestion d'erreur (page 500 + logs) et les
 artefacts de déploiement (`deploy/` + `docs/deploiement.md`). 37 tests verts.
-Reste, côté Simon : exécuter le déploiement VPS, et imprimer les QR une fois le
-domaine figé.
+Reste, côté Simon : exécuter le déploiement VPS (**script d'installation prêt,
+voir plus bas**), et imprimer les QR une fois le domaine figé.
 
 **Module TOURNOIS — SOCLE de la phase 1 : FAIT.** Sous-paquet `app/tournoi/`
 (`models.py`, `db.py`, `services.py`, `routes.py`) + gabarits `tournoi_*.html`,
@@ -262,6 +262,44 @@ ce créneau / à éviter » (non dispos + « surtout pas »). La route `admin_ca
 construit ces groupes (`groupes` + `autres`) ; le gabarit `planning_case.html`
 utilise un macro Jinja `options_benevoles`. Aide à prioriser d'un coup d'œil.
 
+**Script d'installation VPS (`deploy/install.sh`) : FAIT.** Script bash
+interactif à lancer sur le VPS après `git clone` (`sudo ./deploy/install.sh`),
+pensé pour quelqu'un de non-développeur. Vérifie/installe les prérequis
+(Python 3.11+ — tente `python3.11` via apt si absent —, nginx, certbot, git,
+sqlite3, ufw, dépendances de compilation pour Pillow). Questions posées dans
+l'ordre : domaine, e-mail (Let's Encrypt), **nom de l'association**, mot de
+passe admin (saisie masquée, confirmée), chemin d'installation (défaut
+`/opt/ludotex`), chemin des bases SQLite (défaut `/var/lib/ludotex`).
+L'URL du dépôt GitHub n'est **pas** demandée : fixée en dur
+(`https://github.com/Dramac/LudoteX`, décision Simon). Génère le `.env`
+(jeton bénévole temporaire puis **régénéré définitivement avec expiration à 1
+semaine** via `auth.reinitialiser_jeton` une fois les bases initialisées),
+crée le venv + installe `requirements.txt`, initialise les trois bases
+(`app.db`, `app.tournoi.db`, `app.planning.db`), installe le service systemd
+et la config nginx (chemins réécrits via `sed` selon les réponses), obtient le
+certificat Let's Encrypt (vérifie d'abord que le DNS pointe vers le serveur),
+propose la sauvegarde quotidienne automatique (crontab), puis affiche le lien
+d'activation bénévole. Relançable sans casser une install existante (ne
+réécrase pas un `.env` déjà présent sans confirmation). `docs/deploiement.md`
+réécrit autour de ce script (accès SSH, clonage, exécution, vérification,
+QR définitifs, sauvegarde, mise à jour `git pull` + `restart`, dépannage), avec
+les étapes manuelles détaillées conservées en annexe. `README.md` : nouvelle
+section « Installation en production » (résumé + lien).
+
+**Nom de l'association configurable (`NOM_ASSOCIATION`) : FAIT.** Corollaire
+de la question posée par `install.sh` : « Des jeux plein la Manche » était
+codé en dur à une quinzaine d'endroits (bandeau, pied de page, page « À
+propos », écran `/live`, message de partage du jeton bénévole, exports
+Excel/PDF des stats, fichiers `.ics` des tournois). Décision Simon (option
+« partout dans l'app ») : nouveau module `app/config.py`
+(`NOM_ASSOCIATION = os.getenv("NOM_ASSOCIATION", "Des jeux plein la Manche")`),
+exposé comme global Jinja (`{{ nom_association }}`, voir `app/templating.py`)
+et importé directement dans `routes/live.py` (`TITRE_DEFAUT`), `routes/admin.py`
+(message de partage), `exports.py` et `tournoi/services.py` (`.ics`). Défaut
+inchangé si la variable est absente → aucune régression sur les déploiements
+existants. `.env.example` complété (`NOM_ASSOCIATION` + `PLANNING_DATABASE_PATH`,
+qui manquait). **Suite globale toujours verte (142 tests)**.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
@@ -428,8 +466,8 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
    ouvert + avertissement au démarrage (À DÉFINIR en prod). Page `acces_refuse`
    via gestionnaire 403. Rotation annuelle = changer `PRET_TOKEN`. Tests verts.
 10. [artefacts prêts] Déploiement VPS + HTTPS. Fichiers dans `deploy/`
-    (`pret-jeux.service` systemd 1 worker + `--proxy-headers`,
-    `nginx-pret-jeux.conf` reverse proxy + static, `sauvegarde.sh` SQLite `.backup`
+    (`ludotex.service` systemd 1 worker + `--proxy-headers`,
+    `nginx-ludotex.conf` reverse proxy + static, `sauvegarde.sh` SQLite `.backup`
     + rotation + rclone optionnel) et guide pas à pas `docs/deploiement.md`
     (VPS, venv, `.env`, base + import, systemd, nginx, certbot Let's Encrypt,
     QR définitifs une fois le domaine figé, sauvegarde cron, mises à jour).
