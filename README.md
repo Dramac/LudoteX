@@ -1,4 +1,4 @@
-# Des jeux plein la Manche — brique de prêt
+# LudoteX — brique de prêt
 
 [![Licence : GPLv3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE)
 
