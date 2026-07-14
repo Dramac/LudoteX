@@ -82,7 +82,7 @@ def apropos(request: Request):
     données ni jeton requis."""
     return templates.TemplateResponse(
         request, "apropos.html",
-        {"version": APP_VERSION, "depot_url": "https://github.com/dramac/pret-jeux"},
+        {"version": APP_VERSION, "depot_url": "https://github.com/Dramac/LudoteX"},
     )
 
 

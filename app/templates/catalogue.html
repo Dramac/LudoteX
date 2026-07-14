@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block titre %}Catalogue — LudoteX{% endblock %}
+{% block titre %}Catalogue — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
   <img class="logo-catalogue" src="/static/img/logo_ludotex.jpg"
-       alt="LudoteX">
+       alt="{{ nom_association }}">
   <h1>Catalogue des jeux</h1>
 
   <details class="recherche" {% if filtres_actifs %}open{% endif %}>

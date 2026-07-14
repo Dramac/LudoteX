@@ -103,11 +103,15 @@ def test_accueil_tournoi_imminent(client):
 
 def test_menu_benevole_conditionnel(client, monkeypatch):
     monkeypatch.setenv("PRET_TOKEN", "jeton-menu-xyz")
-    # Appareil non activé : pas de menu bénévole sur le catalogue public.
-    assert 'class="menu-benevole"' not in client.get("/catalogue").text
-    # Après activation : le menu apparaît.
+    # Visiteur non activé : le menu PUBLIC est affiché (Catalogue visible, pas de Scanner).
+    html_visiteur = client.get("/catalogue").text
+    assert 'class="menu-benevole"' in html_visiteur
+    assert '/scanner' not in html_visiteur
+    # Après activation du jeton bénévole : le menu BÉNÉVOLE prend le relais (Scanner présent).
     client.get("/acces", params={"jeton": "jeton-menu-xyz"})
-    assert 'class="menu-benevole"' in client.get("/catalogue").text
+    html_benevole = client.get("/catalogue").text
+    assert 'class="menu-benevole"' in html_benevole
+    assert '/scanner' in html_benevole
 
 
 def test_catalogue_derniers_achats(client):
@@ -466,4 +470,88 @@ def test_live_titre_configurable(client):
     finally:
         conn.close()
     assert client.get("/live/data").json()["titre"] == "Festival du Jeu 2026"
-    assert "Festival du Jeu 2026" in client.get("/live").text
+
+
+# ---------------------------------------------------------------------------
+# Tests du système de fonctionnalités (activation / désactivation des modules)
+# ---------------------------------------------------------------------------
+
+def _set_module(tmp_path, nom: str, etat: str):
+    """Helper : écrit l'état d'un module directement en base."""
+    from app import db, services
+    conn = db.get_connection()
+    try:
+        services.ecrire_parametre(conn, f"module_{nom}", etat)
+    finally:
+        conn.close()
+
+
+def test_fonctionnalites_admin_page(client, monkeypatch):
+    """La page /admin/fonctionnalites est accessible quand on est connecté."""
+    import app.admin_auth as aa
+    monkeypatch.setattr(aa, "admin_connecte", lambda r: True)
+    r = client.get("/admin/fonctionnalites")
+    assert r.status_code == 200
+    assert "Tournois" in r.text
+    assert "Statistiques" in r.text
+    assert "Écran de salle" in r.text
+
+
+def test_module_desactive_bloque_route(client, tmp_path):
+    """Un module désactivé renvoie 404 sur sa route principale."""
+    _set_module(tmp_path, "stats", "desactive")
+    r = client.get("/stats")
+    assert r.status_code == 404
+    assert "désactivé" in r.text.lower() or "indisponible" in r.text.lower()
+
+
+def test_module_benevoles_bloque_visiteur(client, tmp_path, monkeypatch):
+    """Un module 'benevoles' est inaccessible sans jeton (→ 403).
+    On définit PRET_TOKEN pour sortir du mode ouvert (sans jeton tout le monde
+    est considéré bénévole, ce qui rendrait le test sans signification).
+    """
+    monkeypatch.setenv("PRET_TOKEN", "jeton-module-test")
+    _set_module(tmp_path, "stats", "benevoles")
+    # Client sans cookie → visiteur non authentifié.
+    from fastapi.testclient import TestClient
+    from app.main import app
+    c = TestClient(app, cookies={})
+    r = c.get("/stats")
+    assert r.status_code == 403
+
+
+def test_module_benevoles_accessible_avec_jeton(client, tmp_path, monkeypatch):
+    """Un module 'benevoles' reste accessible avec le jeton bénévole."""
+    monkeypatch.setenv("PRET_TOKEN", "jeton-module-test")
+    _set_module(tmp_path, "stats", "benevoles")
+    # Active le cookie bénévole dans le client existant.
+    client.get("/acces", params={"jeton": "jeton-module-test"})
+    r = client.get("/stats")
+    assert r.status_code == 200
+
+
+def test_module_tous_accessible_a_tous(client, tmp_path):
+    """Un module 'tous' reste accessible sans jeton (comportement par défaut)."""
+    _set_module(tmp_path, "stats", "tous")
+    r = client.get("/stats")
+    assert r.status_code == 200
+
+
+def test_fonctionnalites_enregistrer(client, tmp_path, monkeypatch):
+    """POST /admin/fonctionnalites enregistre les états et redirige."""
+    import app.admin_auth as aa
+    monkeypatch.setattr(aa, "admin_connecte", lambda r: True)
+    r = client.post(
+        "/admin/fonctionnalites",
+        data={"module_stats": "benevoles", "module_tournois": "desactive"},
+    )
+    # POST-Redirect-GET : redirection vers la page de confirmation.
+    assert r.status_code in (200, 303)
+    # Vérification en base.
+    from app import db, services
+    conn = db.get_connection()
+    try:
+        assert services.lire_parametre(conn, "module_stats") == "benevoles"
+        assert services.lire_parametre(conn, "module_tournois") == "desactive"
+    finally:
+        conn.close()

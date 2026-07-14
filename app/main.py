@@ -37,6 +37,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import auth
 from app.db import get_connection, init_db
+from app.modules import ModuleDesactive, garde_module
 from app.routes import acces, admin, catalogue, live, pret, scanner, stats
 from app.templating import templates
 from app.tournoi import routes as tournoi_routes
@@ -58,15 +59,29 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 # Chaque routeur regroupe les routes d'un domaine (voir app/routes/*.py).
-app.include_router(catalogue.router)   # /catalogue, /jeu/<id>   (public)
-app.include_router(pret.router)        # /pret/<id> + actions     (bénévole)
-app.include_router(scanner.router)     # /scanner                 (bénévole)
-app.include_router(stats.router)       # /stats                   (public)
-app.include_router(live.router)        # /live, /live/data        (public, salle)
-app.include_router(acces.router)       # /acces                   (activation)
-app.include_router(admin.router)       # /admin                   (mot de passe)
-app.include_router(tournoi_routes.router)  # /tournois, /tournoi/* (module tournois)
-app.include_router(planning_routes.router)  # /planning, /planning/* (module planning)
+# Les modules configurables reçoivent une dépendance garde_module(nom) :
+# → "desactive" : lève ModuleDesactive (page conviviale)
+# → "benevoles" sans jeton : lève HTTPException(403)
+app.include_router(catalogue.router)                                           # /catalogue, /jeu/<id>   (public, cœur)
+app.include_router(pret.router)                                                # /pret/<id> + actions     (bénévole, cœur)
+app.include_router(scanner.router)                                             # /scanner                 (bénévole, cœur)
+app.include_router(acces.router)                                               # /acces                   (activation)
+app.include_router(admin.router)                                               # /admin                   (mot de passe)
+app.include_router(stats.router,            dependencies=[garde_module("stats")])      # /stats
+app.include_router(live.router,             dependencies=[garde_module("live")])       # /live, /live/data
+app.include_router(tournoi_routes.router,   dependencies=[garde_module("tournois")])   # /tournois, /tournoi/*
+app.include_router(planning_routes.router,  dependencies=[garde_module("planning")])   # /planning, /planning/*
+
+
+@app.exception_handler(ModuleDesactive)
+async def gestion_module_desactive(request, exc: ModuleDesactive):
+    """
+    Module désactivé → page conviviale plutôt qu'une erreur 404 brute.
+    Toujours rendu avec status 404 (le module n'existe pas pour ce visiteur).
+    """
+    return templates.TemplateResponse(
+        request, "module_desactive.html", {}, status_code=404
+    )
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -93,7 +108,7 @@ async def gestion_erreur(request, exc: Exception):
 
     Le serveur reste en ligne (uvicorn isole déjà chaque requête) ; ici on
     journalise l'erreur complète (pour le référent technique, visible via
-    `journalctl -u pret-jeux`) et on renvoie une page 500 conviviale plutôt
+    `journalctl -u ludotex`) et on renvoie une page 500 conviviale plutôt
     qu'un message technique brut.
     """
     logging.getLogger("uvicorn.error").exception("Erreur non gérée : %s", exc)

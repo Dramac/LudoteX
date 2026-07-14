@@ -24,16 +24,26 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
-from app import auth, services
+from app import auth, modules, services
+from app.config import NOM_ASSOCIATION
 
 # Dossier contenant les gabarits HTML (app/templates/).
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+# Nom de l'association, personnalisable via NOM_ASSOCIATION (.env) — voir
+# app/config.py. Disponible dans TOUS les gabarits : {{ nom_association }}.
+templates.env.globals["nom_association"] = NOM_ASSOCIATION
+
 # Fonction disponible dans tous les gabarits : `est_benevole(request)` indique si
 # l'appareil peut accéder aux écrans bénévole — jeton bénévole activé OU session
 # admin ouverte. Sert à n'afficher le menu bénévole qu'aux personnes autorisées.
 templates.env.globals["est_benevole"] = auth.peut_ecrire
+
+# Indique si un module est visible pour ce visiteur (tient compte de son état
+# et de l'accès bénévole). Usage dans les gabarits :
+#   {% if module_visible(request, "tournois") %} ... {% endif %}
+templates.env.globals["module_visible"] = modules.module_visible
 
 # Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
 # Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).

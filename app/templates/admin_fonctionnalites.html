@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titre %}Fonctionnalités — Administration{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Fonctionnalités</h1>
+  <dl class="fonct-legende">
+    {% for etat in etats_valides %}
+    <dt>{{ labels_etats[etat] }}</dt>
+    <dd>{{ descriptions_etats[etat] }}</dd>
+    {% endfor %}
+  </dl>
+  {% if message %}
+    <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
+      {{ message[1] }}
+    </p>
+  {% endif %}
+
+  <form method="post" action="/admin/fonctionnalites">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Module</th>
+          <th>Description</th>
+          {% for etat in etats_valides %}
+            <th>{{ labels_etats[etat] }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for nom, infos in modules.items() %}
+        <tr>
+          <td><strong>{{ infos.label }}</strong><br>
+              <small><a class="lien" href="{{ infos.url }}">{{ infos.url }}</a></small>
+          </td>
+          <td class="stats-note">{{ infos.description }}</td>
+          {% for etat in etats_valides %}
+          <td style="text-align:center">
+            <input type="radio"
+                   name="module_{{ nom }}"
+                   value="{{ etat }}"
+                   id="mod_{{ nom }}_{{ etat }}"
+                   {{ 'checked' if etats[nom] == etat else '' }}>
+            <label for="mod_{{ nom }}_{{ etat }}" class="sr-only">{{ labels_etats[etat] }}</label>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p style="margin-top:1.2rem">
+      <button type="submit" id="btn-enregistrer" class="bouton"
+              style="background:#9e9e9e" disabled>Enregistrer</button>
+      &nbsp;
+      <a class="lien" href="/admin">Retour au tableau de bord</a>
+    </p>
+  </form>
+</section>
+
+<script>
+  (function () {
+    var btn = document.getElementById('btn-enregistrer');
+    document.querySelectorAll('input[type="radio"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        btn.style.background = '';
+        btn.classList.add('bouton-principal');
+        btn.disabled = false;
+      });
+    });
+  })();
+</script>
+{% endblock %}
