@@ -17,6 +17,9 @@ data/*.sqlite*
 qr/
 *.qr.png
 
+# --- Page HTML temporaire générée par lancer.py (lanceur local) ---
+lancer-ludotex-*.html
+
 # --- Sauvegardes de la base (générées sur le serveur) ---
 sauvegardes/
 
