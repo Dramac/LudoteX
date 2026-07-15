@@ -130,16 +130,26 @@ mise en œuvre quand elle coule de source.
   suivi public.
 - **Note** : même mécanique pseudo + code que l'inscription.
 
-### 3.4 Round robin (championnat toutes rondes)
+### 3.4 Round robin (championnat toutes rondes) — ✅ RÉALISÉ
 - **Valeur** : pour 4–6 joueurs, c'est le format le plus juste et le plus
   convivial ; la ronde suisse est taillée pour de plus gros effectifs.
 - **Note** : la table `rencontres` absorbe déjà ce mode ; génération = produit
   cartésien ordonné (algorithme des cercles).
+- **Fait** : `"round_robin"` ajouté à `MODES_SCORING`, génération de toutes les
+  rondes d'emblée par la méthode des cercles (`_generer_round_robin`, joueur
+  fantôme si effectif impair), classement délégué à `classement_suisse`, saisie
+  via l'écran des rondes existant, tableau croisé des confrontations sur la page
+  publique. Voir CLAUDE.md (156 tests verts).
 
-### 3.5 Tournois par équipes
+### 3.5 Tournois par équipes — ✅ RÉALISÉ
 - **Valeur** : beaucoup de jeux d'ambiance se jouent en équipes ; inscription
   « nom d'équipe + pseudos » ouvrirait ces formats.
 - **Note** : phase lointaine — touche inscription, appariement et affichage.
+- **Fait** : principe « une équipe = un participant » (compatible avec les 4
+  modes sans toucher aux appariements), inscription avec nombre exact de
+  membres, code de désinscription par équipe, membres visibles seulement côté
+  bénévole (affichage public = nom d'équipe seul). Voir CLAUDE.md (164 tests
+  verts).
 
 ### 3.6 Palmarès & diplômes
 - **Valeur** : un PDF « diplôme » (vainqueur, jeu, date, logo) imprimé en fin de
@@ -150,11 +160,12 @@ mise en œuvre quand elle coule de source.
 
 ## 4. Planning bénévoles
 
-### 4.1 « Mon planning » en .ics
+### 4.1 « Mon planning » en .ics — ✅ RÉALISÉ
 - **Valeur** : le bénévole ajoute ses créneaux à son agenda en un tap, comme
   pour les tournois. Réduit les oublis, zéro e-mail nécessaire.
-- **Note** : quick win — `ical_tournoi` existe déjà, à généraliser (VEVENT
-  multiples), route `/planning/mon.ics?code=`.
+- **Note** : `ical_planning_benevole` (`app/planning/services.py`), sur le
+  patron d'`ical_tournoi` mais en multi-VEVENT (un par affectation), route
+  `GET /planning/mon.ics?code=`. Voir CLAUDE.md (182 tests verts).
 
 ### 4.2 Pointage du jour J
 - **Valeur** : « qui est arrivé ? » — cocher les présences sur la grille et

@@ -299,6 +299,25 @@ ce créneau / à éviter » (non dispos + « surtout pas »). La route `admin_ca
 construit ces groupes (`groupes` + `autres`) ; le gabarit `planning_case.html`
 utilise un macro Jinja `options_benevoles`. Aide à prioriser d'un coup d'œil.
 
+**Planning — .ics (idée 4.1) : FAIT.** « Mon planning » exportable en un tap,
+sur le patron d'`ical_tournoi` (`app/tournoi/services.py`). Nouvelle fonction
+`app/planning/services.py::ical_planning_benevole(conn, id_benevole)` :
+construit un flux iCalendar **multi-VEVENT** (un par affectation, à partir de
+`planning_du_benevole`) — résumé = nom du poste ou libellé de la tâche
+(`type='tache'`), description = jour (`libelle_jour`) + nom de l'association,
+`UID` du type `planning-{id_affectation}-...@desjeuxpleinlamanche`. `None` si
+aucune affectation. **Helpers `_ics_horodatage`/`_ics_echappe` dupliqués**
+localement (pas de facteur commun avec `tournoi` — modules indépendants, bases
+séparées, décision maintenue). Route publique `GET /planning/mon.ics?code=`
+(`app/planning/routes.py`) : même lookup par code que `/planning/mon`, 404 si
+code invalide ou aucune affectation (jamais d'erreur brute), en-tête
+`Content-Disposition: attachment`. Bouton « 📅 Ajouter tout mon planning à mon
+agenda » sur `planning_mon.html` (visible seulement s'il y a des affectations,
+même style que le bouton équivalent des tournois). Aucune donnée personnelle
+dans le fichier (pas de nom de bénévole). **3 tests dédiés** (contenu multi-
+VEVENT, code invalide, bénévole sans affectation). **Suite globale : 182 tests
+verts.**
+
 **Script d'installation VPS (`deploy/install.sh`) : FAIT.** Script bash
 interactif à lancer sur le VPS après `git clone` (`sudo ./deploy/install.sh`),
 pensé pour quelqu'un de non-développeur. Vérifie/installe les prérequis

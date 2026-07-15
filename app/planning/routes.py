@@ -187,6 +187,28 @@ def mon_planning(request: Request, code: str = ""):
     )
 
 
+@router.get("/planning/mon.ics")
+def mon_planning_ics(code: str = ""):
+    """
+    Télécharge tout « mon planning » au format iCalendar (.ics) — « Ajouter
+    tout mon planning à mon agenda ». Public, sans donnée personnelle.
+    404 si code invalide ou aucune affectation (jamais d'erreur brute).
+    """
+    conn = get_connection()
+    try:
+        benevole = services.get_benevole_par_code(conn, code) if code else None
+        ics = services.ical_planning_benevole(conn, benevole["id_benevole"]) if benevole else None
+    finally:
+        conn.close()
+    if ics is None:
+        return Response(status_code=404)
+    return Response(
+        content=ics,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="mon-planning.ics"'},
+    )
+
+
 # ===========================================================================
 # ADMIN — liste des événements, création, démo
 # ===========================================================================
