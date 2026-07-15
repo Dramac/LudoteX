@@ -90,6 +90,24 @@ croisé des confrontations** (`table_confrontations` : V/N/D ou score BO3,
 ordonné par classement ; gabarit `tournoi_detail.html`, styles `.rr-*`).
 **Suite globale : 156 tests verts.**
 
+**Tournois PAR ÉQUIPES : FAIT.** Colonnes `tournois.par_equipes` (0/1) +
+`tournois.taille_equipe`, et `inscriptions.membres` (liste JSON) — schéma +
+migrations `app/tournoi/db.py`. Principe : **une équipe = un participant** (le
+`pseudo` porte le nom d'équipe), donc appariements et modes de scoring INCHANGÉS
+(compatible avec les 4 modes). `creer_tournoi`/`modifier_tournoi`/
+`dupliquer_tournoi` gèrent les 2 champs ; `inscrire(conn,id,pseudo,membres)`
+valide EXACTEMENT `taille_equipe` membres non vides (→ `equipe_incomplete`),
+`ajouter_participant` (bénévole) reste permissif. `_nettoyer_membres`,
+`parse_membres`, `lister_inscriptions` ajoute `membres_liste`. Routes :
+inscription/ajout passent en `async` et collectent `membre_<n>`
+(`_membres_du_formulaire`) ; création/édition lisent `par_equipes`/`taille_equipe`.
+Gabarits : `tournoi_form.html` (case + taille), `tournoi_inscription.html` (nom
+d'équipe + N champs membres), `tournoi_gerer.html` (membres sous chaque équipe,
+ajout adapté). **Code de désinscription par équipe** ; **affichage public = nom
+d'équipe seul** (membres visibles seulement côté bénévole). Décisions Simon :
+tous modes, taille configurable à la création, code par équipe, membres non
+publics. **Suite globale : 164 tests verts.**
+
 **Option BO3 (best of 3) : FONCTIONNELLE.** Choisie **au lancement** (plus à la
 création : `bo3` retiré du formulaire), via `lancer_tournoi(..., bo3=True)` —
 n'a d'effet que pour suisse/élimination. Quand activée, la saisie d'une rencontre

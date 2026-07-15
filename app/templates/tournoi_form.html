@@ -52,6 +52,18 @@
       Inscription en ligne possible
     </label>
 
+    <label class="case">
+      <input type="checkbox" name="par_equipes"
+             {{ 'checked' if edition and t.par_equipes else '' }}>
+      Tournoi par équipes <small>(inscription = nom d'équipe + membres)</small>
+    </label>
+    <div class="champ">
+      <label for="taille_equipe">Membres par équipe <small>(si par équipes)</small></label>
+      <input type="number" id="taille_equipe" name="taille_equipe" min="1"
+             value="{{ t.taille_equipe if edition and t.taille_equipe else '' }}"
+             placeholder="ex. 2">
+    </div>
+
     <button type="submit" class="bouton bouton-principal">
       {{ "Enregistrer" if edition else "Créer le tournoi" }}
     </button>

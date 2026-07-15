@@ -52,6 +52,21 @@ def _int_ou_none(v: str) -> int | None:
     return int(v) if v.isdigit() else None
 
 
+def _membres_du_formulaire(form) -> list[str]:
+    """
+    Extrait les pseudos membres d'une équipe depuis les champs `membre_<n>`
+    (ordonnés par n). Les valeurs vides sont ignorées.
+    """
+    membres = []
+    for cle in sorted((c for c in form.keys() if c.startswith("membre_")),
+                      key=lambda c: int(c.removeprefix("membre_"))
+                      if c.removeprefix("membre_").isdigit() else 0):
+        valeur = str(form.get(cle) or "").strip()
+        if valeur:
+            membres.append(valeur)
+    return membres
+
+
 def _parser_manches(form) -> dict[int, tuple[int | None, int | None]]:
     """
     Extrait les manches gagnées (mode BO3) d'un formulaire : champs `ma_<id>`
@@ -231,15 +246,20 @@ def inscription_formulaire(request: Request, id_tournoi: int):
 
 
 @router.post("/tournoi/{id_tournoi:int}/inscription")
-def inscription_action(request: Request, id_tournoi: int, pseudo: str = Form("")):
+async def inscription_action(request: Request, id_tournoi: int,
+                             pseudo: str = Form("")):
     """
     Enregistre une inscription publique. En cas de succès, affiche l'écran de
     confirmation AVEC le code de désinscription (RGPD : e-mail jamais stocké).
+    Pour un tournoi par équipes : `pseudo` = nom d'équipe + champs `membre_<n>`.
     """
+    form = await request.form()
+    membres = _membres_du_formulaire(form)
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
-        res = services.inscrire(conn, id_tournoi, pseudo) if t else {"ok": False, "raison": "introuvable"}
+        res = (services.inscrire(conn, id_tournoi, pseudo, membres) if t
+               else {"ok": False, "raison": "introuvable"})
     finally:
         conn.close()
 
@@ -248,10 +268,14 @@ def inscription_action(request: Request, id_tournoi: int, pseudo: str = Form("")
             request, "tournoi_inscription_ok.html",
             {"t": t, "pseudo": res["pseudo"], "code": res["code"]},
         )
+    libelle_equipe = "équipe" if (t and t["par_equipes"]) else "pseudo"
     messages = {
         "fermee": "Les inscriptions en ligne ne sont pas ouvertes pour ce tournoi.",
         "complet": "Ce tournoi est complet.",
-        "pseudo_vide": "Merci d'indiquer un pseudo.",
+        "pseudo_vide": f"Merci d'indiquer un nom de {libelle_equipe}.",
+        "equipe_incomplete": (
+            f"Cette épreuve se joue en équipes de {t['taille_equipe'] if t else ''} : "
+            "merci d'indiquer tous les membres."),
         "introuvable": "Tournoi introuvable.",
     }
     erreur = messages.get(res.get("raison"), "Inscription impossible.")
@@ -284,6 +308,8 @@ def nouveau_creer(
     nb_places: str = Form(""),
     emplacement: str = Form(""),
     inscription_en_ligne: str = Form(""),
+    par_equipes: str = Form(""),
+    taille_equipe: str = Form(""),
 ):
     """Crée le tournoi (état 'brouillon') puis ouvre son tableau de gestion.
 
@@ -307,6 +333,8 @@ def nouveau_creer(
             nb_places=_int_ou_none(nb_places),
             emplacement=emplacement,
             inscription_en_ligne=bool(inscription_en_ligne),
+            par_equipes=bool(par_equipes),
+            taille_equipe=_int_ou_none(taille_equipe),
         )
     finally:
         conn.close()
@@ -362,6 +390,8 @@ def editer_action(
     nb_places: str = Form(""),
     emplacement: str = Form(""),
     inscription_en_ligne: str = Form(""),
+    par_equipes: str = Form(""),
+    taille_equipe: str = Form(""),
 ):
     """Applique les modifications d'un tournoi puis revient à la gestion."""
     if not nom.strip():
@@ -387,6 +417,8 @@ def editer_action(
             nb_places=_int_ou_none(nb_places),
             emplacement=(emplacement or "").strip() or None,
             inscription_en_ligne=1 if inscription_en_ligne else 0,
+            par_equipes=1 if par_equipes else 0,
+            taille_equipe=_int_ou_none(taille_equipe) if par_equipes else None,
         )
     finally:
         conn.close()
@@ -438,12 +470,14 @@ def changer_etat_action(request: Request, id_tournoi: int,
 
 
 @router.post("/tournoi/{id_tournoi:int}/participant")
-def ajouter_participant_action(request: Request, id_tournoi: int,
-                               _=Depends(exiger_jeton), pseudo: str = Form("")):
-    """Ajout manuel d'un participant (bénévole)."""
+async def ajouter_participant_action(request: Request, id_tournoi: int,
+                                     _=Depends(exiger_jeton), pseudo: str = Form("")):
+    """Ajout manuel d'un participant/équipe (bénévole ; membres via `membre_<n>`)."""
+    form = await request.form()
+    membres = _membres_du_formulaire(form)
     conn = get_connection()
     try:
-        services.ajouter_participant(conn, id_tournoi, pseudo)
+        services.ajouter_participant(conn, id_tournoi, pseudo, membres)
     finally:
         conn.close()
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)

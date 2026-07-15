@@ -21,6 +21,7 @@ le seul jeton conservé (et affiché à l'écran à l'inscription).
 
 from __future__ import annotations
 
+import json
 import math
 import secrets
 import sqlite3
@@ -72,6 +73,24 @@ def _nettoyer_pseudo(pseudo: str) -> str:
     return " ".join((pseudo or "").split())[:PSEUDO_MAX]
 
 
+def _nettoyer_membres(membres) -> list[str]:
+    """Nettoie une liste de pseudos membres (vide -> ignoré), tronqués."""
+    if not membres:
+        return []
+    return [m for m in (_nettoyer_pseudo(x) for x in membres) if m]
+
+
+def parse_membres(valeur: str | None) -> list[str]:
+    """Décode la liste JSON des membres stockée en base (ou [] si vide/invalide)."""
+    if not valeur:
+        return []
+    try:
+        data = json.loads(valeur)
+        return [str(x) for x in data] if isinstance(data, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
 def _row(r: sqlite3.Row | None) -> dict | None:
     """Convertit une ligne SQLite en dict (ou None)."""
     return dict(r) if r is not None else None
@@ -107,24 +126,30 @@ def creer_tournoi(
     emplacement: str | None = None,
     inscription_en_ligne: bool = True,
     bo3: bool = False,
+    par_equipes: bool = False,
+    taille_equipe: int | None = None,
     restriction_nombre: int | None = None,
 ) -> int:
     """
     Crée un tournoi à l'état 'brouillon' et renvoie son id.
 
     `age` est une indication libre (ex. « 10+ », « tout public »).
+    `par_equipes` : inscription par équipe (nom d'équipe + membres) ; `taille_equipe`
+    fixe alors le nombre de membres attendus par équipe.
     `date_heure` est attendu en UTC ISO (la route convertit la saisie locale).
     """
     cur = conn.execute(
         """
         INSERT INTO tournois
             (nom, jeu, age, date_heure, duree_min, nb_places, emplacement,
-             inscription_en_ligne, etat, bo3, restriction_nombre, date_creation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?)
+             inscription_en_ligne, etat, bo3, par_equipes, taille_equipe,
+             restriction_nombre, date_creation)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?, ?, ?)
         """,
         (nom.strip(), (jeu or "").strip() or None, (age or "").strip() or None,
          date_heure, duree_min, nb_places, (emplacement or "").strip() or None,
          1 if inscription_en_ligne else 0, 1 if bo3 else 0,
+         1 if par_equipes else 0, taille_equipe if par_equipes else None,
          restriction_nombre, maintenant()),
     )
     conn.commit()
@@ -168,6 +193,8 @@ def dupliquer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
         nb_places=t["nb_places"],
         emplacement=t["emplacement"],
         inscription_en_ligne=bool(t["inscription_en_ligne"]),
+        par_equipes=bool(t["par_equipes"]),
+        taille_equipe=t["taille_equipe"],
     )
 
 
@@ -179,7 +206,8 @@ def modifier_tournoi(conn: sqlite3.Connection, id_tournoi: int, **champs) -> Non
     """
     colonnes = {
         "nom", "jeu", "age", "date_heure", "duree_min", "nb_places", "emplacement",
-        "inscription_en_ligne", "bo3", "restriction_nombre",
+        "inscription_en_ligne", "bo3", "par_equipes", "taille_equipe",
+        "restriction_nombre",
     }
     maj = {c: v for c, v in champs.items() if c in colonnes}
     if not maj:
@@ -338,14 +366,19 @@ def tournois_imminents(
 # Inscriptions / participants
 # ===========================================================================
 def lister_inscriptions(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
-    """Liste les participants d'un tournoi (ordre d'inscription)."""
-    return [
-        dict(r)
-        for r in conn.execute(
-            "SELECT * FROM inscriptions WHERE id_tournoi = ? ORDER BY id_inscription",
-            (id_tournoi,),
-        )
-    ]
+    """
+    Liste les participants d'un tournoi (ordre d'inscription). Pour un tournoi par
+    équipes, `membres_liste` contient les pseudos des membres (liste Python).
+    """
+    lignes = []
+    for r in conn.execute(
+        "SELECT * FROM inscriptions WHERE id_tournoi = ? ORDER BY id_inscription",
+        (id_tournoi,),
+    ):
+        d = dict(r)
+        d["membres_liste"] = parse_membres(d.get("membres"))
+        lignes.append(d)
+    return lignes
 
 
 def compter_inscriptions(conn: sqlite3.Connection, id_tournoi: int) -> int:
@@ -374,27 +407,37 @@ def inscription_ouverte(conn: sqlite3.Connection, tournoi: dict) -> bool:
 
 
 def _inserer_inscription(conn: sqlite3.Connection, id_tournoi: int,
-                         pseudo: str) -> dict:
-    """Insère une inscription (pseudo nettoyé + code) et renvoie {id, code, pseudo}."""
+                         pseudo: str, membres: list[str] | None = None) -> dict:
+    """
+    Insère une inscription (pseudo/nom d'équipe + code, et membres JSON si équipe)
+    et renvoie {id, code, pseudo}.
+    """
     code = _generer_code()
+    membres_json = json.dumps(membres, ensure_ascii=False) if membres else None
     cur = conn.execute(
         """
-        INSERT INTO inscriptions (id_tournoi, pseudo, code_desinscription, date_inscription)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO inscriptions (id_tournoi, pseudo, membres, code_desinscription, date_inscription)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (id_tournoi, pseudo, code, maintenant()),
+        (id_tournoi, pseudo, membres_json, code, maintenant()),
     )
     conn.commit()
     return {"id_inscription": int(cur.lastrowid), "code": code, "pseudo": pseudo}
 
 
-def inscrire(conn: sqlite3.Connection, id_tournoi: int, pseudo: str) -> dict:
+def inscrire(conn: sqlite3.Connection, id_tournoi: int, pseudo: str,
+             membres: list[str] | None = None) -> dict:
     """
     Inscription PUBLIQUE en ligne. Ne stocke jamais d'e-mail.
 
+    Pour un tournoi PAR ÉQUIPES : `pseudo` est le nom d'équipe et `membres` la
+    liste des pseudos membres ; si `taille_equipe` est fixée, on exige EXACTEMENT
+    ce nombre de membres non vides.
+
     Returns:
         {"ok": True, "code": …, "pseudo": …} en cas de succès ; sinon
-        {"ok": False, "raison": "introuvable"|"fermee"|"complet"|"pseudo_vide"}.
+        {"ok": False, "raison": "introuvable"|"fermee"|"complet"|"pseudo_vide"|
+        "equipe_incomplete"}.
     """
     t = get_tournoi(conn, id_tournoi)
     if t is None:
@@ -407,26 +450,37 @@ def inscrire(conn: sqlite3.Connection, id_tournoi: int, pseudo: str) -> dict:
     restantes = places_restantes(conn, t)
     if restantes is not None and restantes <= 0:
         return {"ok": False, "raison": "complet"}
-    res = _inserer_inscription(conn, id_tournoi, pseudo)
+
+    membres_nets = None
+    if t["par_equipes"]:
+        membres_nets = _nettoyer_membres(membres)
+        attendu = t["taille_equipe"]
+        if attendu and len(membres_nets) != attendu:
+            return {"ok": False, "raison": "equipe_incomplete"}
+
+    res = _inserer_inscription(conn, id_tournoi, pseudo, membres_nets)
     return {"ok": True, **res}
 
 
 def ajouter_participant(conn: sqlite3.Connection, id_tournoi: int,
-                        pseudo: str) -> dict:
+                        pseudo: str, membres: list[str] | None = None) -> dict:
     """
-    Ajout MANUEL d'un participant par un bénévole (jeton). Plus permissif que
-    l'inscription publique : ignore l'option « en ligne » et le plafond de places
-    (le bénévole décide). Refuse seulement un tournoi inexistant ou un pseudo vide.
+    Ajout MANUEL d'un participant/équipe par un bénévole (jeton). Plus permissif
+    que l'inscription publique : ignore l'option « en ligne », le plafond de
+    places ET la taille d'équipe exacte (le bénévole décide). Refuse seulement un
+    tournoi inexistant ou un nom vide.
 
     Returns:
         {"ok": True, "code": …, "pseudo": …} ou {"ok": False, "raison": …}.
     """
-    if get_tournoi(conn, id_tournoi) is None:
+    t = get_tournoi(conn, id_tournoi)
+    if t is None:
         return {"ok": False, "raison": "introuvable"}
     pseudo = _nettoyer_pseudo(pseudo)
     if not pseudo:
         return {"ok": False, "raison": "pseudo_vide"}
-    res = _inserer_inscription(conn, id_tournoi, pseudo)
+    membres_nets = _nettoyer_membres(membres) if t["par_equipes"] else None
+    res = _inserer_inscription(conn, id_tournoi, pseudo, membres_nets)
     return {"ok": True, **res}
 
 

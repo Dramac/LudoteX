@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS tournois (
     mode_scoring          TEXT,                          -- NULL jusqu'au lancement (étape scoring)
     nb_rondes             INTEGER,                       -- nombre de rondes (ronde suisse) ; NULL sinon
     bo3                   INTEGER NOT NULL DEFAULT 0,    -- 0/1 : best of 3 par rencontre
+    par_equipes           INTEGER NOT NULL DEFAULT 0,    -- 0/1 : inscription par ÉQUIPE (nom + membres)
+    taille_equipe         INTEGER,                       -- nb de membres attendus par équipe (si par_equipes)
     restriction_nombre    INTEGER,                       -- plafond éventuel (arbre)
     date_creation         TEXT NOT NULL                  -- horodatage de création (ISO 8601 UTC)
 );
@@ -62,7 +64,8 @@ SCHEMA_INSCRIPTIONS = """
 CREATE TABLE IF NOT EXISTS inscriptions (
     id_inscription        INTEGER PRIMARY KEY AUTOINCREMENT,
     id_tournoi            INTEGER NOT NULL,              -- FK -> tournois.id_tournoi
-    pseudo                TEXT NOT NULL,                 -- nom affiché (saisi par le participant)
+    pseudo                TEXT NOT NULL,                 -- pseudo OU nom d'équipe (si tournoi par équipes)
+    membres               TEXT,                          -- liste JSON des pseudos membres (tournoi par équipes) ; NULL sinon
     code_desinscription   TEXT NOT NULL,                -- jeton aléatoire (pas d'e-mail !)
     date_inscription      TEXT NOT NULL,                 -- horodatage (ISO 8601 UTC)
     FOREIGN KEY (id_tournoi) REFERENCES tournois (id_tournoi) ON DELETE CASCADE

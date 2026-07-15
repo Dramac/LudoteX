@@ -111,12 +111,18 @@
 
   {# --- Participants --- #}
   <section class="carte">
-    <h2>Participants ({{ participants | length }}{% if t.nb_places %} / {{ t.nb_places }}{% endif %})</h2>
+    <h2>{{ "Équipes" if t.par_equipes else "Participants" }}
+      ({{ participants | length }}{% if t.nb_places %} / {{ t.nb_places }}{% endif %})</h2>
     {% if participants %}
       <ul class="catalogue-liste">
         {% for p in participants %}
           <li class="jeu">
-            <span class="jeu-nom">{{ p.pseudo }}</span>
+            <span class="jeu-lien">
+              <span class="jeu-nom">{{ p.pseudo }}</span>
+              {% if t.par_equipes and p.membres_liste %}
+                <span class="jeu-categorie">{{ p.membres_liste | join(', ') }}</span>
+              {% endif %}
+            </span>
             <form method="post"
                   action="/tournoi/{{ t.id_tournoi }}/participant/{{ p.id_inscription }}/supprimer">
               <button class="lien" type="submit"
@@ -126,15 +132,30 @@
         {% endfor %}
       </ul>
     {% else %}
-      <p><em>Aucun participant.</em></p>
+      <p><em>Aucun{{ "e équipe" if t.par_equipes else " participant" }}.</em></p>
     {% endif %}
 
     <form method="post" action="/tournoi/{{ t.id_tournoi }}/participant" class="recherche-form">
-      <div class="champ">
-        <label for="pseudo">Ajouter un participant</label>
-        <input type="text" id="pseudo" name="pseudo" maxlength="40" required
-               placeholder="Pseudo">
-      </div>
+      {% if t.par_equipes %}
+        <div class="champ">
+          <label for="pseudo">Ajouter une équipe</label>
+          <input type="text" id="pseudo" name="pseudo" maxlength="40" required
+                 placeholder="Nom de l'équipe">
+        </div>
+        {% for i in range(1, (t.taille_equipe or 2) + 1) %}
+          <div class="champ">
+            <label for="membre_{{ i }}">Membre {{ i }}</label>
+            <input type="text" id="membre_{{ i }}" name="membre_{{ i }}" maxlength="40"
+                   placeholder="Pseudo du membre (facultatif)">
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="champ">
+          <label for="pseudo">Ajouter un participant</label>
+          <input type="text" id="pseudo" name="pseudo" maxlength="40" required
+                 placeholder="Pseudo">
+        </div>
+      {% endif %}
       <button type="submit" class="bouton bouton-secondaire">Ajouter</button>
     </form>
   </section>
