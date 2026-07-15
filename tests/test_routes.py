@@ -325,6 +325,27 @@ def test_admin_etiquettes_lot(client, monkeypatch):
     assert big.status_code == 200 and "marges" in big.text.lower()
 
 
+def test_admin_supervision(client, monkeypatch):
+    # Sans session : redirection vers la connexion (page en lecture seule aussi protégée).
+    r = client.get("/admin/supervision", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r2 = client.get("/admin/supervision")
+    assert r2.status_code == 200
+    # Les 5 sections attendues.
+    assert "Bases de données" in r2.text
+    assert "Espace disque" in r2.text
+    assert "Sauvegarde" in r2.text
+    assert "Jeton bénévole" in r2.text
+    assert "Version déployée" in r2.text
+    # Les 3 bases sont bien listées (chemins de test isolés).
+    assert "Prêt de jeux" in r2.text
+    assert "Tournois" in r2.text
+    assert "Planning bénévole" in r2.text
+
+
 def test_admin_changement_mdp(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "initial-123")
     client.post("/admin/login", data={"mot_de_passe": "initial-123"})

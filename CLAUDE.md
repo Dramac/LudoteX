@@ -426,6 +426,27 @@ liseré violet) + retour visuel à l'appui des boutons/puces, **tout le site**.
 (logo) dans `base.html`. Tout est **coupé sous `prefers-reduced-motion`**.
 Aucune régression (**151 tests verts**, purement cosmétique).
 
+**Point 7.2 — Supervision légère en admin : FAIT.** Page `GET /admin/supervision`
+(lecture seule, protégée par la garde admin existante, liée depuis le tableau
+de bord) pour qu'un bureau non technicien vérifie en 5 secondes que tout va
+bien le jour de l'événement. Logique isolée dans `app/supervision.py`
+(testable, **stdlib uniquement** : `shutil.disk_usage`, `pathlib`) : (1) état
+des **3 bases** (chemin/taille/date de dernière modification), chemins
+toujours lus via `get_database_path()` de chaque module — **jamais dupliqués
+en dur** ; (2) **espace disque** restant du volume contenant `data/` ; (3)
+**dernière sauvegarde** trouvée dans `data/sauvegardes/` (fichier le plus
+récent par mtime — dossier des filets de sécurité automatiques de
+`app.sauvegarde.sauvegarde_de_securite` — ou mention claire si vide) ; (4)
+**état du jeton bénévole** (défini/non, date d'expiration, expiré ou valide,
+via `auth.jeton_actuel`/`expiration_jeton`/`jeton_expire`) ; (5) **version
+déployée**, lue telle quelle depuis un fichier `VERSION` à la racine (contenu
+libre ; repli sur `APP_VERSION` si absent). **Aucune action d'écriture** sur
+cette page — uniquement des liens vers `/admin/donnees` et `/admin/jeton` pour
+agir. Libellés en français clair (« Aucune sauvegarde trouvée… » plutôt que
+des détails techniques bruts). **13 tests dédiés**
+(`tests/test_supervision.py`, service pur) + test de route (garde + rendu des
+5 sections). **Suite globale : 179 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

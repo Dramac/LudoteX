@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block titre %}Supervision — Administration{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Supervision</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+  <p class="stats-note">Page en lecture seule — aucune action possible ici.
+     Rechargez la page pour actualiser les informations.</p>
+
+  <h2>Bases de données</h2>
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Base</th>
+        <th>État</th>
+        <th>Taille</th>
+        <th>Dernière modification</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for base in etat.bases %}
+      <tr>
+        <td><strong>{{ base.nom }}</strong><br><small class="stats-note">{{ base.chemin }}</small></td>
+        {% if base.existe %}
+          <td><span class="resultat resultat-ok" style="display:inline-block">Présente</span></td>
+          <td>{{ base.taille }}</td>
+          <td>{{ base.modifie | dt_local }}</td>
+        {% else %}
+          <td><span class="resultat resultat-attention" style="display:inline-block">Introuvable</span></td>
+          <td>—</td>
+          <td>—</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Espace disque</h2>
+  <p>
+    <strong>{{ etat.disque.libre }}</strong> libres sur {{ etat.disque.total }}
+    ({{ etat.disque.pourcentage_libre }} % libre).
+  </p>
+
+  <h2>Sauvegarde</h2>
+  {% if etat.sauvegarde.existe %}
+    <p class="resultat resultat-ok">
+      Dernière sauvegarde : <strong>{{ etat.sauvegarde.nom }}</strong>,
+      le {{ etat.sauvegarde.modifie | dt_local }}.
+    </p>
+  {% else %}
+    <p class="resultat resultat-attention">
+      Aucune sauvegarde trouvée dans <code>data/sauvegardes/</code>.
+    </p>
+  {% endif %}
+  <p class="stats-note">Pour une sauvegarde complète à télécharger,
+     voir <a class="lien" href="/admin/donnees">Données &amp; sauvegarde</a>.</p>
+
+  <h2>Jeton bénévole</h2>
+  {% if not etat.jeton.defini %}
+    <p class="resultat resultat-attention">
+      Aucun jeton défini — les écrans bénévole sont ouverts à tous.
+    </p>
+  {% elif etat.jeton.expire %}
+    <p class="resultat resultat-attention">
+      Jeton EXPIRÉ depuis le {{ etat.jeton.expire_iso | dt_local }} — l'accès bénévole est fermé.
+    </p>
+  {% elif etat.jeton.expire_iso %}
+    <p class="resultat resultat-ok">
+      Jeton valide, jusqu'au {{ etat.jeton.expire_iso | dt_local }}.
+    </p>
+  {% else %}
+    <p class="resultat resultat-ok">Jeton valide (sans date d'expiration).</p>
+  {% endif %}
+  <p class="stats-note">Pour le lien d'activation ou le réinitialiser,
+     voir <a class="lien" href="/admin/jeton">Accès bénévole</a>.</p>
+
+  <h2>Version déployée</h2>
+  <p>{{ etat.version }}</p>
+</section>
+{% endblock %}

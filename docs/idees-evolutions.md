@@ -243,11 +243,11 @@ mise en œuvre quand elle coule de source.
 - **Note** : la démo planning donne le patron ; généraliser au prêt (jeux
   fictifs + QR d'entraînement imprimables).
 
-### 7.2 Supervision légère en admin
+### 7.2 Supervision légère en admin — RÉALISÉ
 - **Valeur** : le jour J, savoir en 5 s que tout va bien : taille et date de
   dernière sauvegarde des 3 bases, espace disque, version déployée, état du
   jeton. Rassure un bureau non technique.
-- **Note** : page admin en lecture seule, stdlib uniquement.
+- **Note** : page admin en lecture seule, stdlib uniquement. Voir CLAUDE.md.
 
 ### 7.3 Test de charge avant l'événement
 - **Valeur** : ~700 jeux, des dizaines de scans/minute en pointe : vérifier une
