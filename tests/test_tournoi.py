@@ -479,6 +479,92 @@ def test_agenda_route_404_sans_date(client):
     assert client.get(f"/tournoi/{tid}/agenda.ics").status_code == 404
 
 
+# --- Tournois par équipes ---
+def test_equipe_inscription_valide_et_membres(conn):
+    tid = services.creer_tournoi(conn, "Duo Cup", par_equipes=True, taille_equipe=2)
+    assert services.get_tournoi(conn, tid)["par_equipes"] == 1
+    services.changer_etat(conn, tid, "inscriptions")
+    r = services.inscrire(conn, tid, "Les Kangourous", ["Alice", "Bob"])
+    assert r["ok"]
+    insc = services.lister_inscriptions(conn, tid)[0]
+    assert insc["pseudo"] == "Les Kangourous"
+    assert insc["membres_liste"] == ["Alice", "Bob"]
+
+
+def test_equipe_membres_incomplets_refus(conn):
+    tid = services.creer_tournoi(conn, "Duo", par_equipes=True, taille_equipe=2)
+    services.changer_etat(conn, tid, "inscriptions")
+    assert services.inscrire(conn, tid, "Solo", ["Alice"])["raison"] == "equipe_incomplete"
+    assert services.inscrire(conn, tid, "Trop", ["A", "B", "C"])["raison"] == "equipe_incomplete"
+    # Membres vides ignorés -> compte réel != taille.
+    assert services.inscrire(conn, tid, "Vide", ["Alice", "  "])["raison"] == "equipe_incomplete"
+
+
+def test_equipe_ajout_benevole_permissif(conn):
+    tid = services.creer_tournoi(conn, "Duo", par_equipes=True, taille_equipe=2)
+    services.changer_etat(conn, tid, "inscriptions")
+    # Le bénévole peut ajouter une équipe même incomplète.
+    assert services.ajouter_participant(conn, tid, "Impaire", ["Zoé"])["ok"]
+    assert services.lister_inscriptions(conn, tid)[0]["membres_liste"] == ["Zoé"]
+
+
+def test_equipe_duplication_conserve(conn):
+    tid = services.creer_tournoi(conn, "Duo", par_equipes=True, taille_equipe=3)
+    t2 = services.get_tournoi(conn, services.dupliquer_tournoi(conn, tid, None))
+    assert t2["par_equipes"] == 1 and t2["taille_equipe"] == 3
+
+
+def test_equipe_desinscription_par_code(conn):
+    tid = services.creer_tournoi(conn, "Duo", par_equipes=True, taille_equipe=2)
+    services.changer_etat(conn, tid, "inscriptions")
+    code = services.inscrire(conn, tid, "Team", ["A", "B"])["code"]
+    assert services.desinscrire(conn, code)["ok"]
+    assert services.compter_inscriptions(conn, tid) == 0
+
+
+def test_equipe_compatible_round_robin(conn):
+    # Une équipe = un participant -> compatible avec tous les modes (ici round robin).
+    tid = services.creer_tournoi(conn, "Champ", par_equipes=True, taille_equipe=2)
+    services.changer_etat(conn, tid, "inscriptions")
+    for nom, membres in [("T1", ["a", "b"]), ("T2", ["c", "d"]), ("T3", ["e", "f"])]:
+        services.inscrire(conn, tid, nom, membres)
+    assert services.lancer_tournoi(conn, tid, "round_robin")["ok"]
+    r1 = services.rencontres_de_ronde(conn, tid, 1)
+    noms = {m["pseudo_a"] for m in r1} | {m["pseudo_b"] for m in r1 if m["pseudo_b"]}
+    assert noms <= {"T1", "T2", "T3"} and noms   # les rencontres opposent des équipes
+
+
+def test_equipe_route_inscription(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Coupe Duo", "par_equipes": "on", "taille_equipe": "2",
+                          "inscription_en_ligne": "on"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    form = client.get(f"/tournoi/{tid}/inscription").text
+    assert "Nom de l'équipe" in form and "membre_1" in form and "membre_2" in form
+    ok = client.post(f"/tournoi/{tid}/inscription",
+                     data={"pseudo": "Les Renards", "membre_1": "Alice", "membre_2": "Bob"})
+    assert ok.status_code == 200 and "code de désinscription" in ok.text.lower()
+    # Page publique : nom d'équipe visible, membres NON affichés publiquement.
+    detail = client.get(f"/tournoi/{tid}").text
+    assert "Les Renards" in detail and "Alice" not in detail
+    # Côté bénévole (mode ouvert en test) : les membres sont visibles sur la gestion.
+    assert "Alice" in client.get(f"/tournoi/{tid}/gerer").text
+
+
+def test_equipe_inscription_incomplete_route(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"nom": "Trio", "par_equipes": "on", "taille_equipe": "3",
+                          "inscription_en_ligne": "on"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    bad = client.post(f"/tournoi/{tid}/inscription",
+                      data={"pseudo": "Bancale", "membre_1": "Alice", "membre_2": "Bob"})
+    assert bad.status_code == 400 and "équipe" in bad.text.lower()
+
+
 # --- Round robin ---
 def _tournoi_round_robin(conn, pseudos, bo3=False):
     tid = services.creer_tournoi(conn, "RR")
