@@ -395,6 +395,36 @@ def test_scanner_page(client):
     assert "jsdelivr" not in r.text.lower() and "cdn.jsdelivr" not in r.text.lower()
 
 
+def test_scanner_saisie_manuelle_lien(client):
+    # Le formulaire de secours est présent sur la page du scanner.
+    r = client.get("/scanner")
+    assert '/scanner/saisie' in r.text
+    assert 'Saisie manuelle' in r.text
+
+
+def test_saisie_manuelle_code_valide_redirige(client):
+    # Code existant (avec espaces autour, à tolérer) -> redirection vers /pret/<id>.
+    r = client.get("/scanner/saisie", params={"code": "  001 "},
+                   follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/pret/001"
+
+
+def test_saisie_manuelle_code_inconnu_message(client):
+    # Code inconnu -> pas d'erreur brute : retour au scanner avec un message.
+    r = client.get("/scanner/saisie", params={"code": "ZZZ999"})
+    assert r.status_code == 200
+    assert "Aucune boîte" in r.text
+    assert "ZZZ999" in r.text          # champ prérempli, prêt à corriger
+    assert '/scanner/saisie' in r.text
+
+
+def test_saisie_manuelle_protegee_par_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-saisie-secret-32-caracteres")
+    # Sans jeton : la saisie manuelle est refusée comme le reste du scanner.
+    assert client.get("/scanner/saisie", params={"code": "001"}).status_code == 403
+
+
 def test_cycle_preter_puis_rendre(client):
     r = client.post("/pret/001/preter")
     assert r.status_code == 200
