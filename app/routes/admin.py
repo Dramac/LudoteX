@@ -22,7 +22,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, auth, exports, services
+from app import admin_auth, auth, exports, services, supervision
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.config import NOM_ASSOCIATION
 from app.db import get_connection
@@ -501,6 +501,27 @@ def jeton_page(request: Request):
          "expire_local": expire_local, "expire_depasse": expire_depasse,
          "defaut_jours": auth.DUREE_DEFAUT_JOURS},
     )
+
+
+# ---------------------------------------------------------------------------
+# Supervision légère (lecture seule) : bases, disque, sauvegarde, jeton, version
+# ---------------------------------------------------------------------------
+@router.get("/supervision")
+def supervision_page(request: Request):
+    """
+    Page de supervision en LECTURE SEULE : permet à un bureau non technicien de
+    vérifier en quelques secondes, le jour de l'événement, que tout va bien
+    (3 bases présentes, espace disque, dernière sauvegarde, jeton bénévole,
+    version déployée). Aucune action d'écriture sur cette page.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        etat = supervision.etat_supervision(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "admin_supervision.html", {"etat": etat})
 
 
 @router.get("/evenement")
