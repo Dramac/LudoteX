@@ -29,8 +29,9 @@ import secrets
 import sqlite3
 from datetime import datetime
 
+from app.config import NOM_ASSOCIATION
 from app.planning.models import ETATS, NIVEAUX_PREFERENCE, TYPES_CRENEAU
-from app.services import local_vers_utc_iso, maintenant
+from app.services import FUSEAU_UTC, local_vers_utc_iso, maintenant
 
 # Bornes de saisie.
 NOM_MAX = 60       # longueur maximale d'un nom de bénévole / poste
@@ -1038,6 +1039,73 @@ def planning_du_benevole(conn: sqlite3.Connection, id_benevole: int) -> list[dic
             }
         )
     return sortie
+
+
+# ===========================================================================
+# Export iCalendar (.ics) — « Ajouter tout mon planning à mon agenda »
+#
+# Module `planning` totalement indépendant de `tournoi` (bases séparées, pas
+# d'import croisé, cf. CLAUDE.md) : les helpers d'échappement/horodatage sont
+# donc dupliqués ici plutôt que factorisés avec `tournoi.services.ical_tournoi`.
+# ===========================================================================
+def _ics_echappe(texte: str | None) -> str:
+    """Échappe un texte pour un champ iCalendar (RFC 5545)."""
+    return (
+        (texte or "")
+        .replace("\\", "\\\\").replace(";", "\\;")
+        .replace(",", "\\,").replace("\n", "\\n")
+    )
+
+
+def _ics_horodatage(dt: datetime) -> str:
+    """Formate un datetime aware en horodatage UTC iCalendar (AAAAMMJJTHHMMSSZ)."""
+    return dt.astimezone(FUSEAU_UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def ical_planning_benevole(conn: sqlite3.Connection, id_benevole: int) -> str | None:
+    """
+    Construit le contenu iCalendar (.ics) — multi-VEVENT — de « mon planning »
+    pour un bénévole : un événement par affectation (poste ou tâche). Aucune
+    donnée personnelle dans le fichier (pas de nom). Renvoie None si le
+    bénévole n'a aucune affectation.
+    """
+    affectations = planning_du_benevole(conn, id_benevole)
+    if not affectations:
+        return None
+
+    dtstamp = _ics_horodatage(datetime.now(FUSEAU_UTC))
+    lignes = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        f"PRODID:-//{NOM_ASSOCIATION}//Planning//FR",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+    for a in affectations:
+        c = a["creneau"]
+        try:
+            debut = datetime.fromisoformat(c["debut"])
+            fin = datetime.fromisoformat(c["fin"])
+        except (ValueError, TypeError):
+            continue
+        if a["poste"]:
+            resume = a["poste"]["nom"]
+        else:
+            resume = c["libelle"] or "Tâche"
+        description = f"{c['libelle_jour']} — {NOM_ASSOCIATION}"
+        lignes += [
+            "BEGIN:VEVENT",
+            f"UID:planning-{a['id_affectation']}-{_ics_horodatage(debut)}@desjeuxpleinlamanche",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART:{_ics_horodatage(debut)}",
+            f"DTEND:{_ics_horodatage(fin)}",
+            f"SUMMARY:{_ics_echappe(resume)}",
+            f"DESCRIPTION:{_ics_echappe(description)}",
+            "END:VEVENT",
+        ]
+    lignes.append("END:VCALENDAR")
+    # iCalendar impose des fins de ligne CRLF.
+    return "\r\n".join(lignes) + "\r\n"
 
 
 # ===========================================================================

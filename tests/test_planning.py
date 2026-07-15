@@ -248,6 +248,39 @@ def test_planning_du_benevole_et_taches(conn):
 
 
 # ===========================================================================
+# Export iCalendar (.ics) — « Ajouter tout mon planning à mon agenda »
+# ===========================================================================
+def test_ical_planning_benevole_contenu(conn):
+    ev = services.creer_evenement(conn, "T")
+    poste = services.ajouter_poste(conn, ev, "Accueil")
+    cr = _creneau(conn, ev, "Samedi", 14, 16)
+    tache = _creneau(conn, ev, "Samedi", 9, 12, type_creneau="tache",
+                     libelle="Installation")
+    services.definir_besoin(conn, cr, poste, 1)
+    ra = services.enregistrer_souhaits(conn, ev, "Alice", dispos={cr})
+    services.prefiller(conn, ev)
+    services.affecter(conn, tache, None, ra["id"], origine="manuel")
+
+    ics = services.ical_planning_benevole(conn, ra["id"])
+    assert ics is not None
+    assert ics.count("BEGIN:VEVENT") == 2
+    assert ics.count("END:VEVENT") == 2
+    assert "SUMMARY:Accueil" in ics
+    assert "SUMMARY:Installation" in ics
+    assert "Samedi" in ics
+    # Le prénom du bénévole n'apparaît jamais (aucune donnée personnelle).
+    assert "Alice" not in ics
+    assert ics.startswith("BEGIN:VCALENDAR")
+    assert ics.rstrip().endswith("END:VCALENDAR")
+
+
+def test_ical_planning_benevole_sans_affectation(conn):
+    ev = services.creer_evenement(conn, "T")
+    ra = services.enregistrer_souhaits(conn, ev, "Alice")
+    assert services.ical_planning_benevole(conn, ra["id"]) is None
+
+
+# ===========================================================================
 # Préremplissage — continuité & équité (phase 2)
 # ===========================================================================
 def _qui_sur(conn, ev, id_creneau, id_poste):
@@ -526,3 +559,42 @@ def test_route_affecter_avec_retour(client):
                       data={"id_creneau": cr, "id_poste": po, "id_benevole": b,
                             "retour": retour}, follow_redirects=False)
     assert rep.status_code == 303 and rep.headers["location"] == retour
+
+
+def test_route_mon_planning_ics(client):
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": "Test"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                      "fin": "2026-09-12T16:00", "type_creneau": "poste"})
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        cr = services.lister_creneaux(conn, ev)[0]["id_creneau"]
+        po = services.lister_postes(conn, ev)[0]["id_poste"]
+        services.definir_besoin(conn, cr, po, 1)
+        r = services.enregistrer_souhaits(conn, ev, "Alice", dispos={cr})
+        code = r["code"]
+    finally:
+        conn.close()
+
+    # Code invalide -> 404, jamais d'erreur brute.
+    assert client.get("/planning/mon.ics?code=inconnu").status_code == 404
+    # Aucune affectation pour l'instant -> 404 également.
+    assert client.get(f"/planning/mon.ics?code={code}").status_code == 404
+
+    conn = get_connection()
+    try:
+        services.prefiller(conn, ev)
+    finally:
+        conn.close()
+
+    rep = client.get(f"/planning/mon.ics?code={code}")
+    assert rep.status_code == 200
+    assert rep.headers["content-type"].startswith("text/calendar")
+    assert "attachment" in rep.headers["content-disposition"]
+    assert rep.text.count("BEGIN:VEVENT") == 1
