@@ -544,6 +544,31 @@ de menu plus aérées avec surbrillance au survol. Aucune dépendance JS ajouté
 (CSS pur, comme le reste du projet). **1 test ajouté**
 (`test_admin_dashboard_supervision_embarquee`), **191 tests verts**.
 
+**Tableau de bord admin — resserrage + libellés courts + menu « Gérer » sur 2
+colonnes (grand écran) : FAIT.** Suite du passage en deux colonnes ci-dessus :
+objectif tenir la page sans défilement sur un écran d'ordinateur courant.
+(1) **Titres resserrés** : `h1`/`h2` du tableau de bord et `h3` de la colonne
+supervision passent à une taille et des marges réduites, `.carte` gagne un
+padding/margin-bottom un peu plus compact — le tout **scopé à
+`.admin-dashboard-grille`** (`style.css`, media `min-width:900px`) pour ne pas
+toucher `.carte`/`h1`/`h2` des autres pages en `.contenu-large`
+(stats/planning/tournois). (2) **Libellés du menu « Gérer » raccourcis**
+(ex. « Imprimer des étiquettes (par lot) » → « Étiquettes (lot) »), le texte
+complet reporté en attribut `title` (info-bulle au survol, aucun JS) ; icônes
+mises dans un `<span class="admin-icone">` dédié et **agrandies**
+(`1.25em` de base, `1.4em` dès 900px) pour rester repérables malgré le texte
+plus court. (3) **Sous-groupes en grille 2×2** dès 900px
+(`.admin-groupes { display:grid; grid-template-columns: 1fr 1fr }`), au lieu
+d'empiler les 4 groupes (Jeux & étiquettes / Données & accès / Événement /
+Configuration) verticalement — divise la hauteur du menu par ~2 ; une bordure
+haute marque la 2ᵉ rangée. **Mobile inchangé pour la structure** (une seule
+colonne, groupes empilés, titres de groupe masqués) ; les libellés raccourcis
+et l'agrandissement léger des icônes s'appliquent en revanche **aussi sur
+mobile** (amélioration de lisibilité assumée des deux côtés, contrairement à
+la mise en page qui reste strictement scopée au grand écran). **191 tests
+toujours verts** (aucune assertion ne portait sur le texte long des liens du
+tableau de bord — vérifié).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

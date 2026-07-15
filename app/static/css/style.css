@@ -307,21 +307,29 @@ summary:focus-visible,
 /* Administration */
 .admin-menu { list-style: none; margin: 0; padding: 0; }
 .admin-menu li { margin: 10px 0; font-size: 1.1rem; }
+.admin-menu li a { display: flex; align-items: center; }
+
+/* Icône des liens du menu "Gérer" : agrandie pour rester repérable au premier
+   coup d'œil même quand le libellé texte est raccourci (voir .admin-menu li a
+   title="..." pour le détail complet, affiché au survol sur bureau). */
+.admin-icone { font-size: 1.25em; margin-right: 8px; line-height: 1; }
 
 /* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
    Configuration). Le titre de groupe est masqué par défaut (mobile = référence
    inchangée : les items s'enchaînent comme une seule liste, .admin-menu n'ayant
-   pas de marge de ul propre) et n'apparaît qu'à partir du breakpoint bureau. */
+   pas de marge de ul propre) et n'apparaît qu'à partir du breakpoint bureau,
+   où les groupes passent en grille 2 colonnes (voir media query) — la marge
+   verticale entre groupes est donc gérée par la bordure de la 2e rangée, pas
+   par la marge du titre (mise à 0 pour éviter tout cumul). */
 .admin-groupe-titre {
   display: none;
-  margin: 20px 0 4px;
+  margin: 0 0 4px;
   font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--gris);
 }
-.admin-groupe:first-of-type .admin-groupe-titre { margin-top: 4px; }
 
 /* Tableau de bord admin : une seule colonne (comportement de référence, cartes
    empilées via leur marge habituelle .carte) sous le breakpoint bureau ; deux
@@ -341,11 +349,30 @@ summary:focus-visible,
      droite : le lien vers la page dédiée dans le menu "Gérer" devient redondant. */
   .admin-menu-lien-supervision { display: none; }
 
+  /* Cartes du tableau de bord un peu plus compactes qu'ailleurs (padding et
+     espacement resserrés) pour limiter la hauteur totale de la page. Scopé à
+     .admin-dashboard-grille pour ne pas toucher .carte sur les autres écrans
+     larges (stats, planning, tournois...). */
+  .admin-dashboard-grille .carte { padding: 16px 20px; margin-bottom: 12px; }
+  .admin-dashboard-grille h1 { font-size: 1.3rem; margin: 0 0 8px; }
+  .admin-dashboard-grille h2 { font-size: 1.1rem; margin: 0 0 6px; }
+  /* Sous-titres de la colonne supervision (Bases de données, Espace disque...) :
+     même resserrage. Scopé à la colonne supervision (pas .admin-dashboard-grille
+     h3) pour ne jamais entrer en conflit de spécificité avec .admin-groupe-titre. */
+  .admin-dashboard-col-supervision h3 { font-size: 0.95rem; margin: 12px 0 4px; }
+  .admin-dashboard-col-supervision p { margin: 4px 0; }
+
+  /* Sous-groupes du menu "Gérer" sur 2 colonnes (au lieu d'empiler 4 groupes) :
+     divise la hauteur du menu par ~2. La 2e rangée (3e/4e groupe) reçoit une
+     bordure haute pour marquer la séparation entre rangées. */
+  .admin-groupes { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
   .admin-groupe-titre { display: block; }
-  .admin-groupe + .admin-groupe { border-top: 1px solid var(--bord); padding-top: 4px; }
-  .admin-menu li { margin: 8px 0; font-size: 1.05rem; }
-  .admin-menu li a { display: block; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; }
+  .admin-groupe:nth-of-type(n+3) { border-top: 1px solid var(--bord); padding-top: 8px; margin-top: 6px; }
+
+  .admin-menu li { margin: 4px 0; font-size: 1rem; }
+  .admin-menu li a { padding: 5px 8px; margin: 0 -8px; border-radius: 8px; }
   .admin-menu li a:hover { background: var(--vert-clair); text-decoration: none; }
+  .admin-icone { font-size: 1.4em; }
 }
 
 /* Légende des états de fonctionnalités */

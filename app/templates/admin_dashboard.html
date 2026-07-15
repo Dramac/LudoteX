@@ -15,42 +15,44 @@
     {% endif %}
     <h2>Gérer</h2>
 
-    <div class="admin-groupe">
-      <h3 class="admin-groupe-titre">Jeux &amp; étiquettes</h3>
-      <ul class="admin-menu">
-        <li><a class="lien" href="/admin/jeu-nouveau">➕ Créer une nouvelle fiche de jeu</a></li>
-        <li><a class="lien" href="/admin/jeux">🔎 Rechercher un jeu / réimprimer une étiquette</a></li>
-        <li><a class="lien" href="/admin/etiquettes">🖨️ Imprimer des étiquettes (par lot)</a></li>
-      </ul>
-    </div>
+    <div class="admin-groupes">
+      <div class="admin-groupe">
+        <h3 class="admin-groupe-titre">Jeux &amp; étiquettes</h3>
+        <ul class="admin-menu">
+          <li><a class="lien" href="/admin/jeu-nouveau" title="Créer une nouvelle fiche de jeu"><span class="admin-icone">➕</span>Créer un jeu</a></li>
+          <li><a class="lien" href="/admin/jeux" title="Rechercher un jeu existant ou réimprimer une étiquette"><span class="admin-icone">🔎</span>Rechercher un jeu</a></li>
+          <li><a class="lien" href="/admin/etiquettes" title="Imprimer des étiquettes en lot"><span class="admin-icone">🖨️</span>Étiquettes (lot)</a></li>
+        </ul>
+      </div>
 
-    <div class="admin-groupe">
-      <h3 class="admin-groupe-titre">Données &amp; accès</h3>
-      <ul class="admin-menu">
-        <li><a class="lien" href="/admin/donnees">🗄️ Données &amp; sauvegarde (catalogue CSV/Excel + sauvegarde complète)</a></li>
-        <li class="admin-menu-lien-supervision"><a class="lien" href="/admin/supervision">🩺 Supervision (bases, disque, sauvegarde, jeton, version)</a></li>
-        <li><a class="lien" href="/admin/jeton">🔗 Accès bénévole (lien d'activation / réinitialisation)</a></li>
-      </ul>
-    </div>
+      <div class="admin-groupe">
+        <h3 class="admin-groupe-titre">Données &amp; accès</h3>
+        <ul class="admin-menu">
+          <li><a class="lien" href="/admin/donnees" title="Catalogue CSV/Excel + sauvegarde complète"><span class="admin-icone">🗄️</span>Données &amp; sauvegarde</a></li>
+          <li class="admin-menu-lien-supervision"><a class="lien" href="/admin/supervision" title="Bases, disque, sauvegarde, jeton, version"><span class="admin-icone">🩺</span>Supervision</a></li>
+          <li><a class="lien" href="/admin/jeton" title="Lien d'activation / réinitialisation du jeton"><span class="admin-icone">🔗</span>Accès bénévole</a></li>
+        </ul>
+      </div>
 
-    <div class="admin-groupe">
-      <h3 class="admin-groupe-titre">Événement</h3>
-      <ul class="admin-menu">
-        <li><a class="lien" href="/admin/evenement">📅 Date de l'événement (planning des tournois)</a></li>
-        <li><a class="lien" href="/admin/ecran-salle">📺 Écran de salle (titre du tableau de bord)</a></li>
-        <li><a class="lien" href="/planning/admin">🗓️ Planning bénévole (souhaits, préremplissage, publication)</a></li>
-      </ul>
-    </div>
+      <div class="admin-groupe">
+        <h3 class="admin-groupe-titre">Événement</h3>
+        <ul class="admin-menu">
+          <li><a class="lien" href="/admin/evenement" title="Date de l'événement (planning des tournois)"><span class="admin-icone">📅</span>Date de l'événement</a></li>
+          <li><a class="lien" href="/admin/ecran-salle" title="Titre du tableau de bord public"><span class="admin-icone">📺</span>Écran de salle</a></li>
+          <li><a class="lien" href="/planning/admin" title="Souhaits, préremplissage, publication"><span class="admin-icone">🗓️</span>Planning bénévole</a></li>
+        </ul>
+      </div>
 
-    <div class="admin-groupe">
-      <h3 class="admin-groupe-titre">Configuration</h3>
-      <ul class="admin-menu">
-        <li><a class="lien" href="/admin/fonctionnalites">🔧 Fonctionnalités (activer / désactiver les modules)</a></li>
-        <li><a class="lien" href="/admin/motdepasse">🔑 Changer le mot de passe</a></li>
-        {% if not mode_formation and formation_url %}
-        <li><a class="lien" href="{{ formation_url }}" target="_blank" rel="noopener">🎓 Site de formation</a></li>
-        {% endif %}
-      </ul>
+      <div class="admin-groupe">
+        <h3 class="admin-groupe-titre">Configuration</h3>
+        <ul class="admin-menu">
+          <li><a class="lien" href="/admin/fonctionnalites" title="Activer / désactiver les modules"><span class="admin-icone">🔧</span>Fonctionnalités</a></li>
+          <li><a class="lien" href="/admin/motdepasse" title="Changer le mot de passe administrateur"><span class="admin-icone">🔑</span>Mot de passe</a></li>
+          {% if not mode_formation and formation_url %}
+          <li><a class="lien" href="{{ formation_url }}" target="_blank" rel="noopener" title="Ouvrir le site de formation"><span class="admin-icone">🎓</span>Site de formation</a></li>
+          {% endif %}
+        </ul>
+      </div>
     </div>
   </section>
 
