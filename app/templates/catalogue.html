@@ -66,6 +66,16 @@
   </details>
   {% endif %}
 
+  {% if chips %}
+  <div class="filtres-actifs">
+    <span class="fa-label">Filtres actifs :</span>
+    {% for c in chips %}
+      <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+    {% endfor %}
+    <a class="lien" href="/catalogue">Tout effacer</a>
+  </div>
+  {% endif %}
+
   <p class="catalogue-compte">{{ jeux | length }} jeu(x)</p>
 </section>
 
