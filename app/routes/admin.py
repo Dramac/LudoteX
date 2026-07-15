@@ -22,7 +22,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, auth, exports, services, supervision
+from app import admin_auth, auth, exports, sauvegarde, services, supervision
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.config import NOM_ASSOCIATION
 from app.db import get_connection
@@ -275,8 +275,14 @@ def etiquettes_pdf(
 # ---------------------------------------------------------------------------
 # Base de données : import d'un catalogue CSV, export CSV / Excel
 # ---------------------------------------------------------------------------
-def _page_donnees(request: Request, message: tuple | None = None):
-    """Rend la page « Base de données » avec les compteurs actuels."""
+def _page_donnees(request: Request, message: tuple | None = None, status_code: int = 200):
+    """
+    Rend la page « Données & sauvegarde » avec les compteurs actuels.
+
+    Page UNIQUE regroupant le catalogue (import/export CSV/Excel) et la
+    sauvegarde complète des 3 bases (export/import zip) — anciennement deux
+    sous-menus séparés, fusionnés pour plus de cohérence côté admin.
+    """
     conn = get_connection()
     try:
         nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
@@ -286,6 +292,7 @@ def _page_donnees(request: Request, message: tuple | None = None):
     return templates.TemplateResponse(
         request, "admin_donnees.html",
         {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message},
+        status_code=status_code,
     )
 
 
@@ -370,6 +377,69 @@ def donnees_export_xlsx(request: Request):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="catalogue.xlsx"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Sauvegarde & restauration complète (3 bases : prêt, tournois, planning)
+#
+# Page fusionnée avec le catalogue (voir _page_donnees / admin_donnees.html) :
+# pas de page dédiée ici, seulement les actions (téléchargement / import).
+# ---------------------------------------------------------------------------
+@router.get("/sauvegarde/export")
+def sauvegarde_export(request: Request):
+    """Télécharge une sauvegarde complète (zip des 3 bases + INFO.txt)."""
+    if (garde := _garde(request)):
+        return garde
+    contenu = sauvegarde.creer_zip_sauvegarde()
+    nom = sauvegarde.nom_fichier_zip()
+    return Response(
+        content=contenu, media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{nom}"'},
+    )
+
+
+@router.post("/sauvegarde/import")
+def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
+    """
+    Restaure les 3 bases depuis un zip de sauvegarde téléversé.
+
+    Validation stricte (présence des 3 bases + intégrité SQLite) avant toute
+    modification ; un filet de sécurité de l'état actuel est conservé
+    automatiquement (voir `app.sauvegarde.sauvegarde_de_securite`). Jamais
+    d'erreur brute : toujours réaffiché avec un message clair.
+    """
+    if (garde := _garde(request)):
+        return garde
+
+    import tempfile
+    from pathlib import Path
+
+    contenu = fichier.file.read()
+    if not contenu:
+        return _page_donnees(request, ("erreur", "Fichier vide ou absent."), status_code=400)
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp.write(contenu)
+        chemin = Path(tmp.name)
+    try:
+        sauvegarde.restaurer_zip_sauvegarde(chemin)
+        message = (
+            "succes",
+            "Restauration réussie : les 3 bases ont été remplacées par le "
+            "contenu de la sauvegarde. L'état précédent a été conservé dans "
+            "data/sauvegardes/ au cas où.",
+        )
+        status_code = 200
+    except sauvegarde.ZipInvalide as exc:
+        message = ("erreur", str(exc))
+        status_code = 400
+    finally:
+        try:
+            chemin.unlink()
+        except OSError:
+            pass
+
+    return _page_donnees(request, message, status_code=status_code)
 
 
 # ---------------------------------------------------------------------------

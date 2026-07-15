@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block titre %}Administration — base de données{% endblock %}
+{% block titre %}Administration — données &amp; sauvegarde{% endblock %}
 
 {% block contenu %}
 <section class="carte">
-  <h1>Base de données (catalogue)</h1>
+  <h1>Données &amp; sauvegarde</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
 
   {% if message %}
@@ -16,7 +16,7 @@
 </section>
 
 <section class="carte">
-  <h2>Importer un catalogue (CSV)</h2>
+  <h2>Catalogue — importer (CSV)</h2>
   <p class="stats-note">
     L'import est <strong>idempotent</strong> : il met à jour les jeux existants et
     ajoute les nouveaux, sans doublon. Formats de colonnes tolérés (mêmes en-têtes
@@ -25,20 +25,51 @@
   <form method="post" action="/admin/donnees/import" enctype="multipart/form-data"
         onsubmit="return confirm('Importer ce fichier et mettre à jour le catalogue ?');">
     <div class="champ">
-      <label for="fichier">Fichier CSV</label>
-      <input type="file" id="fichier" name="fichier" accept=".csv,text/csv" required>
+      <label for="fichier-csv">Fichier CSV</label>
+      <input type="file" id="fichier-csv" name="fichier" accept=".csv,text/csv" required>
     </div>
     <button type="submit" class="bouton-filtrer">Importer</button>
   </form>
 </section>
 
 <section class="carte">
-  <h2>Exporter le catalogue</h2>
+  <h2>Catalogue — exporter</h2>
   <p class="stats-note">Export d'une ligne par exemplaire, ré-importable ci-dessus.</p>
   <p class="stats-export">
     <a class="lien" href="/admin/donnees/export.csv">⬇️ Télécharger en CSV</a>
     &nbsp;·&nbsp;
     <a class="lien" href="/admin/donnees/export.xlsx">⬇️ Télécharger en Excel</a>
   </p>
+</section>
+
+<section class="carte">
+  <h2>Sauvegarde complète — exporter</h2>
+  <p class="stats-note">
+    Contrairement à l'export du catalogue ci-dessus (jeux uniquement), cette
+    sauvegarde regroupe les <strong>3 bases</strong> de l'application (prêt de
+    jeux, tournois, planning bénévole) dans une seule archive — copie complète
+    et cohérente, l'application n'étant pas interrompue pendant l'export.
+  </p>
+  <p class="stats-export">
+    <a class="lien" href="/admin/sauvegarde/export">⬇️ Télécharger la sauvegarde complète (.zip)</a>
+  </p>
+</section>
+
+<section class="carte">
+  <h2>Sauvegarde complète — restaurer</h2>
+  <p class="resultat resultat-attention">
+    ⚠️ Ceci remplacera l'intégralité des données actuelles (prêts, tournois,
+    planning) par le contenu du fichier choisi. Un filet de sécurité de l'état
+    actuel est conservé automatiquement, mais cette action reste lourde de
+    conséquences — à réserver à une vraie restauration.
+  </p>
+  <form method="post" action="/admin/sauvegarde/import" enctype="multipart/form-data"
+        onsubmit="return confirm('Ceci remplacera l\'intégralité des données actuelles (prêts, tournois, planning) par le contenu de ce fichier. Continuer ?');">
+    <div class="champ">
+      <label for="fichier-zip">Fichier de sauvegarde (.zip)</label>
+      <input type="file" id="fichier-zip" name="fichier" accept=".zip,application/zip" required>
+    </div>
+    <button type="submit" class="bouton bouton-secondaire">Restaurer</button>
+  </form>
 </section>
 {% endblock %}
