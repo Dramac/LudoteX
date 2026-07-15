@@ -466,6 +466,54 @@ des détails techniques bruts). **13 tests dédiés**
 (`tests/test_supervision.py`, service pur) + test de route (garde + rendu des
 5 sections). **Suite globale : 179 tests verts.**
 
+**Point 7.1 — Mode bac à sable / formation : FAIT.** Architecture retenue
+(décidée avant implémentation, cadrage affiné) : un **« SITE BIS »** = une
+**SECONDE INSTANCE** de la même application (même code, même dépôt), lancée
+avec son propre `.env` (`MODE_FORMATION=1` + bases SQLite **jetables**
+séparées), exposée sur un **sous-domaine dédié** (ex. `formation.<domaine>`,
+jamais un préfixe de chemin). **Aucun routage dynamique de connexion** dans le
+code — l'isolation vient uniquement du fait que l'instance ne connaît que ses
+propres bases. `app/config.py` expose `MODE_FORMATION` (bool, env
+`1`/`true`/`on`) et `FORMATION_URL` (optionnelle, lien admin côté PRODUCTION
+uniquement), tous deux injectés comme globals Jinja (`app/templating.py`) —
+**absent/0 : zéro changement visuel ni fonctionnel côté production** (vérifié
+par test). Quand actif : bandeau fixe orange (`#e65100`, différent du violet
+habituel `#4a148c`) « 🎓 SITE DE FORMATION — aucun effet sur LudoteX » sur
+**toutes** les pages (public/bénévole/admin, un seul point de contrôle dans
+`base.html`), et un filigrane diagonal « FORMATION » en pur CSS (image de fond
+SVG encodée en donnée, `body.mode-formation::after`, `pointer-events: none`),
+coupé à l'impression (`@media print`). Bandeau formation + bandeau habituel
+regroupés dans `.bandeau-groupe` (sticky commun) pour ne pas se chevaucher.
+Script de peuplement `app/formation.py` (`python -m app.formation`, modèle
+`app/planning/demo.py` mais **idempotent au sens fort** : VIDE puis repeuple —
+contrairement à la démo planning qui ajoute sans toucher à l'existant) : 20
+jeux fictifs (« Jeu d'essai n°1 »…, catégorie « Formation »), 5 prêts en cours
++ 5 prêts rendus, 1 tournoi d'exemple (état `inscriptions`, 4 inscrits) —
+touche les DEUX bases (prêt + tournois) de l'instance courante. Bouton
+« Réinitialiser les données de formation » au tableau de bord admin, **visible
+uniquement si `MODE_FORMATION=1`** (`POST /admin/formation/reinitialiser`,
+revérifie `MODE_FORMATION` côté serveur — 404 sinon, même si le bouton n'est
+jamais rendu en production) ; sûr par construction (bases jetables propres à
+l'instance). Sur la PRODUCTION : lien « 🎓 Site de formation » au tableau de
+bord si `FORMATION_URL` définie (masqué sinon). Déploiement : `deploy/install.sh`
+propose une étape 9 optionnelle « Site de formation » — sous-domaine, bases
+`<chemin>-formation`, service systemd dédié `ludotex-formation` (port 8100,
+`EnvironmentFile=/etc/ludotex-formation.env` pour ne jamais toucher au `.env`
+de prod tout en partageant le même code), bloc nginx + certificat Let's
+Encrypt pour le sous-domaine, peuplement initial, et pose automatiquement
+`FORMATION_URL` dans le `.env` de production. Nouveaux gabarits
+`deploy/ludotex-formation.service` et `deploy/nginx-ludotex-formation.conf`
+(mêmes conventions que leurs équivalents production). `docs/deploiement.md`
+(section « Site de formation ») et nouvelle doc `docs/mode-formation.md`
+(accès, réinitialisation, QR d'entraînement via `scripts/generate_qr.py
+--base-url`, suppression complète). QR d'entraînement : aucun script
+réécrit, juste `--base-url https://formation.<domaine>`. **11 tests dédiés**
+(`tests/test_formation.py` : comptes + idempotence des deux bases) + 3 tests
+de route (`tests/test_routes.py` : bandeau absent par défaut sur pages
+publique/bénévole/admin + bouton/lien absents + reset 404 ; bandeau présent
+partout + bouton fonctionnel quand actif ; lien admin conditionné à
+`FORMATION_URL` en production). **Suite globale : 190 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

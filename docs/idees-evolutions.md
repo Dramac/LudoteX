@@ -254,12 +254,15 @@ mise en œuvre quand elle coule de source.
 
 ## 7. Technique & robustesse
 
-### 7.1 Mode bac à sable / formation
+### 7.1 Mode bac à sable / formation — RÉALISÉ
 - **Valeur** : former les nouveaux bénévoles la semaine avant, sans polluer la
   vraie base. Un « mode démo » (bases jetables, bandeau visible) comme celui
   qui existe déjà pour le planning.
 - **Note** : la démo planning donne le patron ; généraliser au prêt (jeux
   fictifs + QR d'entraînement imprimables).
+- **Fait** : SECONDE INSTANCE (même code, sous-domaine dédié, bases jetables,
+  `MODE_FORMATION=1`), pas de routage dynamique de connexion. Voir CLAUDE.md et
+  `docs/mode-formation.md`.
 
 ### 7.2 Supervision légère en admin — RÉALISÉ
 - **Valeur** : le jour J, savoir en 5 s que tout va bien : taille et date de

@@ -179,6 +179,28 @@ Drive...), puis décommenter la ligne `rclone copy` dans
 sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /var/lib/ludotex/pret-jeux.db /var/lib/ludotex/sauvegardes
 ```
 
+## 7bis. Site de formation (optionnel)
+
+À la fin de son déroulement, `deploy/install.sh` propose d'installer aussi un
+**site de formation** : une SECONDE INSTANCE de l'application (même code),
+avec ses propres bases jetables, un bandeau et un filigrane bien visibles, et
+un bouton pour réinitialiser ses données — pensé pour former les nouveaux
+bénévoles sans risque de toucher aux vraies données. Détails et usage
+quotidien : `docs/mode-formation.md`.
+
+Si accepté, le script demande un **sous-domaine** dédié (défaut :
+`formation.<domaine principal>` — ex. `formation.jeux.monasso.fr`, à
+enregistrer en DNS comme le domaine principal), puis s'occupe de tout :
+bases séparées (`<chemin des bases>-formation`), service systemd
+`ludotex-formation` (port 8100, en parallèle du service `ludotex` existant),
+bloc nginx + certificat HTTPS pour ce sous-domaine, peuplement des données de
+démonstration, et ajout du lien correspondant au tableau de bord admin de la
+production (`FORMATION_URL` dans le `.env` principal).
+
+Pour l'installer après coup (script déjà passé sans cette étape) : relancer
+`sudo ./deploy/install.sh` en conservant le `.env` existant — l'étape « Site
+de formation » est reproposée à chaque exécution.
+
 ## 8. Mises à jour ultérieures
 
 Quand du nouveau code est disponible (nouvelle fonctionnalité, correctif) :

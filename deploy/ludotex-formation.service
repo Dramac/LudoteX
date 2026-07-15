@@ -1,0 +1,48 @@
+# Service systemd pour l'INSTANCE DE FORMATION (voir docs/mode-formation.md).
+#
+# Principe : la SECONDE INSTANCE tourne depuis le MÊME code que la production
+# (même WorkingDirectory, même dépôt cloné) mais avec sa PROPRE configuration
+# (bases jetables, MODE_FORMATION=1, port différent), injectée via
+# EnvironmentFile plutôt que par un second `.env` dans le même dossier — les
+# deux services restent totalement indépendants au niveau processus.
+#
+# Installation : voir l'étape optionnelle « site de formation » de
+# deploy/install.sh (ou la section correspondante de docs/deploiement.md pour
+# l'installation manuelle).
+#
+# IMPORTANT : un SEUL worker uvicorn, comme ludotex.service (sessions admin et
+# limitation de débit en mémoire du process).
+
+[Unit]
+Description=LudoteX — instance de FORMATION (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+User=pretjeux
+Group=pretjeux
+
+# Même code que la production (à adapter si l'installation ne suit pas le
+# chemin par défaut).
+WorkingDirectory=/opt/ludotex
+
+# Fichier de variables d'environnement DÉDIÉ à cette instance (MODE_FORMATION=1,
+# chemins de bases jetables, BASE_URL du sous-domaine formation...). Généré par
+# deploy/install.sh ; voir .env.example pour la liste des clés.
+EnvironmentFile=/etc/ludotex-formation.env
+
+# Port DIFFÉRENT de la production (8000) pour tourner en parallèle sur le même
+# serveur.
+ExecStart=/opt/ludotex/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8100 \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
