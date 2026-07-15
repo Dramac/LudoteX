@@ -22,6 +22,9 @@
     <li><a class="lien" href="/planning/admin">🗓️ Planning bénévole (souhaits, préremplissage, publication)</a></li>
     <li><a class="lien" href="/admin/fonctionnalites">🔧 Fonctionnalités (activer / désactiver les modules)</a></li>
     <li><a class="lien" href="/admin/motdepasse">🔑 Changer le mot de passe</a></li>
+    {% if not mode_formation and formation_url %}
+    <li><a class="lien" href="{{ formation_url }}" target="_blank" rel="noopener">🎓 Site de formation</a></li>
+    {% endif %}
   </ul>
 </section>
 
@@ -39,6 +42,20 @@
     <button type="submit" class="bouton bouton-secondaire">Clôturer tous les prêts en cours</button>
   </form>
 </section>
+
+{% if mode_formation %}
+<section class="carte">
+  <h2>🎓 Mode formation</h2>
+  <p class="stats-note">
+    Cette instance est un SITE DE FORMATION : ses données (jeux, prêts,
+    tournoi) sont entièrement fictives et sans effet sur LudoteX.
+  </p>
+  <form method="post" action="/admin/formation/reinitialiser"
+        onsubmit="return confirm('Vider et repeupler les données de formation (jeux, prêts, tournoi) ? Toute modification faite pendant la session en cours sera perdue.');">
+    <button type="submit" class="bouton bouton-secondaire">Réinitialiser les données de formation</button>
+  </form>
+</section>
+{% endif %}
 
 <section class="carte">
   <p><a class="lien" href="/admin/logout">Se déconnecter</a></p>

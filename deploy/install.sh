@@ -47,7 +47,7 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # ============================================================================
 # Affichage
 # ============================================================================
-NB_ETAPES=9
+NB_ETAPES=10
 ETAPE_COURANTE=0
 
 etape() {
@@ -429,7 +429,126 @@ else
 fi
 
 # ============================================================================
-# 9. Récapitulatif final
+# 9. Site de formation (optionnel)
+# ============================================================================
+etape "Site de formation (optionnel)"
+
+echo
+echo "Le site de formation est une SECONDE INSTANCE de l'application (même"
+echo "code), avec ses propres données jetables, pour former les nouveaux"
+echo "bénévoles sans risque de toucher aux vraies données. Voir docs/mode-formation.md."
+read -r -p "Installer aussi le site de formation ? [o/N] : " INSTALLER_FORMATION
+
+if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
+    demander "Sous-domaine du site de formation" "formation.$DOMAINE"
+    DOMAINE_FORMATION="$REPONSE"
+    DATA_DIR_FORMATION="${DATA_DIR}-formation"
+
+    info "Bases jetables : $DATA_DIR_FORMATION"
+    mkdir -p "$DATA_DIR_FORMATION"
+    chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR_FORMATION"
+
+    # Appelle un module Python sur l'instance de FORMATION, sans jamais passer
+    # par le .env de production (variables injectées directement, chacune un
+    # argument bash correctement quoté -> aucun souci avec les valeurs
+    # contenant des espaces, ex. NOM_ASSOCIATION).
+    run_python_formation() {
+        sudo -u "$SERVICE_USER" env \
+            MODE_FORMATION=1 \
+            ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db" \
+            TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db" \
+            PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db" \
+            BASE_URL="https://$DOMAINE_FORMATION" \
+            NOM_ASSOCIATION="$NOM_ASSOCIATION" \
+            APP_ENV=production \
+            "$INSTALL_DIR/.venv/bin/python" "$@"
+    }
+
+    info "Initialisation des bases de formation..."
+    (cd "$INSTALL_DIR" && run_python_formation -m app.db)
+    (cd "$INSTALL_DIR" && run_python_formation -m app.tournoi.db)
+    (cd "$INSTALL_DIR" && run_python_formation -m app.planning.db)
+
+    info "Peuplement des données de démonstration (jeux fictifs, prêts, tournoi)..."
+    (cd "$INSTALL_DIR" && run_python_formation -m app.formation)
+
+    # Fichier lu par systemd (EnvironmentFile) : valeurs prises littéralement
+    # ligne par ligne (pas d'interprétation shell, pas de souci de quoting ici).
+    ENV_FORMATION="/etc/ludotex-formation.env"
+    # Valeurs entre guillemets : valable pour systemd (EnvironmentFile,
+    # cf. systemd.exec(5)) ET pour un `source` bash manuel de dépannage —
+    # important pour NOM_ASSOCIATION, qui contient des espaces.
+    cat > "$ENV_FORMATION" <<EOF
+# Fichier généré par deploy/install.sh le $(date -Iseconds)
+# Variables de l'INSTANCE DE FORMATION uniquement (lues par systemd via
+# EnvironmentFile, voir deploy/ludotex-formation.service). PRET_TOKEN est
+# volontairement absent : accès ouvert, plus simple pour la formation (aucune
+# donnée réelle n'est en jeu sur cette instance).
+MODE_FORMATION=1
+ADMIN_PASSWORD="$ADMIN_PASSWORD"
+DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db"
+TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db"
+PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db"
+BASE_URL="https://$DOMAINE_FORMATION"
+NOM_ASSOCIATION="$NOM_ASSOCIATION"
+APP_ENV=production
+EOF
+    chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FORMATION"
+    chmod 600 "$ENV_FORMATION"
+    info "$ENV_FORMATION généré."
+
+    info "Service systemd ludotex-formation..."
+    cp "$INSTALL_DIR/deploy/ludotex-formation.service" /etc/systemd/system/ludotex-formation.service
+    sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/systemd/system/ludotex-formation.service
+    systemctl daemon-reload
+    systemctl enable --now ludotex-formation
+    sleep 1
+    if systemctl is-active --quiet ludotex-formation; then
+        info "Service ludotex-formation actif."
+    else
+        avert "Le service ludotex-formation ne semble pas démarré. Voir : journalctl -u ludotex-formation -e"
+    fi
+
+    info "Configuration nginx pour $DOMAINE_FORMATION..."
+    cp "$INSTALL_DIR/deploy/nginx-ludotex-formation.conf" /etc/nginx/sites-available/ludotex-formation
+    sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex-formation
+    sed -i "s/formation\.pret\.example\.fr/${DOMAINE_FORMATION}/g" /etc/nginx/sites-available/ludotex-formation
+    ln -sf /etc/nginx/sites-available/ludotex-formation /etc/nginx/sites-enabled/ludotex-formation
+    nginx -t
+    systemctl reload nginx
+
+    IP_SERVEUR_F="$(curl -s -4 ifconfig.me || true)"
+    IP_DOMAINE_F="$(dig +short "$DOMAINE_FORMATION" | tail -n1 || true)"
+    if [[ -n "$IP_SERVEUR_F" && -n "$IP_DOMAINE_F" && "$IP_SERVEUR_F" == "$IP_DOMAINE_F" ]]; then
+        if certbot --nginx -d "$DOMAINE_FORMATION" -m "$EMAIL" --agree-tos --redirect --non-interactive; then
+            info "Certificat HTTPS obtenu pour $DOMAINE_FORMATION."
+        else
+            avert "Échec de l'obtention du certificat pour $DOMAINE_FORMATION. Réessayer plus tard avec :"
+            avert "  sudo certbot --nginx -d $DOMAINE_FORMATION -m $EMAIL"
+        fi
+    else
+        avert "Le DNS de $DOMAINE_FORMATION ne pointe pas (encore) vers ce serveur : certificat non demandé."
+        avert "Une fois le DNS propagé : sudo certbot --nginx -d $DOMAINE_FORMATION -m $EMAIL"
+    fi
+
+    # Lien affiché au tableau de bord admin de la PRODUCTION.
+    if grep -q '^FORMATION_URL=' "$ENV_FILE" 2>/dev/null; then
+        sed -i "s#^FORMATION_URL=.*#FORMATION_URL=https://$DOMAINE_FORMATION#" "$ENV_FILE"
+    else
+        echo "FORMATION_URL=https://$DOMAINE_FORMATION" >> "$ENV_FILE"
+    fi
+    systemctl restart ludotex
+
+    FORMATION_URL_FINALE="https://$DOMAINE_FORMATION"
+    info "Site de formation prêt : $FORMATION_URL_FINALE"
+else
+    info "Site de formation non installé. Réalisable plus tard, voir docs/mode-formation.md."
+    FORMATION_URL_FINALE=""
+fi
+
+# ============================================================================
+# 10. Récapitulatif final
 # ============================================================================
 etape "Terminé"
 
@@ -452,4 +571,12 @@ echo "      cd $INSTALL_DIR && sudo -u $SERVICE_USER .venv/bin/python -m scripts
 echo "  - Vérifier le service : sudo systemctl status ludotex"
 echo "  - Suivre les logs      : sudo journalctl -u ludotex -f"
 echo
+if [[ -n "$FORMATION_URL_FINALE" ]]; then
+    echo "Site de formation    : $FORMATION_URL_FINALE  (accès ouvert, données fictives)"
+    echo "  - Réinitialiser ses données : bouton dans son tableau de bord admin,"
+    echo "    ou : cd $INSTALL_DIR && sudo -u $SERVICE_USER bash -c 'set -o allexport; source /etc/ludotex-formation.env; set +o allexport; exec .venv/bin/python -m app.formation'"
+    echo "  - QR d'entraînement (optionnel) :"
+    echo "      cd $INSTALL_DIR && sudo -u $SERVICE_USER .venv/bin/python -m scripts.generate_qr --base-url $FORMATION_URL_FINALE --planche"
+    echo
+fi
 echo "Détails et dépannage : docs/deploiement.md"

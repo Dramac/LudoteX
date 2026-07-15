@@ -25,7 +25,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from app import auth, modules, services
-from app.config import NOM_ASSOCIATION
+from app.config import FORMATION_URL, MODE_FORMATION, NOM_ASSOCIATION
 
 # Dossier contenant les gabarits HTML (app/templates/).
 BASE_DIR = Path(__file__).resolve().parent
@@ -34,6 +34,12 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 # Nom de l'association, personnalisable via NOM_ASSOCIATION (.env) — voir
 # app/config.py. Disponible dans TOUS les gabarits : {{ nom_association }}.
 templates.env.globals["nom_association"] = NOM_ASSOCIATION
+
+# Mode formation (voir app/config.py + docs/mode-formation.md) : bandeau et
+# filigrane dans base.html, condition du bouton de réinitialisation en admin.
+templates.env.globals["mode_formation"] = MODE_FORMATION
+# URL de l'instance de formation (lien admin côté PRODUCTION), None si absente.
+templates.env.globals["formation_url"] = FORMATION_URL
 
 # Fonction disponible dans tous les gabarits : `est_benevole(request)` indique si
 # l'appareil peut accéder aux écrans bénévole — jeton bénévole activé OU session

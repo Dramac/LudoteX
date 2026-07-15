@@ -9,15 +9,20 @@
   <link rel="apple-touch-icon" href="/static/img/logo_djplm.jpg">
   <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
 </head>
-<body>
-  <header class="bandeau">
-    <a class="bandeau-titre" href="/">{{ nom_association }}</a>
-    {% if est_benevole(request) %}
-      {% include "_menu_benevole.html" %}
-    {% else %}
-      {% include "_menu_visiteur.html" %}
+<body{% if mode_formation %} class="mode-formation"{% endif %}>
+  <div class="bandeau-groupe">
+    {% if mode_formation %}
+    <div class="formation-bandeau">🎓 SITE DE FORMATION — aucun effet sur LudoteX</div>
     {% endif %}
-  </header>
+    <header class="bandeau">
+      <a class="bandeau-titre" href="/">{{ nom_association }}</a>
+      {% if est_benevole(request) %}
+        {% include "_menu_benevole.html" %}
+      {% else %}
+        {% include "_menu_visiteur.html" %}
+      {% endif %}
+    </header>
+  </div>
   <main class="contenu {% block conteneur_extra %}{% endblock %}">
     {% block contenu %}{% endblock %}
   </main>

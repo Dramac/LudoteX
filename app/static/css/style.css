@@ -20,12 +20,18 @@ body {
   line-height: 1.5;
 }
 
-.bandeau {
-  background: #4a148c;
-  padding: 12px 16px;
+/* Regroupe le bandeau formation (optionnel) + le bandeau habituel : ensemble
+   sticky en haut d'écran, pour que les deux restent visibles au défilement
+   sans se chevaucher (au lieu de rendre chacun sticky séparément). */
+.bandeau-groupe {
   position: sticky;
   top: 0;
   z-index: 100;            /* reste au-dessus du contenu lors du défilement */
+}
+
+.bandeau {
+  background: #4a148c;
+  padding: 12px 16px;
 }
 .bandeau-titre {
   color: #fff;
@@ -525,3 +531,38 @@ button.lien {
 .rr-n { background: #e8f0fe; color: #1a73e8; }
 .rr-vide { color: #9aa0a6; }
 .rr-self { background: #f1f3f4; }
+
+/* ---------------------------------------------------------------------
+   MODE FORMATION (voir app/config.py + docs/mode-formation.md)
+   Bandeau fixe très visible + filigrane diagonal en fond, uniquement quand
+   MODE_FORMATION=1. Couleur volontairement différente du bandeau habituel
+   (#4a148c) pour ne jamais confondre les deux instances au premier coup d'œil.
+   ------------------------------------------------------------------- */
+.formation-bandeau {
+  background: #e65100;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 12px;
+  letter-spacing: 0.02em;
+}
+
+/* Filigrane : texte « FORMATION » répété en diagonale, en surimpression très
+   légère sur tout le contenu (pointer-events: none -> n'intercepte aucun clic).
+   Pur CSS (image de fond SVG encodée en donnée), aucun JavaScript. */
+body.mode-formation::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='140'%3E%3Ctext x='140' y='80' font-size='24' font-family='sans-serif' font-weight='bold' fill='%23e65100' fill-opacity='0.12' text-anchor='middle' transform='rotate(-30 140 80)'%3EFORMATION%3C/text%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+/* Ne jamais imprimer le bandeau ni le filigrane (gaspillage d'encre, gêne la
+   lecture d'une page imprimée depuis une instance de formation). */
+@media print {
+  .formation-bandeau { display: none; }
+  body.mode-formation::after { display: none; }
+}

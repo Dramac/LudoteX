@@ -346,6 +346,72 @@ def test_admin_supervision(client, monkeypatch):
     assert "Planning bénévole" in r2.text
 
 
+def test_formation_mode_inactif_par_defaut(client, monkeypatch):
+    # Sans MODE_FORMATION : aucun bandeau, aucun filigrane, aucun bouton reset,
+    # aucun lien (FORMATION_URL absente), route de reset fermée (404).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    r_public = client.get("/catalogue")
+    assert "SITE DE FORMATION" not in r_public.text
+    assert "mode-formation" not in r_public.text
+
+    r_admin = client.get("/admin")
+    assert "SITE DE FORMATION" not in r_admin.text
+    assert "Réinitialiser les données de formation" not in r_admin.text
+    assert "Site de formation" not in r_admin.text
+
+    assert client.post("/admin/formation/reinitialiser").status_code == 404
+
+
+def test_formation_mode_actif(client, monkeypatch):
+    # Bandeau + filigrane injectés via les globals Jinja (comme app.config au
+    # démarrage réel) ; MODE_FORMATION revérifié côté route admin.
+    from app.routes import admin as admin_routes
+    from app.templating import templates
+
+    monkeypatch.setattr(admin_routes, "MODE_FORMATION", True)
+    monkeypatch.setitem(templates.env.globals, "mode_formation", True)
+
+    # Page publique.
+    r_public = client.get("/catalogue")
+    assert "SITE DE FORMATION" in r_public.text
+    assert "mode-formation" in r_public.text
+
+    # Page bénévole (mode ouvert par défaut dans la fixture : pas de jeton requis).
+    r_scanner = client.get("/scanner")
+    assert "SITE DE FORMATION" in r_scanner.text
+
+    # Page admin : bandeau + bouton de réinitialisation visible.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r_admin = client.get("/admin")
+    assert "SITE DE FORMATION" in r_admin.text
+    assert "Réinitialiser les données de formation" in r_admin.text
+
+    # Bouton fonctionnel : vide + repeuple les bases de l'instance courante.
+    r_reset = client.post("/admin/formation/reinitialiser")
+    assert r_reset.status_code == 200
+    assert "réinitialisées" in r_reset.text
+    catalogue = client.get("/catalogue")
+    assert "essai n°1" in catalogue.text  # apostrophe échappée en HTML (&#39;)
+    assert "Catan" not in catalogue.text  # jeu de la fixture, effacé par le reset
+
+
+def test_formation_lien_admin_production(client, monkeypatch):
+    # Instance de PRODUCTION (MODE_FORMATION inactif) : le lien admin
+    # n'apparaît que si FORMATION_URL est définie.
+    from app.templating import templates
+
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    monkeypatch.setitem(templates.env.globals, "formation_url", "https://formation.example.fr")
+    r = client.get("/admin")
+    assert 'href="https://formation.example.fr"' in r.text
+    assert "Site de formation" in r.text
+
+
 def test_admin_changement_mdp(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "initial-123")
     client.post("/admin/login", data={"mot_de_passe": "initial-123"})

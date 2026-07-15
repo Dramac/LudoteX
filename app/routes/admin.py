@@ -22,9 +22,9 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, auth, exports, sauvegarde, services, supervision
+from app import admin_auth, auth, exports, formation, sauvegarde, services, supervision
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
-from app.config import NOM_ASSOCIATION
+from app.config import MODE_FORMATION, NOM_ASSOCIATION
 from app.db import get_connection
 from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
 from app.templating import templates
@@ -696,6 +696,34 @@ def cloturer_prets(request: Request):
     finally:
         conn.close()
     message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau disponible.")
+    return templates.TemplateResponse(request, "admin_dashboard.html", {"message": message})
+
+
+# ---------------------------------------------------------------------------
+# Mode formation : réinitialisation des données de démonstration
+# ---------------------------------------------------------------------------
+@router.post("/formation/reinitialiser")
+def formation_reinitialiser(request: Request):
+    """
+    Vide puis repeuple les bases de l'instance (jeux fictifs, prêts, tournoi
+    d'exemple — voir `app.formation`). Bouton visible UNIQUEMENT si
+    MODE_FORMATION=1 (voir `admin_dashboard.html`) ; on revérifie ici côté
+    serveur pour ne jamais exécuter cette action sur une instance de
+    production même en cas d'appel direct de la route.
+
+    Sûr par construction : l'instance de formation ne connaît que ses propres
+    bases jetables (aucun routage dynamique de connexion dans le code).
+    """
+    if (garde := _garde(request)):
+        return garde
+    if not MODE_FORMATION:
+        return Response(status_code=404)
+    resume = formation.peupler()
+    message = (
+        "succes",
+        f"Données de formation réinitialisées : {resume['jeux']} jeux fictifs, "
+        f"{resume['tournois']} tournoi d'exemple.",
+    )
     return templates.TemplateResponse(request, "admin_dashboard.html", {"message": message})
 
 
