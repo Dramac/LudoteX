@@ -163,9 +163,16 @@ mise en œuvre quand elle coule de source.
 ### 4.1 « Mon planning » en .ics — ✅ RÉALISÉ
 - **Valeur** : le bénévole ajoute ses créneaux à son agenda en un tap, comme
   pour les tournois. Réduit les oublis, zéro e-mail nécessaire.
-- **Note** : `ical_planning_benevole` (`app/planning/services.py`), sur le
-  patron d'`ical_tournoi` mais en multi-VEVENT (un par affectation), route
-  `GET /planning/mon.ics?code=`. Voir CLAUDE.md (182 tests verts).
+- **Note** : quick win — `ical_tournoi` existe déjà, à généraliser (VEVENT
+  multiples), route `/planning/mon.ics?code=`.
+- **Fait** : `ical_planning_benevole` (`app/planning/services.py`), sur le
+  patron d'`ical_tournoi` mais en **multi-VEVENT** (un par affectation, poste
+  ou tâche) ; helpers `_ics_horodatage`/`_ics_echappe` dupliqués localement
+  (modules `tournoi`/`planning` indépendants). Route publique
+  `GET /planning/mon.ics?code=` (même lookup que `/planning/mon`, 404 si code
+  invalide ou aucune affectation), bouton « Ajouter tout mon planning à mon
+  agenda » sur `planning_mon.html`. Aucune donnée personnelle dans le fichier.
+  Voir CLAUDE.md (182 tests verts).
 
 ### 4.2 Pointage du jour J
 - **Valeur** : « qui est arrivé ? » — cocher les présences sur la grille et
