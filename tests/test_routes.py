@@ -346,6 +346,27 @@ def test_admin_supervision(client, monkeypatch):
     assert "Planning bénévole" in r2.text
 
 
+def test_admin_dashboard_supervision_embarquee(client, monkeypatch):
+    # Le tableau de bord embarque désormais l'état de supervision (colonne
+    # dédiée sur grand écran, masquée en CSS sous le breakpoint bureau — le
+    # contenu reste dans le HTML dans les deux cas, donc testable directement).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.get("/admin")
+    assert r.status_code == 200
+    assert "Supervision" in r.text
+    assert "Bases de données" in r.text
+    assert "Version déployée" in r.text
+    assert "Prêt de jeux" in r.text
+    # Menu "Gérer" toujours présent, avec ses sous-groupes.
+    assert "Jeux &amp; étiquettes" in r.text or "Jeux & étiquettes" in r.text
+    assert 'href="/admin/etiquettes"' in r.text
+    # La supervision reste aussi disponible après clôture des prêts (rendu via
+    # le même helper que la connexion).
+    r2 = client.post("/admin/cloturer-prets")
+    assert r2.status_code == 200 and "Bases de données" in r2.text
+
+
 def test_formation_mode_inactif_par_defaut(client, monkeypatch):
     # Sans MODE_FORMATION : aucun bandeau, aucun filigrane, aucun bouton reset,
     # aucun lien (FORMATION_URL absente), route de reset fermée (404).

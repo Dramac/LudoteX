@@ -308,6 +308,46 @@ summary:focus-visible,
 .admin-menu { list-style: none; margin: 0; padding: 0; }
 .admin-menu li { margin: 10px 0; font-size: 1.1rem; }
 
+/* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
+   Configuration). Le titre de groupe est masqué par défaut (mobile = référence
+   inchangée : les items s'enchaînent comme une seule liste, .admin-menu n'ayant
+   pas de marge de ul propre) et n'apparaît qu'à partir du breakpoint bureau. */
+.admin-groupe-titre {
+  display: none;
+  margin: 20px 0 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--gris);
+}
+.admin-groupe:first-of-type .admin-groupe-titre { margin-top: 4px; }
+
+/* Tableau de bord admin : une seule colonne (comportement de référence, cartes
+   empilées via leur marge habituelle .carte) sous le breakpoint bureau ; deux
+   colonnes (menu + supervision en direct) au-delà — voir la media query. */
+.admin-dashboard-col-supervision { display: none; }
+
+@media (min-width: 900px) {
+  .admin-dashboard-grille {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    align-items: start;
+    gap: 16px;
+  }
+  .admin-dashboard-col-supervision { display: block; }
+
+  /* Sur le tableau de bord, la supervision est déjà visible dans la colonne de
+     droite : le lien vers la page dédiée dans le menu "Gérer" devient redondant. */
+  .admin-menu-lien-supervision { display: none; }
+
+  .admin-groupe-titre { display: block; }
+  .admin-groupe + .admin-groupe { border-top: 1px solid var(--bord); padding-top: 4px; }
+  .admin-menu li { margin: 8px 0; font-size: 1.05rem; }
+  .admin-menu li a { display: block; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; }
+  .admin-menu li a:hover { background: var(--vert-clair); text-decoration: none; }
+}
+
 /* Légende des états de fonctionnalités */
 .fonct-legende { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 20px; }
 .fonct-legende dt { font-weight: 700; white-space: nowrap; }
