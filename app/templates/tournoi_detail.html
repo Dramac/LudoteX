@@ -61,7 +61,7 @@
                 <td>{{ c.rang if c.rang is not none else "—" }}</td>
                 <td>{{ c.pseudo }}</td>
                 <td>
-                  {%- if t.mode_scoring == "ronde_suisse" -%}{{ c.points_txt }}
+                  {%- if t.mode_scoring in ("ronde_suisse", "round_robin") -%}{{ c.points_txt }}
                   {%- else -%}{{ c.score if c.score is not none else "—" }}{%- endif -%}
                 </td>
               </tr>
@@ -72,6 +72,34 @@
         <p><em>Aucun participant.</em></p>
       {% endif %}
     </section>
+
+    {% if confrontations %}
+      <section class="carte">
+        <h2>Tableau des confrontations</h2>
+        <div class="rr-scroll">
+          <table class="detail rr-table">
+            <thead>
+              <tr>
+                <th></th>
+                {% for e in confrontations.entetes %}<th>{{ e }}</th>{% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for ligne in confrontations.lignes %}
+                <tr>
+                  <th class="rr-nom">{{ ligne.pseudo }}</th>
+                  {% for c in ligne.cellules %}
+                    <td class="{{ c.classe }}">{{ c.txt }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="stats-note">Lecture par ligne : V = victoire, N = nul, D = défaite
+          (score en manches si BO3). « · » = pas encore joué.</p>
+      </section>
+    {% endif %}
 
     {% if rondes %}
       {% for r in rondes | reverse %}
