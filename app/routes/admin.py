@@ -47,6 +47,25 @@ def _base_url(request: Request) -> str:
     return os.getenv("BASE_URL") or str(request.base_url).rstrip("/")
 
 
+def _rendre_dashboard(request: Request, message):
+    """
+    Rend le tableau de bord admin, avec l'état de supervision (bases, disque,
+    sauvegarde, jeton, version) embarqué dans la colonne dédiée sur grand
+    écran (voir `admin_dashboard.html` + `_supervision_contenu.html`, réutilisé
+    par `/admin/supervision`). Centralisé ici pour ne pas dupliquer l'appel
+    à `supervision.etat_supervision` dans chaque route qui réaffiche le tableau
+    de bord (connexion, clôture des prêts, réinitialisation formation).
+    """
+    conn = get_connection()
+    try:
+        etat = supervision.etat_supervision(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_dashboard.html", {"message": message, "etat": etat}
+    )
+
+
 # ---------------------------------------------------------------------------
 # Connexion / déconnexion
 # ---------------------------------------------------------------------------
@@ -54,7 +73,7 @@ def _base_url(request: Request) -> str:
 def accueil(request: Request):
     """Page d'accueil admin : tableau de bord si connecté, sinon formulaire de connexion."""
     if admin_auth.admin_connecte(request):
-        return templates.TemplateResponse(request, "admin_dashboard.html", {"message": None})
+        return _rendre_dashboard(request, None)
     conn = get_connection()
     try:
         configure = admin_auth.admin_configure(conn)
@@ -696,7 +715,7 @@ def cloturer_prets(request: Request):
     finally:
         conn.close()
     message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau disponible.")
-    return templates.TemplateResponse(request, "admin_dashboard.html", {"message": message})
+    return _rendre_dashboard(request, message)
 
 
 # ---------------------------------------------------------------------------
@@ -724,7 +743,7 @@ def formation_reinitialiser(request: Request):
         f"Données de formation réinitialisées : {resume['jeux']} jeux fictifs, "
         f"{resume['tournois']} tournoi d'exemple.",
     )
-    return templates.TemplateResponse(request, "admin_dashboard.html", {"message": message})
+    return _rendre_dashboard(request, message)
 
 
 @router.post("/jeton/reinitialiser")

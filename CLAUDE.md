@@ -514,6 +514,36 @@ publique/bénévole/admin + bouton/lien absents + reset 404 ; bandeau présent
 partout + bouton fonctionnel quand actif ; lien admin conditionné à
 `FORMATION_URL` en production). **Suite globale : 190 tests verts.**
 
+**Tableau de bord admin en deux colonnes sur grand écran : FAIT.** Corollaire
+de `.contenu { max-width: 540px }` (global, `style.css`) qui bridait `/admin`
+en une seule colonne même sur ordinateur — même cause déjà rencontrée pour
+`planning_public`/`stats`/etc. (voir plus haut), traitée ici avec le même
+principe (`.contenu-large` + bloc Jinja `conteneur_extra`) plutôt qu'une
+nouvelle mécanique. `admin_dashboard.html` passe en `.contenu-large`, avec une
+grille CSS deux colonnes **à partir de 900px** (`.admin-dashboard-grille`,
+media query dédiée dans `style.css`) : colonne gauche = menu « Gérer » (+
+modules, fin d'événement), colonne droite = **supervision légère en direct**
+(mêmes informations que `/admin/supervision` : bases, disque, sauvegarde,
+jeton, version). Le contenu de la supervision est **factorisé** dans
+`app/templates/_supervision_contenu.html` (fragment paramétré par `{{ etat }}`),
+inclus à la fois par `admin_supervision.html` (page dédiée, sous son propre
+`<h1>`) et par `admin_dashboard.html` (carte « 🩺 Supervision » de la colonne
+droite). Route : `etat_supervision(conn)` est désormais calculé pour **toutes**
+les routes qui réaffichent le tableau de bord (connexion, clôture des prêts,
+réinitialisation formation), via un helper commun `_rendre_dashboard()` dans
+`routes/admin.py` (évite la triplication). **Sous 900px, rien ne change** :
+la colonne supervision est masquée en CSS (`display:none`, le lien
+« 🩺 Supervision » du menu « Gérer » reste alors le seul accès), et le menu
+« Gérer » lui-même est resté une liste plate visuellement identique à l'ancienne
+(les nouveaux sous-groupes — Jeux & étiquettes / Données & accès / Événement /
+Configuration — sont dans le HTML pour la hiérarchie visuelle du bureau, mais
+leurs titres `<h3>` sont masqués sous 900px et les `<ul>` n'ajoutent aucune
+marge propre, donc l'empilement mobile reste identique au pixel près). Au-delà
+de 900px : titres de sous-groupes visibles, séparateurs entre groupes, lignes
+de menu plus aérées avec surbrillance au survol. Aucune dépendance JS ajoutée
+(CSS pur, comme le reste du projet). **1 test ajouté**
+(`test_admin_dashboard_supervision_embarquee`), **191 tests verts**.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
