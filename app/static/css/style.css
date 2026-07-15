@@ -108,6 +108,47 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .bouton-principal { background: var(--vert); }
 .bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord); }
 
+/* --- Accessibilité & micro-interactions (tout le site) --- */
+
+/* Focus clavier visible et homogène (sans gêner le clic souris). */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #7e57c2;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Champs de saisie : liseré violet au focus (souris comme clavier). */
+.champ input:focus,
+.champ select:focus,
+.champ textarea:focus { border-color: #7e57c2; }
+
+/* Retour visuel à l'appui sur les boutons et puces. */
+.bouton, .bouton-filtrer, .chip-filtre { transition: filter .12s ease, transform .06s ease; }
+.bouton:hover, .bouton-filtrer:hover { filter: brightness(.96); }
+.bouton:active, .bouton-filtrer:active, .chip-filtre:active { transform: translateY(1px); }
+
+/* Ouverture animée des panneaux <details class="recherche"> (léger). */
+@keyframes recherche-ouverture {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.recherche[open] > *:not(summary) {
+  animation: recherche-ouverture .18s ease-out;
+}
+.recherche > summary { transition: color .12s ease; }
+
+/* Respect des préférences système : on coupe tout mouvement. */
+@media (prefers-reduced-motion: reduce) {
+  .jeu, .bouton, .bouton-filtrer, .chip-filtre { transition: none; }
+  .jeu:hover, .bouton:active, .bouton-filtrer:active, .chip-filtre:active { transform: none; }
+  .recherche[open] > *:not(summary) { animation: none; }
+}
+
 /* Page d'accueil */
 .accueil { text-align: center; }
 .accueil-dispo { font-size: 1.2rem; margin: 8px 0 20px; }
@@ -209,6 +250,29 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 }
 .badge-dispo { background: var(--vert-clair); color: var(--vert); }
 .badge-sorti { background: var(--rouge-clair); color: var(--rouge); }
+
+/* Survol des cartes de jeu (léger relief) */
+.jeu {
+  transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease;
+}
+.jeu:hover {
+  box-shadow: 0 3px 12px rgba(74, 20, 140, .12);
+  border-color: #c9b8e8;
+  transform: translateY(-1px);
+}
+
+/* Puces de filtres actifs (chacune retire son filtre au clic) */
+.filtres-actifs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; }
+.filtres-actifs .fa-label { color: var(--gris); font-size: .9rem; }
+.chip-filtre {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #ede7f6; color: #4a148c;
+  border-radius: 999px; padding: 4px 12px;
+  font-size: .85rem; font-weight: 600; text-decoration: none;
+  transition: background .15s ease;
+}
+.chip-filtre:hover { background: #d9ccf0; }
+.chip-filtre .croix { font-weight: 700; opacity: .7; }
 
 /* Statistiques */
 .stats-chiffres { display: flex; flex-wrap: wrap; gap: 16px; }
