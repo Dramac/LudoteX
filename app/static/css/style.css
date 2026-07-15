@@ -511,3 +511,15 @@ button.lien {
 .pl-case-lien:hover { outline: 2px solid var(--vert); outline-offset: -2px; }
 .pl-horaire-lien { text-decoration: none; color: var(--gris); white-space: nowrap; }
 .pl-horaire-lien:hover { color: var(--vert); }
+
+/* --- Round robin : tableau des confrontations --- */
+.rr-scroll { overflow-x: auto; }                 /* défilement horizontal si beaucoup de joueurs */
+.rr-table { min-width: max-content; }
+.rr-table th, .rr-table td { text-align: center; white-space: nowrap; }
+.rr-table .rr-nom { text-align: left; font-weight: 600; }
+.rr-table td { font-weight: 700; }
+.rr-v { background: var(--vert-clair); color: var(--vert); }
+.rr-d { background: var(--rouge-clair); color: var(--rouge); }
+.rr-n { background: #e8f0fe; color: #1a73e8; }
+.rr-vide { color: #9aa0a6; }
+.rr-self { background: #f1f3f4; }

@@ -154,7 +154,7 @@ def detail(request: Request, id_tournoi: int):
     simple liste des participants.
     """
     participants, ouverte, restantes = [], False, None
-    classement, rondes, tours, vainqueur = None, None, None, None
+    classement, rondes, tours, vainqueur, confrontations = None, None, None, None, None
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
@@ -168,6 +168,10 @@ def detail(request: Request, id_tournoi: int):
             elif lance and t["mode_scoring"] == "ronde_suisse":
                 classement = services.classement_suisse(conn, id_tournoi)
                 rondes = services.toutes_les_rondes(conn, id_tournoi)
+            elif lance and t["mode_scoring"] == "round_robin":
+                classement = services.classement_round_robin(conn, id_tournoi)
+                rondes = services.toutes_les_rondes(conn, id_tournoi)
+                confrontations = services.table_confrontations(conn, id_tournoi)
             elif lance and t["mode_scoring"] == "elimination":
                 tours = services.arbre(conn, id_tournoi)
                 vainqueur = services.vainqueur(conn, id_tournoi)
@@ -178,7 +182,7 @@ def detail(request: Request, id_tournoi: int):
         {"t": t, "participants": participants,
          "inscription_ouverte": ouverte, "places_restantes": restantes,
          "classement": classement, "rondes": rondes,
-         "tours": tours, "vainqueur": vainqueur},
+         "tours": tours, "vainqueur": vainqueur, "confrontations": confrontations},
         status_code=200 if t else 404,
     )
 
@@ -512,7 +516,7 @@ def lancer_action(request: Request, id_tournoi: int,
         conn.close()
     if res.get("ok") and mode == "high_score":
         return RedirectResponse(f"/tournoi/{id_tournoi}/scores", status_code=303)
-    if res.get("ok") and mode == "ronde_suisse":
+    if res.get("ok") and mode in ("ronde_suisse", "round_robin"):
         return RedirectResponse(f"/tournoi/{id_tournoi}/rondes", status_code=303)
     if res.get("ok") and mode == "elimination":
         return RedirectResponse(f"/tournoi/{id_tournoi}/arbre", status_code=303)
@@ -594,7 +598,7 @@ def rondes_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)
         t = services.get_tournoi(conn, id_tournoi)
         if t is None:
             return RedirectResponse("/tournois", status_code=303)
-        if t["mode_scoring"] != "ronde_suisse":
+        if t["mode_scoring"] not in ("ronde_suisse", "round_robin"):
             return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
         contexte = _contexte_rondes(conn, t)
     finally:

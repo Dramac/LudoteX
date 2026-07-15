@@ -80,8 +80,9 @@
         </form>
         <p class="stats-note">
           Le mode et le format se choisissent au lancement. Le nombre de rondes ne
-          concerne que la ronde suisse (l'élimination déduit ses tours de
-          l'effectif) ; le BO3 ne s'applique qu'aux modes à base de matchs.
+          concerne que la ronde suisse (l'élimination et le round robin déduisent
+          leurs rondes de l'effectif) ; le BO3 ne s'applique qu'aux modes à base de
+          matchs (suisse, round robin, élimination).
         </p>
       {% else %}
         <p class="stats-note">Ajoutez au moins un participant pour pouvoir lancer.</p>
@@ -94,7 +95,7 @@
           Saisir les scores</a>
       </p>
     {% endif %}
-    {% if t.etat in ("lance", "termine") and t.mode_scoring == "ronde_suisse" %}
+    {% if t.etat in ("lance", "termine") and t.mode_scoring in ("ronde_suisse", "round_robin") %}
       <p class="lien-fiche">
         <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/rondes">
           Gérer les rondes et les résultats</a>

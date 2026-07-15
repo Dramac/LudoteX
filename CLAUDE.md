@@ -1,5 +1,10 @@
 # CLAUDE.md — Contexte projet pour l'assistant
 
+> **Le projet s'appelle désormais LudoteX** (anciennement `pret-jeux`).
+> Dépôt GitHub : `https://github.com/Dramac/LudoteX`
+> Ce nom évoque « ludique », « technique » et fait écho à LaTeX.
+> L'utiliser dans tous les messages, commentaires, titres et documents.
+
 Fichier de contexte relu à chaque session de développement. Le tenir à jour
 à la fin de chaque étape. La **conception fait foi dans `docs/specification.md`** ;
 ce fichier en est un résumé opérationnel, pas une source concurrente.
@@ -70,6 +75,20 @@ et **répartis** via `_ordre_places` (seeding standard 1-8-4-5-2-7-3-6…),
 `GET /tournoi/{id}/arbre`, `POST .../arbre/{tour}/resultats` (vainqueur a/b, pas
 de nul), `POST .../arbre/suivant`. Gabarit `tournoi_arbre.html` ; page publique
 affiche l'arbre + le vainqueur. **Suite globale : 71 tests verts.**
+
+**Mode de scoring ROUND ROBIN (championnat) : FAIT.** `"round_robin"` ajouté à
+`MODES_SCORING`. `lancer_tournoi(..., "round_robin")` (refus si < 3 →
+`pas_assez`, BO3 compatible) génère **toutes les rondes d'emblée** via la
+**méthode des cercles** (`_generer_round_robin` : un joueur fixe, les autres
+tournent ; joueur « fantôme » None si impair → repos parfaitement équilibrés, un
+par joueur). `nb_rondes` = n-1 (pair) ou n (impair). Barème/points identiques au
+suisse (réutilise `points_suisse`) ; `classement_round_robin` délègue à
+`classement_suisse`. **Saisie via l'écran des rondes existant** (routes
+`/tournoi/{id}/rondes*` étendues à `round_robin` ; pas de « ronde suivante »
+puisque tout est généré au lancement). Affichage public : classement + **tableau
+croisé des confrontations** (`table_confrontations` : V/N/D ou score BO3,
+ordonné par classement ; gabarit `tournoi_detail.html`, styles `.rr-*`).
+**Suite globale : 156 tests verts.**
 
 **Option BO3 (best of 3) : FONCTIONNELLE.** Choisie **au lancement** (plus à la
 création : `bo3` retiré du formulaire), via `lancer_tournoi(..., bo3=True)` —

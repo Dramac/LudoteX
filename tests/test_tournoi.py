@@ -479,6 +479,90 @@ def test_agenda_route_404_sans_date(client):
     assert client.get(f"/tournoi/{tid}/agenda.ics").status_code == 404
 
 
+# --- Round robin ---
+def _tournoi_round_robin(conn, pseudos, bo3=False):
+    tid = services.creer_tournoi(conn, "RR")
+    services.changer_etat(conn, tid, "inscriptions")
+    for p in pseudos:
+        services.ajouter_participant(conn, tid, p)
+    assert services.lancer_tournoi(conn, tid, "round_robin", bo3=bo3)["ok"]
+    return tid
+
+
+def _paires_jouees(conn, tid):
+    return [frozenset((r["participant_a"], r["participant_b"]))
+            for r in conn.execute(
+                "SELECT participant_a, participant_b FROM rencontres "
+                "WHERE id_tournoi = ? AND participant_b IS NOT NULL", (tid,))]
+
+
+def test_round_robin_refus_moins_de_3(conn):
+    tid = services.creer_tournoi(conn, "T")
+    services.changer_etat(conn, tid, "inscriptions")
+    services.ajouter_participant(conn, tid, "A")
+    services.ajouter_participant(conn, tid, "B")
+    assert services.lancer_tournoi(conn, tid, "round_robin")["raison"] == "pas_assez"
+
+
+def test_round_robin_pair_toutes_les_paires_une_fois(conn):
+    tid = _tournoi_round_robin(conn, ["A", "B", "C", "D"])
+    assert services.get_tournoi(conn, tid)["nb_rondes"] == 3      # n-1
+    paires = _paires_jouees(conn, tid)
+    assert len(paires) == 6 and len(set(paires)) == 6            # C(4,2), chacune 1 fois
+    byes = conn.execute("SELECT COUNT(*) FROM rencontres WHERE id_tournoi=? "
+                        "AND participant_b IS NULL", (tid,)).fetchone()[0]
+    assert byes == 0                                             # effectif pair : aucun repos
+
+
+def test_round_robin_impair_repos_equilibres(conn):
+    tid = _tournoi_round_robin(conn, ["A", "B", "C", "D", "E"])
+    assert services.get_tournoi(conn, tid)["nb_rondes"] == 5      # n (impair)
+    paires = _paires_jouees(conn, tid)
+    assert len(paires) == 10 and len(set(paires)) == 10          # C(5,2)
+    byes = [r["participant_a"] for r in conn.execute(
+        "SELECT participant_a FROM rencontres WHERE id_tournoi=? AND participant_b IS NULL", (tid,))]
+    assert len(byes) == 5 and len(set(byes)) == 5               # chacun exactement un repos
+
+
+def test_round_robin_classement_bo3_et_confrontations(conn):
+    tid = _tournoi_round_robin(conn, ["A", "B", "C"], bo3=True)
+    assert services.get_tournoi(conn, tid)["bo3"] == 1
+    for ronde in range(1, services.get_tournoi(conn, tid)["nb_rondes"] + 1):
+        manches = {m["id_rencontre"]: (2, 0)
+                   for m in services.rencontres_de_ronde(conn, tid, ronde) if not m["bye"]}
+        if manches:
+            services.enregistrer_manches(conn, tid, ronde, manches, autoriser_nul=True)
+    cl = services.classement_round_robin(conn, tid)
+    assert cl[0]["rang"] == 1
+    tab = services.table_confrontations(conn, tid)
+    assert len(tab["entetes"]) == 3 and len(tab["lignes"]) == 3
+    # La diagonale est neutre ; hors diagonale, un score « 2–0 » ou « 0–2 » apparaît.
+    textes = [c["txt"] for lg in tab["lignes"] for c in lg["cellules"]]
+    assert "2–0" in textes and "0–2" in textes
+
+
+def test_round_robin_route_complet(client):
+    r = client.post("/tournoi/nouveau", data={"nom": "RR Route"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    for p in ("A", "B", "C", "D"):
+        client.post(f"/tournoi/{tid}/participant", data={"pseudo": p})
+    lance = client.post(f"/tournoi/{tid}/lancer",
+                        data={"mode_scoring": "round_robin"}, follow_redirects=False)
+    assert lance.status_code == 303 and lance.headers["location"].endswith("/rondes")
+    assert "Round robin" in client.get(f"/tournoi/{tid}/rondes").text
+
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    r1 = [row["id_rencontre"] for row in c.execute(
+        "SELECT id_rencontre FROM rencontres WHERE id_tournoi=? AND ronde=1 "
+        "AND participant_b IS NOT NULL", (tid,))]
+    c.close()
+    client.post(f"/tournoi/{tid}/rondes/1/resultats", data={f"res_{i}": "a" for i in r1})
+    # La page publique affiche le tableau des confrontations.
+    assert "Tableau des confrontations" in client.get(f"/tournoi/{tid}").text
+
+
 # --- Élimination directe ---
 def _tournoi_elim(conn, pseudos):
     tid = services.creer_tournoi(conn, "Elim")

@@ -4,7 +4,7 @@
 
 {% block contenu %}
 <section class="carte">
-  <h1>Ronde suisse</h1>
+  <h1>{{ "Round robin" if t.mode_scoring == "round_robin" else "Ronde suisse" }}</h1>
   <p class="dispo-titre">
     {{ t.nom }} · {{ ronde_courante }} / {{ t.nb_rondes }} ronde(s)
   </p>

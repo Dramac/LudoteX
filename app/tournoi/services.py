@@ -48,6 +48,7 @@ TRANSITIONS = {
 MODES_SCORING = {
     "high_score": "High score (points cumulés)",
     "ronde_suisse": "Ronde suisse",
+    "round_robin": "Round robin (championnat)",
     "elimination": "Élimination directe",
 }
 
@@ -501,18 +502,25 @@ def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
     elif mode_scoring == "elimination":
         if nb_inscrits < 2:
             return {"ok": False, "raison": "pas_assez"}
+    elif mode_scoring == "round_robin":
+        if nb_inscrits < 3:
+            return {"ok": False, "raison": "pas_assez"}
 
     # nb_rondes stocke : pour le suisse, le nombre choisi ; pour l'élimination,
-    # le nombre de tours de l'arbre (déduit de l'effectif).
+    # le nombre de tours de l'arbre ; pour le round robin, le nombre de rondes du
+    # championnat (n-1 si effectif pair, n si impair — méthode des cercles).
     if mode_scoring == "ronde_suisse":
         nb_rondes_stocke = nb_rondes
     elif mode_scoring == "elimination":
         nb_rondes_stocke = _nb_tours_elimination(nb_inscrits)
+    elif mode_scoring == "round_robin":
+        nb_rondes_stocke = nb_inscrits - 1 if nb_inscrits % 2 == 0 else nb_inscrits
     else:
         nb_rondes_stocke = None
 
     # Le BO3 n'a de sens que pour les modes à base de matchs.
-    bo3_stocke = 1 if (bo3 and mode_scoring in ("ronde_suisse", "elimination")) else 0
+    bo3_stocke = 1 if (bo3 and mode_scoring in
+                       ("ronde_suisse", "round_robin", "elimination")) else 0
 
     conn.execute(
         "UPDATE tournois SET etat = 'lance', mode_scoring = ?, nb_rondes = ?, bo3 = ? "
@@ -523,6 +531,8 @@ def lancer_tournoi(conn: sqlite3.Connection, id_tournoi: int,
         _init_high_score(conn, id_tournoi)
     elif mode_scoring == "ronde_suisse":
         _generer_ronde_suisse(conn, id_tournoi, 1)
+    elif mode_scoring == "round_robin":
+        _generer_round_robin(conn, id_tournoi)
     elif mode_scoring == "elimination":
         _generer_premier_tour_elimination(conn, id_tournoi)
     conn.commit()
@@ -931,6 +941,111 @@ def classement_suisse(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
             "points": p, "points_txt": format_points(p),
         })
     return classement
+
+
+# --- Round robin (championnat toutes rondes) -------------------------------
+# Chaque participant affronte tous les autres exactement une fois. Toutes les
+# rondes sont générées d'emblée au lancement par la MÉTHODE DES CERCLES : un
+# joueur reste fixe, les autres tournent d'un cran à chaque ronde. Si l'effectif
+# est impair, un joueur « fantôme » (None) tourne aussi et distribue les repos
+# (byes) de façon parfaitement équilibrée (un par joueur). Barème et classement
+# identiques à la ronde suisse (victoire 1, nul 0,5, défaite 0).
+def _generer_round_robin(conn: sqlite3.Connection, id_tournoi: int) -> int:
+    """Génère toutes les rencontres du championnat. Renvoie le nombre de rondes."""
+    joueurs = list(_participants(conn, id_tournoi))          # ids, ordre d'inscription
+    if len(joueurs) % 2 == 1:
+        joueurs.append(None)                                 # fantôme -> repos (bye)
+    m = len(joueurs)
+    nb_rondes = m - 1
+    arr = joueurs[:]
+    for ronde in range(1, nb_rondes + 1):
+        for i in range(m // 2):
+            a, b = arr[i], arr[m - 1 - i]
+            if a is None or b is None:                       # repos : victoire auto
+                reel = a if a is not None else b
+                conn.execute(
+                    "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b, resultat) "
+                    "VALUES (?, ?, ?, NULL, 'a')",
+                    (id_tournoi, ronde, reel),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO rencontres (id_tournoi, ronde, participant_a, participant_b) "
+                    "VALUES (?, ?, ?, ?)",
+                    (id_tournoi, ronde, a, b),
+                )
+        # Rotation : le premier reste fixe, les autres tournent d'un cran.
+        arr = [arr[0], arr[-1]] + arr[1:-1]
+    return nb_rondes
+
+
+def classement_round_robin(conn: sqlite3.Connection, id_tournoi: int) -> list[dict]:
+    """Classement du round robin — barème et ranking sportif identiques au suisse."""
+    return classement_suisse(conn, id_tournoi)
+
+
+def table_confrontations(conn: sqlite3.Connection, id_tournoi: int) -> dict:
+    """
+    Tableau croisé « qui a joué qui » (round robin). Joueurs ordonnés par
+    classement. Chaque cellule donne le résultat du joueur de la LIGNE face à
+    celui de la COLONNE : « V » / « N » / « D », ou le score « 2–1 » en BO3, ou
+    « · » si pas encore joué. La diagonale est neutre.
+
+    Returns:
+        {"entetes": [pseudos...], "lignes": [{"pseudo": .., "cellules": [
+            {"self": bool, "txt": str, "classe": str}, ...]}, ...]}.
+    """
+    noms = _participants(conn, id_tournoi)
+    pts = points_suisse(conn, id_tournoi)
+    ordre = sorted(noms, key=lambda pid: (-pts.get(pid, 0.0), noms[pid].lower()))
+
+    # Résultats deux à deux (du point de vue de chaque joueur).
+    res: dict[tuple[int, int], dict] = {}
+    for r in conn.execute(
+        "SELECT participant_a, participant_b, resultat, score_a, score_b "
+        "FROM rencontres WHERE id_tournoi = ? AND participant_b IS NOT NULL",
+        (id_tournoi,),
+    ):
+        a, b, resu, sa, sb = (r["participant_a"], r["participant_b"],
+                              r["resultat"], r["score_a"], r["score_b"])
+        if a is None or b is None:
+            continue
+        if sa is not None and sb is not None:                # BO3 : score en manches
+            res[(a, b)] = {"txt": f"{sa}–{sb}", "classe": _classe_res(resu, "a")}
+            res[(b, a)] = {"txt": f"{sb}–{sa}", "classe": _classe_res(resu, "b")}
+        elif resu == "a":
+            res[(a, b)] = {"txt": "V", "classe": "rr-v"}
+            res[(b, a)] = {"txt": "D", "classe": "rr-d"}
+        elif resu == "b":
+            res[(a, b)] = {"txt": "D", "classe": "rr-d"}
+            res[(b, a)] = {"txt": "V", "classe": "rr-v"}
+        elif resu == "nul":
+            res[(a, b)] = res[(b, a)] = {"txt": "N", "classe": "rr-n"}
+
+    lignes = []
+    for i in ordre:
+        cellules = []
+        for j in ordre:
+            if i == j:
+                cellules.append({"self": True, "txt": "", "classe": "rr-self"})
+            else:
+                c = res.get((i, j))
+                cellules.append({"self": False,
+                                 "txt": c["txt"] if c else "·",
+                                 "classe": c["classe"] if c else "rr-vide"})
+        lignes.append({"pseudo": noms[i], "cellules": cellules})
+    return {"entetes": [noms[j] for j in ordre], "lignes": lignes}
+
+
+def _classe_res(resultat: str | None, cote: str) -> str:
+    """Classe CSS d'une cellule BO3 selon le vainqueur, du point de vue de `cote`."""
+    if resultat == "nul":
+        return "rr-n"
+    if resultat == cote:
+        return "rr-v"
+    if resultat in ("a", "b"):
+        return "rr-d"
+    return "rr-vide"
 
 
 # --- Élimination directe ---------------------------------------------------
