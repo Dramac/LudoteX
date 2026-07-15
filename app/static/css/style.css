@@ -344,6 +344,8 @@ summary:focus-visible,
 .scanner-video { display: block; width: 100%; height: auto; }
 .scanner-statut { font-weight: 600; }
 .scanner-aide { color: var(--gris); font-size: 0.9rem; }
+.saisie-manuelle { display: grid; gap: 12px; margin-top: 8px; }
+.saisie-manuelle .bouton-filtrer { width: 100%; }
 
 .pied {
   max-width: 540px;

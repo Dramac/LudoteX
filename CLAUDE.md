@@ -395,6 +395,22 @@ tunnel différente à chaque lancement**, donc incompatible avec des QR
 imprimés à l'avance — réservés au déploiement définitif sur domaine fixe).
 `lancer.py`/`lancer.vbs`/`lancer.bat` **versionnés** (pas dans `.gitignore`).
 
+**Saisie manuelle de secours sur le scanner (idée 2.4) : FAIT.** Sous la zone
+caméra de `/scanner`, un petit formulaire GET (« Saisie manuelle » →
+`GET /scanner/saisie?code=…`, `routes/scanner.py`) permet de TAPER le code de la
+boîte (`id_exemplaire`) quand le QR est illisible / la caméra capricieuse, et
+d'arriver directement sur `/pret/<id>` sans repasser par le catalogue. **Aucun
+JS ajouté.** `id_exemplaire` reste du TEXT (zéros de tête préservés, jamais
+d'interprétation en entier ; seuls les espaces autour sont retirés via
+`.strip()`). **Jamais bloquant** : code vide/inconnu → la page scanner est
+ré-affichée avec un message clair (`services.info_exemplaire` valide l'existence)
+et le champ prérempli/`autofocus`, prêt à corriger — pas d'erreur brute. **Même
+protection que le scanner** (`exiger_jeton`, aucune nouvelle surface publique).
+Style mobile-first (`.saisie-manuelle`). **4 tests** (présence du formulaire,
+code valide → 303 vers `/pret/<id>` avec espaces tolérés, code inconnu →
+message + valeur préremplie, accès sans jeton → 403). **Suite globale : 168
+tests verts.**
+
 **Habillage UI du catalogue (léger, sans framework ni JS ajouté) : FAIT.**
 Purement CSS (`app/static/css/style.css`) + gabarits. (1) **Ouverture animée**
 des panneaux `<details class="recherche">` (keyframe `recherche-ouverture` :

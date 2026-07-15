@@ -15,6 +15,26 @@
   </p>
 </section>
 
+<section class="carte">
+  <h2>Saisie manuelle</h2>
+  <p class="scanner-aide">
+    QR illisible ou caméra capricieuse ? Tapez le code de la boîte.
+  </p>
+  {% if erreur %}
+    <p class="resultat resultat-attention">{{ erreur }}</p>
+  {% endif %}
+  <form method="get" action="/scanner/saisie" class="saisie-manuelle">
+    <div class="champ">
+      <label for="code">Code de la boîte</label>
+      <input type="text" id="code" name="code" value="{{ code_saisi or '' }}"
+             inputmode="text" autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="ex. 00472" required
+             {% if erreur %}autofocus{% endif %}>
+    </div>
+    <button type="submit" class="bouton-filtrer">Ouvrir la fiche de prêt</button>
+  </form>
+</section>
+
 <!-- Décodage QR côté navigateur — jsQR hébergé en local (aucune dépendance CDN). -->
 <script src="/static/js/jsQR.js"></script>
 <script src="/static/js/scanner.js"></script>
