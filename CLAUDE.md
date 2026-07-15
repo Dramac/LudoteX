@@ -300,6 +300,79 @@ inchangé si la variable est absente → aucune régression sur les déploiement
 existants. `.env.example` complété (`NOM_ASSOCIATION` + `PLANNING_DATABASE_PATH`,
 qui manquait). **Suite globale toujours verte (142 tests)**.
 
+**Sauvegarde & restauration complète (3 bases) : FAIT.** Logique isolée dans
+`app/sauvegarde.py` (testable) + routes `GET /admin/sauvegarde/export`,
+`POST /admin/sauvegarde/import` dans `routes/admin.py`. **Export** : chaque
+base (prêt, tournois, planning) copiée **à chaud** via
+`sqlite3.Connection.backup()` (cohérent même en WAL, app non interrompue),
+regroupées dans un zip `ludotex-backup-AAAA-MM-JJ.zip` sous des noms **FIXES**
+(`pret-jeux.db`/`tournoi.db`/`planning.db`, indépendants du chemin réellement
+configuré en `.env` — lu via `get_database_path()` de chaque module, jamais
+dupliqué en dur) + `INFO.txt` (date/heure/version). **Import** : validation
+stricte AVANT toute modification (`valider_zip_sauvegarde` — 3 fichiers
+présents + `PRAGMA integrity_check` sur chacun, lève `ZipInvalide` sinon, page
+réaffichée avec message clair, jamais d'erreur brute) ; **filet de sécurité
+silencieux** (`sauvegarde_de_securite`) qui exporte l'état actuel dans
+`data/sauvegardes/avant-restauration-<horodatage>.zip` juste avant de
+remplacer quoi que ce soit ; remplacement fichier par fichier
+(`_remplacer_fichier`, purge les éventuels `-wal`/`-shm`/`-journal` de la
+destination pour ne jamais mélanger d'anciennes écritures avec le contenu
+restauré) — sûr car chaque route ouvre/ferme sa propre connexion (pas de pool).
+**9 tests** (`tests/test_sauvegarde.py` : zip complet avec les 3 bases +
+INFO.txt, rejet d'une archive incomplète, rejet d'une base corrompue, rejet
+d'un fichier non-zip, restauration qui remplace bien les données + filet de
+sécurité vérifié, routes export/import protégées par la garde admin).
+
+**Fusion des sous-menus « Base de données » et « Sauvegarde » : FAIT.** Une
+seule page `/admin/donnees` (gabarit `admin_donnees.html`) regroupe désormais
+le catalogue (import/export CSV/Excel) ET la sauvegarde complète des 3 bases
+(export/import zip) — un seul lien de menu « 🗄️ Données & sauvegarde » dans
+`admin_dashboard.html` au lieu de deux. `_page_donnees` (dans `routes/admin.py`)
+sert de rendu commun (compteurs catalogue + message), réutilisé par
+`donnees_import` et par `sauvegarde_import` (qui n'a plus de page dédiée, juste
+les actions `GET /admin/sauvegarde/export` et `POST /admin/sauvegarde/import`).
+Gabarit `admin_sauvegarde.html` supprimé (devenu inutile). **Suite globale :
+151 tests verts** (inchangée, aucun test ne visait la page fusionnée).
+
+**Lanceur local sans ligne de commande (`lancer.py` + `lancer.vbs`/`lancer.bat`) :
+FAIT.** Pour un poste Windows de bénévole, sans terminal : double-clic sur
+`lancer.vbs` (silencieux, `pythonw.exe`) ou `lancer.bat` (console visible,
+débogage). `lancer.py` orchestre tout, sans dépendance supplémentaire
+(réutilise `qrcode`/`pillow` déjà présents, et `http.server` stdlib) : vérifie
+les prérequis (`.venv`, `cloudflared` dans le PATH ou à la racine du projet,
+ports 8000/8001 libres) — sinon page HTML d'erreur claire, jamais de plantage
+brut ; démarre `uvicorn` en sous-processus caché (port 8000) ; démarre
+`cloudflared tunnel --url http://localhost:8000` et **lit stderr ligne par
+ligne** pour en extraire l'URL publique par regex ; génère une page HTML
+**temporaire** (QR via `app.etiquettes.image_qr_nu` — même dessin que le reste
+de l'appli — encodé en base64, URL en grand, statut, bouton rouge « Arrêter
+LudoteX ») et l'ouvre dans le navigateur par défaut ; démarre un micro-serveur
+de contrôle (`http.server.ThreadingHTTPServer`, port 8001, `/status` JSON +
+`/stop`) que la page interroge par polling JS (5 s) et que le bouton d'arrêt
+appelle en `fetch()` ; termine proprement les sous-processus sur arrêt (bouton
+ou Ctrl+C). Fichiers HTML temporaires nommés `lancer-ludotex-*.html`
+(`tempfile`, dossier temp du système) → motif ajouté au `.gitignore` par
+prudence. Doc dédiée `docs/lancement-local.md` (installation de `cloudflared`
+sur Windows — téléchargement direct ou `winget` —, usage, limites : **URL du
+tunnel différente à chaque lancement**, donc incompatible avec des QR
+imprimés à l'avance — réservés au déploiement définitif sur domaine fixe).
+`lancer.py`/`lancer.vbs`/`lancer.bat` **versionnés** (pas dans `.gitignore`).
+
+**Habillage UI du catalogue (léger, sans framework ni JS ajouté) : FAIT.**
+Purement CSS (`app/static/css/style.css`) + gabarits. (1) **Ouverture animée**
+des panneaux `<details class="recherche">` (keyframe `recherche-ouverture` :
+fondu + léger glissement) — joue à l'ouverture uniquement (le `<details>` natif
+masque instantanément à la fermeture, non animé, assumé). (2) **Puces de filtres
+actifs** sur `/catalogue` : chaque filtre posé s'affiche en pastille cliquable
+qui le retire seul (les autres conservés) + « Tout effacer » ; liens de retrait
+calculés côté serveur (`routes/catalogue.py:_puces_filtres`, `urlencode`, passés
+en `chips`). (3) **Relief au survol** des cartes `.jeu` (ombre + léger
+soulèvement). (4) **Focus clavier visible** homogène (`:focus-visible`,
+liseré violet) + retour visuel à l'appui des boutons/puces, **tout le site**.
+(5) `<meta name="theme-color" content="#4a148c">` + favicon/`apple-touch-icon`
+(logo) dans `base.html`. Tout est **coupé sous `prefers-reduced-motion`**.
+Aucune régression (**151 tests verts**, purement cosmétique).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
