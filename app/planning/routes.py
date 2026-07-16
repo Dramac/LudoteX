@@ -101,16 +101,15 @@ def collecte_form(request: Request, ev: int, code: str = ""):
         prefs = services.prefs_du_benevole(conn, benevole["id_benevole"]) if benevole else {}
     finally:
         conn.close()
-    # Regroupe les créneaux par jour pour l'affichage.
-    jours: list[dict] = []
-    idx: dict[str, dict] = {}
+    # Regroupe les créneaux par jour pour l'affichage, dans l'ordre CHRONOLOGIQUE
+    # (premier créneau de chaque jour), pas alphabétique — voir M2/idees-ux.md
+    # et services.jours_chronologiques (même logique que construire_grille).
+    idx: dict[str, dict] = {
+        lib: {"libelle": lib, "creneaux": []} for lib in services.jours_chronologiques(creneaux)
+    }
     for c in creneaux:
-        j = idx.get(c["libelle_jour"])
-        if j is None:
-            j = {"libelle": c["libelle_jour"], "creneaux": []}
-            idx[c["libelle_jour"]] = j
-            jours.append(j)
-        j["creneaux"].append(c)
+        idx[c["libelle_jour"]]["creneaux"].append(c)
+    jours = list(idx.values())
     return templates.TemplateResponse(
         request, "planning_collecte.html",
         {"ev": evenement, "postes": postes, "jours": jours,
