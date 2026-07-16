@@ -117,6 +117,15 @@ def test_duree_moyenne_et_par_pret(conn):
     assert en_cours and en_cours[0]["duree_txt"].startswith("depuis")
 
 
+def test_duree_moyenne_tiret_sans_pret_termine(conn):
+    # Q9 : "—" (pas "0 min") tant qu'aucun prêt n'est terminé -- ni sans
+    # aucun prêt, ni avec un prêt seulement en cours (AVG SQL sur 0 ligne
+    # renvoie NULL -> None côté Python, déjà géré par stats_globales).
+    assert services.stats_globales(conn)["duree_moyenne"] == "—"
+    services.preter(conn, "001")
+    assert services.stats_globales(conn)["duree_moyenne"] == "—"
+
+
 def test_format_duree():
     assert services.format_duree(None) == "—"
     assert services.format_duree(45 * 60) == "45 min"

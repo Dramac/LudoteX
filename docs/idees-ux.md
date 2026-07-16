@@ -115,12 +115,20 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : ajouter `aria-live="polite"` sur `#statut` (1 attribut).
 - **Corrigé** le 2026-07-17 : attribut ajouté tel quel. Test ajouté.
 
-### Q9. « 0 min » de durée moyenne quand il n'y a rien à moyenner
+### Q9. ✅ FAIT — « 0 min » de durée moyenne quand il n'y a rien à moyenner
 - **Où** : `/stats`, carte de synthèse (constaté avec les données de démo).
 - **Pourquoi** : « 0 min durée moyenne » se lit comme « les prêts durent
   0 minute » alors qu'aucun prêt n'est terminé — chiffre faux au premier regard.
 - **Suggestion** : afficher « — » (avec `title="aucun prêt terminé sur la
   période"`) quand le dénominateur est nul.
+- **Corrigé** le 2026-07-17 : vérification faite, `stats_globales` affichait
+  déjà « — » dans ce cas (`AVG` SQL sur 0 ligne renvoie `NULL` → `None` côté
+  Python, déjà intercepté par `format_duree(moyenne) if moyenne is not None
+  else "—"`) — pas de « 0 min » erroné en pratique. La partie manquante était
+  la précision au survol : `stats.html` ajoute désormais
+  `title="Aucun prêt terminé sur la période"` sur `.chiffre-val` quand la
+  valeur affichée est « — » (rien ne change quand une durée est calculée).
+  2 tests ajoutés (service + rendu HTML).
 
 ### Q10. Mot de passe admin sans focus automatique
 - **Où** : `admin_login.html`.
