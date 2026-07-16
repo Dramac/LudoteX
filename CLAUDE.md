@@ -633,6 +633,40 @@ en `resultat-ok` (vert). `tournoi_sorti` (sortie, pas un retour) reste en bleu
 n'a été modifié). Tests ajoutés pour les 4 points. **Suite globale : 200 tests
 verts.**
 
+**Session UX — lot « finitions transverses » (`docs/idees-ux.md` Q2, Q5–Q12) :
+FAIT.** Neuf points indépendants, un commit chacun, purement cosmétiques/
+accessibilité (aucune nouvelle dépendance, aucun changement fonctionnel).
+**Q2** : global Jinja `pluriel(n, singulier, pluriel)` (`app/services.py`,
+enregistré dans `app/templating.py`) — grammaire FR -1/0/1 singulier, |n|≥2
+pluriel. Remplace ~15 pluriels parenthésés type « jeu(x) », « prêt(s) »,
+« exemplaire(s) » dans `catalogue.html`, `fiche.html`, `stats.html`,
+`admin_jeux.html`, `admin_fiche.html`, `admin_donnees.html`,
+`planning_gerer.html`, `planning_admin.html`, `planning_case.html`,
+`tournoi_arbre.html`, `tournoi_rondes.html`, `tournoi_supprimer.html`.
+**Q5** : `base.html` — `{% block titre %}` par défaut pointe sur
+`{{ nom_association }}` au lieu de « Prêt de jeux » en dur ; `fiche.html`
+aligné sur le même motif que les autres pages (`<nom du jeu> —
+{{ nom_association }}`). **Q6** : `#9aa0a6` (contraste insuffisant) remplacé
+par `#6b7075` sur 4 règles CSS (`.stats-note`, `.palmares-val small`,
+`.planning-bloc--termine`, `.rr-vide`) — `--gris: #5f6368` non touché.
+**Q7** : texte scanner « Une seule autorisation caméra par session » →
+« Votre téléphone ne demandera l'autorisation caméra qu'une seule fois »
+(moins jargonneux). **Q8** : `aria-live="polite"` sur le statut du scanner
+(lecteurs d'écran). **Q9** et **Q10** : investigation sans bug réel trouvé —
+`stats_globales` renvoyait déjà « — » (pas « 0 min ») sans prêt terminé
+(`AVG` SQL sur 0 ligne → `NULL`/`None`), il ne manquait qu'un `title` explicite
+sur le chiffre ; le champ mot de passe admin avait déjà `autofocus`. Dans les
+deux cas : constat documenté + test de non-régression ajouté, sans changement
+de code inutile. **Q11** : le JPEG source (`logo_djplm.jpg`) était en fait
+déjà carré (1509×1509) — le vrai défaut était le **cadrage** (sorcier décentré
+sur 2/3 gauche du canevas), illisible une fois réduit en icône. Recadrage
+centré tête/chapeau/barbe, régénéré en `favicon-192.png`/`favicon-512.png`
+(Pillow, LANCZOS), vérifié lisible jusqu'à 32×32. `base.html` référence ces
+PNG (`rel="icon"` par taille + `apple-touch-icon`), PNG versionnés (seul
+`*.qr.png` est exclu du dépôt). **Q12** : `.bouton-filtrer` aligné sur
+`border-radius: 12px` comme `.bouton` (transitions/hover/active déjà
+mutualisées). **Suite globale : 205 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
