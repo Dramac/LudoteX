@@ -216,7 +216,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   `position: fixed; bottom: 16px; right: 16px`), affiché en CSS pur. Pas de
   pagination (la recherche reste le chemin principal), pas de JS.
 
-### M8. Messages de résultat sans hiérarchie « succès / information »
+### M8. ✅ FAIT — Messages de résultat sans hiérarchie « succès / information »
 - **Où** : `pret.html` : le retour rendu est en bleu `resultat-info`, comme la
   sortie tournoi ; seuls les prêts sont en vert.
 - **Pourquoi** : pour le bénévole, « rendu » est un succès au même titre que
@@ -224,6 +224,11 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : passer `rendu` et `rendu_tournoi` en `resultat-ok` (vert),
   réserver le bleu aux informations neutres et l'orange aux « rien n'a été
   modifié » (déjà le cas).
+- **Corrigé** le 2026-07-17 : `rendu` et `rendu_tournoi` passent en
+  `resultat-ok` (vert, même famille que `prete`/`repret`). `tournoi_sorti`
+  reste en bleu `resultat-info` (information neutre) ; `deja_sorti` /
+  `deja_disponible` restent en orange (rien n'a été modifié). Test ajouté.
+  Voir `CLAUDE.md`.
 
 ### M9. Confirmations natives `confirm()` au ton très technique
 - **Où** : une dizaine de `onsubmit="return confirm('…')"` (clôture des prêts,
@@ -293,8 +298,9 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 
 1. ✅ FAIT — Les 3 bugs : Q1 (faute), M2 (ordre des jours), M1 (heures UTC).
    Corrigés le 2026-07-17, un commit par bug (voir CLAUDE.md).
-2. Le lot « bénévole au prêt » : Q3, Q4, M3, M8 — une seule session, c'est le
-   cœur de l'outil le jour J.
+2. ✅ FAIT — Le lot « bénévole au prêt » : Q3, Q4, M3, M8 — une seule session,
+   c'est le cœur de l'outil le jour J. Corrigés le 2026-07-17, un commit par
+   point (voir CLAUDE.md).
 3. Les finitions transverses : Q2, Q5–Q12.
 4. M4–M9 un par un, à prioriser selon tes retours terrain.
 5. S1/S4 en tâche de fond, au fil des retouches ; S2/S3 seulement si le besoin
