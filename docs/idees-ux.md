@@ -160,7 +160,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   dépôt — vérifié, seul `*.qr.png` est ignoré). Test ajouté
   (`test_favicon_carre`).
 
-### Q12. Deux familles de boutons aux angles différents
+### ✅ FAIT — Q12. Deux familles de boutons aux angles différents
 - **Où** : `style.css` : `.bouton` (12 px de rayon, padding 20) vs
   `.bouton-filtrer` (8 px, padding 10) — utilisés parfois côte à côte
   (formulaires tournois, saisie manuelle).
@@ -168,6 +168,13 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   se demande si la différence a un sens (elle n'en a pas).
 - **Suggestion** : aligner `.bouton-filtrer` sur `border-radius: 12px` et lui
   donner la même transition `filter/transform` que `.bouton` (déjà partiel).
+- **Corrigé** le 2026-07-17 : `.bouton-filtrer` passe à `border-radius: 12px`.
+  La transition `filter/transform` + les états `:hover`/`:active` étaient déjà
+  mutualisés avec `.bouton` (règle groupée existante, ligne 137-139 de
+  `style.css`) — rien à ajouter de ce côté. Contrôle visuel des deux familles
+  côte à côte (formulaires tournois, saisie manuelle du scanner) : angles
+  désormais identiques. Purement cosmétique, pas de test dédié ; suite
+  complète (205 tests) toujours verte.
 
 ---
 
