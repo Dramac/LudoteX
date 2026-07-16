@@ -596,6 +596,43 @@ changement nécessaire de ce côté). Tests ajoutés pour les 3 bugs (dont le ca
 de bascule de jour 23:30 UTC → 01:30 local le lendemain pour M1). **Suite
 globale : 197 tests verts.**
 
+**Session UX — lot « bénévole au prêt » (`docs/idees-ux.md` Q3/Q4/M3/M8) :
+FAIT.** Un commit par point, dans l'ordre demandé. Objectif commun : fluidifier
+`/pret/<id>`, le geste répété toute la journée de l'événement.
+**Q3** : au retour, le numéro d'emplacement était noyé dans une phrase alors
+qu'il s'affiche en 5 rem au prêt. `pret.html` (résultat `rendu`) reprend
+désormais le même gabarit `.resultat-libelle` + `.pochette-num` qu'au prêt
+(« Récupérer la pièce d'identité à l'emplacement n° » + numéro géant), avec une
+nouvelle variante `.pochette-num--retour` (bleu `#1a73e8`, `style.css`) pour
+distinguer d'un coup d'œil un retour d'un prêt (vert). `rendu_tournoi` non
+touché (pas d'emplacement).
+**Q4** : le « Scanner le jeu suivant » — le geste le plus répété — n'était
+qu'un petit lien en pied de carte. Un vrai bouton pleine largeur
+`a.bouton.bouton-secondaire` (« 📷 Scanner le jeu suivant ») apparaît
+désormais juste sous le bandeau de résultat, pour TOUS les types de résultat.
+Le petit lien du pied de carte disparaît alors (redondant, seul « Voir la
+fiche publique » reste) ; en simple consultation (pas de résultat), le pied de
+carte est inchangé.
+**M3** : aucune protection contre le double-appui sur un wifi de salle lent
+(le second POST affichait « déjà sorti », lu comme une erreur). Script inline
+dans `base.html` (aucune dépendance) : au `submit`, désactive les boutons
+`type=submit` du formulaire soumis et remplace leur libellé par
+« Un instant… » (`innerHTML` sauvegardé dans `dataset.libelle`). Respecte les
+`onsubmit="return confirm(...)"` existants via `e.defaultPrevented` (le submit
+event bubble jusqu'à `document` APRÈS le handler du formulaire cible, donc un
+`confirm()` refusé a déjà marqué `defaultPrevented` — rien n'est désactivé
+dans ce cas). Réactivation au `pageshow` (bouton « page précédente » du
+navigateur, qui sert une page en cache avec des boutons restés désactivés).
+Logique JS non exécutable sous pytest (pas de moteur JS dans les tests) :
+vérifiée manuellement (`node --check` + relecture), test de présence du script
+ajouté.
+**M8** : un retour était affiché en bleu `resultat-info` (notice) alors que
+c'est un succès au même titre qu'un prêt. `rendu` et `rendu_tournoi` passent
+en `resultat-ok` (vert). `tournoi_sorti` (sortie, pas un retour) reste en bleu
+(information neutre) ; `deja_sorti`/`deja_disponible` restent en orange (rien
+n'a été modifié). Tests ajoutés pour les 4 points. **Suite globale : 200 tests
+verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

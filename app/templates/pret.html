@@ -28,7 +28,7 @@
         </p>
       </section>
     {% elif resultat.type == "rendu" %}
-      <section class="resultat resultat-info">
+      <section class="resultat resultat-ok">
         <p class="resultat-libelle">Récupérer la pièce d'identité à l'emplacement n°</p>
         <p class="pochette-num pochette-num--retour">{{ resultat.numero }}</p>
       </section>
@@ -37,7 +37,7 @@
         <p>Sorti pour un tournoi (sans emplacement). Ce jeu n'est pas comptabilisé dans les statistiques.</p>
       </section>
     {% elif resultat.type == "rendu_tournoi" %}
-      <section class="resultat resultat-info">
+      <section class="resultat resultat-ok">
         <p>Retour de tournoi enregistré.</p>
       </section>
     {% elif resultat.type == "deja_sorti" %}

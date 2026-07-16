@@ -517,6 +517,25 @@ def test_pret_tournoi_route(client):
     assert "Jeux actuellement sortis" in stats and "En tournoi" in stats
 
 
+def test_retour_confirme_en_vert(client):
+    # M8 : un retour (prêt ou tournoi) est un SUCCÈS, affiché en vert
+    # (resultat-ok) comme un prêt -- pas en bleu (resultat-info, réservé aux
+    # informations neutres comme tournoi_sorti).
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/rendre")
+    assert 'class="resultat resultat-ok"' in r.text
+    assert "Récupérer la pièce d'identité" in r.text
+
+    # Sortie pour un tournoi : information neutre, reste en bleu.
+    sortie = client.post("/pret/001/tournoi")
+    assert 'class="resultat resultat-info"' in sortie.text
+
+    # Retour de ce tournoi : succès, désormais en vert (comme un retour normal).
+    rt = client.post("/pret/001/rendre")
+    assert 'class="resultat resultat-ok"' in rt.text
+    assert "Retour de tournoi enregistré" in rt.text
+
+
 def test_stats_jeux_sortis(client):
     client.post("/pret/001/preter")
     stats = client.get("/stats").text
