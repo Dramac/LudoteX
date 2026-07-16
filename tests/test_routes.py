@@ -79,6 +79,24 @@ def test_accueil(client):
     assert "/catalogue" in r.text and "/tournois" in r.text
 
 
+def test_accueil_pluriel_jeux(client):
+    # Avec plusieurs exemplaires disponibles, le pluriel de "jeu" est "jeux"
+    # (pas "jeus" — faute corrigée, voir docs/idees-ux.md Q1).
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('002', 'CATAN')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.get("/")
+    assert "jeux" in r.text and "disponibles" in r.text
+    assert "jeus" not in r.text.lower()
+
+
 def test_accueil_tournoi_imminent(client):
     # Un tournoi publié commençant dans 30 min apparaît ; un autre dans 3 h non.
     from datetime import datetime, timedelta, timezone
