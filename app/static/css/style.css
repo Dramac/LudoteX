@@ -48,6 +48,28 @@ body {
 .bandeau .menu-benevole { margin-top: 8px; }
 .bandeau .menu-benevole a { color: #fff; opacity: 0.95; }
 
+/* Menu du bandeau : replié par défaut (mobile-first — le menu à plat prenait
+   jusqu'à 3 lignes au-dessus du contenu sur petit écran, ex. iPhone 13 mini).
+   Repose sur <details>/<summary> natifs (aucun JS). */
+.menu-bandeau { border: none; }
+.menu-bandeau > summary {
+  cursor: pointer;
+  color: #fff;
+  font-weight: 700;
+  margin-top: 8px;
+  list-style: revert;
+}
+.menu-bandeau > summary::marker { color: #fff; }
+/* Dès 640px (tablette/ordinateur) : menu toujours à plat, comme avant —
+   aucun clic requis. Repose sur la règle native `details:not([open]) > * {
+   display:none }`, ici surchargée en sens inverse par une règle plus
+   spécifique (author CSS), technique standard pour un <details> qui se
+   comporte en accordéon seulement sous un certain seuil. */
+@media (min-width: 640px) {
+  .menu-bandeau > summary { display: none; }
+  .menu-bandeau > .menu-benevole { display: flex !important; margin-top: 0; }
+}
+
 .contenu {
   max-width: 540px;
   margin: 0 auto;
