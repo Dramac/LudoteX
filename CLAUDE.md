@@ -667,6 +667,30 @@ PNG (`rel="icon"` par taille + `apple-touch-icon`), PNG versionnés (seul
 `border-radius: 12px` comme `.bouton` (transitions/hover/active déjà
 mutualisées). **Suite globale : 205 tests verts.**
 
+**Corrections mobile — retour terrain iPhone 13 mini (menu bandeau + tableau
+supervision) : FAIT.** Deux points indépendants, un commit chacun, remontés
+après test réel sur smartphone (capture à l'appui). **Menu du bandeau** : le
+menu bénévole/visiteur (`_menu_benevole.html`/`_menu_visiteur.html`, inclus
+par `base.html`) s'affichait à plat et passait sur 3 lignes sur petit écran —
+plus de 40 % de la hauteur visible mangée par le bandeau sticky avant même le
+contenu. Enveloppé dans un `<details class="menu-bandeau">
+<summary>Menu</summary>…</details>` (accordéon natif, aucun JS) : replié par
+défaut (mobile-first), remis à plat sans clic dès 640px via CSS
+(`display:flex` forcé sur le contenu du `<details>`, technique standard pour
+un accordéon limité au petit écran — comportement bureau inchangé). Ne
+concerne QUE l'instance du bandeau : l'inclusion du même fragment dans la
+section « Aller aux modules » du tableau de bord admin (`admin_dashboard.html`)
+n'est pas touchée, ce n'est pas une barre fixe qui mange l'espace là-bas.
+**Tableau « Bases de données » de la supervision** : `.admin-table` (utilisée
+par `/admin/supervision` et `/admin/fonctionnalites`) n'avait jamais eu de
+règle CSS dédiée → largeur au contenu par défaut du navigateur, débordement à
+droite sur petit écran (colonnes tronquées, « Dernière modification »
+invisible). Même recette que `.detail` (déjà éprouvée sur mobile ailleurs,
+ex. « Détail des prêts ») : largeur 100 %, cellules qui s'enveloppent
+(`word-break`) plutôt que de déborder. Aucun changement visuel sur grand
+écran. **2 tests ajoutés** (structure `<details>` + présence de la règle CSS
+via `/static/css/style.css`). **Suite globale : 207 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
