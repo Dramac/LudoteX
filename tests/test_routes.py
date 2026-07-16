@@ -70,6 +70,18 @@ def test_apropos_page(client):
     assert APP_VERSION in r.text
 
 
+def test_anti_double_soumission_script_present(client):
+    # M3 : le script anti double-appui (base.html) est chargé sur TOUTES les
+    # pages, pas seulement /pret -- couvre tous les formulaires du site.
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert 'addEventListener("submit"' in r.text
+    assert 'addEventListener("pageshow"' in r.text
+    assert "Un instant…" in r.text
+    # Ne désactive rien si un confirm() existant a refusé l'envoi.
+    assert "e.defaultPrevented" in r.text
+
+
 def test_accueil(client):
     # La racine sert la page d'accueil (plus de redirection vers /catalogue).
     r = client.get("/")

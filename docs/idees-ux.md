@@ -158,7 +158,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   app.planning.demo` : « Samedi 12 sept. » puis « Dimanche 13 sept. ». 3 tests
   ajoutés. Voir `CLAUDE.md`.
 
-### M3. Aucune protection contre le double-appui sur « Prêter »
+### M3. ✅ FAIT — Aucune protection contre le double-appui sur « Prêter »
 - **Où** : `pret.html` (et tous les POST d'action).
 - **Pourquoi** : sur un wifi de salle lent, le bénévole re-tape le bouton qui
   « ne répond pas » ; le second POST déclenche « déjà sorti » (orange), qui se
@@ -167,6 +167,15 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : 3 lignes de JS global dans `base.html` : sur `submit`,
   `button[type=submit]` passe `disabled` et son libellé devient « Un
   instant… ». Zéro dépendance, couvre tous les formulaires du site.
+- **Corrigé** le 2026-07-17 : script inline dans `base.html` (aucune
+  dépendance) — au `submit`, désactive les boutons de type submit du
+  formulaire et remplace leur libellé (`innerHTML` sauvegardé dans
+  `dataset.libelle` pour le restaurer). Respecte les `confirm()` existants via
+  `e.defaultPrevented` (rien n'est désactivé si l'utilisateur a annulé).
+  Réactivation au `pageshow` (cas du bouton « page précédente » qui sert une
+  page en cache avec des boutons désactivés). Test de présence ajouté ;
+  logique JS non exécutable sous pytest (pas de moteur JS), vérifiée
+  manuellement (`node --check`) et par relecture. Voir `CLAUDE.md`.
 
 ### M4. Le code de désinscription tournoi ne se copie pas en un tap
 - **Où** : `tournoi_inscription_ok.html` (le code s'affiche, à noter soi-même) ;

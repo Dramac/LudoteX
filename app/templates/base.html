@@ -47,5 +47,30 @@
     {% endif %}
     &nbsp;·&nbsp; Licence GPLv3
   </footer>
+  <script>
+    // Anti double-appui (M3) : désactive les boutons de soumission le temps
+    // de la requête, pour éviter un second POST sur un wifi de salle lent
+    // (qui se lirait comme une erreur alors que le premier a réussi).
+    // `e.defaultPrevented` : si un onsubmit="return confirm(...)" existant a
+    // refusé l'envoi, on ne touche à rien (le formulaire n'est pas soumis).
+    document.addEventListener("submit", function (e) {
+      if (e.defaultPrevented) return;
+      e.target.querySelectorAll("button").forEach(function (b) {
+        if (b.type !== "submit") return;
+        b.dataset.libelle = b.innerHTML;
+        b.disabled = true;
+        b.innerHTML = "Un instant…";
+      });
+    });
+    // Restaure les boutons si la page est servie depuis le cache (bouton
+    // « page précédente » du navigateur), qui garderait sinon des boutons
+    // désactivés avec « Un instant… » figé.
+    window.addEventListener("pageshow", function () {
+      document.querySelectorAll("button[disabled]").forEach(function (b) {
+        if (b.dataset.libelle) b.innerHTML = b.dataset.libelle;
+        b.disabled = false;
+      });
+    });
+  </script>
 </body>
 </html>
