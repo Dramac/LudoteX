@@ -283,6 +283,13 @@ def test_auth_protege_pret_et_scanner(client, monkeypatch):
     assert client.get("/pret/001").status_code == 200
 
 
+def test_admin_login_autofocus(client, monkeypatch):
+    # Q10 : le champ mot de passe reçoit le focus automatiquement.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    r = client.get("/admin")
+    assert '<input type="password" id="mot_de_passe" name="mot_de_passe" autofocus>' in r.text
+
+
 def test_admin_login_et_creation_jeu(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
 

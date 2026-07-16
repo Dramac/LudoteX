@@ -130,12 +130,15 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   valeur affichée est « — » (rien ne change quand une durée est calculée).
   2 tests ajoutés (service + rendu HTML).
 
-### Q10. Mot de passe admin sans focus automatique
+### Q10. ✅ FAIT — Mot de passe admin sans focus automatique
 - **Où** : `admin_login.html`.
 - **Pourquoi** : l'écran n'a qu'un champ ; devoir taper dedans avant d'écrire
   est une micro-friction quotidienne pour le bureau.
 - **Suggestion** : `autofocus` sur le champ (le motif existe déjà sur la saisie
   manuelle du scanner).
+- **Constaté** le 2026-07-17 : l'attribut `autofocus` était déjà présent sur
+  le champ (`admin_login.html` ligne 23) — rien à corriger côté code. Test de
+  non-régression ajouté.
 
 ### Q11. Favicon JPEG rectangulaire
 - **Où** : `base.html` : `<link rel="icon" href="/static/img/logo_djplm.jpg">`.
