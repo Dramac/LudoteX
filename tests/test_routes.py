@@ -144,6 +144,23 @@ def test_menu_benevole_conditionnel(client, monkeypatch):
     assert '/scanner' in html_benevole
 
 
+def test_menu_bandeau_replie_sur_mobile(client, monkeypatch):
+    # Retour iPhone 13 mini : le menu du bandeau prenait 3 lignes au-dessus du
+    # contenu. Replié dans un <details> (accordéon natif, sans JS), à plat dès
+    # 640px via CSS (voir style.css) — ici on vérifie juste la structure HTML.
+    monkeypatch.setenv("PRET_TOKEN", "jeton-menu-details")
+    r = client.get("/catalogue")
+    assert '<details class="menu-bandeau">' in r.text
+    assert "<summary>Menu</summary>" in r.text
+    # Le nav reste bien À L'INTÉRIEUR du <details> (juste après <summary>).
+    assert r.text.index("<summary>Menu</summary>") < r.text.index('class="menu-benevole"')
+    # Comportement inchangé une fois bénévole activé.
+    client.get("/acces", params={"jeton": "jeton-menu-details"})
+    r2 = client.get("/catalogue")
+    assert '<details class="menu-bandeau">' in r2.text
+    assert "/scanner" in r2.text
+
+
 def test_catalogue_derniers_achats(client):
     from app import db
     conn = db.get_connection()

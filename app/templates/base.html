@@ -17,11 +17,17 @@
     {% endif %}
     <header class="bandeau">
       <a class="bandeau-titre" href="/">{{ nom_association }}</a>
-      {% if est_benevole(request) %}
-        {% include "_menu_benevole.html" %}
-      {% else %}
-        {% include "_menu_visiteur.html" %}
-      {% endif %}
+      {# Replié dans un <details> sur petit écran (le menu à plat prenait 3
+         lignes au-dessus du contenu sur iPhone) ; ré-ouvert à plat sans clic
+         dès 640px (voir style.css), comme avant sur ordinateur. #}
+      <details class="menu-bandeau">
+        <summary>Menu</summary>
+        {% if est_benevole(request) %}
+          {% include "_menu_benevole.html" %}
+        {% else %}
+          {% include "_menu_visiteur.html" %}
+        {% endif %}
+      </details>
     </header>
   </div>
   <main class="contenu {% block conteneur_extra %}{% endblock %}">
