@@ -100,12 +100,13 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   `border-left-color`, `.rr-vide`) ; `--gris: #5f6368` non touché. Purement
   cosmétique, pas de test dédié (suite globale vérifiée verte).
 
-### Q7. Jargon « session » sur le scanner
+### Q7. ✅ FAIT — Jargon « session » sur le scanner
 - **Où** : `scanner.html` : « Une seule autorisation caméra par session. »
 - **Pourquoi** : « session » ne veut rien dire pour un bénévole ; la phrase
   inquiète plus qu'elle ne rassure.
 - **Suggestion** : « Votre téléphone ne demandera l'autorisation caméra qu'une
   seule fois. »
+- **Corrigé** le 2026-07-17 : phrase remplacée telle quelle. Test ajouté.
 
 ### Q8. Statut du scanner invisible pour les lecteurs d'écran
 - **Où** : `scanner.html`, `<p id="statut">` mis à jour par `scanner.js`.

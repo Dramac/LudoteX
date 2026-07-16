@@ -569,6 +569,10 @@ def test_scanner_page(client):
     assert "/static/js/scanner.js" in r.text
     assert "/static/js/jsQR.js" in r.text   # jsQR hébergé en local
     assert "jsdelivr" not in r.text.lower() and "cdn.jsdelivr" not in r.text.lower()
+    # Q7 : texte clair, sans jargon technique (« session »).
+    assert "ne demandera l'autorisation caméra" in r.text
+    assert "qu'une seule fois" in r.text
+    assert "par session" not in r.text
 
 
 def test_scanner_saisie_manuelle_lien(client):
