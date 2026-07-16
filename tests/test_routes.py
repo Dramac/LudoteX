@@ -200,6 +200,11 @@ def test_racine_sert_accueil(client):
 
 
 def test_stats_page(client):
+    # Q9 : aucun prêt terminé -> « — » avec une info-bulle, pas « 0 min ».
+    r0 = client.get("/stats")
+    assert 'title="Aucun prêt terminé sur la période"' in r0.text
+    assert "0 min" not in r0.text
+
     client.post("/pret/001/preter")          # un prêt pour alimenter les stats
     r = client.get("/stats")
     assert r.status_code == 200
@@ -208,6 +213,11 @@ def test_stats_page(client):
     r2 = client.get("/stats", params={"tri": "exemplaire"})
     assert r2.status_code == 200
     assert "par exemplaire" in r2.text
+
+    # Un prêt TERMINÉ : la durée moyenne est affichée sans info-bulle.
+    client.post("/pret/001/rendre")
+    r3 = client.get("/stats")
+    assert 'title="Aucun prêt terminé sur la période"' not in r3.text
 
 
 def test_stats_alias_redirige(client):
