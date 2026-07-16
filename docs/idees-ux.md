@@ -88,13 +88,17 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   gabarit ne titre « Prêt de jeux » en dur (`live.html`, autonome, n'étend pas
   `base.html` et n'est pas concerné). Test ajouté. Voir `CLAUDE.md`.
 
-### Q6. Gris trop clair sur les petits textes
+### Q6. ✅ FAIT — Gris trop clair sur les petits textes
 - **Où** : `style.css` : `.stats-note` et `.palmares-val small` en `#9aa0a6`
   sur fond blanc, en 0.8rem.
 - **Pourquoi** : contraste ≈ 2,8:1 (minimum recommandé 4,5:1 pour du petit
   texte) — illisible pour les presbytes, nombreux chez les bénévoles.
 - **Suggestion** : passer `#9aa0a6` en `#6b7075` (les `--gris: #5f6368`
   existants sont bons, ne pas y toucher).
+- **Corrigé** le 2026-07-17 : les 4 occurrences de `#9aa0a6` remplacées
+  (`.palmares-val small`, `.stats-note`, `.planning-bloc--termine`
+  `border-left-color`, `.rr-vide`) ; `--gris: #5f6368` non touché. Purement
+  cosmétique, pas de test dédié (suite globale vérifiée verte).
 
 ### Q7. Jargon « session » sur le scanner
 - **Où** : `scanner.html` : « Une seule autorisation caméra par session. »
