@@ -7,7 +7,7 @@
        alt="{{ nom_association }}">
   <h1>{{ nom_association }}</h1>
   <p class="accueil-dispo">
-    <strong>{{ disponible }}</strong> jeu{{ 's' if disponible > 1 else '' }}
+    <strong>{{ disponible }}</strong> jeu{{ 'x' if disponible > 1 else '' }}
     disponible{{ 's' if disponible > 1 else '' }} au prêt
     <span class="accueil-dispo-total">sur {{ total }}</span>
   </p>
