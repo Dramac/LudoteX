@@ -112,7 +112,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 
 ## 2. UX MOYENNE PRIORITÉ (flux, clarté, feedback)
 
-### M1. 🐛 Histogramme des prêts en heures UTC
+### M1. ✅ FAIT — 🐛 Histogramme des prêts en heures UTC
 - **Où** : `services.prets_par_heure` (docstring l'assume : « par heure
   (UTC) ») ; affiché tel quel sur `/stats`.
 - **Pourquoi** : un prêt fait à 15 h apparaît dans la barre « 13 h » (été).
@@ -122,6 +122,14 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : convertir la clé horaire en Europe/Paris avant le GROUP BY
   côté Python (les helpers de fuseau existent dans `services.py`), et n'afficher
   que « 15 h » plutôt que `2026-07-16T13`.
+- **Corrigé** le 2026-07-17 : `prets_par_heure` récupère désormais les
+  `date_sortie` bruts et groupe en Python après conversion en heure locale
+  (`.astimezone(FUSEAU_LOCAL)`, pas de logique de fuseau en SQL). Chaque entrée
+  porte un `label` prêt à afficher (« 15h », ou « 17/07 15h » si la période
+  couvre plusieurs jours locaux) ; `stats.html` l'utilise directement au lieu
+  de découper la chaîne ISO. Aucun export Excel/PDF ne reprenait `par_heure`
+  (vérifié) — rien à adapter de ce côté. 2 tests ajoutés (conversion simple,
+  bascule de jour 23:30 UTC → 01:30 local le lendemain). Voir `CLAUDE.md`.
 
 ### M2. ✅ FAIT — 🐛 Planning bénévole : dimanche affiché avant samedi
 - **Où** : `app/planning/services.py` — créneaux triés par
@@ -265,7 +273,8 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 
 ## Ordre d'attaque suggéré
 
-1. Les 3 bugs : Q1 (faute), M2 (ordre des jours), M1 (heures UTC).
+1. ✅ FAIT — Les 3 bugs : Q1 (faute), M2 (ordre des jours), M1 (heures UTC).
+   Corrigés le 2026-07-17, un commit par bug (voir CLAUDE.md).
 2. Le lot « bénévole au prêt » : Q3, Q4, M3, M8 — une seule session, c'est le
    cœur de l'outil le jour J.
 3. Les finitions transverses : Q2, Q5–Q12.

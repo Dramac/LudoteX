@@ -128,13 +128,13 @@
     <ul class="histo">
       {% for h in par_heure %}
         <li class="histo-ligne">
-          <span class="histo-label">{{ h.heure[8:10] }}/{{ h.heure[5:7] }} {{ h.heure[11:13] }}h</span>
+          <span class="histo-label">{{ h.label }}</span>
           <span class="histo-barre" style="width: {{ (h.n / max_heure * 100) | round }}%;"></span>
           <span class="histo-val">{{ h.n }}</span>
         </li>
       {% endfor %}
     </ul>
-    <p class="stats-note">Heures en UTC.</p>
+    <p class="stats-note">Heures locales (Europe/Paris).</p>
   {% else %}
     <p>Aucun prêt sur la période.</p>
   {% endif %}

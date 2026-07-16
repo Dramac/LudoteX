@@ -413,19 +413,43 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
 def prets_par_heure(conn: sqlite3.Connection, debut: str | None = None,
                     fin: str | None = None) -> list[dict]:
     """
-    Nombre de prêts par heure (UTC), pour l'histogramme, éventuellement restreint
-    à une période.
+    Nombre de prêts par heure LOCALE (Europe/Paris), pour l'histogramme,
+    éventuellement restreint à une période.
+
+    `date_sortie` est stocké en UTC ISO ; le regroupement par heure se fait
+    APRÈS conversion en heure locale, côté Python (pas de logique de fuseau en
+    SQL) — sinon un prêt fait à 15 h (heure française) atterrit dans la barre
+    « 13 h » l'été, alors que le reste de la page (filtres, liste détaillée)
+    est déjà en heure locale. Voir docs/idees-ux.md M1.
 
     Returns:
-        Liste de dicts {heure: 'AAAA-MM-JJTHH', n: int}, triée chronologiquement.
+        Liste de dicts {heure: 'AAAA-MM-JJTHH' (clé locale, triable), label:
+        libellé affiché ('15h', ou '17/07 15h' si la période couvre plusieurs
+        jours locaux), n: int}, triée chronologiquement.
     """
     f, params = _filtre_periode("date_sortie", debut, fin)
     rows = conn.execute(
-        f"SELECT substr(date_sortie, 1, 13) AS heure, COUNT(*) AS n "
-        f"FROM prets WHERE motif = 'pret'{f} GROUP BY heure ORDER BY heure",
+        f"SELECT date_sortie FROM prets WHERE motif = 'pret'{f}",
         params,
     ).fetchall()
-    return [{"heure": r["heure"], "n": r["n"]} for r in rows]
+
+    compte: dict[str, int] = {}
+    for r in rows:
+        try:
+            dt_local = datetime.fromisoformat(r["date_sortie"]).astimezone(FUSEAU_LOCAL)
+        except (ValueError, TypeError):
+            continue                              # date illisible : ignorée, jamais d'erreur
+        cle = dt_local.strftime("%Y-%m-%dT%H")
+        compte[cle] = compte.get(cle, 0) + 1
+
+    cles = sorted(compte)
+    plusieurs_jours = len({cle[:10] for cle in cles}) > 1
+    resultat = []
+    for cle in cles:
+        dt_local = datetime.strptime(cle, "%Y-%m-%dT%H")
+        motif = "%d/%m %Hh" if plusieurs_jours else "%Hh"
+        resultat.append({"heure": cle, "label": dt_local.strftime(motif), "n": compte[cle]})
+    return resultat
 
 
 def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
