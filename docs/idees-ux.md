@@ -360,7 +360,8 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 2. ✅ FAIT — Le lot « bénévole au prêt » : Q3, Q4, M3, M8 — une seule session,
    c'est le cœur de l'outil le jour J. Corrigés le 2026-07-17, un commit par
    point (voir CLAUDE.md).
-3. Les finitions transverses : Q2, Q5–Q12.
+3. ✅ FAIT — Les finitions transverses : Q2, Q5–Q12. Corrigées le 2026-07-17,
+   un commit par point (voir CLAUDE.md).
 4. M4–M9 un par un, à prioriser selon tes retours terrain.
 5. S1/S4 en tâche de fond, au fil des retouches ; S2/S3 seulement si le besoin
    se confirme.
