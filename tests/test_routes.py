@@ -442,6 +442,15 @@ def test_admin_supervision(client, monkeypatch):
     assert "Planning bénévole" in r2.text
 
 
+def test_admin_table_css_responsive(client):
+    # Retour terrain : le tableau "Bases de données" de /admin/supervision
+    # débordait à droite sur iPhone (.admin-table n'avait aucune règle CSS,
+    # largeur au contenu du navigateur). Vérifie que la règle existe bien.
+    r = client.get("/static/css/style.css")
+    assert r.status_code == 200
+    assert ".admin-table { width: 100%;" in r.text or ".admin-table {width:100%;" in r.text
+
+
 def test_admin_dashboard_supervision_embarquee(client, monkeypatch):
     # Le tableau de bord embarque désormais l'état de supervision (colonne
     # dédiée sur grand écran, masquée en CSS sous le breakpoint bureau — le
