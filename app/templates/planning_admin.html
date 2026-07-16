@@ -31,7 +31,7 @@
         <li>
           <a class="lien" href="/planning/admin/{{ e.id_evenement }}">{{ e.nom }}</a>
           <span class="pl-tag">{{ e.etat }}</span>
-          <span class="stats-note">{{ e.nb_reponses }} réponse(s)</span>
+          <span class="stats-note">{{ e.nb_reponses }} {{ pluriel(e.nb_reponses, 'réponse', 'réponses') }}</span>
         </li>
       {% endfor %}
     </ul>

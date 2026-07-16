@@ -12,7 +12,8 @@
     </p>
   {% endif %}
 
-  <p class="dispo-titre">Actuellement : {{ nb_titres }} jeu(x), {{ nb_ex }} exemplaire(s).</p>
+  <p class="dispo-titre">Actuellement : {{ nb_titres }} {{ pluriel(nb_titres, 'jeu', 'jeux') }},
+     {{ nb_ex }} {{ pluriel(nb_ex, 'exemplaire', 'exemplaires') }}.</p>
 </section>
 
 <section class="carte">

@@ -51,6 +51,11 @@ templates.env.globals["est_benevole"] = auth.peut_ecrire
 #   {% if module_visible(request, "tournois") %} ... {% endif %}
 templates.env.globals["module_visible"] = modules.module_visible
 
+# Accord singulier/pluriel disponible dans TOUS les gabarits, sans import :
+# {{ n }} {{ pluriel(n, 'jeu', 'jeux') }} -- remplace les pluriels parenthésés
+# type « jeu(x) », « prêt(s) » (docs/idees-ux.md Q2).
+templates.env.globals["pluriel"] = services.pluriel
+
 # Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
 # Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).
 templates.env.filters["dt_local"] = services.format_local

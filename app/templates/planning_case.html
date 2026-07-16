@@ -27,7 +27,7 @@
     · <a class="lien" href="/planning/admin/{{ ev.id_evenement }}/creneau/{{ creneau.id_creneau }}/editer">modifier l'horaire</a>
   </p>
 
-  <h2>Affecté(s)</h2>
+  <h2>{{ pluriel(affectes | length, 'Affecté', 'Affectés') }}</h2>
   {% if affectes %}
     <ul class="pl-inline-liste">
       {% for a in affectes %}

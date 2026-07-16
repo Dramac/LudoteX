@@ -7,7 +7,7 @@
   <div class="resultat resultat-attention">
     <p>
       Vous êtes sur le point de supprimer définitivement « <strong>{{ t.nom }}</strong> »
-      {% if nb_inscrits %}et ses <strong>{{ nb_inscrits }}</strong> inscription(s){% endif %}.
+      {% if nb_inscrits %}et ses <strong>{{ nb_inscrits }}</strong> {{ pluriel(nb_inscrits, 'inscription', 'inscriptions') }}{% endif %}.
       Cette action est irréversible.
     </p>
   </div>

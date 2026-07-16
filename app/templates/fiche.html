@@ -19,7 +19,8 @@
     {% else %}
       <p class="etat etat-sorti">Actuellement tout sorti</p>
     {% endif %}
-    <p class="dispo-titre">{{ disponible }} / {{ total }} exemplaire(s) de ce jeu disponible(s)</p>
+    <p class="dispo-titre">{{ disponible }} / {{ total }} {{ pluriel(total, 'exemplaire', 'exemplaires') }}
+       de ce jeu {{ pluriel(total, 'disponible', 'disponibles') }}</p>
 
     <dl class="caracteristiques">
       {% if info.type_jeu %}<dt>Type</dt><dd>{{ info.type_jeu }}</dd>{% endif %}

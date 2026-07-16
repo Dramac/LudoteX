@@ -22,13 +22,30 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   grep qu'aucun autre gabarit ne construisait un pluriel « jeu + s ». Test
   ajouté (`test_accueil_pluriel_jeux`). Voir `CLAUDE.md`.
 
-### Q2. Pluriels paresseux « 20 jeu(x) », « 1 prêt(s) », « exemplaire(s) »
+### Q2. ✅ FAIT — Pluriels paresseux « 20 jeu(x) », « 1 prêt(s) », « exemplaire(s) »
 - **Où** : `catalogue.html` (compteur), `stats.html` (palmarès), `fiche.html`,
   `admin_donnees.html`.
 - **Pourquoi** : les parenthèses font brouillon sur des pages publiques, alors
   que le vrai pluriel coûte une expression Jinja.
 - **Suggestion** : macro Jinja unique `pluriel(n, "jeu", "jeux")` dans un
   fragment partagé, utilisée partout : « 20 jeux », « 1 prêt », « 2 prêts ».
+- **Corrigé** le 2026-07-17 : implémentée comme fonction Python
+  `services.pluriel(n, singulier, pluriel)` (grammaire FR : -1/0/1 = singulier,
+  |n| ≥ 2 = pluriel) enregistrée comme **global Jinja**
+  (`templating.py`, `{{ pluriel(n, 'jeu', 'jeux') }}`) — utilisable dans tous
+  les gabarits sans `{% import %}`, plus simple qu'un fragment `_macros.html`
+  à inclure partout (« ou équivalent » — cohérent avec `est_benevole`/
+  `module_visible`, déjà des globals). Grep exhaustif sur `(s)`/`(x)` dans
+  `app/templates` : **15 occurrences corrigées** dans 10 gabarits
+  (`catalogue.html`, `admin_jeux.html` ×2, `admin_fiche.html`,
+  `admin_donnees.html`, `fiche.html` ×2, `stats.html` ×2, `planning_gerer.html`
+  ×2, `planning_admin.html`, `tournoi_arbre.html`, `tournoi_rondes.html`,
+  `tournoi_supprimer.html`, `planning_case.html`). **Laissés hors scope**
+  (décision assumée) : les 2 occurrences dans `admin_etiquettes.html` sont des
+  chaînes JS construites côté client (pas du Jinja, la fonction ne s'y
+  applique pas) ; le « (e) » de `planning_aide.html` (« placé(e) ») est un
+  accord de genre, pas un pluriel. Tests ajoutés (`test_pluriel`,
+  `test_catalogue_pluriel_jeux`). Voir `CLAUDE.md`.
 
 ### Q3. ✅ FAIT — Numéro d'emplacement minuscule au RETOUR d'un jeu
 - **Où** : `pret.html`, résultat `rendu` : « Emplacement n°5 libéré —
