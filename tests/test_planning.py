@@ -248,6 +248,31 @@ def test_planning_du_benevole_et_taches(conn):
 
 
 # ===========================================================================
+# Ordre des jours (M2) — chronologique, PAS alphabétique
+# ===========================================================================
+def test_jours_chronologiques_pas_alphabetique(conn):
+    # « Dimanche » est alphabétiquement avant « Samedi », mais a lieu APRÈS :
+    # l'ordre renvoyé doit suivre la chronologie (premier créneau de chaque
+    # jour), pas le libellé. Voir docs/idees-ux.md M2.
+    ev = services.creer_evenement(conn, "T")
+    services.ajouter_creneau(conn, ev, "Dimanche", "2026-09-13T09:00", "2026-09-13T12:00")
+    services.ajouter_creneau(conn, ev, "Samedi", "2026-09-12T09:00", "2026-09-12T12:00")
+    creneaux = services.lister_creneaux(conn, ev)
+    assert services.jours_chronologiques(creneaux) == ["Samedi", "Dimanche"]
+
+
+def test_construire_grille_ordre_jours_chronologique(conn):
+    ev = services.creer_evenement(conn, "T")
+    poste = services.ajouter_poste(conn, ev, "Accueil")
+    cr_dim = services.ajouter_creneau(conn, ev, "Dimanche", "2026-09-13T09:00", "2026-09-13T12:00")
+    cr_sam = services.ajouter_creneau(conn, ev, "Samedi", "2026-09-12T09:00", "2026-09-12T12:00")
+    services.definir_besoin(conn, cr_sam, poste, 1)
+    services.definir_besoin(conn, cr_dim, poste, 1)
+    grille = services.construire_grille(conn, ev)
+    assert [j["libelle"] for j in grille["jours"]] == ["Samedi", "Dimanche"]
+
+
+# ===========================================================================
 # Export iCalendar (.ics) — « Ajouter tout mon planning à mon agenda »
 # ===========================================================================
 def test_ical_planning_benevole_contenu(conn):
@@ -495,6 +520,35 @@ def test_flux_collecte_publique(client):
 def test_route_aide(client):
     r = client.get("/planning/aide")
     assert r.status_code == 200 and "mode d'emploi" in r.text
+
+
+def test_route_collecte_ordre_jours_chronologique(client):
+    # M2 : le formulaire de collecte affiche « Samedi » avant « Dimanche »,
+    # même si « Dimanche » est créé/listé en premier (ordre chronologique,
+    # pas alphabétique). Voir docs/idees-ux.md M2.
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": "Test"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Dimanche", "debut": "2026-09-13T09:00",
+                      "fin": "2026-09-13T12:00", "type_creneau": "poste"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T09:00",
+                      "fin": "2026-09-12T12:00", "type_creneau": "poste"})
+
+    page = client.get(f"/planning/collecte/{ev}")
+    assert page.status_code == 200
+    assert page.text.index("Samedi") < page.text.index("Dimanche")
+
+    # Même vérification côté grille admin (section « 4. Grille », construite
+    # par construire_grille — partagée avec la page publique et les exports
+    # Excel/PDF). On isole cette section : les sections 1/2 au-dessus listent
+    # encore les créneaux à plat (pas un groupement par jour, hors scope M2).
+    grille_page = client.get(f"/planning/admin/{ev}")
+    section_grille = grille_page.text.split(">4. Grille<", 1)[1]
+    assert section_grille.index("Samedi") < section_grille.index("Dimanche")
 
 
 def test_route_edition_case_et_creneau(client):

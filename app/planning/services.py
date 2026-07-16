@@ -888,6 +888,29 @@ def prefiller(conn: sqlite3.Connection, id_evenement: int) -> dict:
 # ===========================================================================
 # Grille (affichage / édition / exports) + analyse de couverture
 # ===========================================================================
+def jours_chronologiques(creneaux: list[dict]) -> list[str]:
+    """
+    Ordre CHRONOLOGIQUE des libellés de jour (« Samedi », « Dimanche »...)
+    d'une liste de créneaux : trié par l'horodatage du PREMIER créneau de
+    chaque jour (MIN(debut), en UTC ISO donc triable lexicalement), et non par
+    le libellé lui-même — un texte libre qui peut être alphabétiquement
+    inversé par rapport à la chronologie réelle (ex. « Dimanche 13 sept. » <
+    « Samedi 12 sept. »). Voir docs/idees-ux.md M2.
+
+    Utilisée PARTOUT où les créneaux sont groupés par jour (`construire_grille`
+    ci-dessous, formulaire de collecte dans `routes.py`) pour ne jamais
+    dépendre à nouveau de l'ordre alphabétique. Les exports Excel/PDF partent
+    de `construire_grille` : ils héritent automatiquement du même ordre.
+    """
+    premier_debut: dict[str, str] = {}
+    for c in creneaux:
+        lib = c["libelle_jour"]
+        debut = c["debut"]
+        if lib not in premier_debut or debut < premier_debut[lib]:
+            premier_debut[lib] = debut
+    return sorted(premier_debut, key=lambda lib: premier_debut[lib])
+
+
 def construire_grille(conn: sqlite3.Connection, id_evenement: int) -> dict:
     """
     Construit la structure complète du planning pour l'affichage, l'édition et
@@ -927,15 +950,14 @@ def construire_grille(conn: sqlite3.Connection, id_evenement: int) -> dict:
         else:
             par_case.setdefault((a["id_creneau"], a["id_poste"]), []).append(item)
 
-    # Créneaux de service, groupés par jour (ordre stable de lister_creneaux).
-    jours: list[dict] = []
-    index_jour: dict[str, dict] = {}
-    for c in lister_creneaux(conn, id_evenement, "poste"):
-        jour = index_jour.get(c["libelle_jour"])
-        if jour is None:
-            jour = {"libelle": c["libelle_jour"], "creneaux": []}
-            index_jour[c["libelle_jour"]] = jour
-            jours.append(jour)
+    # Créneaux de service, groupés par jour et triés CHRONOLOGIQUEMENT (par le
+    # premier créneau de chaque jour, pas par le libellé — voir M2/idees-ux.md
+    # et jours_chronologiques() ci-dessus).
+    creneaux_service = lister_creneaux(conn, id_evenement, "poste")
+    index_jour: dict[str, dict] = {
+        lib: {"libelle": lib, "creneaux": []} for lib in jours_chronologiques(creneaux_service)
+    }
+    for c in creneaux_service:
         cases = []
         for p in postes:
             nb = besoins.get((c["id_creneau"], p["id_poste"]), 0)
@@ -946,7 +968,8 @@ def construire_grille(conn: sqlite3.Connection, id_evenement: int) -> dict:
                     "affectations": par_case.get((c["id_creneau"], p["id_poste"]), []),
                 }
             )
-        jour["creneaux"].append({"creneau": c, "cases": cases})
+        index_jour[c["libelle_jour"]]["creneaux"].append({"creneau": c, "cases": cases})
+    jours = list(index_jour.values())
 
     # Tâches ponctuelles (sans poste).
     taches = [

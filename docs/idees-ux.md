@@ -123,7 +123,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   côté Python (les helpers de fuseau existent dans `services.py`), et n'afficher
   que « 15 h » plutôt que `2026-07-16T13`.
 
-### M2. 🐛 Planning bénévole : dimanche affiché avant samedi
+### M2. ✅ FAIT — 🐛 Planning bénévole : dimanche affiché avant samedi
 - **Où** : `app/planning/services.py` — créneaux triés par
   `ORDER BY libelle_jour` (alphabétique : « Dimanche 13 sept. » < « Samedi
   12 sept. ») ; constaté sur `/planning` avec la démo.
@@ -133,6 +133,13 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : trier les jours par leur premier créneau (`MIN(debut)` en
   UTC, sous-requête ou tri Python dans `construire_grille`) au lieu du libellé.
   Aucun changement de schéma nécessaire.
+- **Corrigé** le 2026-07-17 : nouvelle fonction `services.jours_chronologiques`
+  (tri Python par `MIN(debut)`, UTC ISO triable lexicalement), utilisée par
+  `construire_grille` (dont héritent la page publique, la grille admin et les
+  exports Excel/PDF) et par le formulaire de collecte (`routes.py`), qui
+  dupliquait le même groupement par jour. Vérifié avec `python -m
+  app.planning.demo` : « Samedi 12 sept. » puis « Dimanche 13 sept. ». 3 tests
+  ajoutés. Voir `CLAUDE.md`.
 
 ### M3. Aucune protection contre le double-appui sur « Prêter »
 - **Où** : `pret.html` (et tous les POST d'action).
