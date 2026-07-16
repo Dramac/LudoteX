@@ -140,12 +140,25 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   le champ (`admin_login.html` ligne 23) — rien à corriger côté code. Test de
   non-régression ajouté.
 
-### Q11. Favicon JPEG rectangulaire
+### ✅ FAIT — Q11. Favicon JPEG rectangulaire
 - **Où** : `base.html` : `<link rel="icon" href="/static/img/logo_djplm.jpg">`.
 - **Pourquoi** : les navigateurs rendent mal un JPEG non carré (fond blanc,
   déformation) — visible sur chaque onglet et sur l'écran d'accueil PWA.
 - **Suggestion** : générer un `favicon-192.png` et `favicon-512.png` carrés
   (Pillow est déjà là), déclarés en `rel="icon"` + `apple-touch-icon`.
+- **Constaté** le 2026-07-17 : le JPEG source (`logo_djplm.jpg`) est en fait
+  déjà carré (1509×1509) — le problème réel n'est pas le format mais le
+  **cadrage** : le sorcier est décentré (2/3 gauche du canevas), donc illisible
+  une fois réduit à 16-32 px.
+- **Corrigé** le 2026-07-17 : recadrage centré sur la tête/chapeau/barbe du
+  sorcier (zone la plus reconnaissable en petit), redimensionné en PNG carré
+  192×192 et 512×512 (Pillow, rééchantillonnage LANCZOS). Vérifié visuellement
+  jusqu'à 32×32 : silhouette violette du chapeau + barbe blanche restent
+  identifiables. `base.html` référence désormais les deux PNG
+  (`rel="icon"` par taille + `apple-touch-icon`), le JPEG original n'est plus
+  utilisé dans `<head>`. PNG versionnés (`app/static/img/`, non exclus du
+  dépôt — vérifié, seul `*.qr.png` est ignoré). Test ajouté
+  (`test_favicon_carre`).
 
 ### Q12. Deux familles de boutons aux angles différents
 - **Où** : `style.css` : `.bouton` (12 px de rayon, padding 20) vs

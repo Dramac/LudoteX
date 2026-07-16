@@ -290,6 +290,19 @@ def test_admin_login_autofocus(client, monkeypatch):
     assert '<input type="password" id="mot_de_passe" name="mot_de_passe" autofocus>' in r.text
 
 
+def test_favicon_carre(client):
+    # Q11 : favicons PNG carrés référencés (plus le JPEG d'origine, mal cadré
+    # en petit) et effectivement servis en statique.
+    r = client.get("/catalogue")
+    assert 'href="/static/img/favicon-192.png"' in r.text
+    assert 'href="/static/img/favicon-512.png"' in r.text
+    assert "logo_djplm.jpg" not in r.text.split("<body", 1)[0]  # plus dans <head>
+    for nom in ("favicon-192.png", "favicon-512.png"):
+        rf = client.get(f"/static/img/{nom}")
+        assert rf.status_code == 200
+        assert rf.headers["content-type"] == "image/png"
+
+
 def test_admin_login_et_creation_jeu(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
 
