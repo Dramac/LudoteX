@@ -108,11 +108,12 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   seule fois. »
 - **Corrigé** le 2026-07-17 : phrase remplacée telle quelle. Test ajouté.
 
-### Q8. Statut du scanner invisible pour les lecteurs d'écran
+### Q8. ✅ FAIT — Statut du scanner invisible pour les lecteurs d'écran
 - **Où** : `scanner.html`, `<p id="statut">` mis à jour par `scanner.js`.
 - **Pourquoi** : les changements (« Démarrage… », « QR détecté ») ne sont pas
   annoncés ; et visuellement rien ne bouge si la caméra met du temps.
 - **Suggestion** : ajouter `aria-live="polite"` sur `#statut` (1 attribut).
+- **Corrigé** le 2026-07-17 : attribut ajouté tel quel. Test ajouté.
 
 ### Q9. « 0 min » de durée moyenne quand il n'y a rien à moyenner
 - **Où** : `/stats`, carte de synthèse (constaté avec les données de démo).

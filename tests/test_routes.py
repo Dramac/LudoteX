@@ -573,6 +573,8 @@ def test_scanner_page(client):
     assert "ne demandera l'autorisation caméra" in r.text
     assert "qu'une seule fois" in r.text
     assert "par session" not in r.text
+    # Q8 : le statut du scanner est annoncé aux lecteurs d'écran.
+    assert 'id="statut" aria-live="polite"' in r.text
 
 
 def test_scanner_saisie_manuelle_lien(client):
