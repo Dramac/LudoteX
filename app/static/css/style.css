@@ -330,6 +330,17 @@ summary:focus-visible,
 .detail th { color: var(--gris); }
 
 /* Administration */
+/* Tableaux admin (supervision, fonctionnalités) : n'avaient aucune règle
+   dédiée -> largeur au contenu par défaut du navigateur, débordement à droite
+   constaté sur mobile (iPhone 13 mini). Même recette que .detail, qui s'en
+   sort bien sur petit écran ailleurs dans l'appli. */
+.admin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.admin-table th, .admin-table td {
+  text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord);
+  vertical-align: top; word-break: break-word;
+}
+.admin-table th { color: var(--gris); }
+
 .admin-menu { list-style: none; margin: 0; padding: 0; }
 .admin-menu li { margin: 10px 0; font-size: 1.1rem; }
 .admin-menu li a { display: flex; align-items: center; }
