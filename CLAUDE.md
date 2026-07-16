@@ -569,6 +569,33 @@ la mise en page qui reste strictement scopée au grand écran). **191 tests
 toujours verts** (aucune assertion ne portait sur le texte long des liens du
 tableau de bord — vérifié).
 
+**Session de correction — 3 bugs de l'audit UX (`docs/idees-ux.md`) : FAIT.**
+Un commit par bug, dans l'ordre demandé.
+**Q1** : pluriel « 15 jeus » sur l'accueil (`accueil.html`) — `'s'` → `'x'` ;
+vérifié par grep qu'aucun autre gabarit ne construisait ce pluriel-là (les
+autres pluriels du site, « inscrit(s) », « joueur(s) », étaient déjà corrects).
+**M2** : le planning bénévole triait les jours par `libelle_jour` alphabétique
+(« Dimanche » avant « Samedi »). Nouvelle fonction
+`app/planning/services.py::jours_chronologiques(creneaux)` (tri Python sur
+`MIN(debut)`, UTC ISO triable lexicalement, aucun changement de schéma),
+utilisée par `construire_grille` — dont héritent la page publique, la grille
+admin **et** les exports Excel/PDF (ils partent tous de `construire_grille`) —
+et par le formulaire de collecte (`routes.py`), qui dupliquait le même
+groupement à la main. La liste à plat des créneaux dans les sections
+« Trame »/« Besoins » de l'écran admin reste hors scope (pas un groupement par
+jour). Vérifié avec `python -m app.planning.demo`.
+**M1** : l'histogramme `/stats` groupait les prêts par heure UTC
+(`substr(date_sortie,1,13)`) alors que le reste de la page est en heure
+locale. `services.prets_par_heure` récupère maintenant les `date_sortie` bruts
+et groupe en Python après `.astimezone(FUSEAU_LOCAL)` (toujours aucune logique
+de fuseau en SQL, cohérent avec le reste du module). Chaque entrée porte un
+`label` prêt à afficher (« 15h », ou « 17/07 15h » si la période couvre
+plusieurs jours locaux) ; `stats.html` l'utilise directement au lieu de
+découper la chaîne ISO. Aucun export Excel/PDF ne reprenait `par_heure` (aucun
+changement nécessaire de ce côté). Tests ajoutés pour les 3 bugs (dont le cas
+de bascule de jour 23:30 UTC → 01:30 local le lendemain pour M1). **Suite
+globale : 197 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

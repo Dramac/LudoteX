@@ -170,3 +170,36 @@ def test_prets_par_heure(conn):
     services.preter(conn, "002")
     heures = services.prets_par_heure(conn)
     assert sum(h["n"] for h in heures) == 2
+
+
+def test_prets_par_heure_conversion_locale(conn):
+    # Bug M1 (docs/idees-ux.md) : un prêt à 13:00 UTC un jour d'été (Europe/
+    # Paris en heure d'été, UTC+2) doit apparaître dans la barre LOCALE
+    # « 15h », pas « 13h ». Un seul jour dans la période -> pas de date dans
+    # le libellé.
+    conn.execute(
+        "INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif) "
+        "VALUES ('001', 1, '2026-07-15T13:00:00+00:00', 'pret')"
+    )
+    conn.commit()
+    heures = services.prets_par_heure(conn)
+    assert heures == [{"heure": "2026-07-15T15", "label": "15h", "n": 1}]
+
+
+def test_prets_par_heure_bascule_de_jour(conn):
+    # 23:30 UTC -> 01:30 heure locale LE LENDEMAIN (été, UTC+2). Avec un
+    # second prêt un autre jour local, la période couvre plusieurs jours : le
+    # libellé inclut alors la date (pas seulement l'heure).
+    conn.execute(
+        "INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif) "
+        "VALUES ('001', 1, '2026-07-15T23:30:00+00:00', 'pret')"
+    )
+    conn.execute(
+        "INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif) "
+        "VALUES ('002', 2, '2026-07-14T10:00:00+00:00', 'pret')"
+    )
+    conn.commit()
+    heures = {h["heure"]: h for h in services.prets_par_heure(conn)}
+    # Le prêt de 23:30 UTC bascule bien sur le jour local SUIVANT (16 juillet).
+    assert heures["2026-07-16T01"] == {"heure": "2026-07-16T01", "label": "16/07 01h", "n": 1}
+    assert heures["2026-07-14T12"] == {"heure": "2026-07-14T12", "label": "14/07 12h", "n": 1}
