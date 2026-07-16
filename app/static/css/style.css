@@ -181,6 +181,9 @@ summary:focus-visible,
   line-height: 1;
   color: var(--vert);
 }
+/* Retour d'un jeu : même gabarit que le prêt, numéro en BLEU pour distinguer
+   d'un coup d'œil « je récupère » (retour) de « je dépose » (prêt, vert). */
+.pochette-num--retour { color: #1a73e8; }
 .resultat-consigne { margin: 0; font-weight: 600; }
 
 .lien { color: #1a73e8; }
