@@ -571,6 +571,19 @@ def test_cycle_preter_puis_rendre(client):
     assert "Disponible" in r4.text
 
 
+def test_bouton_scanner_apres_action(client):
+    # Q4 : après une action (résultat affiché), un vrai bouton pleine largeur
+    # propose d'enchaîner sur le scan suivant.
+    bouton = '<a class="bouton bouton-secondaire" href="/scanner">📷 Scanner le jeu suivant</a>'
+    r = client.post("/pret/001/preter")
+    assert bouton in r.text
+
+    # Simple consultation (pas de résultat) : pas de bouton, le petit lien reste.
+    r2 = client.get("/pret/001")
+    assert bouton not in r2.text
+    assert '<a class="lien" href="/scanner">Scanner le jeu suivant</a>' in r2.text
+
+
 def test_live_page(client):
     # La page du tableau de bord salle répond et contient ses sections clés.
     r = client.get("/live")
