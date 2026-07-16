@@ -13,9 +13,9 @@
         <span class="palmares-val">
           {% if metrique == "exemplaire" %}
             {{ "%.1f"|format(jeu.par_exemplaire) }} / ex.
-            <small>({{ jeu.nb_prets }} prêt(s), {{ jeu.nb_exemplaires }} ex.)</small>
+            <small>({{ jeu.nb_prets }} {{ pluriel(jeu.nb_prets, 'prêt', 'prêts') }}, {{ jeu.nb_exemplaires }} ex.)</small>
           {% else %}
-            {{ jeu.nb_prets }} prêt(s)
+            {{ jeu.nb_prets }} {{ pluriel(jeu.nb_prets, 'prêt', 'prêts') }}
             {% if jeu.nb_exemplaires > 1 %}<small>({{ jeu.nb_exemplaires }} ex.)</small>{% endif %}
           {% endif %}
         </span>

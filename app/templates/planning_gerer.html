@@ -6,7 +6,7 @@
 <section class="carte">
   <h1>{{ ev.nom }}</h1>
   <p>État : <span class="pl-tag">{{ ev.etat }}</span>
-    &nbsp;·&nbsp; {{ benevoles | length }} réponse(s)
+    &nbsp;·&nbsp; {{ benevoles | length }} {{ pluriel(benevoles | length, 'réponse', 'réponses') }}
     &nbsp;·&nbsp; <a class="lien" href="/planning/admin">tous les plannings</a>
     &nbsp;·&nbsp; <a class="lien" href="/planning/aide">aide</a></p>
   {% if message %}<p class="resultat resultat-ok">{{ message }}</p>{% endif %}
@@ -133,7 +133,7 @@
     Les cases <strong>verrouillées</strong> sont conservées.</p>
   <p class="stats-note">
     Couverture : {{ couverture.total_places }} / {{ couverture.total_requis }} places pourvues.
-    {% if couverture.trous %}<strong>{{ couverture.trous | length }} case(s) en manque.</strong>{% endif %}
+    {% if couverture.trous %}<strong>{{ couverture.trous | length }} {{ pluriel(couverture.trous | length, 'case', 'cases') }} en manque.</strong>{% endif %}
   </p>
   {% if couverture.trous %}
     <details>

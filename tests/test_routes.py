@@ -162,6 +162,23 @@ def test_catalogue(client):
     assert "1 / 1 dispo" in r.text or "1 jeu" in r.text
 
 
+def test_catalogue_pluriel_jeux(client):
+    # Q2 : vrai pluriel (macro/global `pluriel`), pas de « jeu(x) » parenthésé.
+    r = client.get("/catalogue")
+    assert "1 jeu</p>" in r.text or "1 jeu<" in r.text
+    assert "jeu(x)" not in r.text
+
+    from app import db
+    conn = db.get_connection()
+    conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('7WONDERS', '7 Wonders')")
+    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('002', '7WONDERS')")
+    conn.commit()
+    conn.close()
+    r2 = client.get("/catalogue")
+    assert "2 jeux" in r2.text
+    assert "jeu(x)" not in r2.text
+
+
 def test_catalogue_recherche_par_nom(client):
     r = client.get("/catalogue", params={"q": "cat"})
     assert r.status_code == 200

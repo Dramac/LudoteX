@@ -76,7 +76,7 @@
   </div>
   {% endif %}
 
-  <p class="catalogue-compte">{{ jeux | length }} jeu(x)</p>
+  <p class="catalogue-compte">{{ jeux | length }} {{ pluriel(jeux | length, 'jeu', 'jeux') }}</p>
 </section>
 
 <ul class="catalogue-liste">

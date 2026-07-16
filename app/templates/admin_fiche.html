@@ -15,7 +15,7 @@
     <p class="dispo-titre">
        {% if titre.type_jeu %}{{ titre.type_jeu }} · {% endif %}
        Référence : <code>{{ titre.reference_titre }}</code> ·
-       {{ exemplaires | length }} exemplaire(s)</p>
+       {{ exemplaires | length }} {{ pluriel(exemplaires | length, 'exemplaire', 'exemplaires') }}</p>
 
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/exemplaire">
       <button type="submit" class="bouton-filtrer">➕ Ajouter un exemplaire</button>

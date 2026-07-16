@@ -98,6 +98,23 @@ def format_duree(secondes: float | None) -> str:
     return f"{minutes} min"
 
 
+def pluriel(n: int, singulier: str, pluriel: str) -> str:
+    """
+    Accord au singulier ou au pluriel selon `n` (grammaire FR : -1/0/1 =
+    singulier, |n| >= 2 = pluriel). Enregistrée comme global Jinja
+    (`app/templating.py`) et utilisable dans TOUS les gabarits sans import :
+    `{{ n }} {{ pluriel(n, 'jeu', 'jeux') }}` — remplace les pluriels
+    parenthésés type « jeu(x) », « prêt(s) » (voir docs/idees-ux.md Q2).
+
+    Args:
+        n: la quantité qui détermine l'accord.
+        singulier: forme au singulier (ex. « jeu »).
+        pluriel: forme au pluriel (ex. « jeux » — jamais déduite
+            automatiquement, les pluriels irréguliers sont fréquents en FR).
+    """
+    return singulier if -1 <= n <= 1 else pluriel
+
+
 def _duree_secondes(sortie_iso: str, retour_iso: str | None) -> float:
     """Durée d'un prêt en secondes (jusqu'à `retour_iso`, ou jusqu'à maintenant)."""
     debut = datetime.fromisoformat(sortie_iso)

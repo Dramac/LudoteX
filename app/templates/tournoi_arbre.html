@@ -5,7 +5,7 @@
 {% block contenu %}
 <section class="carte">
   <h1>Élimination directe</h1>
-  <p class="dispo-titre">{{ t.nom }} · {{ t.nb_rondes }} tour(s){% if t.bo3 %} · BO3{% endif %}</p>
+  <p class="dispo-titre">{{ t.nom }} · {{ t.nb_rondes }} {{ pluriel(t.nb_rondes, 'tour', 'tours') }}{% if t.bo3 %} · BO3{% endif %}</p>
 
   {% if message %}
     <div class="resultat {{ 'resultat-info' if message[0] == 'succes' else 'resultat-attention' }}">

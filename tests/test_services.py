@@ -124,6 +124,17 @@ def test_format_duree():
     assert services.format_duree(3 * 86400 + 4 * 3600).startswith("3 j 4 h")
 
 
+def test_pluriel():
+    # Grammaire FR : -1/0/1 = singulier, |n| >= 2 = pluriel (Q2, idees-ux.md).
+    assert services.pluriel(0, "jeu", "jeux") == "jeu"
+    assert services.pluriel(1, "jeu", "jeux") == "jeu"
+    assert services.pluriel(2, "jeu", "jeux") == "jeux"
+    assert services.pluriel(10, "jeu", "jeux") == "jeux"
+    # Pluriel régulier aussi couvert (pas de déduction automatique en 's').
+    assert services.pluriel(1, "prêt", "prêts") == "prêt"
+    assert services.pluriel(3, "prêt", "prêts") == "prêts"
+
+
 def test_cloturer_tous_les_prets(conn):
     services.preter(conn, "001")
     services.sortir_tournoi(conn, "002")
