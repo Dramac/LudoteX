@@ -75,13 +75,18 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   fiche publique » reste) ; en simple consultation (pas de résultat), le pied
   de carte est inchangé. Test ajouté. Voir `CLAUDE.md`.
 
-### Q5. Titre d'onglet incohérent sur la fiche publique
+### Q5. ✅ FAIT — Titre d'onglet incohérent sur la fiche publique
 - **Où** : `fiche.html` (« Jeu d'essai n°1 — Prêt de jeux ») et le fallback de
   `base.html` (`{% block titre %}Prêt de jeux{% endblock %}`).
 - **Pourquoi** : toutes les autres pages titrent avec `{{ nom_association }}` ;
   « Prêt de jeux » générique dépareille dans l'historique/les onglets.
 - **Suggestion** : `{% block titre %}{{ nom_association }}{% endblock %}` en
   fallback, et `fiche.html` aligné sur le motif des autres pages.
+- **Corrigé** le 2026-07-17 : les deux occurrences remplacées (fallback
+  `base.html` et `fiche.html`, motif « `<jeu>` — `{{ nom_association }}` »
+  comme `catalogue.html`/`stats.html`/etc.). Grep confirmé : plus aucun
+  gabarit ne titre « Prêt de jeux » en dur (`live.html`, autonome, n'étend pas
+  `base.html` et n'est pas concerné). Test ajouté. Voir `CLAUDE.md`.
 
 ### Q6. Gris trop clair sur les petits textes
 - **Où** : `style.css` : `.stats-note` et `.palmares-val small` en `#9aa0a6`

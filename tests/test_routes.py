@@ -243,6 +243,8 @@ def test_fiche_publique(client):
     assert r.status_code == 200
     assert "Catan" in r.text
     assert "Disponible" in r.text
+    # Q5 : titre d'onglet cohérent avec les autres pages (« <jeu> — asso »).
+    assert "<title>Catan — Des jeux plein la Manche</title>" in r.text
 
 
 def test_fiche_inconnue(client):
