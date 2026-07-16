@@ -30,7 +30,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : macro Jinja unique `pluriel(n, "jeu", "jeux")` dans un
   fragment partagé, utilisée partout : « 20 jeux », « 1 prêt », « 2 prêts ».
 
-### Q3. Numéro d'emplacement minuscule au RETOUR d'un jeu
+### Q3. ✅ FAIT — Numéro d'emplacement minuscule au RETOUR d'un jeu
 - **Où** : `pret.html`, résultat `rendu` : « Emplacement n°5 libéré —
   récupérez-y la pièce d'identité » en texte courant.
 - **Pourquoi** : au prêt, le numéro s'affiche en 5 rem (illisible de rater) ;
@@ -39,6 +39,10 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : même mise en page que le prêt : libellé « Récupérer la pièce
   d'identité à l'emplacement n° » + numéro en classe `.pochette-num` (déclinée
   en bleu `#1a73e8` pour distinguer retour de prêt).
+- **Corrigé** le 2026-07-17 : `pret.html` (résultat `rendu`) reprend le même
+  gabarit `.resultat-libelle` + `.pochette-num` qu'au prêt, avec la nouvelle
+  variante `.pochette-num--retour` (bleu `#1a73e8`, `style.css`). `rendu_tournoi`
+  non touché (pas d'emplacement). Test ajouté. Voir `CLAUDE.md`.
 
 ### Q4. « Scanner le jeu suivant » : l'action la plus fréquente est un petit lien
 - **Où** : `pret.html`, pied de carte.

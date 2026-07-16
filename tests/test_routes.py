@@ -562,7 +562,9 @@ def test_cycle_preter_puis_rendre(client):
 
     r3 = client.post("/pret/001/rendre")
     assert r3.status_code == 200
-    assert "libéré" in r3.text
+    # Numéro d'emplacement en grand au retour (Q3), même gabarit qu'au prêt.
+    assert "Récupérer la pièce d'identité à l'emplacement" in r3.text
+    assert '<p class="pochette-num pochette-num--retour">1</p>' in r3.text
 
     # Après retour : de nouveau disponible
     r4 = client.get("/pret/001")
