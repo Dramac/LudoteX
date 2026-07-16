@@ -49,6 +49,8 @@
         <p>Cet exemplaire était déjà disponible. Rien à rendre.</p>
       </section>
     {% endif %}
+    {# L'action suivante la plus fréquente : enchaîner sur le scan suivant. #}
+    <a class="bouton bouton-secondaire" href="/scanner">📷 Scanner le jeu suivant</a>
   {% endif %}
 
   <section class="carte">
@@ -86,8 +88,10 @@
     {% endif %}
 
     <p class="lien-fiche">
+      {% if not resultat %}
       <a class="lien" href="/scanner">Scanner le jeu suivant</a>
       &nbsp;·&nbsp;
+      {% endif %}
       <a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a>
     </p>
   </section>

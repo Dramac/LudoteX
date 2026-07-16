@@ -44,7 +44,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   variante `.pochette-num--retour` (bleu `#1a73e8`, `style.css`). `rendu_tournoi`
   non touché (pas d'emplacement). Test ajouté. Voir `CLAUDE.md`.
 
-### Q4. « Scanner le jeu suivant » : l'action la plus fréquente est un petit lien
+### Q4. ✅ FAIT — « Scanner le jeu suivant » : l'action la plus fréquente est un petit lien
 - **Où** : `pret.html`, pied de carte.
 - **Pourquoi** : après chaque prêt/retour, l'enchaînement vers le scan suivant
   est LE geste répété toute la journée ; c'est aujourd'hui la plus petite cible
@@ -52,6 +52,11 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : quand un `resultat` vient d'être affiché, montrer un vrai
   bouton `a.bouton.bouton-secondaire` « 📷 Scanner le jeu suivant » sous le
   bandeau de résultat (le petit lien peut rester en l'absence de résultat).
+- **Corrigé** le 2026-07-17 : bouton pleine largeur ajouté juste sous le
+  bandeau de résultat (tous les types de résultat). Le petit lien « Scanner le
+  jeu suivant » en pied de carte disparaît alors (redondant, seul « Voir la
+  fiche publique » reste) ; en simple consultation (pas de résultat), le pied
+  de carte est inchangé. Test ajouté. Voir `CLAUDE.md`.
 
 ### Q5. Titre d'onglet incohérent sur la fiche publique
 - **Où** : `fiche.html` (« Jeu d'essai n°1 — Prêt de jeux ») et le fallback de
