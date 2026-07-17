@@ -1623,3 +1623,205 @@ def test_ranger_jeux_pagination(client, monkeypatch):
     assert "Page 1 / 2" in r1.text
     r2 = client.get("/admin/rangement/ranger", params={"page": 2})
     assert "Page 2 / 2" in r2.text
+
+
+# ===========================================================================
+# Addendum §13 (suite) — POST /admin/rangement/ranger/appliquer
+# ===========================================================================
+def _emplacement_evenement_001(client):
+    conn = _connexion_test()
+    try:
+        return conn.execute(
+            "SELECT emplacement_evenement FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_ranger_appliquer_protege_par_garde_admin(client):
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={"portee": "filtre", "emplacement_texte": "Étagère 5"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+
+def test_ranger_appliquer_refuse_emplacement_vide(client):
+    _connecter(client)
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={"portee": "filtre", "emplacement_texte": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert "msg=" in r.headers["location"]
+    assert _emplacement_evenement_001(client) is None
+
+
+def test_ranger_appliquer_portee_filtre_evenement(client):
+    _connecter(client)
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={"portee": "filtre", "emplacement_texte": "Étagère 5"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    from urllib.parse import unquote_plus
+
+    assert "1 jeu" in unquote_plus(r.headers["location"])
+    assert _emplacement_evenement_001(client) == "Étagère 5"
+
+
+def test_ranger_appliquer_portee_coches_ne_touche_que_la_selection(client):
+    _connecter(client)
+    conn = _connexion_test()
+    try:
+        conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('DOBBLE', 'Dobble')")
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('900', 'DOBBLE')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={
+            "portee": "coches", "titres_coches": ["CATAN"], "emplacement_texte": "Étagère 6",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert _emplacement_evenement_001(client) == "Étagère 6"
+
+    conn = _connexion_test()
+    try:
+        valeur_dobble = conn.execute(
+            "SELECT emplacement_evenement FROM exemplaires WHERE id_exemplaire = '900'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert valeur_dobble is None
+
+
+def test_ranger_appliquer_ne_pas_ecraser_ne_comble_que_les_trous(client):
+    _connecter(client)
+    conn = _connexion_test()
+    try:
+        conn.execute(
+            "UPDATE exemplaires SET emplacement_evenement = 'Ancien' WHERE id_exemplaire = '001'"
+        )
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('002', 'CATAN')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={
+            "portee": "filtre", "emplacement_texte": "Nouveau", "ne_pas_ecraser": "1",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    conn = _connexion_test()
+    try:
+        valeurs = {
+            r2["id_exemplaire"]: r2["emplacement_evenement"]
+            for r2 in conn.execute(
+                "SELECT id_exemplaire, emplacement_evenement FROM exemplaires "
+                "WHERE reference_titre = 'CATAN'"
+            )
+        }
+    finally:
+        conn.close()
+    assert valeurs["001"] == "Ancien"
+    assert valeurs["002"] == "Nouveau"
+
+
+def test_ranger_appliquer_contexte_local_ecrit_id(client):
+    _connecter(client)
+    id_totem = _id_emplacement("Totem")
+    client.post("/admin/rangement/contexte", data={"contexte": "local"})
+
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={"portee": "filtre", "emplacement_id": str(id_totem)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    conn = _connexion_test()
+    try:
+        valeur = conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert valeur == id_totem
+
+
+def test_ranger_appliquer_contexte_local_id_invalide_refuse(client):
+    _connecter(client)
+    client.post("/admin/rangement/contexte", data={"contexte": "local"})
+
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={"portee": "filtre", "emplacement_id": "99999"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    conn = _connexion_test()
+    try:
+        valeur = conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert valeur is None
+
+
+def test_ranger_appliquer_redirige_en_conservant_les_filtres(client):
+    _connecter(client)
+    conn = _connexion_test()
+    try:
+        conn.execute(
+            "INSERT INTO titres (reference_titre, nom, categorie) VALUES "
+            "('DOBBLE', 'Dobble', 'Rapidité')"
+        )
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('900', 'DOBBLE')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    r = client.post(
+        "/admin/rangement/ranger/appliquer",
+        data={
+            "portee": "filtre", "emplacement_texte": "Table du fond", "categorie": "Rapidité",
+        },
+        follow_redirects=False,
+    )
+    location = r.headers["location"]
+    assert "categorie=Rapidit" in location
+
+    # Le filtre catégorie est conservé au retour ; Dobble a bien reçu la
+    # valeur (mais disparaît de la vue par défaut, désormais complètement
+    # rangé — comportement attendu, vérifié directement en base).
+    r2 = client.get(location)
+    assert r2.status_code == 200
+
+    conn = _connexion_test()
+    try:
+        valeur = conn.execute(
+            "SELECT emplacement_evenement FROM exemplaires WHERE id_exemplaire = '900'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert valeur == "Table du fond"
