@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block titre %}Ranger les jeux — Administration{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Ranger les jeux</h1>
+
+  <p class="rangement-bandeau">
+    🗄️ Contexte actif : <strong>{{ 'Événement' if contexte == 'evenement' else 'Local' }}</strong>
+    <a class="lien" href="/admin/rangement">changer</a>
+  </p>
+
+  {% if message %}<p class="resultat resultat-ok">{{ message }}</p>{% endif %}
+
+  <p class="stats-note">
+    Affecte un emplacement à toutes les boîtes d'un jeu en une fois — pratique
+    pour équiper rapidement un lot de jeux. Pour des copies d'un même jeu
+    réparties à des endroits différents (surtout en contexte local), utilisez
+    plutôt la fiche du jeu (édition à l'unité).
+  </p>
+
+  <details class="recherche" {% if categorie or q or age or joueurs %}open{% endif %}>
+    <summary>Rechercher / filtrer</summary>
+    <form method="get" action="/admin/rangement/ranger" class="recherche-form">
+      <div class="champ">
+        <label for="q">Recherche</label>
+        <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
+      </div>
+
+      <div class="champ">
+        <label for="categorie">Catégorie</label>
+        <select id="categorie" name="categorie">
+          <option value="">Toutes</option>
+          {% for c in categories %}
+            <option value="{{ c }}" {% if c == categorie %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="champ">
+        <label for="age">Âge minimum</label>
+        <select id="age" name="age">
+          <option value="">Tous</option>
+          {% for a in ages %}
+            <option value="{{ a }}" {% if a == age %}selected{% endif %}>dès {{ a }} ans</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="champ">
+        <label for="joueurs">Nombre de joueurs</label>
+        <select id="joueurs" name="joueurs">
+          <option value="">Indifférent</option>
+          {% for n in range(1, max_joueurs + 1) %}
+            <option value="{{ n }}" {% if n == joueurs %}selected{% endif %}>{{ n }} joueur{{ 's' if n > 1 else '' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <label class="case">
+        <input type="checkbox" name="tous" value="1" {% if tous %}checked{% endif %}>
+        Afficher aussi les jeux déjà rangés
+      </label>
+
+      <div class="recherche-actions">
+        <button type="submit" class="bouton-filtrer">Filtrer</button>
+        {% if categorie or q or age or joueurs or tous %}
+          <a class="lien" href="/admin/rangement/ranger">Réinitialiser</a>
+        {% endif %}
+      </div>
+    </form>
+  </details>
+
+  <p class="dispo-titre">
+    {{ total_jeux }} {{ pluriel(total_jeux, 'jeu', 'jeux') }}
+    ({{ total_boites }} {{ pluriel(total_boites, 'boîte', 'boîtes') }})
+    {%- if nb_deja_ranges %} — dont {{ nb_deja_ranges }} déjà {{ pluriel(nb_deja_ranges, 'rangé', 'rangés') }}{% endif %}
+  </p>
+</section>
+
+<section class="carte">
+  <form method="post" action="/admin/rangement/ranger/appliquer" id="form-ranger">
+    <input type="hidden" name="categorie" value="{{ categorie or '' }}">
+    <input type="hidden" name="q" value="{{ q or '' }}">
+    <input type="hidden" name="age" value="{{ age if age is not none else '' }}">
+    <input type="hidden" name="joueurs" value="{{ joueurs if joueurs is not none else '' }}">
+    <input type="hidden" name="tous" value="{{ 1 if tous else 0 }}">
+    <input type="hidden" name="page" value="{{ page }}">
+
+    <div class="select-actions">
+      <button type="button" class="lien-bouton" onclick="cocherTout(true)">Tout cocher (page)</button>
+      <button type="button" class="lien-bouton" onclick="cocherTout(false)">Tout décocher</button>
+      <span class="compteur" id="compteur-coches">0 jeu coché</span>
+    </div>
+
+    <table class="admin-table">
+      <thead>
+        <tr><th></th><th>Jeu</th><th>Boîtes</th><th>Emplacement actuel</th></tr>
+      </thead>
+      <tbody>
+        {% for jeu in jeux %}
+          <tr>
+            <td>
+              <input type="checkbox" name="titres_coches" value="{{ jeu.reference_titre }}"
+                     class="jeu-coche" onchange="majCompteurCoches()">
+            </td>
+            <td>{{ jeu.nom }}</td>
+            <td>{{ jeu.total }}</td>
+            <td>
+              {% if jeu.rangement_affichage == '—' %}
+                —
+              {% elif jeu.rangement_complet %}
+                {{ jeu.rangement_affichage }}
+              {% else %}
+                <em>mixte</em>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4"><em>Aucun jeu ne correspond à ces critères.</em></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if nb_pages > 1 %}
+      <p class="stats-note" style="margin-top:10px">
+        {% if url_precedente %}<a class="lien" href="{{ url_precedente }}">← Précédent</a>{% endif %}
+        &nbsp;Page {{ page }} / {{ nb_pages }}&nbsp;
+        {% if url_suivante %}<a class="lien" href="{{ url_suivante }}">Suivant →</a>{% endif %}
+      </p>
+    {% endif %}
+
+    <h2>Appliquer un emplacement</h2>
+
+    {% if contexte == 'local' %}
+      <div class="champ">
+        <label for="emplacement_id">Emplacement</label>
+        <select id="emplacement_id" name="emplacement_id">
+          <option value="">— choisir —</option>
+          {% for e in emplacements_locaux %}
+            <option value="{{ e.id_emplacement }}">{{ e.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="stats-note">Affecte toutes les copies au même emplacement.</p>
+    {% else %}
+      <div class="champ">
+        <label for="emplacement_texte">Emplacement</label>
+        <input type="text" id="emplacement_texte" name="emplacement_texte" placeholder="ex. Étagère 2">
+      </div>
+    {% endif %}
+
+    <label class="case">
+      <input type="checkbox" name="ne_pas_ecraser" value="1">
+      Ne pas écraser les emplacements déjà saisis
+    </label>
+
+    <div class="recherche-actions">
+      <button type="submit" name="portee" value="filtre" class="bouton bouton-principal">
+        Appliquer à {{ total_jeux }} {{ pluriel(total_jeux, 'jeu', 'jeux') }}
+        ({{ total_boites }} {{ pluriel(total_boites, 'boîte', 'boîtes') }}{% if nb_deja_ranges %},
+        dont {{ nb_deja_ranges }} déjà {{ pluriel(nb_deja_ranges, 'rangé', 'rangés') }} —
+        {{ pluriel(nb_deja_ranges, 'sera', 'seront') }} remplacé{{ 's' if nb_deja_ranges > 1 else '' }}{% endif %})
+      </button>
+      <button type="submit" name="portee" value="coches" class="bouton bouton-secondaire">
+        Appliquer aux jeux cochés (<span id="compteur-bouton">0</span>)
+      </button>
+    </div>
+  </form>
+</section>
+
+<script>
+  function cocherTout(etat) {
+    document.querySelectorAll('.jeu-coche').forEach(function (c) { c.checked = etat; });
+    majCompteurCoches();
+  }
+
+  function majCompteurCoches() {
+    var n = document.querySelectorAll('.jeu-coche:checked').length;
+    document.getElementById('compteur-coches').textContent =
+      n + (n > 1 ? ' jeux cochés' : ' jeu coché');
+    document.getElementById('compteur-bouton').textContent = n;
+  }
+
+  majCompteurCoches();
+</script>
+
+<p class="lien-fiche"><a class="lien" href="/admin/rangement">← Retour au rangement</a></p>
+{% endblock %}

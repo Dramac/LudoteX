@@ -1138,3 +1138,105 @@ def rangement_manques(
             "url_suivante": _url_manques(filtre_cat, q, page + 1) if page < nb_pages else None,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# « Ranger les jeux » (§13, addendum post-phase 1) : affectation en lot par
+# JEU (pas par exemplaire) — réutilise services.lister_catalogue (mêmes
+# filtres que le catalogue public, categorie/q/age/joueurs, AUCUNE logique de
+# filtre réimplémentée, §13.2) puis enrichit avec services.rangement_par_titre
+# pour l'état de rangement dans le contexte actif. Remplace à terme la page
+# des manques ci-dessus (lot 4 : bascule des liens + retrait).
+# ---------------------------------------------------------------------------
+PAR_PAGE_RANGER = 50  # grain titre : jusqu'à ~600 lignes au total, pagination sobre
+
+
+def _url_ranger(
+    categorie: str | None, q: str | None, age: int | None, joueurs: int | None,
+    tous: bool, page: int, msg: str | None = None,
+) -> str:
+    """URL de /admin/rangement/ranger avec filtres + interrupteur + page + message."""
+    from urllib.parse import urlencode
+
+    params: dict = {}
+    if categorie:
+        params["categorie"] = categorie
+    if q:
+        params["q"] = q
+    if age is not None:
+        params["age"] = age
+    if joueurs is not None:
+        params["joueurs"] = joueurs
+    if tous:
+        params["tous"] = 1
+    if page and page != 1:
+        params["page"] = page
+    if msg:
+        params["msg"] = msg
+    requete = urlencode(params)
+    return "/admin/rangement/ranger" + (f"?{requete}" if requete else "")
+
+
+@router.get("/rangement/ranger")
+def rangement_ranger_jeux(
+    request: Request, categorie: str | None = None, q: str | None = None,
+    age: str | None = None, joueurs: str | None = None, tous: int = 0, page: int = 1,
+    msg: str | None = None,
+):
+    """
+    Vue « Ranger les jeux » : une ligne par titre, avec l'emplacement courant
+    dans le contexte actif (libellé / « — » / « mixte ») et une sélection pour
+    appliquer un emplacement en lot (formulaire géré par la route POST
+    /rangement/ranger/appliquer, lot suivant).
+
+    Par défaut (`tous=0`), seuls les jeux PAS encore complètement rangés sont
+    affichés (§13.5) — un jeu est considéré rangé seulement si TOUTES ses
+    boîtes partagent le même emplacement non vide
+    (`services.rangement_par_titre`).
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.catalogue import _entier_ou_none
+
+    q = (q or "").strip() or None
+    age_i = _entier_ou_none(age)
+    joueurs_i = _entier_ou_none(joueurs)
+    page = max(page, 1)
+    conn = get_connection()
+    try:
+        categories = services.lister_categories(conn)
+        ages = services.ages_disponibles(conn)
+        max_j = services.max_joueurs(conn)
+        filtre_cat = categorie if categorie in categories else None
+        contexte = services.rangement_contexte(conn)
+        emplacements_locaux = services.emplacements_actifs(conn) if contexte == "local" else []
+        jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i)
+        jeux = services.rangement_par_titre(conn, jeux, contexte)
+    finally:
+        conn.close()
+
+    jeux_affiches = jeux if tous else [j for j in jeux if not j["rangement_complet"]]
+    total_jeux = len(jeux_affiches)
+    total_boites = sum(j["total"] for j in jeux_affiches)
+    nb_deja_ranges = sum(1 for j in jeux_affiches if j["rangement_complet"])
+    nb_pages = max(-(-total_jeux // PAR_PAGE_RANGER), 1)  # division entière arrondie au sup.
+    debut = (page - 1) * PAR_PAGE_RANGER
+    page_jeux = jeux_affiches[debut: debut + PAR_PAGE_RANGER]
+
+    return templates.TemplateResponse(
+        request, "admin_rangement_ranger.html",
+        {
+            "jeux": page_jeux, "categories": categories, "ages": ages, "max_joueurs": max_j,
+            "categorie": filtre_cat, "q": q, "age": age_i, "joueurs": joueurs_i, "tous": bool(tous),
+            "page": page, "nb_pages": nb_pages,
+            "total_jeux": total_jeux, "total_boites": total_boites, "nb_deja_ranges": nb_deja_ranges,
+            "contexte": contexte, "emplacements_locaux": emplacements_locaux,
+            "message": msg,
+            "url_precedente": (
+                _url_ranger(filtre_cat, q, age_i, joueurs_i, tous, page - 1) if page > 1 else None
+            ),
+            "url_suivante": (
+                _url_ranger(filtre_cat, q, age_i, joueurs_i, tous, page + 1) if page < nb_pages else None
+            ),
+        },
+    )

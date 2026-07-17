@@ -1495,3 +1495,131 @@ def test_affecter_emplacement_lot_contexte_local_ecrit_id(conn):
         )
     ]
     assert valeurs == [id_puzzle, id_puzzle]
+
+
+# ===========================================================================
+# Addendum §13 (suite) — écran GET « Ranger les jeux » (/admin/rangement/ranger)
+# ===========================================================================
+def _connexion_test():
+    from app import db as _db
+    return _db.get_connection()
+
+
+def test_ranger_jeux_protege_par_garde_admin(client):
+    r = client.get("/admin/rangement/ranger", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+
+def test_ranger_jeux_affiche_jeu_non_range_par_defaut(client):
+    _connecter(client)
+    r = client.get("/admin/rangement/ranger")
+    assert r.status_code == 200
+    assert "Catan" in r.text
+    assert "1 jeu" in r.text
+
+
+def test_ranger_jeux_masque_jeu_deja_range_par_defaut(client):
+    _connecter(client)
+    _affecter("Étagère 2")  # seul exemplaire du titre -> jeu complètement rangé
+    r = client.get("/admin/rangement/ranger")
+    assert "Catan" not in r.text
+    assert "Aucun jeu ne correspond" in r.text
+
+
+def test_ranger_jeux_toggle_tous_montre_deja_ranges(client):
+    _connecter(client)
+    _affecter("Étagère 2")
+    r = client.get("/admin/rangement/ranger", params={"tous": "1"})
+    assert "Catan" in r.text
+    assert "Étagère 2" in r.text
+
+
+def test_ranger_jeux_filtre_categorie(client):
+    _connecter(client)
+    conn = _connexion_test()
+    try:
+        conn.execute("UPDATE titres SET categorie = 'Stratégie' WHERE reference_titre = 'CATAN'")
+        conn.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
+                     "('DOBBLE', 'Dobble', 'Rapidité')")
+        conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
+                     "('900', 'DOBBLE')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    r = client.get("/admin/rangement/ranger", params={"categorie": "Rapidité"})
+    assert r.status_code == 200
+    assert "Dobble" in r.text
+    assert "Catan" not in r.text
+
+
+def test_ranger_jeux_bandeau_contexte_actif(client):
+    _connecter(client)
+    r = client.get("/admin/rangement/ranger")
+    assert "Contexte actif" in r.text
+    assert "Événement" in r.text
+
+    conn = _connexion_test()
+    try:
+        services.ecrire_rangement_contexte(conn, "local")
+    finally:
+        conn.close()
+
+    r2 = client.get("/admin/rangement/ranger")
+    assert "Contexte actif" in r2.text
+    assert "Local" in r2.text
+
+
+def test_ranger_jeux_bouton_appliquer_annonce_le_compte(client):
+    _connecter(client)
+    r = client.get("/admin/rangement/ranger")
+    assert "Appliquer à 1 jeu" in r.text
+    assert "1 boîte" in r.text
+
+
+def test_ranger_jeux_contexte_local_affiche_menu_deroulant(client):
+    _connecter(client)
+    conn = _connexion_test()
+    try:
+        services.ecrire_rangement_contexte(conn, "local")
+    finally:
+        conn.close()
+
+    r = client.get("/admin/rangement/ranger")
+    assert 'id="emplacement_id"' in r.text
+    assert "Totem" in r.text
+    assert 'id="emplacement_texte"' not in r.text
+    assert "affecte toutes les copies" in r.text.lower()
+
+
+def test_ranger_jeux_contexte_evenement_affiche_champ_texte(client):
+    _connecter(client)
+    r = client.get("/admin/rangement/ranger")
+    assert 'id="emplacement_texte"' in r.text
+    assert 'id="emplacement_id"' not in r.text
+
+
+def test_ranger_jeux_pagination(client, monkeypatch):
+    from app.routes import admin as admin_routes
+
+    monkeypatch.setattr(admin_routes, "PAR_PAGE_RANGER", 2)
+    conn = _connexion_test()
+    try:
+        for i, nom in enumerate(["Dobble", "Uno"], start=1):
+            ref = nom.upper()
+            conn.execute(
+                "INSERT INTO titres (reference_titre, nom) VALUES (?, ?)", (ref, nom)
+            )
+            conn.execute(
+                "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
+                (f"90{i}", ref),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    _connecter(client)
+    r1 = client.get("/admin/rangement/ranger")
+    assert "Page 1 / 2" in r1.text
+    r2 = client.get("/admin/rangement/ranger", params={"page": 2})
+    assert "Page 2 / 2" in r2.text
