@@ -49,6 +49,12 @@
         <p>Cet exemplaire était déjà disponible. Rien à rendre.</p>
       </section>
     {% endif %}
+    {% if emplacement_rangement %}
+      <section class="resultat resultat-info">
+        <p class="resultat-libelle">🗄️ Où ranger le jeu</p>
+        <p class="rangement-valeur">{{ emplacement_rangement }}</p>
+      </section>
+    {% endif %}
     {# L'action suivante la plus fréquente : enchaîner sur le scan suivant. #}
     <a class="bouton bouton-secondaire" href="/scanner">📷 Scanner le jeu suivant</a>
   {% endif %}

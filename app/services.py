@@ -1440,3 +1440,32 @@ def affecter_emplacement(
     )
     conn.commit()
     return info
+
+
+def emplacement_actuel(conn: sqlite3.Connection, id_exemplaire: str) -> str | None:
+    """
+    Libellé d'affichage de l'emplacement de rangement ACTUEL d'une boîte,
+    selon le contexte actif (§6/§9 de docs/conception-rangement.md) : texte
+    libre en contexte "evenement", nom de l'emplacement local (même archivé —
+    la boîte garde sa référence, §5) en contexte "local".
+
+    Utilisé par l'écran de retour bénévole (/pret/<id>, résultats "rendu" et
+    "rendu_tournoi") : None si rien n'est renseigné -> le gabarit n'affiche
+    rien (jamais de "non renseigné" anxiogène, §6). Volontairement séparée de
+    `info_exemplaire` (qui reste inchangée) pour ne pas faire fuiter les deux
+    colonnes d'emplacement dans les gabarits publics qui réutilisent `info`.
+    """
+    contexte = rangement_contexte(conn)
+    if contexte == "local":
+        row = conn.execute(
+            "SELECT er.nom FROM exemplaires x "
+            "LEFT JOIN emplacements_rangement er ON er.id_emplacement = x.emplacement_local_id "
+            "WHERE x.id_exemplaire = ?",
+            (id_exemplaire,),
+        ).fetchone()
+        return row["nom"] if row and row["nom"] else None
+    row = conn.execute(
+        "SELECT emplacement_evenement FROM exemplaires WHERE id_exemplaire = ?",
+        (id_exemplaire,),
+    ).fetchone()
+    return row["emplacement_evenement"] if row and row["emplacement_evenement"] else None

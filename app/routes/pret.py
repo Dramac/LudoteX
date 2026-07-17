@@ -62,13 +62,21 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
     try:
         info = services.info_exemplaire(conn, id_exemplaire)
         pret_actuel = services.pret_en_cours(conn, id_exemplaire) if info else None
+        # « Où ranger le jeu » (docs/conception-rangement.md §6) : uniquement
+        # calculé pour un retour (jamais bloquant si rien n'est renseigné —
+        # emplacement_actuel renvoie alors None, le gabarit n'affiche rien).
+        # Pas de lecture inutile sur les autres écrans (prêt, sortie tournoi...).
+        emplacement_rangement = None
+        if info and resultat and resultat.get("type") in ("rendu", "rendu_tournoi"):
+            emplacement_rangement = services.emplacement_actuel(conn, id_exemplaire)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request,
         "pret.html",
         {"id_exemplaire": id_exemplaire, "info": info,
-         "pret_actuel": pret_actuel, "resultat": resultat},
+         "pret_actuel": pret_actuel, "resultat": resultat,
+         "emplacement_rangement": emplacement_rangement},
         status_code=status if info else 404,
     )
 

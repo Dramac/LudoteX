@@ -383,6 +383,17 @@ summary:focus-visible,
 .rangement-bandeau form, .rangement-bandeau details { display: inline; margin: 0; }
 .rangement-bandeau summary { cursor: pointer; text-decoration: underline; }
 
+/* Bloc "🗄️ Où ranger le jeu" au retour (pret.html, résultats rendu/
+   rendu_tournoi) : même esprit que .pochette-num (libellé + valeur en gros),
+   mais dimensionné pour un texte parfois long (nom d'étagère, description
+   libre) plutôt qu'un numéro à 1-3 chiffres — 5rem déborderait/serait
+   illisible. Même teinte bleue que .resultat-info / le bandeau du mode
+   rangement au scanner (identité "rangement" cohérente sur tout le site). */
+.rangement-valeur {
+  margin: 4px 0; font-size: 1.8rem; font-weight: 800; line-height: 1.25;
+  color: #1a73e8;
+}
+
 /* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
    Configuration). Le titre de groupe est masqué par défaut (mobile = référence
    inchangée : les items s'enchaînent comme une seule liste, .admin-menu n'ayant
