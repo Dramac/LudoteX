@@ -358,6 +358,17 @@ summary:focus-visible,
    title="..." pour le détail complet, affiché au survol sur bureau). */
 .admin-icone { font-size: 1.25em; margin-right: 8px; line-height: 1; }
 
+/* Rangement (admin, /admin/rangement) : plusieurs petits formulaires par
+   ligne de tableau (renommer / monter / descendre / archiver / supprimer).
+   Un <form>/<button> est en bloc par défaut -> les rend inline pour qu'ils
+   se posent côte à côte dans une cellule au lieu de s'empiler. */
+.rangement-form-inline { display: inline-flex; align-items: center; gap: 6px; margin: 2px 6px 2px 0; }
+.rangement-form-inline input[type="text"] {
+  padding: 4px 8px; border: 1px solid var(--bord); border-radius: 6px;
+  font-size: 0.85rem; width: 140px;
+}
+.rangement-ordre, .rangement-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+
 /* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
    Configuration). Le titre de groupe est masqué par défaut (mobile = référence
    inchangée : les items s'enchaînent comme une seule liste, .admin-menu n'ayant

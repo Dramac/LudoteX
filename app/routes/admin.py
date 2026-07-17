@@ -824,3 +824,169 @@ async def fonctionnalites_enregistrer(request: Request):
     finally:
         conn.close()
     return RedirectResponse("/admin/fonctionnalites?ok=1", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Rangement des boîtes : contexte actif, visibilité publique, liste des
+# emplacements locaux (voir docs/conception-rangement.md §8). Toutes les
+# actions structurantes (créer/renommer/archiver/réactiver/supprimer/
+# réordonner) suivent le motif POST-Redirect-GET déjà utilisé par le planning
+# bénévole (`app/planning/routes.py::_retour`) : un message texte simple
+# transite en query string (`?msg=...`), toujours affiché en confirmation
+# (pas de distinction succès/erreur — les actions invalides sont refusées
+# silencieusement côté service, jamais bloquant).
+# ---------------------------------------------------------------------------
+def _page_rangement(request: Request, message: str | None = None):
+    conn = get_connection()
+    try:
+        contexte = services.rangement_contexte(conn)
+        visibilite = services.rangement_visibilite(conn)
+        emplacements = services.lister_emplacements_rangement(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_rangement.html",
+        {
+            "contexte": contexte,
+            "visibilite": visibilite,
+            "emplacements": emplacements,
+            "contextes": services.RANGEMENT_CONTEXTES,
+            "visibilites": services.RANGEMENT_VISIBILITES,
+            "message": message,
+        },
+    )
+
+
+@router.get("/rangement")
+def rangement_page(request: Request):
+    """Écran dédié : contexte actif, visibilité publique, liste des emplacements locaux."""
+    if (garde := _garde(request)):
+        return garde
+    return _page_rangement(request, request.query_params.get("msg"))
+
+
+@router.post("/rangement/contexte")
+def rangement_contexte_enregistrer(request: Request, contexte: str = Form("")):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        if contexte in services.RANGEMENT_CONTEXTES:
+            services.ecrire_rangement_contexte(conn, contexte)
+    finally:
+        conn.close()
+    return RedirectResponse(
+        "/admin/rangement?msg=" + quote("Contexte de rangement enregistré."), status_code=303
+    )
+
+
+@router.post("/rangement/visibilite")
+def rangement_visibilite_enregistrer(request: Request, visibilite: str = Form("")):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        if visibilite in services.RANGEMENT_VISIBILITES:
+            services.ecrire_rangement_visibilite(conn, visibilite)
+    finally:
+        conn.close()
+    return RedirectResponse(
+        "/admin/rangement?msg=" + quote("Visibilité publique enregistrée."), status_code=303
+    )
+
+
+@router.post("/rangement/emplacements")
+def rangement_emplacement_creer(request: Request, nom: str = Form("")):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        resultat = services.obtenir_ou_creer_emplacement_rangement(conn, nom)
+    finally:
+        conn.close()
+    if resultat is None:
+        msg = "Nom manquant : rien n'a été ajouté."
+    else:
+        _id, cree = resultat
+        msg = "Emplacement ajouté." if cree else "Cet emplacement existait déjà — rien de dupliqué."
+    return RedirectResponse("/admin/rangement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/rangement/emplacements/{id_emplacement:int}/renommer")
+def rangement_emplacement_renommer(request: Request, id_emplacement: int, nom: str = Form("")):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        ok = services.renommer_emplacement_rangement(conn, id_emplacement, nom)
+    finally:
+        conn.close()
+    msg = "Emplacement renommé." if ok else "Nom manquant : rien n'a été modifié."
+    return RedirectResponse("/admin/rangement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/rangement/emplacements/{id_emplacement:int}/archiver")
+def rangement_emplacement_archiver(request: Request, id_emplacement: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.archiver_emplacement_rangement(conn, id_emplacement)
+    finally:
+        conn.close()
+    msg = "Emplacement archivé — il n'apparaît plus dans les menus de saisie."
+    return RedirectResponse("/admin/rangement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/rangement/emplacements/{id_emplacement:int}/reactiver")
+def rangement_emplacement_reactiver(request: Request, id_emplacement: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.reactiver_emplacement_rangement(conn, id_emplacement)
+    finally:
+        conn.close()
+    return RedirectResponse(
+        "/admin/rangement?msg=" + quote("Emplacement réactivé."), status_code=303
+    )
+
+
+@router.post("/rangement/emplacements/{id_emplacement:int}/supprimer")
+def rangement_emplacement_supprimer(request: Request, id_emplacement: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        ok = services.supprimer_emplacement_rangement(conn, id_emplacement)
+    finally:
+        conn.close()
+    msg = (
+        "Emplacement supprimé définitivement." if ok else
+        "Suppression refusée : des boîtes pointent encore vers cet emplacement."
+    )
+    return RedirectResponse("/admin/rangement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/rangement/emplacements/{id_emplacement:int}/monter")
+def rangement_emplacement_monter(request: Request, id_emplacement: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.deplacer_emplacement_rangement(conn, id_emplacement, "haut")
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/rangement", status_code=303)
+
+
+@router.post("/rangement/emplacements/{id_emplacement:int}/descendre")
+def rangement_emplacement_descendre(request: Request, id_emplacement: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.deplacer_emplacement_rangement(conn, id_emplacement, "bas")
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/rangement", status_code=303)

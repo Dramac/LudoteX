@@ -1197,3 +1197,218 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
         (cle, valeur),
     )
     conn.commit()
+
+
+# ===========================================================================
+# Rangement des boîtes (voir docs/conception-rangement.md)
+# ===========================================================================
+# Deux contextes (§2) : "evenement" (texte libre, colonne exemplaires.
+# emplacement_evenement) et "local" (liste gérée ici, FK exemplaires.
+# emplacement_local_id -> emplacements_rangement). Un seul réglage global
+# ("rangement_contexte") détermine lequel les écrans lisent/écrivent.
+# Sans effet sur la logique de prêt/pochettes : ces fonctions ne touchent
+# jamais aux tables prets/pochettes.
+RANGEMENT_CONTEXTES = ("evenement", "local")
+RANGEMENT_CONTEXTE_DEFAUT = "evenement"
+
+# Visibilité de l'emplacement sur le catalogue / la fiche publique (§7).
+# L'écran de retour bénévole (derrière le jeton) n'est JAMAIS concerné par ce
+# réglage : il affiche toujours l'emplacement.
+RANGEMENT_VISIBILITES = ("tous", "benevoles", "admin")
+RANGEMENT_VISIBILITE_DEFAUT = "benevoles"
+
+
+def rangement_contexte(conn: sqlite3.Connection) -> str:
+    """Contexte de rangement actif : "evenement" (défaut) ou "local"."""
+    return lire_parametre(conn, "rangement_contexte", RANGEMENT_CONTEXTE_DEFAUT)
+
+
+def ecrire_rangement_contexte(conn: sqlite3.Connection, contexte: str) -> None:
+    if contexte not in RANGEMENT_CONTEXTES:
+        raise ValueError(f"Contexte de rangement invalide : {contexte!r}")
+    ecrire_parametre(conn, "rangement_contexte", contexte)
+
+
+def rangement_visibilite(conn: sqlite3.Connection) -> str:
+    """Visibilité publique de l'emplacement : "tous"/"benevoles" (défaut)/"admin"."""
+    return lire_parametre(conn, "rangement_visibilite", RANGEMENT_VISIBILITE_DEFAUT)
+
+
+def ecrire_rangement_visibilite(conn: sqlite3.Connection, visibilite: str) -> None:
+    if visibilite not in RANGEMENT_VISIBILITES:
+        raise ValueError(f"Visibilité de rangement invalide : {visibilite!r}")
+    ecrire_parametre(conn, "rangement_visibilite", visibilite)
+
+
+def lister_emplacements_rangement(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Liste complète (actifs + archivés) des emplacements locaux, triée par
+    ordre d'affichage puis nom, avec le nombre de boîtes qui pointent vers
+    chacun (`usage_count`) — sert à décider si la suppression dure est
+    proposée (§5).
+    """
+    rows = conn.execute(
+        """
+        SELECT e.id_emplacement, e.nom, e.actif, e.ordre,
+               COUNT(x.id_exemplaire) AS usage_count
+        FROM emplacements_rangement e
+        LEFT JOIN exemplaires x ON x.emplacement_local_id = e.id_emplacement
+        GROUP BY e.id_emplacement
+        ORDER BY e.ordre, e.nom COLLATE NOCASE
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def emplacements_actifs(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """
+    Emplacements locaux ACTIFS, triés pour l'affichage dans un menu déroulant
+    (mode rangement au scanner, fiche admin, page des manques — étapes
+    suivantes). Les archivés en sont exclus (mais restent affichés là où ils
+    sont déjà pointés, voir §5).
+    """
+    return conn.execute(
+        "SELECT id_emplacement, nom FROM emplacements_rangement "
+        "WHERE actif = 1 ORDER BY ordre, nom COLLATE NOCASE"
+    ).fetchall()
+
+
+def get_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int) -> sqlite3.Row | None:
+    """Une ligne de `emplacements_rangement` (actif ou archivé), ou None."""
+    return conn.execute(
+        "SELECT * FROM emplacements_rangement WHERE id_emplacement = ?",
+        (id_emplacement,),
+    ).fetchone()
+
+
+def creer_emplacement_rangement(conn: sqlite3.Connection, nom: str) -> int | None:
+    """Ajoute un emplacement en fin de liste (ordre = max + 1). None si nom vide."""
+    nom_normalise = " ".join(nom.split())
+    if not nom_normalise:
+        return None
+    (max_ordre,) = conn.execute(
+        "SELECT COALESCE(MAX(ordre), -1) FROM emplacements_rangement"
+    ).fetchone()
+    curseur = conn.execute(
+        "INSERT INTO emplacements_rangement (nom, actif, ordre) VALUES (?, 1, ?)",
+        (nom_normalise, max_ordre + 1),
+    )
+    conn.commit()
+    return curseur.lastrowid
+
+
+def obtenir_ou_creer_emplacement_rangement(
+    conn: sqlite3.Connection, nom: str
+) -> tuple[int, bool] | None:
+    """
+    Trouve un emplacement existant par nom (comparaison insensible à la
+    casse/aux espaces, actif OU archivé) ou le crée. `(id, cree)` — `cree`
+    indique si une nouvelle ligne a été ajoutée. None si `nom` est vide.
+
+    Utilisé par l'écran admin (bouton « Ajouter », évite les doublons si on
+    retape un nom déjà présent) et par l'import CSV (étape 7, §4.b : création
+    tolérante d'un emplacement local inconnu, signalée dans le compte-rendu).
+    """
+    nom_normalise = " ".join(nom.split())
+    if not nom_normalise:
+        return None
+    existant = conn.execute(
+        "SELECT id_emplacement FROM emplacements_rangement "
+        "WHERE TRIM(nom) = ? COLLATE NOCASE",
+        (nom_normalise,),
+    ).fetchone()
+    if existant:
+        return existant["id_emplacement"], False
+    return creer_emplacement_rangement(conn, nom_normalise), True
+
+
+def renommer_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int, nom: str) -> bool:
+    """
+    Renomme (répercuté automatiquement partout via la FK, §5). False si `nom`
+    est vide (rien n'est modifié).
+    """
+    nom_normalise = " ".join(nom.split())
+    if not nom_normalise:
+        return False
+    conn.execute(
+        "UPDATE emplacements_rangement SET nom = ? WHERE id_emplacement = ?",
+        (nom_normalise, id_emplacement),
+    )
+    conn.commit()
+    return True
+
+
+def archiver_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int) -> None:
+    """
+    Retrait doux (§5) : disparaît des menus de saisie, mais les boîtes qui le
+    pointent gardent leur référence (affichée « archivé » côté admin).
+    """
+    conn.execute(
+        "UPDATE emplacements_rangement SET actif = 0 WHERE id_emplacement = ?",
+        (id_emplacement,),
+    )
+    conn.commit()
+
+
+def reactiver_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int) -> None:
+    """Annule un archivage : redevient proposé dans les menus de saisie."""
+    conn.execute(
+        "UPDATE emplacements_rangement SET actif = 1 WHERE id_emplacement = ?",
+        (id_emplacement,),
+    )
+    conn.commit()
+
+
+def compteur_usage_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int) -> int:
+    """Nombre de boîtes qui pointent actuellement vers cet emplacement local."""
+    (n,) = conn.execute(
+        "SELECT COUNT(*) FROM exemplaires WHERE emplacement_local_id = ?",
+        (id_emplacement,),
+    ).fetchone()
+    return n
+
+
+def supprimer_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int) -> bool:
+    """
+    Suppression DURE (§5) : refusée (False, rien n'est modifié) si au moins
+    une boîte pointe encore vers cet emplacement — jamais de FK orpheline.
+    """
+    if compteur_usage_emplacement_rangement(conn, id_emplacement) > 0:
+        return False
+    conn.execute(
+        "DELETE FROM emplacements_rangement WHERE id_emplacement = ?",
+        (id_emplacement,),
+    )
+    conn.commit()
+    return True
+
+
+def deplacer_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int, sens: str) -> None:
+    """
+    Échange la position d'un emplacement avec son voisin immédiat dans la
+    liste triée (`sens` = "haut" ou "bas"). Sans effet s'il est déjà en bout
+    de liste ou si `id_emplacement` est inconnu. Travaille sur la POSITION
+    dans la liste triée (pas la valeur brute d'`ordre`) : robuste même si deux
+    lignes partagent le même `ordre`.
+    """
+    lignes = conn.execute(
+        "SELECT id_emplacement, ordre FROM emplacements_rangement "
+        "ORDER BY ordre, nom COLLATE NOCASE"
+    ).fetchall()
+    ids = [r["id_emplacement"] for r in lignes]
+    if id_emplacement not in ids:
+        return
+    idx = ids.index(id_emplacement)
+    voisin = idx - 1 if sens == "haut" else idx + 1
+    if voisin < 0 or voisin >= len(ids):
+        return
+    a, b = lignes[idx], lignes[voisin]
+    conn.execute(
+        "UPDATE emplacements_rangement SET ordre = ? WHERE id_emplacement = ?",
+        (b["ordre"], a["id_emplacement"]),
+    )
+    conn.execute(
+        "UPDATE emplacements_rangement SET ordre = ? WHERE id_emplacement = ?",
+        (a["ordre"], b["id_emplacement"]),
+    )
+    conn.commit()
