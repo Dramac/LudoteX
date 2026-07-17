@@ -784,6 +784,20 @@ fonctionne déjà et qui atteint le même objectif ; M6 marqué FAIT dans
 `docs/idees-ux.md` avec un renvoi vers le correctif réel, sans modification
 de code ni de test supplémentaire.
 
+**M7 — Bouton flottant « ↑ Recherche » sur le catalogue : FAIT.** 600 titres
+= un seul long défilement, panneau de recherche hors champ dès qu'on avance
+dans la liste. `id="haut"` posé sur la section de tête de `catalogue.html`
+(celle du panneau « Rechercher / filtrer ») ; lien `<a href="#haut">
+↑ Recherche</a>` **toujours visible**, `position: fixed; bottom: 16px;
+right: 16px` — pas de logique d'apparition au défilement, aucun JS, comme
+demandé. Habillage **réutilisé** de `.bouton-filtrer` (couleur, hover/
+active, `prefers-reduced-motion` déjà mutualisés) ; seule `.bouton-haut`
+(nouvelle) ajoute le positionnement flottant + l'ombre portée. Masqué à
+l'impression (`@media print`, même motif que le bandeau de formation).
+Pas de pagination ajoutée (hors périmètre de la suggestion retenue). **1
+test ajouté** (ancre + bouton présents). **Suite globale : 321 tests
+verts.**
+
 **Suivi de l'emplacement de rangement : FAIT** (phase 1 complète, conception
 gravée dans `docs/conception-rangement.md`, tous les arbitrages de son §12
 tranchés en amont). Objectif : savoir où ranger chaque boîte, à l'événement

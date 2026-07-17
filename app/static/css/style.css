@@ -254,6 +254,20 @@ summary:focus-visible,
   font-weight: 600;
   cursor: pointer;
 }
+/* M7 (docs/idees-ux.md) : bouton flottant qui ramène au panneau de recherche
+   du catalogue (600 titres, un seul long défilement) -- pur CSS (position
+   fixed + ancre #haut), aucun JS, aucune pagination. Réutilise l'habillage
+   de .bouton-filtrer (couleur, transitions déjà mutualisées plus bas). */
+.bouton-haut {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 20;
+  display: inline-block;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+
 .catalogue-compte { color: var(--gris); margin: 12px 0 0; }
 .derniers-achats { margin: 8px 0 0; padding-left: 20px; }
 .derniers-achats li { margin: 4px 0; display: flex; justify-content: space-between; gap: 12px; }
@@ -720,4 +734,5 @@ body.mode-formation::after {
 @media print {
   .formation-bandeau { display: none; }
   body.mode-formation::after { display: none; }
+  .bouton-haut { display: none; }
 }
