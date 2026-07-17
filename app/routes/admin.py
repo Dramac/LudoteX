@@ -411,6 +411,12 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
                  f"{res['titres']} titre(s).")
         if res["ignores"]:
             texte += f" {len(res['ignores'])} ligne(s) ignorée(s)."
+        # Rangement (§4.b) : un nom d'emplacement local inconnu dans la
+        # colonne CSV est créé à la volée, tolérant mais JAMAIS silencieux.
+        crees = res.get("emplacements_locaux_crees") or []
+        if crees:
+            texte += (f" {len(crees)} nouvel(aux) emplacement(s) local(-aux) "
+                      f"créé(s) : {', '.join(crees)}.")
         message = ("succes", texte)
     except SystemExit as exc:            # colonnes clés absentes
         message = ("erreur", str(exc))

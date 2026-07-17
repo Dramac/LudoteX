@@ -985,3 +985,206 @@ def test_fiche_admin_edition_protegee_par_garde_admin(client):
         follow_redirects=False,
     )
     assert r2.status_code == 303 and r2.headers["location"] == "/admin"
+
+
+# ===========================================================================
+# Étape 7 — import / export CSV du rangement
+# ===========================================================================
+def _ecrire_csv(tmp_path, contenu, nom="import.csv"):
+    chemin = tmp_path / nom
+    chemin.write_text(contenu, encoding="utf-8")
+    return chemin
+
+
+def test_construire_donnees_lit_les_deux_colonnes_emplacement():
+    from scripts import import_csv
+
+    lignes = [
+        {"Code jeu": "001", "Nom jeu": "Catan",
+         "Emplacement événement": "Étagère 2", "Emplacement local": "Totem"},
+        {"Code jeu": "002", "Nom jeu": "Catan",
+         "Emplacement événement": "", "Emplacement local": ""},
+    ]
+    index = import_csv.construire_index_colonnes(list(lignes[0].keys()))
+    exemplaires, titres, groupes, ignores = import_csv.construire_donnees(lignes, index)
+    ex1 = next(e for e in exemplaires if e["id_exemplaire"] == "001")
+    ex2 = next(e for e in exemplaires if e["id_exemplaire"] == "002")
+    assert ex1["emplacement_evenement"] == "Étagère 2"
+    assert ex1["emplacement_local_nom"] == "Totem"
+    assert ex2["emplacement_evenement"] is None
+    assert ex2["emplacement_local_nom"] is None
+
+
+def test_importer_cree_un_emplacement_local_inconnu(client, tmp_path):
+    from scripts import import_csv
+
+    chemin = _ecrire_csv(
+        tmp_path,
+        "Code jeu;Nom jeu;Emplacement événement;Emplacement local\n"
+        "900;Nouveau jeu;Étagère 9;Zone démo\n",
+    )
+    res = import_csv.importer(chemin)
+    assert res["emplacements_locaux_crees"] == ["Zone démo"]
+
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_evenement, emplacement_local_id FROM exemplaires "
+            "WHERE id_exemplaire = '900'"
+        ).fetchone()
+        assert row["emplacement_evenement"] == "Étagère 9"
+        emplacement = services.get_emplacement_rangement(conn, row["emplacement_local_id"])
+        assert emplacement["nom"] == "Zone démo"
+        assert emplacement["actif"] == 1
+    finally:
+        conn.close()
+
+
+def test_importer_reutilise_emplacement_local_existant_insensible_casse(client, tmp_path):
+    from scripts import import_csv
+
+    chemin = _ecrire_csv(
+        tmp_path,
+        "Code jeu;Nom jeu;Emplacement local\n900;Nouveau jeu; totem \n",
+    )
+    res = import_csv.importer(chemin)
+    assert res["emplacements_locaux_crees"] == []  # "Totem" existe déjà (seed)
+
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        id_totem = [
+            l for l in services.lister_emplacements_rangement(conn) if l["nom"] == "Totem"
+        ][0]["id_emplacement"]
+        row = conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE id_exemplaire = '900'"
+        ).fetchone()
+        assert row["emplacement_local_id"] == id_totem
+    finally:
+        conn.close()
+
+
+def test_importer_case_vide_necrase_jamais(client, tmp_path):
+    # §4.b, décision centrale : une case vide au réimport NE TOUCHE PAS à un
+    # emplacement déjà posé (au scanner ou à la main).
+    from scripts import import_csv
+
+    _affecter("Étagère 2")
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        id_totem = _id_emplacement("Totem")
+        services.affecter_emplacement(conn, "001", "local", id_totem)
+    finally:
+        conn.close()
+
+    chemin = _ecrire_csv(
+        tmp_path,
+        "Code jeu;Nom jeu;Emplacement événement;Emplacement local\n"
+        "001;Catan;;\n",
+    )
+    import_csv.importer(chemin)
+
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_evenement, emplacement_local_id FROM exemplaires "
+            "WHERE id_exemplaire = '001'"
+        ).fetchone()
+        assert row["emplacement_evenement"] == "Étagère 2"
+        assert row["emplacement_local_id"] == id_totem
+    finally:
+        conn.close()
+
+
+def test_importer_valeur_non_vide_ecrase(client, tmp_path):
+    from scripts import import_csv
+
+    _affecter("Étagère 2")
+
+    chemin = _ecrire_csv(
+        tmp_path,
+        "Code jeu;Nom jeu;Emplacement événement\n001;Catan;Étagère 9\n",
+    )
+    import_csv.importer(chemin)
+
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_evenement FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()
+        assert row["emplacement_evenement"] == "Étagère 9"
+    finally:
+        conn.close()
+
+
+def test_importer_dry_run_ne_cree_rien(client, tmp_path):
+    from scripts import import_csv
+
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        (avant,) = conn.execute("SELECT COUNT(*) FROM emplacements_rangement").fetchone()
+    finally:
+        conn.close()
+
+    chemin = _ecrire_csv(
+        tmp_path,
+        "Code jeu;Nom jeu;Emplacement local\n900;Nouveau jeu;Zone jamais créée\n",
+    )
+    res = import_csv.importer(chemin, dry_run=True)
+    assert res["emplacements_locaux_crees"] == []
+
+    conn = _db.get_connection()
+    try:
+        (apres,) = conn.execute("SELECT COUNT(*) FROM emplacements_rangement").fetchone()
+        assert apres == avant
+        assert conn.execute(
+            "SELECT 1 FROM exemplaires WHERE id_exemplaire = '900'"
+        ).fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_export_catalogue_inclut_les_colonnes_rangement(client):
+    _affecter("Étagère 2")
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        id_totem = _id_emplacement("Totem")
+        services.affecter_emplacement(conn, "001", "local", id_totem)
+        entetes, lignes = services.lignes_export_catalogue(conn)
+    finally:
+        conn.close()
+
+    assert "Emplacement événement" in entetes
+    assert "Emplacement local" in entetes
+    ligne = [l for l in lignes if l["Code jeu"] == "001"][0]
+    assert ligne["Emplacement événement"] == "Étagère 2"
+    assert ligne["Emplacement local"] == "Totem"
+
+
+def test_export_csv_route_contient_les_entetes(client):
+    _connecter(client)
+    r = client.get("/admin/donnees/export.csv")
+    assert r.status_code == 200
+    assert "Emplacement événement" in r.text
+    assert "Emplacement local" in r.text
+
+
+def test_import_route_signale_les_emplacements_crees(client):
+    _connecter(client)
+    contenu = (
+        "Code jeu;Nom jeu;Emplacement local\n"
+        "901;Jeu importé;Nouvelle zone\n"
+    ).encode("utf-8")
+    r = client.post(
+        "/admin/donnees/import",
+        files={"fichier": ("cat.csv", contenu, "text/csv")},
+    )
+    assert r.status_code == 200
+    assert "Import réussi" in r.text
+    assert "1 nouvel" in r.text
+    assert "Nouvelle zone" in r.text

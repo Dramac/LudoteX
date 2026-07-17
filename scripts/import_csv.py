@@ -37,8 +37,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import get_connection, init_db  # noqa: E402
 # slug_titre est PARTAGÉ avec l'app (création de jeu via l'admin) pour produire
-# exactement les mêmes références de regroupement.
-from app.services import slug_titre  # noqa: E402
+# exactement les mêmes références de regroupement. obtenir_ou_creer_emplacement_
+# rangement sert à résoudre/créer tolérament l'« Emplacement local » du CSV
+# (docs/conception-rangement.md §4.b, étape 7) sans dupliquer sa logique.
+from app.services import obtenir_ou_creer_emplacement_rangement, slug_titre  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Correspondance colonnes CSV -> champs du modèle
@@ -58,6 +60,12 @@ COLONNES = {
     "annee":         ["année édition", "annee edition", "année", "annee"],
     "descriptif":    ["descriptif", "description"],
     "date_achat":    ["date achat", "date d'achat", "achat"],
+    # Rangement (docs/conception-rangement.md §4.b) — colonnes PAR EXEMPLAIRE
+    # (pas agrégées au niveau titre, contrairement à tout ce qui précède) :
+    # alias choisis pour correspondre exactement à EN_TETES_CATALOGUE
+    # (app/services.py), donc à un export ré-importable sans réglage.
+    "emplacement_evenement": ["emplacement événement", "emplacement evenement"],
+    "emplacement_local":     ["emplacement local"],
 }
 
 # Mois français (abrégés ou complets, sans accents) -> numéro, pour parser les
@@ -209,10 +217,20 @@ def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
 def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
     """
     Transforme les lignes CSV en :
-      - exemplaires : liste de (id_exemplaire, reference_titre)
+      - exemplaires : liste de dicts {id_exemplaire, reference_titre,
+        emplacement_evenement, emplacement_local_nom} — PAR EXEMPLAIRE
+        (contrairement à `titres`, aucune agrégation : chaque boîte a sa
+        propre valeur). Les deux champs d'emplacement sont `None` si la
+        colonne est absente/vide (§4.b : une case vide ne doit RIEN écraser
+        à l'import — voir `importer`, qui applique cette règle via COALESCE).
       - titres      : dict reference_titre -> champs agrégés (1re valeur non vide)
       - groupes     : reference_titre -> liste d'id_exemplaire (pour le rapport)
     Lève une erreur si les colonnes clés (Code jeu, Nom jeu) sont absentes.
+
+    Pure (aucun accès base) : utilisable en toute sécurité par le mode
+    --dry-run. La résolution/création de l'emplacement local (qui ÉCRIT en
+    base si le nom est inconnu) est déléguée à `importer`, seule fonction qui
+    ouvre une connexion.
     """
     if not index["id_exemplaire"] or not index["nom"]:
         raise SystemExit(
@@ -225,7 +243,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         col = index[champ]
         return ligne.get(col, "") if col else ""
 
-    exemplaires: list[tuple[str, str]] = []
+    exemplaires: list[dict] = []
     titres: dict[str, dict] = {}
     groupes: dict[str, list[str]] = defaultdict(list)
     ignores: list[str] = []
@@ -243,7 +261,12 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         vus.add(id_ex)
 
         ref = slug_titre(nom)
-        exemplaires.append((id_ex, ref))
+        exemplaires.append({
+            "id_exemplaire": id_ex,
+            "reference_titre": ref,
+            "emplacement_evenement": _ou_none(val(ligne, "emplacement_evenement")),
+            "emplacement_local_nom": _ou_none(val(ligne, "emplacement_local")),
+        })
         groupes[ref].append(id_ex)
 
         nb_min, nb_max = parse_nb_joueurs(val(ligne, "nb_joueurs"))
@@ -291,16 +314,30 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
     l'import après mise à jour du CSV met simplement à jour les lignes existantes
     sans créer de doublon. `executemany` fait l'insertion en lot (performant).
 
+    RANGEMENT (docs/conception-rangement.md §4.b, étape 7) : `emplacement_
+    evenement` est réécrit UNIQUEMENT si la colonne CSV est non vide pour
+    cette ligne (`COALESCE(excluded.x, exemplaires.x)` — une case vide ne
+    touche JAMAIS à un emplacement déjà posé au scanner ou à la main). Même
+    règle pour `emplacement_local_id`, résolu depuis le NOM de la colonne
+    « Emplacement local » via `obtenir_ou_creer_emplacement_rangement`
+    (comparaison insensible casse/espaces ; un nom inconnu est CRÉÉ à la
+    volée, tolérant — jamais bloquant — et signalé dans le rapport). Un cache
+    évite d'appeler cette résolution plusieurs fois pour un même nom répété
+    sur de nombreuses boîtes d'un même import.
+
     Args:
         chemin: chemin du CSV.
-        dry_run: si True, ne touche pas la base (analyse + rapport seulement).
+        dry_run: si True, ne touche pas la base (analyse + rapport seulement) —
+            aucun emplacement n'est donc créé non plus.
 
     Returns:
         dict de synthèse (compteurs, regroupements multi-exemplaires, lignes
-        ignorées, et données titres pour le rapport).
+        ignorées, données titres pour le rapport, et la liste des noms
+        d'emplacements locaux créés à la volée).
     """
     lignes, index = lire_csv(chemin)
     exemplaires, titres, groupes, ignores = construire_donnees(lignes, index)
+    emplacements_locaux_crees: list[str] = []
 
     if not dry_run:
         conn = get_connection()
@@ -328,14 +365,47 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
                 """,
                 list(titres.values()),
             )
+
+            # Résolution des emplacements locaux (nom -> id), création
+            # tolérante des noms inconnus (§4.b).
+            cache_local: dict[str, int | None] = {}
+            lignes_exemplaires = []
+            for ex in exemplaires:
+                id_local = None
+                nom_local = ex["emplacement_local_nom"]
+                if nom_local:
+                    cle = nom_local.strip().lower()
+                    if cle not in cache_local:
+                        resultat = obtenir_ou_creer_emplacement_rangement(conn, nom_local)
+                        if resultat is not None:
+                            id_emp, cree = resultat
+                            cache_local[cle] = id_emp
+                            if cree:
+                                emplacements_locaux_crees.append(nom_local.strip())
+                        else:
+                            cache_local[cle] = None
+                    id_local = cache_local[cle]
+                lignes_exemplaires.append({
+                    "id_exemplaire": ex["id_exemplaire"],
+                    "reference_titre": ex["reference_titre"],
+                    "emplacement_evenement": ex["emplacement_evenement"],
+                    "emplacement_local_id": id_local,
+                })
+
             conn.executemany(
                 """
-                INSERT INTO exemplaires (id_exemplaire, reference_titre)
-                VALUES (?, ?)
+                INSERT INTO exemplaires (id_exemplaire, reference_titre,
+                    emplacement_evenement, emplacement_local_id)
+                VALUES (:id_exemplaire, :reference_titre,
+                    :emplacement_evenement, :emplacement_local_id)
                 ON CONFLICT(id_exemplaire) DO UPDATE SET
-                    reference_titre=excluded.reference_titre
+                    reference_titre=excluded.reference_titre,
+                    emplacement_evenement=COALESCE(excluded.emplacement_evenement,
+                                                    exemplaires.emplacement_evenement),
+                    emplacement_local_id=COALESCE(excluded.emplacement_local_id,
+                                                   exemplaires.emplacement_local_id)
                 """,
-                exemplaires,
+                lignes_exemplaires,
             )
             conn.commit()
         finally:
@@ -347,6 +417,7 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
         "groupes_multi": {r: ids for r, ids in groupes.items() if len(ids) > 1},
         "ignores": ignores,
         "titres_data": titres,
+        "emplacements_locaux_crees": emplacements_locaux_crees,
     }
 
 
@@ -367,6 +438,9 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
     print(f"Titres en plusieurs exemplaires : {len(multi)}")
     if res["ignores"]:
         print(f"Lignes ignorées : {len(res['ignores'])} -> {res['ignores'][:10]}")
+    if res.get("emplacements_locaux_crees"):
+        noms = res["emplacements_locaux_crees"]
+        print(f"Emplacements locaux créés : {len(noms)} -> {noms}")
 
     # Taux de remplissage par colonne optionnelle
     champs = ["categorie", "nb_joueurs_min", "duree_min", "age_min",
