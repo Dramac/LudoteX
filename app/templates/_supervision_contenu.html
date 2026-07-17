@@ -20,11 +20,11 @@
     <tr>
       <td><strong>{{ base.nom }}</strong><br><small class="stats-note">{{ base.chemin }}</small></td>
       {% if base.existe %}
-        <td><span class="resultat resultat-ok" style="display:inline-block">Présente</span></td>
+        <td><span class="badge badge-ok">Ok</span></td>
         <td>{{ base.taille }}</td>
         <td>{{ base.modifie | dt_local }}</td>
       {% else %}
-        <td><span class="resultat resultat-attention" style="display:inline-block">Introuvable</span></td>
+        <td><span class="badge badge-attention">Introuvable</span></td>
         <td>—</td>
         <td>—</td>
       {% endif %}

@@ -446,6 +446,11 @@ def test_admin_supervision(client, monkeypatch):
     assert "Prêt de jeux" in r2.text
     assert "Tournois" in r2.text
     assert "Planning bénévole" in r2.text
+    # Retour terrain : pastille d'état compacte (badge, même famille que les
+    # badges dispo/sorti du catalogue), pas la grande bannière .resultat
+    # (disproportionnée dans une cellule de tableau).
+    assert '<span class="badge badge-ok">Ok</span>' in r2.text
+    assert "Présente" not in r2.text
 
 
 def test_admin_table_css_responsive(client):
