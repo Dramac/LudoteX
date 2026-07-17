@@ -10,6 +10,10 @@
 <section class="carte">
   <h1>Votre code de désinscription</h1>
   <p class="pochette-num">{{ code }}</p>
+  <p>
+    <button type="button" class="bouton-filtrer" onclick="copierCode()">Copier le code</button>
+    <span id="copie-ok" class="copie-ok" hidden>copié ✓</span>
+  </p>
   <p class="resultat-consigne">
     Notez ce code. Il est le seul moyen de vous désinscrire (aucune adresse
     e-mail n'a été conservée).
@@ -25,4 +29,17 @@
     <a class="lien" href="/tournoi/{{ t.id_tournoi }}">Retour au tournoi</a>
   </p>
 </section>
+
+<script>
+  // Copier le code en un tap (motif réutilisé de /admin/jeton : bouton +
+  // navigator.clipboard.writeText + confirmation .copie-ok). Voir M4,
+  // docs/idees-ux.md.
+  function copierCode() {
+    navigator.clipboard.writeText({{ code | tojson }}).then(function () {
+      var ok = document.getElementById("copie-ok");
+      ok.hidden = false;
+      setTimeout(function () { ok.hidden = true; }, 2000);
+    });
+  }
+</script>
 {% endblock %}

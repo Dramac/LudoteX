@@ -236,7 +236,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   logique JS non exécutable sous pytest (pas de moteur JS), vérifiée
   manuellement (`node --check`) et par relecture. Voir `CLAUDE.md`.
 
-### M4. Le code de désinscription tournoi ne se copie pas en un tap
+### ✅ FAIT — M4. Le code de désinscription tournoi ne se copie pas en un tap
 - **Où** : `tournoi_inscription_ok.html` (le code s'affiche, à noter soi-même) ;
   même besoin pour le code bénévole du planning (`planning_collecte_ok.html`).
 - **Pourquoi** : le public note le code en photo ou pas du tout ; celui qui le
@@ -245,6 +245,21 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : réutiliser le motif « Copier » de `/admin/jeton` (bouton +
   `navigator.clipboard.writeText` + confirmation `.copie-ok`) sur les deux
   pages de confirmation.
+- **Corrigé** le 2026-07-17 : motif repris tel quel sur les deux pages —
+  bouton `.bouton-filtrer` « Copier le code » + `navigator.clipboard.
+  writeText(...)` + `<span id="copie-ok" class="copie-ok" hidden>copié ✓</span>`
+  réaffiché 2 s (classe CSS déjà existante, aucun ajout). Code injecté dans le
+  JS via le filtre `| tojson` (échappement sûr, même si les codes générés par
+  `secrets.token_urlsafe` ne contiennent de toute façon aucun caractère
+  spécial). Sur `planning_collecte_ok.html`, bouton + script conditionnés à
+  `{% if code %}` : cette page reste accessible SANS code (filet de sécurité
+  existant), jamais bloquant. Pas de fonction JS partagée entre les deux
+  pages (ni avec `/admin/jeton`) : suit le même principe déjà en place dans
+  `admin_jeton.html`, qui a lui-même deux fonctions `copierLien`/
+  `copierDiscord` plutôt qu'une abstraction commune — cohérent avec le reste
+  du projet. **3 tests ajoutés** (bouton + script présents à l'inscription
+  tournoi, code correct injecté ; idem sur la confirmation planning ; pas de
+  bouton quand la page planning est atteinte sans code).
 
 ### M5. Formulaire de lancement de tournoi : tous les champs pour tous les modes
 - **Où** : `tournoi_gerer.html`, bloc « Lancer le tournoi » (mode, nombre de

@@ -735,6 +735,25 @@ premier), donc `_menu_visiteur.html` n'a jamais besoin de ce lien. **1 test
 ajouté** (absent sans session, présent dans les 2 rendus une fois connecté,
 disparaît après déconnexion). **Suite globale : 208 tests verts.**
 
+**M4 — Copier le code de désinscription/modification en un tap : FAIT.**
+`tournoi_inscription_ok.html` (code de désinscription tournoi) et
+`planning_collecte_ok.html` (code de modification des souhaits bénévole)
+n'affichaient le code qu'en texte brut, à noter soi-même. Motif « Copier »
+de `/admin/jeton` **réutilisé tel quel** (pas de nouvelle abstraction) sur
+les deux pages : bouton `.bouton-filtrer` « Copier le code » +
+`navigator.clipboard.writeText(...)` + confirmation `<span class="copie-
+ok">copié ✓</span>` (classe CSS déjà existante) réaffichée 2 s. Le code est
+injecté dans le script via `{{ code | tojson }}` (échappement JS sûr).
+Sur la page planning (accessible SANS code par filet de sécurité), bouton
+et script sont conditionnés à `{% if code %}` — rien à copier n'apparaît
+alors, jamais bloquant. Chaque page garde sa propre fonction `copierCode()`
+(pas de mutualisation avec `admin_jeton.html`), cohérent avec l'existant
+(`copierLien`/`copierDiscord` y sont déjà deux fonctions séparées plutôt
+qu'une abstraction commune). **3 tests ajoutés** (bouton + script présents
+avec le bon code à l'inscription tournoi ; idem sur la confirmation
+planning ; absence du bouton quand la page planning est atteinte sans
+code). **Suite globale : 209 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

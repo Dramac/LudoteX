@@ -11,6 +11,12 @@
     Votre code pour revenir modifier votre réponse :
     <strong class="pl-code">{{ code }}</strong>
   </p>
+  {% if code %}
+  <p>
+    <button type="button" class="bouton-filtrer" onclick="copierCode()">Copier le code</button>
+    <span id="copie-ok" class="copie-ok" hidden>copié ✓</span>
+  </p>
+  {% endif %}
   <p class="stats-note">Conservez ce code. Il sert aussi à consulter votre
     planning une fois publié.</p>
 
@@ -20,4 +26,19 @@
     <a class="lien" href="/planning/mon?code={{ code }}">📋 Voir mon planning</a>
   </p>
 </section>
+
+{% if code %}
+<script>
+  // Copier le code en un tap (motif réutilisé de /admin/jeton : bouton +
+  // navigator.clipboard.writeText + confirmation .copie-ok). Voir M4,
+  // docs/idees-ux.md.
+  function copierCode() {
+    navigator.clipboard.writeText({{ code | tojson }}).then(function () {
+      var ok = document.getElementById("copie-ok");
+      ok.hidden = false;
+      setTimeout(function () { ok.hidden = true; }, 2000);
+    });
+  }
+</script>
+{% endif %}
 {% endblock %}
