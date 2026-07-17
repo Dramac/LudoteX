@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block titre %}Rangement — Administration{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Rangement des boîtes</h1>
+  <p class="stats-note">
+    Où ranger chaque boîte : la salle pendant l'événement (texte libre saisi
+    au scanner), ou le local de l'association hors événement (liste ci-dessous).
+  </p>
+  {% if message %}
+    <p class="resultat resultat-ok">{{ message }}</p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  <h2>Contexte actif</h2>
+  <p class="stats-note">
+    Détermine quel emplacement les bénévoles renseignent et voient au scanner
+    et au retour. Pendant le festival : Événement.
+  </p>
+  <form method="post" action="/admin/rangement/contexte" class="recherche-form">
+    <label class="case">
+      <input type="radio" name="contexte" value="evenement" {{ 'checked' if contexte == 'evenement' else '' }}>
+      Événement — texte libre (la salle du festival)
+    </label>
+    <label class="case">
+      <input type="radio" name="contexte" value="local" {{ 'checked' if contexte == 'local' else '' }}>
+      Local — liste ci-dessous (hors événement)
+    </label>
+    <p><button type="submit" class="bouton bouton-principal">Enregistrer</button></p>
+  </form>
+</section>
+
+<section class="carte">
+  <h2>Visibilité publique</h2>
+  <p class="stats-note">
+    Qui voit l'emplacement sur le catalogue et la fiche d'un jeu. L'écran de
+    retour bénévole l'affiche toujours, quel que soit ce réglage.
+  </p>
+  <form method="post" action="/admin/rangement/visibilite" class="recherche-form">
+    <label class="case">
+      <input type="radio" name="visibilite" value="tous" {{ 'checked' if visibilite == 'tous' else '' }}>
+      Tous les visiteurs
+    </label>
+    <label class="case">
+      <input type="radio" name="visibilite" value="benevoles" {{ 'checked' if visibilite == 'benevoles' else '' }}>
+      Bénévoles uniquement
+    </label>
+    <label class="case">
+      <input type="radio" name="visibilite" value="admin" {{ 'checked' if visibilite == 'admin' else '' }}>
+      Administrateurs uniquement
+    </label>
+    <p><button type="submit" class="bouton bouton-principal">Enregistrer</button></p>
+  </form>
+</section>
+
+<section class="carte">
+  <h2>Emplacements locaux</h2>
+  <p class="stats-note">
+    Renommer se répercute automatiquement sur toutes les boîtes concernées.
+    Retirer archive (réversible, disparaît des menus). La suppression
+    définitive n'est proposée que si plus aucune boîte n'y est rattachée.
+  </p>
+
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Statut</th>
+        <th>Boîtes</th>
+        <th>Ordre</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in emplacements %}
+      <tr>
+        <td>
+          <form method="post" action="/admin/rangement/emplacements/{{ e.id_emplacement }}/renommer"
+                class="rangement-form-inline">
+            <input type="text" name="nom" value="{{ e.nom }}" required>
+            <button type="submit" class="bouton-filtrer">Renommer</button>
+          </form>
+        </td>
+        <td>
+          {% if e.actif %}
+            <span class="badge-ok">Actif</span>
+          {% else %}
+            <span class="badge-attention">Archivé</span>
+          {% endif %}
+        </td>
+        <td>{{ e.usage_count }} {{ pluriel(e.usage_count, 'boîte', 'boîtes') }}</td>
+        <td class="rangement-ordre">
+          <form method="post" action="/admin/rangement/emplacements/{{ e.id_emplacement }}/monter"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer" title="Monter dans la liste">▲</button>
+          </form>
+          <form method="post" action="/admin/rangement/emplacements/{{ e.id_emplacement }}/descendre"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer" title="Descendre dans la liste">▼</button>
+          </form>
+        </td>
+        <td class="rangement-actions">
+          {% if e.actif %}
+          <form method="post" action="/admin/rangement/emplacements/{{ e.id_emplacement }}/archiver"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer">Archiver</button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/rangement/emplacements/{{ e.id_emplacement }}/reactiver"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer">Réactiver</button>
+          </form>
+          {% endif %}
+          {% if e.usage_count == 0 %}
+          <form method="post" action="/admin/rangement/emplacements/{{ e.id_emplacement }}/supprimer"
+                class="rangement-form-inline"
+                onsubmit="return confirm('Supprimer définitivement « {{ e.nom }} » ? Cette action est irréversible.');">
+            <button type="submit" class="bouton-filtrer">Supprimer</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/admin/rangement/emplacements" class="recherche-form">
+    <div class="champ">
+      <label for="nom-nouveau">Ajouter un emplacement</label>
+      <input type="text" id="nom-nouveau" name="nom" placeholder="ex. Étagère 3" required>
+    </div>
+    <p><button type="submit" class="bouton bouton-principal">Ajouter</button></p>
+  </form>
+</section>
+
+<p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
+{% endblock %}
