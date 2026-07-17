@@ -1240,3 +1240,83 @@ def rangement_ranger_jeux(
             ),
         },
     )
+
+
+@router.post("/rangement/ranger/appliquer")
+def rangement_ranger_appliquer(
+    request: Request,
+    categorie: str = Form(""), q: str = Form(""), age: str = Form(""), joueurs: str = Form(""),
+    tous: str = Form("0"), page: str = Form("1"),
+    portee: str = Form(""), titres_coches: list[str] = Form(default=[]),
+    emplacement_texte: str = Form(""), emplacement_id: str = Form(""),
+    ne_pas_ecraser: str = Form(""),
+):
+    """
+    Applique un emplacement à un lot de titres (§13.3/13.4). Deux portées :
+
+    - `portee="filtre"` : REJOUE le filtre (categorie/q/age/joueurs + le
+      toggle `tous`) côté serveur pour reconstituer exactement la même liste
+      de titres que celle affichée par le GET qui a rendu ce formulaire —
+      couvre tout le résultat même sur plusieurs pages, sans transporter
+      d'identifiants (§13.3).
+    - `portee="coches"` : n'agit que sur `titres_coches` (cases cochées sur
+      la page courante).
+
+    Un emplacement vide est REFUSÉ (§13.4, pas de wipe de masse) : rien n'est
+    modifié, message clair, retour sur la même vue (mêmes filtres).
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.catalogue import _entier_ou_none
+
+    filtre_cat_brut = categorie or None
+    q_n = (q or "").strip() or None
+    age_i = _entier_ou_none(age)
+    joueurs_i = _entier_ou_none(joueurs)
+    tous_b = tous == "1"
+    page_i = _entier_ou_none(page) or 1
+
+    conn = get_connection()
+    try:
+        categories = services.lister_categories(conn)
+        filtre_cat = filtre_cat_brut if filtre_cat_brut in categories else None
+        contexte = services.rangement_contexte(conn)
+
+        if contexte == "local":
+            id_emp = _entier_ou_none(emplacement_id)
+            valeur = id_emp
+            valide = id_emp is not None and services.get_emplacement_rangement(conn, id_emp) is not None
+        else:
+            texte = " ".join(emplacement_texte.split())
+            valeur = texte
+            valide = bool(texte)
+
+        if not valide:
+            msg = "Emplacement requis : rien n'a été modifié."
+        else:
+            if portee == "coches":
+                reference_titres = [t for t in titres_coches if t]
+            else:
+                jeux = services.lister_catalogue(conn, filtre_cat, q_n, age_i, joueurs_i)
+                jeux = services.rangement_par_titre(conn, jeux, contexte)
+                jeux_affiches = jeux if tous_b else [j for j in jeux if not j["rangement_complet"]]
+                reference_titres = [j["reference_titre"] for j in jeux_affiches]
+
+            resultat = services.affecter_emplacement_lot(
+                conn, reference_titres, contexte, valeur, ecraser=(ne_pas_ecraser != "1")
+            )
+            if resultat["boites"] == 0:
+                msg = "Aucune boîte modifiée (sélection vide, ou tout était déjà rempli)."
+            else:
+                msg = (
+                    f"Emplacement appliqué à {resultat['titres']} "
+                    f"{'jeu' if resultat['titres'] == 1 else 'jeux'} "
+                    f"({resultat['boites']} {'boîte' if resultat['boites'] == 1 else 'boîtes'})."
+                )
+    finally:
+        conn.close()
+
+    return RedirectResponse(
+        _url_ranger(filtre_cat_brut, q_n, age_i, joueurs_i, tous_b, page_i, msg=msg),
+        status_code=303,
+    )
