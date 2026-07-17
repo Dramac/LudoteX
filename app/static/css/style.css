@@ -394,6 +394,14 @@ summary:focus-visible,
   color: #1a73e8;
 }
 
+/* Édition à l'unité du rangement sur la fiche admin (admin_fiche.html, §4.c) :
+   les deux formulaires (événement / local) empilés sous chaque étiquette. */
+.rangement-edition { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.rangement-edition label { font-size: 0.85rem; color: var(--gris); }
+.rangement-edition select {
+  padding: 4px 8px; border: 1px solid var(--bord); border-radius: 6px; font-size: 0.85rem;
+}
+
 /* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
    Configuration). Le titre de groupe est masqué par défaut (mobile = référence
    inchangée : les items s'enchaînent comme une seule liste, .admin-menu n'ayant

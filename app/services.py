@@ -1110,15 +1110,40 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
     """
     Liste les exemplaires d'un titre avec leur état (pour la fiche admin).
 
+    Inclut les deux colonnes de rangement BRUTES (docs/conception-rangement.md
+    §4.c) : `emplacement_evenement` (texte, tel quel) et `emplacement_local_id`
+    + son nom résolu `emplacement_local_nom` (via jointure, qui fonctionne même
+    si l'emplacement a été archivé depuis — la fiche admin doit continuer à
+    l'afficher, §5). `emplacement_local_actif` distingue ce cas.
+
     Returns:
-        Liste de dicts {id_exemplaire, sorti(bool)}, triée par id.
+        Liste de dicts {id_exemplaire, sorti(bool), emplacement_evenement,
+        emplacement_local_id, emplacement_local_nom, emplacement_local_actif},
+        triée par id.
     """
     rows = conn.execute(
-        "SELECT id_exemplaire FROM exemplaires WHERE reference_titre = ? "
-        "ORDER BY id_exemplaire",
+        "SELECT x.id_exemplaire, x.emplacement_evenement, x.emplacement_local_id, "
+        "       er.nom AS emplacement_local_nom, er.actif AS emplacement_local_actif "
+        "FROM exemplaires x "
+        "LEFT JOIN emplacements_rangement er ON er.id_emplacement = x.emplacement_local_id "
+        "WHERE x.reference_titre = ? "
+        "ORDER BY x.id_exemplaire",
         (reference_titre,),
     ).fetchall()
-    return [{"id_exemplaire": r[0], "sorti": est_sorti(conn, r[0])} for r in rows]
+    return [
+        {
+            "id_exemplaire": r["id_exemplaire"],
+            "sorti": est_sorti(conn, r["id_exemplaire"]),
+            "emplacement_evenement": r["emplacement_evenement"],
+            "emplacement_local_id": r["emplacement_local_id"],
+            "emplacement_local_nom": r["emplacement_local_nom"],
+            "emplacement_local_actif": (
+                bool(r["emplacement_local_actif"])
+                if r["emplacement_local_actif"] is not None else None
+            ),
+        }
+        for r in rows
+    ]
 
 
 def titres_pour_etiquettes(conn: sqlite3.Connection,
