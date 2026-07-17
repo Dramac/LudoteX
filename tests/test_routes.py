@@ -167,6 +167,25 @@ def test_menu_bandeau_replie_sur_mobile(client, monkeypatch):
     assert r2.text.count("/scanner") >= 2
 
 
+def test_menu_lien_administration_si_connecte(client, monkeypatch):
+    # Nouveau besoin : un administrateur connecté doit pouvoir revenir à
+    # /admin depuis le menu du bandeau, sur n'importe quelle page (pas
+    # seulement via le tableau de bord lui-même).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    # Pas de session admin : aucun lien.
+    r = client.get("/catalogue")
+    assert "Administration" not in r.text
+    # Session admin ouverte : le lien apparaît, dans les DEUX rendus du menu
+    # (voir test_menu_bandeau_replie_sur_mobile : replié + à plat).
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r2 = client.get("/catalogue")
+    assert r2.text.count('<a href="/admin">Administration</a>') == 2
+    # Après déconnexion, le lien disparaît de nouveau.
+    client.get("/admin/logout")
+    r3 = client.get("/catalogue")
+    assert "Administration" not in r3.text
+
+
 def test_catalogue_derniers_achats(client):
     from app import db
     conn = db.get_connection()

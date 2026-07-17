@@ -19,4 +19,7 @@
   <a href="/live">Écran salle</a>
   {% endif %}
   <a href="/aide">Aide</a>
+  {% if est_admin(request) %}
+  <a href="/admin">Administration</a>
+  {% endif %}
 </nav>
