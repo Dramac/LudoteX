@@ -1535,3 +1535,70 @@ def emplacement_actuel(conn: sqlite3.Connection, id_exemplaire: str) -> str | No
         (id_exemplaire,),
     ).fetchone()
     return row["emplacement_evenement"] if row and row["emplacement_evenement"] else None
+
+
+# ---------------------------------------------------------------------------
+# Page des manques (§4.d) : exemplaires SANS emplacement dans le contexte
+# actif, combler les trous après un import ou en continu.
+# ---------------------------------------------------------------------------
+PAR_PAGE_MANQUES = 50  # taille de page, ~700 boîtes au total -> pagination sobre
+
+
+def _clause_sans_emplacement(contexte: str) -> str:
+    """Fragment SQL (préfixe `x.`) : l'exemplaire n'a PAS d'emplacement dans ce contexte."""
+    if contexte == "local":
+        return "x.emplacement_local_id IS NULL"
+    return "(x.emplacement_evenement IS NULL OR x.emplacement_evenement = '')"
+
+
+def _filtre_manques(conn: sqlite3.Connection, categorie: str | None, q: str | None):
+    """Construit (clause WHERE, params) partagée par compteur et liste des manques."""
+    contexte = rangement_contexte(conn)
+    conditions = [_clause_sans_emplacement(contexte)]
+    params: list = []
+    if categorie:
+        conditions.append("t.categorie = ?")
+        params.append(categorie)
+    if q:
+        conditions.append("t.nom LIKE ? COLLATE NOCASE")
+        params.append(f"%{q}%")
+    return " AND ".join(conditions), params
+
+
+def compter_exemplaires_sans_emplacement(
+    conn: sqlite3.Connection, categorie: str | None = None, q: str | None = None
+) -> int:
+    """Nombre d'exemplaires sans emplacement dans le contexte actif (filtres optionnels)."""
+    where, params = _filtre_manques(conn, categorie, q)
+    (n,) = conn.execute(
+        f"SELECT COUNT(*) FROM exemplaires x "
+        f"JOIN titres t ON t.reference_titre = x.reference_titre WHERE {where}",
+        params,
+    ).fetchone()
+    return n
+
+
+def exemplaires_sans_emplacement(
+    conn: sqlite3.Connection, categorie: str | None = None, q: str | None = None,
+    page: int = 1,
+) -> list[dict]:
+    """
+    Liste PAGINÉE (`PAR_PAGE_MANQUES` par page) des exemplaires sans
+    emplacement dans le contexte actif, triée par nom de jeu. `reference_titre`
+    est inclus pour construire les liens de saisie rapide (mêmes routes
+    d'édition à l'unité que la fiche admin, §4.c).
+    """
+    where, params = _filtre_manques(conn, categorie, q)
+    offset = max(page - 1, 0) * PAR_PAGE_MANQUES
+    rows = conn.execute(
+        f"""
+        SELECT x.id_exemplaire, x.reference_titre, t.nom, t.categorie
+        FROM exemplaires x
+        JOIN titres t ON t.reference_titre = x.reference_titre
+        WHERE {where}
+        ORDER BY t.nom COLLATE NOCASE, x.id_exemplaire
+        LIMIT ? OFFSET ?
+        """,
+        (*params, PAR_PAGE_MANQUES, offset),
+    ).fetchall()
+    return [dict(r) for r in rows]

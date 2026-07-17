@@ -12,6 +12,11 @@
   {% if message %}
     <p class="resultat resultat-ok">{{ message }}</p>
   {% endif %}
+  <p class="dispo-titre">
+    🗄️ {{ nb_manques }} {{ pluriel(nb_manques, 'boîte', 'boîtes') }} sans emplacement
+    dans le contexte actif —
+    <a class="lien" href="/admin/rangement/manques">voir la liste</a>
+  </p>
 </section>
 
 <section class="carte">

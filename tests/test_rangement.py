@@ -1188,3 +1188,151 @@ def test_import_route_signale_les_emplacements_crees(client):
     assert "Import réussi" in r.text
     assert "1 nouvel" in r.text
     assert "Nouvelle zone" in r.text
+
+
+def test_import_route_lien_vers_manques_apparait_si_boites_restantes(client):
+    # Contexte par défaut "evenement" : ni 001 (seed) ni la boîte importée
+    # n'ont d'emplacement événement -> le lien doit apparaître.
+    _connecter(client)
+    contenu = "Code jeu;Nom jeu\n902;Jeu sans emplacement\n".encode("utf-8")
+    r = client.post(
+        "/admin/donnees/import",
+        files={"fichier": ("cat.csv", contenu, "text/csv")},
+    )
+    assert r.status_code == 200
+    assert "sans emplacement" in r.text
+    assert 'href="/admin/rangement/manques"' in r.text
+
+
+# ===========================================================================
+# Étape 8 — page des manques (/admin/rangement/manques)
+# ===========================================================================
+def test_compter_et_lister_manques_evenement(conn):
+    assert services.compter_exemplaires_sans_emplacement(conn) == 1
+    lignes = services.exemplaires_sans_emplacement(conn)
+    assert [l["id_exemplaire"] for l in lignes] == ["001"]
+
+    services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
+    assert services.compter_exemplaires_sans_emplacement(conn) == 0
+    assert services.exemplaires_sans_emplacement(conn) == []
+
+
+def test_compter_et_lister_manques_local(conn):
+    services.ecrire_rangement_contexte(conn, "local")
+    assert services.compter_exemplaires_sans_emplacement(conn) == 1
+
+    id_totem = [
+        l for l in services.lister_emplacements_rangement(conn) if l["nom"] == "Totem"
+    ][0]["id_emplacement"]
+    services.affecter_emplacement(conn, "001", "local", id_totem)
+    assert services.compter_exemplaires_sans_emplacement(conn) == 0
+
+
+def test_manques_filtre_categorie_et_recherche(conn):
+    conn.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
+                 "('DOBBLE', 'Dobble', 'Rapidité')")
+    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
+                 "('002', 'DOBBLE')")
+    conn.execute("UPDATE titres SET categorie = 'Stratégie' WHERE reference_titre = 'CATAN'")
+    conn.commit()
+
+    assert services.compter_exemplaires_sans_emplacement(conn) == 2
+    assert services.compter_exemplaires_sans_emplacement(conn, categorie="Stratégie") == 1
+    assert services.compter_exemplaires_sans_emplacement(conn, q="dob") == 1
+    assert services.compter_exemplaires_sans_emplacement(conn, q="introuvable") == 0
+
+
+def test_manques_pagination(conn, monkeypatch):
+    from app import services as _services
+
+    monkeypatch.setattr(_services, "PAR_PAGE_MANQUES", 1)
+    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
+                 "('002', 'CATAN')")
+    conn.commit()
+
+    page1 = services.exemplaires_sans_emplacement(conn, page=1)
+    page2 = services.exemplaires_sans_emplacement(conn, page=2)
+    assert len(page1) == 1
+    assert len(page2) == 1
+    assert page1[0]["id_exemplaire"] != page2[0]["id_exemplaire"]
+
+
+def test_route_manques_protegee_par_garde_admin(client):
+    r = client.get("/admin/rangement/manques", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+
+def test_route_manques_liste_la_boite_par_defaut(client):
+    _connecter(client)
+    r = client.get("/admin/rangement/manques")
+    assert r.status_code == 200
+    assert "001" in r.text
+    assert "1 boîte" in r.text
+
+
+def test_route_manques_saisie_rapide_evenement_retire_de_la_liste(client):
+    _connecter(client)
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "Étagère 9", "retour": "/admin/rangement/manques"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/admin/rangement/manques"
+
+    r2 = client.get("/admin/rangement/manques")
+    assert "Aucune boîte sans emplacement" in r2.text
+
+
+def test_route_manques_saisie_rapide_local_retire_de_la_liste(client):
+    _connecter(client)
+    id_totem = _id_emplacement("Totem")
+    client.post("/admin/rangement/contexte", data={"contexte": "local"})
+
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": str(id_totem), "retour": "/admin/rangement/manques"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/admin/rangement/manques"
+
+    r2 = client.get("/admin/rangement/manques")
+    assert "Aucune boîte sans emplacement" in r2.text
+
+
+def test_route_manques_retour_ignore_url_externe(client):
+    # `retour` doit commencer par /admin/ pour être suivi (pas de redirect ouvert).
+    _connecter(client)
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "Étagère 9", "retour": "https://exemple-malveillant.test"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/admin/jeu/CATAN"
+
+
+def test_route_manques_filtre_categorie_query(client):
+    _connecter(client)
+    conn2 = None
+    from app import db as _db
+    conn2 = _db.get_connection()
+    try:
+        conn2.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
+                       "('DOBBLE', 'Dobble', 'Rapidité')")
+        conn2.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
+                       "('002', 'DOBBLE')")
+        conn2.commit()
+    finally:
+        conn2.close()
+
+    r = client.get("/admin/rangement/manques", params={"categorie": "Rapidité"})
+    assert r.status_code == 200
+    assert "Dobble" in r.text
+    assert "Catan" not in r.text
+
+
+def test_admin_rangement_affiche_compteur_et_lien_manques(client):
+    _connecter(client)
+    r = client.get("/admin/rangement")
+    assert r.status_code == 200
+    assert 'href="/admin/rangement/manques"' in r.text
+    assert "1 boîte" in r.text

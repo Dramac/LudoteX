@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block titre %}Boîtes non rangées — Administration{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Boîtes non rangées</h1>
+  <p class="stats-note">
+    Exemplaires sans emplacement dans le contexte actif
+    (« {{ 'Événement' if contexte == 'evenement' else 'Local' }} »). Rien
+    n'oblige à tout remplir : vous pouvez laisser vide et revenir plus tard.
+  </p>
+  <p class="dispo-titre">{{ total }} {{ pluriel(total, 'boîte', 'boîtes') }} sans emplacement</p>
+
+  <form method="get" action="/admin/rangement/manques" class="recherche-form">
+    <div class="champ">
+      <label for="q">Rechercher un jeu</label>
+      <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
+    </div>
+    <div class="champ">
+      <label for="categorie">Catégorie</label>
+      <select id="categorie" name="categorie">
+        <option value="">Toutes</option>
+        {% for c in categories %}
+        <option value="{{ c }}" {% if c == categorie %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><button type="submit" class="bouton-filtrer">Filtrer</button></div>
+  </form>
+</section>
+
+<section class="carte">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Jeu</th>
+        <th>Emplacement</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ex in exemplaires %}
+      <tr>
+        <td><code>{{ ex.id_exemplaire }}</code></td>
+        <td>{{ ex.nom }}</td>
+        <td>
+          {% if contexte == 'local' %}
+          <form method="post"
+                action="/admin/jeu/{{ ex.reference_titre }}/exemplaire/{{ ex.id_exemplaire }}/emplacement-local"
+                class="rangement-form-inline">
+            <select name="emplacement_id">
+              <option value="" selected>— aucun —</option>
+              {% for e in emplacements_locaux %}
+              <option value="{{ e.id_emplacement }}">{{ e.nom }}</option>
+              {% endfor %}
+            </select>
+            <input type="hidden" name="retour"
+                   value="{{ request.url.path }}{{ '?' + request.url.query if request.url.query else '' }}">
+            <button type="submit" class="bouton-filtrer">Enregistrer</button>
+          </form>
+          {% else %}
+          <form method="post"
+                action="/admin/jeu/{{ ex.reference_titre }}/exemplaire/{{ ex.id_exemplaire }}/emplacement-evenement"
+                class="rangement-form-inline">
+            <input type="text" name="emplacement_texte" placeholder="ex. Étagère 2">
+            <input type="hidden" name="retour"
+                   value="{{ request.url.path }}{{ '?' + request.url.query if request.url.query else '' }}">
+            <button type="submit" class="bouton-filtrer">Enregistrer</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3"><em>Aucune boîte sans emplacement 🎉</em></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if nb_pages > 1 %}
+  <p class="stats-note" style="margin-top:10px">
+    {% if url_precedente %}<a class="lien" href="{{ url_precedente }}">← Précédent</a>{% endif %}
+    &nbsp;Page {{ page }} / {{ nb_pages }}&nbsp;
+    {% if url_suivante %}<a class="lien" href="{{ url_suivante }}">Suivant →</a>{% endif %}
+  </p>
+  {% endif %}
+</section>
+
+<p class="lien-fiche"><a class="lien" href="/admin/rangement">← Retour au rangement</a></p>
+{% endblock %}

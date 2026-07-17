@@ -185,11 +185,23 @@ def ajouter_exemplaire(request: Request, reference_titre: str):
 # Les DEUX contextes sont éditables indépendamment ici (contrairement au
 # scanner, qui n'agit que sur le contexte GLOBALEMENT actif) : texte libre
 # pour l'événement, menu déroulant des emplacements actifs pour le local.
+#
+# `retour` (optionnel, sur le modèle de app/planning/routes.py::_retour) :
+# permet à la page des manques (§4.d, saisie rapide en ligne) de réutiliser
+# CES MÊMES routes plutôt que d'en dupliquer une variante — on revient sur
+# `retour` s'il est fourni et interne (évite tout redirect ouvert), sinon sur
+# la fiche admin du titre comme avant.
 # ---------------------------------------------------------------------------
+def _retour_emplacement(reference_titre: str, retour: str) -> str:
+    if retour.startswith("/admin/"):
+        return retour
+    return f"/admin/jeu/{reference_titre}"
+
+
 @router.post("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/emplacement-evenement")
 def exemplaire_emplacement_evenement(
     request: Request, reference_titre: str, id_exemplaire: str,
-    emplacement_texte: str = Form(""),
+    emplacement_texte: str = Form(""), retour: str = Form(""),
 ):
     """Édite le texte libre « emplacement événement » d'un exemplaire. Vide = retire."""
     if (garde := _garde(request)):
@@ -200,13 +212,13 @@ def exemplaire_emplacement_evenement(
         services.affecter_emplacement(conn, id_exemplaire, "evenement", valeur)
     finally:
         conn.close()
-    return RedirectResponse(f"/admin/jeu/{reference_titre}", status_code=303)
+    return RedirectResponse(_retour_emplacement(reference_titre, retour), status_code=303)
 
 
 @router.post("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/emplacement-local")
 def exemplaire_emplacement_local(
     request: Request, reference_titre: str, id_exemplaire: str,
-    emplacement_id: str = Form(""),
+    emplacement_id: str = Form(""), retour: str = Form(""),
 ):
     """
     Édite l'emplacement LOCAL (menu déroulant) d'un exemplaire. Option
@@ -234,7 +246,7 @@ def exemplaire_emplacement_local(
             services.affecter_emplacement(conn, id_exemplaire, "local", valeur)
     finally:
         conn.close()
-    return RedirectResponse(f"/admin/jeu/{reference_titre}", status_code=303)
+    return RedirectResponse(_retour_emplacement(reference_titre, retour), status_code=303)
 
 
 @router.get("/etiquette/{id_exemplaire}.png")
@@ -354,13 +366,23 @@ def etiquettes_pdf(
 # ---------------------------------------------------------------------------
 # Base de données : import d'un catalogue CSV, export CSV / Excel
 # ---------------------------------------------------------------------------
-def _page_donnees(request: Request, message: tuple | None = None, status_code: int = 200):
+def _page_donnees(
+    request: Request, message: tuple | None = None, status_code: int = 200,
+    manques: int | None = None,
+):
     """
     Rend la page « Données & sauvegarde » avec les compteurs actuels.
 
     Page UNIQUE regroupant le catalogue (import/export CSV/Excel) et la
     sauvegarde complète des 3 bases (export/import zip) — anciennement deux
     sous-menus séparés, fusionnés pour plus de cohérence côté admin.
+
+    `manques` (rangement, §4.b/§4.d) : nombre de boîtes sans emplacement dans
+    le contexte actif après un import réussi ; None sinon. Passé SÉPARÉMENT
+    du `message` (texte libre échappé, potentiellement issu du CSV importé —
+    ex. un nom d'emplacement créé à la volée) pour que le lien vers la page
+    des manques reste un vrai lien HTML construit côté serveur, jamais une
+    valeur utilisateur injectée non échappée dans le gabarit.
     """
     conn = get_connection()
     try:
@@ -370,7 +392,7 @@ def _page_donnees(request: Request, message: tuple | None = None, status_code: i
         conn.close()
     return templates.TemplateResponse(
         request, "admin_donnees.html",
-        {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message},
+        {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message, "manques": manques},
         status_code=status_code,
     )
 
@@ -405,6 +427,7 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
         tmp.write(contenu)
         chemin = Path(tmp.name)
+    manques = None
     try:
         res = import_csv.importer(chemin)
         texte = (f"Import réussi : {res['exemplaires']} exemplaire(s) / "
@@ -418,6 +441,12 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
             texte += (f" {len(crees)} nouvel(aux) emplacement(s) local(-aux) "
                       f"créé(s) : {', '.join(crees)}.")
         message = ("succes", texte)
+        # §4.d : lien direct vers la page des manques s'il en reste.
+        conn = get_connection()
+        try:
+            manques = services.compter_exemplaires_sans_emplacement(conn)
+        finally:
+            conn.close()
     except SystemExit as exc:            # colonnes clés absentes
         message = ("erreur", str(exc))
     except Exception as exc:             # tout autre souci de lecture
@@ -427,7 +456,7 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
             chemin.unlink()
         except OSError:
             pass
-    return _page_donnees(request, message)
+    return _page_donnees(request, message, manques=manques)
 
 
 @router.get("/donnees/export.csv")
@@ -908,6 +937,8 @@ def _page_rangement(request: Request, message: str | None = None):
         contexte = services.rangement_contexte(conn)
         visibilite = services.rangement_visibilite(conn)
         emplacements = services.lister_emplacements_rangement(conn)
+        # Compteur affiché en tête d'écran + lien vers la page des manques (§4.d).
+        nb_manques = services.compter_exemplaires_sans_emplacement(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -919,6 +950,7 @@ def _page_rangement(request: Request, message: str | None = None):
             "contextes": services.RANGEMENT_CONTEXTES,
             "visibilites": services.RANGEMENT_VISIBILITES,
             "message": message,
+            "nb_manques": nb_manques,
         },
     )
 
@@ -1056,3 +1088,53 @@ def rangement_emplacement_descendre(request: Request, id_emplacement: int):
     finally:
         conn.close()
     return RedirectResponse("/admin/rangement", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Page des manques (§4.d) : exemplaires SANS emplacement dans le contexte
+# actif — pendant ciblé du mode rangement de masse au scanner. Filtrable
+# (nom/catégorie), paginée sobrement (~700 boîtes possibles). La saisie
+# rapide en ligne RÉUTILISE les routes d'édition à l'unité de la fiche admin
+# (exemplaire_emplacement_evenement/local ci-dessus, via leur paramètre
+# `retour`) — un seul point de maintenance pour l'écriture, pas de route
+# dupliquée.
+# ---------------------------------------------------------------------------
+def _url_manques(categorie: str | None, q: str | None, page: int) -> str:
+    """URL de /admin/rangement/manques avec filtres + page (query string minimale)."""
+    from urllib.parse import urlencode
+
+    params = {k: v for k, v in {"categorie": categorie, "q": q, "page": page}.items()
+              if v not in (None, "", 1)}
+    requete = urlencode(params)
+    return "/admin/rangement/manques" + (f"?{requete}" if requete else "")
+
+
+@router.get("/rangement/manques")
+def rangement_manques(
+    request: Request, categorie: str | None = None, q: str | None = None, page: int = 1,
+):
+    if (garde := _garde(request)):
+        return garde
+    q = (q or "").strip() or None
+    page = max(page, 1)
+    conn = get_connection()
+    try:
+        categories = services.lister_categories(conn)
+        filtre_cat = categorie if categorie in categories else None
+        total = services.compter_exemplaires_sans_emplacement(conn, filtre_cat, q)
+        contexte = services.rangement_contexte(conn)
+        emplacements_locaux = services.emplacements_actifs(conn) if contexte == "local" else []
+        exemplaires = services.exemplaires_sans_emplacement(conn, filtre_cat, q, page)
+    finally:
+        conn.close()
+    nb_pages = max(-(-total // services.PAR_PAGE_MANQUES), 1)  # division entière arrondie au sup.
+    return templates.TemplateResponse(
+        request, "admin_rangement_manques.html",
+        {
+            "exemplaires": exemplaires, "total": total, "categories": categories,
+            "categorie": filtre_cat, "q": q, "page": page, "nb_pages": nb_pages,
+            "contexte": contexte, "emplacements_locaux": emplacements_locaux,
+            "url_precedente": _url_manques(filtre_cat, q, page - 1) if page > 1 else None,
+            "url_suivante": _url_manques(filtre_cat, q, page + 1) if page < nb_pages else None,
+        },
+    )
