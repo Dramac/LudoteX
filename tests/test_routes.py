@@ -733,6 +733,7 @@ def test_live_page(client):
     assert "Tableau de bord" in r.text
     assert "Jeux sortis" in r.text and "Tournois en cours" in r.text
     assert "/live/data" in r.text          # le polling JS pointe bien vers l'endpoint
+    assert "Menu de l'application" in r.text   # bouton retour vers le menu
     # Sécurité : aucune mention de pochette sur l'écran public.
     assert "pochette" not in r.text.lower()
 
