@@ -637,3 +637,105 @@ def test_scanner_saisie_manuelle_protegee_par_jeton_reste_valable_en_mode_rangem
     assert client.get("/scanner/ranger", params={"code": "001"}).status_code == 403
     assert client.post("/scanner/rangement/activer", data={"emplacement_texte": "Étagère 2"}).status_code == 403
     assert client.post("/scanner/rangement/quitter").status_code == 403
+
+
+# ===========================================================================
+# Étape 4 — affichage « où ranger le jeu » au retour (/pret/<id>)
+# ===========================================================================
+def test_emplacement_actuel_evenement(conn):
+    assert services.emplacement_actuel(conn, "001") is None
+    services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
+    assert services.emplacement_actuel(conn, "001") == "Étagère 2"
+
+
+def test_emplacement_actuel_local_reste_affiche_meme_archive(conn):
+    services.ecrire_rangement_contexte(conn, "local")
+    id_totem = [
+        l for l in services.lister_emplacements_rangement(conn) if l["nom"] == "Totem"
+    ][0]["id_emplacement"]
+    assert services.emplacement_actuel(conn, "001") is None
+
+    services.affecter_emplacement(conn, "001", "local", id_totem)
+    assert services.emplacement_actuel(conn, "001") == "Totem"
+
+    # Retrait doux (§5) : la boîte garde sa référence et l'affiche toujours,
+    # même si l'emplacement a disparu des menus de saisie.
+    services.archiver_emplacement_rangement(conn, id_totem)
+    assert services.emplacement_actuel(conn, "001") == "Totem"
+
+
+def test_emplacement_actuel_code_inconnu(conn):
+    assert services.emplacement_actuel(conn, "INEXISTANT") is None
+
+
+def test_retour_affiche_ou_ranger_si_renseigne(client):
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.affecter_emplacement(conn, "001", "evenement", "Étagère 2, zone Jeux duel")
+    finally:
+        conn.close()
+
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/rendre")
+    assert r.status_code == 200
+    assert "Où ranger le jeu" in r.text
+    assert "Étagère 2, zone Jeux duel" in r.text
+
+
+def test_retour_naffiche_rien_si_emplacement_absent(client):
+    # Jamais bloquant : rien de renseigné -> le bloc n'apparaît pas du tout
+    # (pas de "non renseigné" anxiogène).
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/rendre")
+    assert r.status_code == 200
+    assert "Où ranger le jeu" not in r.text
+
+
+def test_ecran_simple_naffiche_pas_le_bloc_meme_si_emplacement_renseigne(client):
+    # Le bloc est réservé aux résultats "rendu"/"rendu_tournoi" (§6) : une
+    # simple consultation (GET, sans action) ne doit pas l'afficher.
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
+    finally:
+        conn.close()
+    r = client.get("/pret/001")
+    assert r.status_code == 200
+    assert "Où ranger le jeu" not in r.text
+
+
+def test_retour_tournoi_affiche_aussi_ou_ranger(client):
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.affecter_emplacement(conn, "001", "evenement", "Étagère 5")
+    finally:
+        conn.close()
+
+    client.post("/pret/001/tournoi")
+    r = client.post("/pret/001/rendre")
+    assert r.status_code == 200
+    assert "Retour de tournoi enregistré." in r.text
+    assert "Où ranger le jeu" in r.text
+    assert "Étagère 5" in r.text
+
+
+def test_retour_contexte_local_affiche_le_nom_de_lemplacement(client):
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.ecrire_rangement_contexte(conn, "local")
+        id_totem = [
+            l for l in services.lister_emplacements_rangement(conn) if l["nom"] == "Totem"
+        ][0]["id_emplacement"]
+        services.affecter_emplacement(conn, "001", "local", id_totem)
+    finally:
+        conn.close()
+
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/rendre")
+    assert r.status_code == 200
+    assert "Où ranger le jeu" in r.text
+    assert "Totem" in r.text
