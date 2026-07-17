@@ -286,7 +286,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   (présence du script, des deux `id`, des conditions exactes, et de la notice
   toujours présente). Suite globale inchangée par ailleurs : 320 tests verts.
 
-### M6. Menu bénévole : 8 liens qui s'empilent sur 3 lignes en mobile
+### ✅ FAIT — M6. Menu bénévole : 8 liens qui s'empilent sur 3 lignes en mobile
 - **Où** : `_menu_benevole.html` + `.menu-benevole` (flex wrap) dans le bandeau
   sticky.
 - **Pourquoi** : sur téléphone, le bandeau collant occupe jusqu'à un tiers de
@@ -295,6 +295,24 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   défilante : `flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling:
   touch;` + `white-space: nowrap` sur les liens (motif déjà utilisé par
   `.pl-scroll`). Les entrées les plus utilisées (Scanner, Catalogue) en premier.
+- **Constaté** le 2026-07-17, en relisant la fiche avant de coder M6 : le
+  besoin qu'elle décrit (empilement sur 3 lignes du bandeau sur mobile) a été
+  résolu entre-temps par une session antérieure (retour terrain iPhone 13
+  mini), avec un mécanisme DIFFÉRENT de la suggestion écrite ici. Plutôt que
+  le défilement horizontal `overflow-x`, le menu du bandeau (`base.html`) est
+  désormais replié par défaut sous 640px dans un `<details class="menu-
+  bandeau"><summary>Menu</summary>…</details>` (accordéon natif, une seule
+  ligne « Menu » visible tant qu'on n'a pas tapé dessus) et redevient une
+  liste à plat au-delà de 640px (deux rendus séparés du même fragment,
+  bascule CSS `display:none/block` — voir le correctif « menu invisible sur
+  ordinateur »). Résultat équivalent à l'objectif de M6 (plus d'empilement,
+  écran du scanner dégagé) mais par un chemin différent, déjà en place et
+  déjà testé (`test_menu_bandeau_replie_sur_mobile`) — décision : ne pas
+  superposer le motif `overflow-x` de la suggestion d'origine par-dessus
+  (retour en arrière inutile sur un correctif qui fonctionne), et clore M6
+  tel quel. `.menu-benevole` (flex wrap) existe toujours mais n'est plus
+  jamais affiché à plat sous 640px, donc plus concerné par cet empilement.
+  Aucun changement de code pour ce point.
 
 ### M7. Catalogue : 600 titres, un seul long défilement
 - **Où** : `/catalogue` (`catalogue.html`).
