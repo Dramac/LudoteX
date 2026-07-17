@@ -24,7 +24,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
-from app import auth, modules, services
+from app import admin_auth, auth, modules, services
 from app.config import FORMATION_URL, MODE_FORMATION, NOM_ASSOCIATION
 
 # Dossier contenant les gabarits HTML (app/templates/).
@@ -45,6 +45,13 @@ templates.env.globals["formation_url"] = FORMATION_URL
 # l'appareil peut accéder aux écrans bénévole — jeton bénévole activé OU session
 # admin ouverte. Sert à n'afficher le menu bénévole qu'aux personnes autorisées.
 templates.env.globals["est_benevole"] = auth.peut_ecrire
+
+# Fonction disponible dans tous les gabarits : `est_admin(request)` indique si
+# une SESSION ADMIN (mot de passe, distincte du jeton bénévole) est active sur
+# cet appareil. Sert à afficher un lien de retour vers /admin dans le menu du
+# bandeau, pour qu'un administrateur connecté puisse y revenir depuis
+# n'importe quelle page sans repasser par l'URL /admin à la main.
+templates.env.globals["est_admin"] = admin_auth.admin_connecte
 
 # Indique si un module est visible pour ce visiteur (tient compte de son état
 # et de l'accès bénévole). Usage dans les gabarits :
