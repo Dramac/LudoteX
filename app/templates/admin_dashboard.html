@@ -67,7 +67,7 @@
     <h2>Fin d'événement</h2>
     <p class="stats-note">Pensez à <a class="lien" href="/stats">exporter les statistiques</a> avant de clôturer.</p>
     <form method="post" action="/admin/cloturer-prets"
-          onsubmit="return confirm('Clôturer tous les prêts et sorties en cours ? Tout redeviendra disponible. (L\'historique et les statistiques sont conservés.)');">
+          onsubmit="return confirm('Clôturer tous les prêts et sorties en cours ? Tout redeviendra disponible, sans rien perdre de l\'historique.');">
       <button type="submit" class="bouton bouton-secondaire">Clôturer tous les prêts en cours</button>
     </form>
   </section>
@@ -80,7 +80,7 @@
       tournoi) sont entièrement fictives et sans effet sur LudoteX.
     </p>
     <form method="post" action="/admin/formation/reinitialiser"
-          onsubmit="return confirm('Vider et repeupler les données de formation (jeux, prêts, tournoi) ? Toute modification faite pendant la session en cours sera perdue.');">
+          onsubmit="return confirm('Réinitialiser les données de formation ? Tout ce qui a été modifié pendant cette session sera perdu.');">
       <button type="submit" class="bouton bouton-secondaire">Réinitialiser les données de formation</button>
     </form>
   </section>

@@ -38,7 +38,7 @@
   {% if est_benevole(request) %}
     <p><a class="bouton bouton-principal" href="/tournoi/nouveau">+ Nouveau tournoi</a></p>
     <form method="post" action="/tournoi/ouvrir-aujourdhui"
-          onsubmit="return confirm('Ouvrir les inscriptions de tous les tournois en brouillon programmés aujourd\'hui ?');">
+          onsubmit="return confirm('Ouvrir les inscriptions de tous les tournois du jour ?');">
       <button type="submit" class="bouton bouton-secondaire">Ouvrir tous les tournois du jour</button>
     </form>
     <p><a class="lien" href="/tournoi/aide">Aide — comment organiser un tournoi</a></p>

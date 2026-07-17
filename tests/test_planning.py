@@ -470,6 +470,19 @@ def test_route_admin_protegee(client):
     assert r.status_code == 303 and r.headers["location"] == "/admin"
 
 
+def test_confirmation_purge_reformulee_m9(client):
+    # M9 (docs/idees-ux.md) : confirmation de purge reformulée, sans le
+    # jargon « (RGPD) » ni les majuscules « DÉFINITIVEMENT » -- reprend
+    # l'idiome déjà utilisé ailleurs (« Cette action est irréversible. »).
+    _login_admin(client)
+    r = client.post("/planning/admin/demo", follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    page = client.get(f"/planning/admin/{ev}").text
+    assert ("Purger définitivement cet événement et toutes ses données ? "
+            "Cette action est irréversible.") in page
+    assert "(RGPD)" not in page
+
+
 def test_flux_demo_publie_et_exports(client):
     _login_admin(client)
     # Crée la démo (redirige vers la gestion de l'événement).

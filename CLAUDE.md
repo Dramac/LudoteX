@@ -798,6 +798,28 @@ Pas de pagination ajoutée (hors périmètre de la suggestion retenue). **1
 test ajouté** (ancre + bouton présents). **Suite globale : 321 tests
 verts.**
 
+**M9 — Confirmations natives `confirm()` reformulées : FAIT.** Passage en
+revue des 17 `confirm()` du dépôt (mécanisme natif conservé partout, jamais
+remplacé par une modale JS). **5 réécrits** sur le patron « Action ? +
+conséquence + porte de sortie », ceux qui énuméraient réellement des
+détails techniques : restauration de sauvegarde (`admin_donnees.html`,
+reprend **l'exemple exact de la fiche** — la liste des 3 bases entre
+parenthèses disparaît) ; clôture des prêts (`admin_dashboard.html`, la
+parenthèse « (L'historique et les statistiques sont conservés.) » devient
+une clause naturelle) ; réinitialisation formation (`admin_dashboard.html`,
+la liste `(jeux, prêts, tournoi)` et « Vider et repeupler » remplacés par le
+libellé déjà utilisé sur le bouton) ; purge RGPD planning
+(`planning_gerer.html`, `(RGPD)` et « DÉFINITIVEMENT » remplacés par
+l'idiome **déjà existant** « Cette action est irréversible. », réutilisé
+tel quel depuis `admin_rangement.html`) ; ouverture groupée des tournois du
+jour (`tournoi_liste.html`, le nom d'état interne « en brouillon »
+disparaît). **12 laissés tels quels** : déjà courts et sans jargon, ou déjà
+accompagnés d'un texte de contexte visible à l'écran (suppression de
+tournoi : la bannière « Cette action est irréversible. » est déjà affichée
+avant le clic, le `confirm()` final reste volontairement minimal). **4
+tests ajoutés/étendus** (nouveaux libellés vérifiés à l'écran + anciennes
+formulations techniques absentes). **Suite globale : 323 tests verts.**
+
 **Suivi de l'emplacement de rangement : FAIT** (phase 1 complète, conception
 gravée dans `docs/conception-rangement.md`, tous les arbitrages de son §12
 tranchés en amont). Objectif : savoir où ranger chaque boîte, à l'événement
