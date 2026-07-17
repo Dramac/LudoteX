@@ -328,5 +328,86 @@ phase 1 peut être lancée.
 
 ---
 
-**STOP.** Rien n'est implémenté. J'attends ta validation explicite pour démarrer
-la phase 1.
+## 13. Addendum — Affectation en lot par jeu (post-phase 1, validé)
+
+**Statut :** phase 1 livrée. Amélioration validée par Simon pour **accélérer
+l'équipement des boîtes**, principalement en contexte **événement** (où toutes
+les copies d'un jeu vont au même endroit).
+
+Scénario cible : *je filtre sur « jeux à deux », je sélectionne tout, je saisis
+« 2ᵉ étagère, 3ᵉ étage », je valide par « Appliquer à X jeux » (X calculé par le
+système).*
+
+### 13.1 Grain : le titre, pas la boîte
+
+L'affectation en lot travaille au niveau du **jeu (titre)** : une ligne = un
+titre (ex. « Catan — 3 boîtes »). Appliquer un emplacement l'écrit sur **toutes
+les boîtes du titre** dans le contexte actif, via `affecter_emplacement` (rien de
+neuf côté écriture : une boucle sur les exemplaires du titre). Chaque ligne
+affiche l'emplacement courant du contexte actif : le libellé, `—` si aucun, ou
+**« mixte »** si les copies diffèrent.
+
+L'édition **à l'unité** (fiche admin, §4.c) reste le recours pour le contexte
+local quand deux copies vont à des endroits différents (valise 1 / valise 2).
+
+### 13.2 Recherche complète (réutilisation du catalogue)
+
+Les filtres sont ceux de `services.lister_catalogue()` déjà en place :
+`categorie`, `q` (texte), `age`, `joueurs`. « Jeux à deux » = le filtre
+`joueurs`. **Aucune logique de filtre réimplémentée.**
+
+### 13.3 « Sélectionner tout » robuste
+
+« Appliquer à X jeux » **rejoue le filtre côté serveur** : le formulaire POST
+transporte les **critères** + l'emplacement, pas une liste d'ids. Cela couvre
+tout le résultat filtré même s'il dépasse une page, **sans accumuler des cases à
+cocher entre les pages** (donc quasi pas de JS — fidèle à la contrainte projet).
+Les cases à cocher restent disponibles pour un tri fin **dans** la page (appliquer
+aux seuls jeux cochés). Le compte X (et le nombre de boîtes Y) est calculé par le
+serveur et affiché sur le bouton.
+
+### 13.4 Écrasement — jamais silencieux *(décidé)*
+
+Par défaut, l'action **écrase** l'emplacement des jeux visés (le rangement
+d'événement est délibéré). Mais le bouton **annonce le détail** :
+« Appliquer à 42 jeux (dont 7 déjà rangés — seront remplacés) », et une case
+optionnelle **« ne pas écraser les emplacements déjà saisis »** permet de ne
+remplir que les trous. Jamais de perte silencieuse.
+
+Un emplacement **vide est refusé en lot** (pas de wipe de masse) : pour retirer
+un emplacement, on passe à l'unité (fiche admin).
+
+### 13.5 Portée : vue de rangement complète *(décidé — option 2)*
+
+La page évolue d'une simple « page des manques » vers une vue **« Ranger les
+jeux »** couvrant **tout le catalogue**, avec un **interrupteur « afficher aussi
+les jeux déjà rangés »** (par défaut : seulement les jeux à ranger). Le même outil
+sert donc aussi à **réaffecter** une catégorie entière vers une nouvelle étagère,
+pas seulement à combler les trous. Le lien « boîtes non rangées » de §4.d pointe
+vers cette vue avec l'interrupteur sur « à ranger seulement ».
+
+### 13.6 Contexte local vs événement *(décidé)*
+
+- **Événement** (contexte par défaut) : saisie en **champ texte libre**,
+  affectation en lot pleinement pertinente.
+- **Local** : affectation en lot possible mais via **menu déroulant**
+  (emplacements actifs), avec une note **« affecte toutes les copies au même
+  emplacement »** — l'utilisateur reste libre d'ajuster les copies divergentes à
+  l'unité ensuite.
+
+### 13.7 Contexte actif mis en avant *(demande Simon)*
+
+Le **contexte de rangement actif** (Événement / Local) doit être **bien
+visible** en tête des écrans de rangement (page de rangement, vue « Ranger les
+jeux »), pas relégué dans un réglage discret : un **bandeau/rappel clair** du
+type « Contexte actif : **Événement** » — puisque l'affectation en lot écrit dans
+ce contexte, l'utilisateur doit le savoir d'un coup d'œil. Un accès rapide pour
+basculer depuis là est un plus.
+
+### 13.8 Contraintes (inchangées)
+
+Invariants du §10 intacts : jamais bloquant (valeur vide/inconnue gérée
+proprement), zéro donnée perso, mobile-first, **JS léger inline seulement**
+(compteur + case « tout cocher » de la page), aucune dépendance nouvelle. Aucune
+interférence avec le prêt/pochettes. Tests dédiés + résumé CLAUDE.md + aide mise
+à jour.
