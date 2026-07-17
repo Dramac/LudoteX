@@ -68,11 +68,11 @@
               {% endfor %}
             </select>
           </div>
-          <div class="champ">
+          <div class="champ" id="champ_rondes">
             <label for="nb_rondes">Nombre de rondes <small>(ronde suisse uniquement)</small></label>
             <input type="number" id="nb_rondes" name="nb_rondes" min="1" value="3">
           </div>
-          <label class="case">
+          <label class="case" id="champ_bo3">
             <input type="checkbox" name="bo3">
             Best of 3 <small>(saisie des manches gagnées ; suisse et élimination)</small>
           </label>
@@ -84,6 +84,28 @@
           leurs rondes de l'effectif) ; le BO3 ne s'applique qu'aux modes à base de
           matchs (suisse, round robin, élimination).
         </p>
+        <script>
+          // M5 (docs/idees-ux.md) : grise les champs qui ne s'appliquent pas au
+          // mode choisi, pour ne plus dépendre uniquement de la notice ci-dessus.
+          // Purement cosmétique : le serveur revalide tout (voir lancer_tournoi),
+          // donc rien ne casse si JS est indisponible (la notice reste alors le
+          // seul repère, comme avant).
+          (function () {
+            var mode = document.getElementById("mode_scoring");
+            var champRondes = document.getElementById("champ_rondes");
+            var champBo3 = document.getElementById("champ_bo3");
+            function majChamps() {
+              var suisse = mode.value === "ronde_suisse";
+              var matchs = mode.value !== "high_score";
+              champRondes.querySelector("input").disabled = !suisse;
+              champRondes.style.opacity = suisse ? "1" : ".45";
+              champBo3.querySelector("input").disabled = !matchs;
+              champBo3.style.opacity = matchs ? "1" : ".45";
+            }
+            mode.addEventListener("change", majChamps);
+            majChamps();
+          })();
+        </script>
       {% else %}
         <p class="stats-note">Ajoutez au moins un participant pour pouvoir lancer.</p>
       {% endif %}

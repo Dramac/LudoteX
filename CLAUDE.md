@@ -752,7 +752,23 @@ alors, jamais bloquant. Chaque page garde sa propre fonction `copierCode()`
 qu'une abstraction commune). **3 tests ajoutés** (bouton + script présents
 avec le bon code à l'inscription tournoi ; idem sur la confirmation
 planning ; absence du bouton quand la page planning est atteinte sans
-code). **Suite globale : 209 tests verts.**
+code).
+
+**M5 — Griser les champs inapplicables au lancement d'un tournoi : FAIT.**
+`tournoi_gerer.html`, bloc « Lancer le tournoi » : le nombre de rondes et la
+case BO3 s'affichaient toujours actifs, alors qu'ils ne s'appliquent qu'à
+certains modes de scoring (notice texte en compensation). Script inline
+(IIFE, aucune dépendance) sur `#mode_scoring` : au chargement et à chaque
+`change`, grise (`disabled` + `opacity:.45`) `#champ_rondes` (rondes actives
+seulement pour `ronde_suisse`) et `#champ_bo3` (BO3 désactivé seulement pour
+`high_score`, actif pour suisse/round robin/élimination) — deux `id`
+ajoutés aux conteneurs existants, aucune restructuration. Logique alignée
+sur les règles RÉELLES de `services.lancer_tournoi` (pas sur le texte de la
+notice, qui omettait déjà round robin pour le BO3). **La notice reste
+affichée telle quelle** : repli utile si JS est indisponible, et le serveur
+revalide de toute façon tout — aucune règle dupliquée côté client, purement
+cosmétique. **1 test ajouté** (script, deux `id`, conditions exactes, notice
+toujours présente). **Suite globale : 320 tests verts.**
 
 **Suivi de l'emplacement de rangement : FAIT** (phase 1 complète, conception
 gravée dans `docs/conception-rangement.md`, tous les arbitrages de son §12
