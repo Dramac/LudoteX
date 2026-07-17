@@ -2,7 +2,7 @@
 {% block titre %}Catalogue — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
-<section class="carte">
+<section class="carte" id="haut">
   <img class="logo-catalogue" src="/static/img/logo_djplm.jpg"
        alt="{{ nom_association }}">
   <h1>Catalogue des jeux</h1>
@@ -96,4 +96,10 @@
     <li class="jeu"><em>Aucun jeu ne correspond à ces critères.</em></li>
   {% endfor %}
 </ul>
+
+{# M7 (docs/idees-ux.md) : remonte au panneau de recherche sans repasser par
+   un long défilement (600 jeux). Lien ancre pur CSS, pas de JS, pas de
+   pagination -- réutilise le style .bouton-filtrer (aspect + transitions déjà
+   couverts) avec un positionnement flottant dédié (.bouton-haut). #}
+<a href="#haut" class="bouton-filtrer bouton-haut">↑ Recherche</a>
 {% endblock %}

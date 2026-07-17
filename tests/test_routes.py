@@ -204,6 +204,15 @@ def test_catalogue(client):
     assert "1 / 1 dispo" in r.text or "1 jeu" in r.text
 
 
+def test_catalogue_bouton_remonter(client):
+    # M7 (docs/idees-ux.md) : bouton flottant qui ramène au panneau de
+    # recherche (ancre pure CSS, pas de JS) -- 600 titres, un seul long
+    # défilement sinon.
+    r = client.get("/catalogue")
+    assert 'id="haut"' in r.text
+    assert '<a href="#haut" class="bouton-filtrer bouton-haut">↑ Recherche</a>' in r.text
+
+
 def test_catalogue_pluriel_jeux(client):
     # Q2 : vrai pluriel (macro/global `pluriel`), pas de « jeu(x) » parenthésé.
     r = client.get("/catalogue")

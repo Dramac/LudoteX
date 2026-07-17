@@ -314,7 +314,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   jamais affiché à plat sous 640px, donc plus concerné par cet empilement.
   Aucun changement de code pour ce point.
 
-### M7. Catalogue : 600 titres, un seul long défilement
+### ✅ FAIT — M7. Catalogue : 600 titres, un seul long défilement
 - **Où** : `/catalogue` (`catalogue.html`).
 - **Pourquoi** : le panneau de recherche disparaît dès qu'on défile ; arrivé en
   bas de 600 jeux, remonter pour re-filtrer décourage — le visiteur abandonne
@@ -322,6 +322,19 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : bouton flottant « ↑ Recherche » (lien ancre `#haut`,
   `position: fixed; bottom: 16px; right: 16px`), affiché en CSS pur. Pas de
   pagination (la recherche reste le chemin principal), pas de JS.
+- **Corrigé** le 2026-07-18 : `id="haut"` posé sur la section de tête du
+  catalogue (celle qui porte le panneau « Rechercher / filtrer ») ; lien
+  `<a href="#haut">↑ Recherche</a>` flottant (`position: fixed; bottom: 16px;
+  right: 16px`) ajouté en fin de page, **toujours visible** (pas de
+  logique d'apparition au défilement — aucun JS, comme demandé). Habillage
+  **réutilisé** de `.bouton-filtrer` (couleur, hover/active, prise en compte
+  de `prefers-reduced-motion` déjà mutualisés) plutôt que dupliqué ; seule la
+  nouvelle classe `.bouton-haut` ajoute le positionnement flottant + l'ombre
+  portée (élévation au-dessus de la liste). Masqué à l'impression
+  (`@media print`, même motif que le bandeau de formation). Aucune
+  pagination ajoutée (hors périmètre de la suggestion retenue). **1 test
+  ajouté** (présence de l'ancre et du bouton). Suite globale : 321 tests
+  verts.
 
 ### M8. ✅ FAIT — Messages de résultat sans hiérarchie « succès / information »
 - **Où** : `pret.html` : le retour rendu est en bleu `resultat-info`, comme la
