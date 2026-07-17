@@ -739,3 +739,98 @@ def test_retour_contexte_local_affiche_le_nom_de_lemplacement(client):
     assert r.status_code == 200
     assert "Où ranger le jeu" in r.text
     assert "Totem" in r.text
+
+
+# ===========================================================================
+# Étape 5 — visibilité de l'emplacement sur le catalogue / la fiche publique
+# ===========================================================================
+def _affecter(texte="Étagère 2"):
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.affecter_emplacement(conn, "001", "evenement", texte)
+    finally:
+        conn.close()
+
+
+def _regler_visibilite(niveau):
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.ecrire_rangement_visibilite(conn, niveau)
+    finally:
+        conn.close()
+
+
+def test_fiche_visibilite_defaut_benevoles_cache_au_visiteur_anonyme(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _affecter("Étagère 2")
+    r = client.get("/jeu/001")
+    assert r.status_code == 200
+    assert "Rangement" not in r.text
+    assert "Étagère 2" not in r.text
+
+
+def test_fiche_visibilite_benevoles_visible_si_jeton_active(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _affecter("Étagère 2")
+    client.get("/acces", params={"jeton": "jeton-visibilite-secret-32-car"})
+    r = client.get("/jeu/001")
+    assert "Rangement" in r.text
+    assert "Étagère 2" in r.text
+
+
+def test_fiche_visibilite_benevoles_visible_si_admin_connecte(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _affecter("Étagère 2")
+    _connecter(client)
+    r = client.get("/jeu/001")
+    assert "Rangement" in r.text
+    assert "Étagère 2" in r.text
+
+
+def test_fiche_visibilite_tous_visible_pour_anonyme(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _regler_visibilite("tous")
+    _affecter("Étagère 2")
+    r = client.get("/jeu/001")
+    assert "Rangement" in r.text
+    assert "Étagère 2" in r.text
+
+
+def test_fiche_visibilite_admin_cache_pour_simple_benevole(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _regler_visibilite("admin")
+    _affecter("Étagère 2")
+    client.get("/acces", params={"jeton": "jeton-visibilite-secret-32-car"})
+    r = client.get("/jeu/001")
+    assert "Rangement" not in r.text
+    assert "Étagère 2" not in r.text
+
+    _connecter(client)
+    r2 = client.get("/jeu/001")
+    assert "Rangement" in r2.text
+    assert "Étagère 2" in r2.text
+
+
+def test_fiche_sans_emplacement_naffiche_rien_meme_si_visible(client, monkeypatch):
+    # Jamais bloquant : rien de renseigné -> pas de « non renseigné ».
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _regler_visibilite("tous")
+    r = client.get("/jeu/001")
+    assert r.status_code == 200
+    assert "Rangement" not in r.text
+
+
+def test_retour_benevole_toujours_visible_malgre_visibilite_admin(client, monkeypatch):
+    # §7 : le réglage de visibilité ne gouverne QUE le catalogue/la fiche —
+    # l'écran de retour bénévole affiche toujours l'emplacement.
+    monkeypatch.setenv("PRET_TOKEN", "jeton-visibilite-secret-32-car")
+    _regler_visibilite("admin")
+    _affecter("Étagère 2")
+    client.get("/acces", params={"jeton": "jeton-visibilite-secret-32-car"})
+
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/rendre")
+    assert "Où ranger le jeu" in r.text
+    assert "Étagère 2" in r.text
