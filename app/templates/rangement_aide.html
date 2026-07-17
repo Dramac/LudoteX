@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titre %}Aide — Rangement des boîtes{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Aide — Rangement des boîtes</h1>
+  <p class="dispo-titre">Retrouver où ranger chaque jeu, à l'événement comme
+     au local de l'association.</p>
+
+  <h2>Les deux contextes</h2>
+  <p>Un seul réglage actif à la fois, choisi en admin
+     (<em>Rangement</em>) :</p>
+  <ul>
+    <li><strong>Événement</strong> : texte libre (ex. « Étagère 2 »,
+        « Table du fond »), saisi directement par les bénévoles pendant le
+        festival — pas de liste à préparer à l'avance.</li>
+    <li><strong>Local</strong> : une liste d'emplacements fixes gérée en
+        admin (armoires, bacs, valises…), utile hors événement pour le
+        rangement définitif.</li>
+  </ul>
+  <p>Changer de contexte ne modifie pas les données déjà saisies dans
+     l'autre : chacun garde sa propre valeur par boîte.</p>
+
+  <h2>Indiquer un emplacement au scanner</h2>
+  <p>Sur la page <em>Scanner</em>, activez le <strong>mode rangement</strong>
+     (bandeau en haut de l'écran). Chaque scan propose alors de saisir ou
+     choisir l'emplacement de la boîte au lieu d'enregistrer un prêt.
+     Quittez le mode à tout moment pour reprendre le scan normal — l'appareil
+     garde le mode choisi d'une session à l'autre.</p>
+
+  <h2>Au retour d'un prêt</h2>
+  <p>Quand un jeu est rendu, l'emplacement où le ranger s'affiche en grand
+     sur l'écran de retour, si une valeur est renseignée pour la boîte.
+     Rien à faire de spécial : c'est automatique.</p>
+
+  <h2>Visibilité publique</h2>
+  <p>Un réglage en admin décide qui voit l'emplacement sur le catalogue et la
+     fiche d'un jeu : <strong>tous les visiteurs</strong>,
+     <strong>bénévoles uniquement</strong> (par défaut) ou
+     <strong>administrateurs uniquement</strong>. L'écran de retour bénévole,
+     lui, affiche toujours l'emplacement, quel que soit ce réglage.</p>
+
+  <h2>Corriger une boîte précise</h2>
+  <p>Depuis la fiche admin d'un jeu, chaque exemplaire a ses deux champs
+     d'emplacement (événement et local), modifiables indépendamment et à
+     tout moment.</p>
+
+  <h2>Import / export CSV</h2>
+  <p>Les colonnes d'emplacement font partie de l'export catalogue et peuvent
+     être remplies dans le fichier avant réimport. Une case laissée vide
+     <strong>n'efface jamais</strong> une valeur déjà enregistrée. Un nom
+     d'emplacement local inconnu est créé automatiquement à l'import.</p>
+
+  <h2>Repérer les boîtes non rangées</h2>
+  <p>La page <a class="lien" href="/admin/rangement/manques">boîtes non
+     rangées</a> liste, filtrable et paginée, tous les exemplaires sans
+     emplacement dans le contexte actif — avec une saisie rapide directement
+     depuis la liste.</p>
+
+  <p class="lien-fiche"><a class="lien" href="/admin/rangement">← Retour au rangement</a></p>
+</section>
+{% endblock %}
