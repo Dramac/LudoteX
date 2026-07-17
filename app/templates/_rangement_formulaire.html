@@ -1,0 +1,28 @@
+{# Petit formulaire d'activation/changement du mode rangement (§4.a).
+   Partagé entre le bouton « Activer le mode rangement » (mode inactif) et le
+   lien « Changer » du bandeau (mode déjà actif) sur /scanner. Deux contextes :
+   texte libre (événement) ou menu déroulant des emplacements actifs (local). #}
+<form method="post" action="/scanner/rangement/activer" class="recherche-form">
+  {% if rangement.contexte == 'local' %}
+    <div class="champ">
+      <label for="emplacement_id">Emplacement</label>
+      <select id="emplacement_id" name="emplacement_id" required>
+        <option value="" disabled {% if not rangement.actif %}selected{% endif %}>— Choisir —</option>
+        {% for e in emplacements_locaux %}
+        <option value="{{ e.id_emplacement }}"
+                {% if rangement.actif and e.id_emplacement == rangement.valeur %}selected{% endif %}>
+          {{ e.nom }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  {% else %}
+    <div class="champ">
+      <label for="emplacement_texte">Emplacement (texte libre)</label>
+      <input type="text" id="emplacement_texte" name="emplacement_texte"
+             placeholder="ex. Étagère 2, zone Jeux duel" required
+             value="{{ rangement.label if rangement.actif else '' }}">
+    </div>
+  {% endif %}
+  <button type="submit" class="bouton-filtrer">Valider</button>
+</form>
