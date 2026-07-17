@@ -1336,3 +1336,26 @@ def test_admin_rangement_affiche_compteur_et_lien_manques(client):
     assert r.status_code == 200
     assert 'href="/admin/rangement/manques"' in r.text
     assert "1 boîte" in r.text
+
+
+# ===========================================================================
+# Étape 9 — page d'aide dédiée (/rangement/aide)
+# ===========================================================================
+def test_rangement_aide_accessible_sans_session(client):
+    r = client.get("/rangement/aide")
+    assert r.status_code == 200
+    assert "Rangement" in r.text
+    assert "Événement" in r.text
+    assert "Local" in r.text
+
+
+def test_admin_rangement_lien_vers_aide(client):
+    _connecter(client)
+    r = client.get("/admin/rangement")
+    assert 'href="/rangement/aide"' in r.text
+
+
+def test_apropos_lien_vers_aide_rangement(client):
+    r = client.get("/apropos")
+    assert r.status_code == 200
+    assert 'href="/rangement/aide"' in r.text

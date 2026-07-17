@@ -75,6 +75,12 @@ def aide(request: Request):
     return templates.TemplateResponse(request, "aide.html", {})
 
 
+@router.get("/rangement/aide")
+def rangement_aide(request: Request):
+    """Aide / mode d'emploi spécifique au rangement des boîtes (publique)."""
+    return templates.TemplateResponse(request, "rangement_aide.html", {})
+
+
 @router.get("/apropos")
 def apropos(request: Request):
     """Page « À propos » (publique) : association, objet du site, contact,

@@ -754,6 +754,58 @@ avec le bon code à l'inscription tournoi ; idem sur la confirmation
 planning ; absence du bouton quand la page planning est atteinte sans
 code). **Suite globale : 209 tests verts.**
 
+**Suivi de l'emplacement de rangement : FAIT** (phase 1 complète, conception
+gravée dans `docs/conception-rangement.md`, tous les arbitrages de son §12
+tranchés en amont). Objectif : savoir où ranger chaque boîte, à l'événement
+comme au local hors événement, **sans jamais toucher à la logique métier du
+prêt** (numéro de pochette, deux clés stables) et **sans donnée personnelle**.
+**Deux contextes** interchangeables via un seul réglage global
+(`services.rangement_contexte`/`ecrire_rangement_contexte`, table
+`parametres`) : **Événement** (texte libre par exemplaire, colonne
+`exemplaires.emplacement_evenement`) et **Local** (liste d'emplacements fixes
+gérée en admin, FK `exemplaires.emplacement_local_id` →
+`emplacements_rangement.id_emplacement`, table créée avec un **seed** de 5
+emplacements par défaut, migrations idempotentes dans `app/db.py`). Les deux
+valeurs coexistent indépendamment ; changer de contexte ne touche pas
+l'autre. **Écran admin `/admin/rangement`** : bascule de contexte, réglage de
+**visibilité publique** (tous / bénévoles par défaut / administrateurs,
+`rangement_visibilite`), et **CRUD de la liste locale** (créer, renommer —
+répercuté automatiquement sur toutes les boîtes —, archiver/réactiver,
+réordonner, supprimer si plus aucune boîte rattachée). **Mode rangement au
+scanner** (`/scanner`) : bandeau d'activation, cookie dédié côté appareil
+(`rangement_actif`, même mécanique que `PRET_TOKEN`), chaque scan propose de
+saisir/choisir l'emplacement au lieu d'enregistrer un prêt (`/scanner/ranger`),
+saisie manuelle de secours intégrée, sortie de mode à tout moment. **Affichage
+au retour** (`/pret/<id>`, `rendu`/`rendu_tournoi`) : l'emplacement s'affiche
+en grand si renseigné, **toujours visible du bénévole quel que soit le
+réglage de visibilité publique**. **Visibilité catalogue/fiche** :
+`rangement_visible(request)` (global Jinja, imports locaux pour éviter tout
+cycle) gouverne l'affichage sur `/jeu/<id>` selon le réglage — jamais
+d'affichage d'une valeur vide (« non renseigné » proscrit, jamais bloquant).
+**Édition à l'unité** sur la fiche admin d'un jeu (`/admin/jeu/<ref>`) : les
+deux champs (événement/local) de chaque exemplaire sont **toujours
+indépendamment éditables**, deux formulaires séparés, réutilisés ensuite via
+un paramètre `retour` (validé pour n'accepter que les chemins internes
+`/admin/*`, jamais de redirection ouverte) qui permet à d'autres pages
+d'appeler les mêmes routes d'édition et de revenir sur elles-mêmes. **Import/
+export CSV** : les deux colonnes rangement font partie de
+`EN_TETES_CATALOGUE`/`lignes_export_catalogue`, ré-importables ; UPSERT en
+**`COALESCE(excluded.x, table.x)`** (une case laissée vide n'efface jamais
+une valeur déjà en base) ; un nom d'emplacement local inconnu à l'import est
+**créé automatiquement** (résolution/création mise en cache par run
+d'import). **Page des manques** (`/admin/rangement/manques`) : liste
+filtrable (catégorie, recherche texte) et **paginée** (`PAR_PAGE_MANQUES`=50,
+première pagination server-side du projet) des exemplaires sans emplacement
+dans le contexte actif, avec **saisie rapide en ligne** réutilisant les
+routes d'édition à l'unité via `retour` ; lien de comptage sur
+`/admin/rangement` et sur `/admin/donnees` après un import CSV laissant des
+boîtes non rangées. **Aide dédiée** : page publique `GET /rangement/aide`
+(`rangement_aide.html`, mode d'emploi des deux contextes, du mode scanner, de
+la visibilité et de la page des manques), liée depuis `/admin/rangement` et
+`/apropos`. **294 tests verts** au total (dont l'essentiel de
+`tests/test_rangement.py`, un fichier dédié couvrant schéma/migrations,
+services, et routes pour chacune des 9 étapes).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
