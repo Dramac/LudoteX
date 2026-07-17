@@ -770,6 +770,20 @@ revalide de toute façon tout — aucune règle dupliquée côté client, pureme
 cosmétique. **1 test ajouté** (script, deux `id`, conditions exactes, notice
 toujours présente). **Suite globale : 320 tests verts.**
 
+**M6 — Menu bénévole empilé sur mobile : déjà couvert (aucun code).** En
+relisant la fiche avant de coder M6, constat que le besoin qu'elle décrit
+(le menu du bandeau s'empilait sur 3 lignes sur petit écran, mangeant
+l'écran du scanner) a été résolu entre-temps par la session « retour
+terrain iPhone 13 mini », avec un mécanisme DIFFÉRENT de la suggestion
+écrite dans la fiche (`overflow-x: auto` sur `.menu-benevole`). Le menu du
+bandeau est désormais replié par défaut sous 640px dans un `<details
+class="menu-bandeau">` (accordéon natif) et redevient à plat au-delà — voir
+plus haut. Décision (validée avec Simon) : ne pas superposer le motif
+`overflow-x` de la suggestion d'origine par-dessus un correctif qui
+fonctionne déjà et qui atteint le même objectif ; M6 marqué FAIT dans
+`docs/idees-ux.md` avec un renvoi vers le correctif réel, sans modification
+de code ni de test supplémentaire.
+
 **Suivi de l'emplacement de rangement : FAIT** (phase 1 complète, conception
 gravée dans `docs/conception-rangement.md`, tous les arbitrages de son §12
 tranchés en amont). Objectif : savoir où ranger chaque boîte, à l'événement
