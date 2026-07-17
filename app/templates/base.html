@@ -17,9 +17,12 @@
     {% endif %}
     <header class="bandeau">
       <a class="bandeau-titre" href="/">{{ nom_association }}</a>
-      {# Replié dans un <details> sur petit écran (le menu à plat prenait 3
-         lignes au-dessus du contenu sur iPhone) ; ré-ouvert à plat sans clic
-         dès 640px (voir style.css), comme avant sur ordinateur. #}
+      {# DEUX rendus du même menu (fragments partagés, un seul point de
+         maintenance des liens) plutôt qu'un unique <details> qu'on essaierait
+         de "forcer ouvert" en CSS sur grand écran — cette dernière approche
+         s'est révélée peu fiable (menu resté invisible sur ordinateur avec
+         certains moteurs de rendu). CSS pur bascule laquelle des deux copies
+         s'affiche (voir style.css) : repliée sous 640px, à plat au-delà. #}
       <details class="menu-bandeau">
         <summary>Menu</summary>
         {% if est_benevole(request) %}
@@ -28,6 +31,13 @@
           {% include "_menu_visiteur.html" %}
         {% endif %}
       </details>
+      <div class="menu-bandeau-large">
+        {% if est_benevole(request) %}
+          {% include "_menu_benevole.html" %}
+        {% else %}
+          {% include "_menu_visiteur.html" %}
+        {% endif %}
+      </div>
     </header>
   </div>
   <main class="contenu {% block conteneur_extra %}{% endblock %}">
