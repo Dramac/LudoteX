@@ -970,6 +970,23 @@ def test_inscription_bouton_copier_code(client):
     assert code in ok.text
 
 
+def test_gerer_lancement_grise_champs_inapplicables(client):
+    # M5 (docs/idees-ux.md) : le formulaire de lancement grise (disabled +
+    # opacity) le nombre de rondes et le BO3 selon le mode choisi, en plus de
+    # la notice déjà présente (le serveur revalide tout de toute façon).
+    r = client.post("/tournoi/nouveau", data={"nom": "T3"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    client.post(f"/tournoi/{tid}/participant", data={"pseudo": "Alice"})
+    page = client.get(f"/tournoi/{tid}/gerer").text
+    assert 'id="champ_rondes"' in page
+    assert 'id="champ_bo3"' in page
+    assert 'mode.value === "ronde_suisse"' in page
+    assert 'mode.value !== "high_score"' in page
+    # La notice explicative reste présente (repli si JS indisponible).
+    assert "Le nombre de rondes ne" in page
+
+
 def test_suppression_double_confirmation(client):
     r = client.post("/tournoi/nouveau", data={"nom": "À supprimer"},
                     follow_redirects=False)

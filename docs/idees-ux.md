@@ -261,7 +261,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   tournoi, code correct injecté ; idem sur la confirmation planning ; pas de
   bouton quand la page planning est atteinte sans code).
 
-### M5. Formulaire de lancement de tournoi : tous les champs pour tous les modes
+### ✅ FAIT — M5. Formulaire de lancement de tournoi : tous les champs pour tous les modes
 - **Où** : `tournoi_gerer.html`, bloc « Lancer le tournoi » (mode, nombre de
   rondes, BO3, + un paragraphe d'explication de ce qui s'applique à quoi).
 - **Pourquoi** : le bénévole doit lire une notice pour savoir que « nombre de
@@ -270,6 +270,21 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 - **Suggestion** : JS léger (5 lignes) : au changement du mode,
   activer/désactiver (`disabled` + `opacity:.45`) le champ rondes et la case
   BO3 selon le mode. Le serveur garde ses validations (déjà en place).
+- **Corrigé** le 2026-07-17 : script inline sur `tournoi_gerer.html` (IIFE,
+  pas de dépendance), déclenché au chargement et au `change` du select
+  `#mode_scoring`. Logique alignée sur les règles RÉELLES du serveur
+  (`services.lancer_tournoi`), pas sur le texte de la notice : rondes
+  activées seulement pour `ronde_suisse` ; BO3 désactivé seulement pour
+  `high_score` (actif pour suisse/round robin/élimination, cohérent avec
+  `bo3_stocke`). `disabled` sur l'`<input>`/la case, `opacity:.45` sur le
+  conteneur (`#champ_rondes` / `#champ_bo3`, nouveaux `id` ajoutés aux
+  éléments existants — aucune restructuration). Mode par défaut = premier de
+  `MODES_SCORING` (`high_score`) : les deux champs apparaissent grisés dès le
+  chargement, cohérent. **La notice texte est conservée telle quelle** (repli
+  utile si JS est indisponible ; le serveur revalide de toute façon tout,
+  aucune règle dupliquée côté client — juste un affichage). **1 test ajouté**
+  (présence du script, des deux `id`, des conditions exactes, et de la notice
+  toujours présente). Suite globale inchangée par ailleurs : 320 tests verts.
 
 ### M6. Menu bénévole : 8 liens qui s'empilent sur 3 lignes en mobile
 - **Où** : `_menu_benevole.html` + `.menu-benevole` (flex wrap) dans le bandeau
