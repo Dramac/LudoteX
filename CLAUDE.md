@@ -806,6 +806,43 @@ la visibilité et de la page des manques), liée depuis `/admin/rangement` et
 `tests/test_rangement.py`, un fichier dédié couvrant schéma/migrations,
 services, et routes pour chacune des 9 étapes).
 
+**Rangement — addendum §13, affectation en lot par jeu : FAIT.** Amélioration
+post-phase 1 (conception dans `docs/conception-rangement.md` §13), pour
+équiper rapidement ~700 boîtes plutôt qu'une à une. **Remplace** l'ancienne
+page des manques (grain exemplaire) par la vue **`/admin/rangement/ranger`**
+(« Ranger les jeux »), au grain **TITRE** : une ligne par jeu (ex. « Catan —
+3 boîtes »), emplacement courant du contexte actif affiché (libellé / `—` si
+aucune boîte affectée / **« mixte »** si les copies diffèrent ou
+l'affectation est partielle). Filtres **réutilisant tel quel**
+`services.lister_catalogue()` (categorie/q/age/joueurs, même panneau que le
+catalogue public — aucune logique de filtre réimplémentée) + interrupteur
+« afficher aussi les jeux déjà rangés » (défaut : seulement ceux à ranger ;
+« déjà rangé » = **toutes** les boîtes du titre partagent le même emplacement
+non vide — décision d'implémentation prise faute de détail dans la conception
+sur ce point précis). Bandeau **« Contexte actif »** en tête (§13.7), avec
+accès rapide pour changer. **Sélection robuste** (§13.3) : le bouton
+« Appliquer à X jeux » **rejoue le filtre côté serveur** (POST transporte les
+critères, pas une liste d'ids) — couvre tout le résultat même multi-pages ;
+des cases à cocher permettent en plus de restreindre aux jeux de la page
+courante (« Appliquer aux jeux cochés »). JS inline minimal, repris tel quel
+du motif déjà en place sur `/admin/etiquettes` (tout cocher/décocher +
+compteur live). **Écrasement** annoncé sur le bouton (« dont N déjà rangés —
+seront remplacés »), jamais silencieux ; case **« ne pas écraser »** pour ne
+combler que les trous. **Emplacement vide refusé en lot** (pas de wipe de
+masse — retrait toujours à l'unité, fiche admin). Nouveaux services :
+`_resume_emplacement_titres`, `rangement_par_titre`, `affecter_emplacement_lot`
+(UPDATE en lot en une requête, pas une boucle Python, adapté à ~700 boîtes).
+`compter_exemplaires_sans_emplacement` et `_clause_sans_emplacement`
+conservés (compteur de `/admin/rangement`, message post-import, option
+« ne pas écraser »). **Correctif transverse** découvert en cours de route :
+le limiteur de débit de connexion admin (`app.auth._tentatives`) est un
+dictionnaire global au process, non remis à zéro entre tests — les
+connexions cumulées sur toute la suite finissaient par dépasser le seuil et
+faisaient échouer des tests sans rapport, plus loin dans l'ordre d'exécution ;
+fixture autouse ajoutée dans `tests/conftest.py` (nouveau fichier) pour
+réinitialiser ce compteur avant chaque test. **25 tests ajoutés** pour cet
+addendum. **Suite globale : 319 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

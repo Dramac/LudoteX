@@ -1289,6 +1289,15 @@ def test_rangement_aide_accessible_sans_session(client):
     assert "Local" in r.text
 
 
+def test_rangement_aide_decrit_ranger_les_jeux(client):
+    r = client.get("/rangement/aide")
+    assert r.status_code == 200
+    assert 'href="/admin/rangement/ranger"' in r.text
+    assert "Appliquer à" in r.text
+    assert "Appliquer aux jeux cochés" in r.text
+    assert "mixte" in r.text
+
+
 def test_admin_rangement_lien_vers_aide(client):
     _connecter(client)
     r = client.get("/admin/rangement")
