@@ -717,6 +717,24 @@ redondante, cohérence visuelle avec le reste du site). « Présente » → « O
 **Suite globale toujours 207 tests verts** (tests mis à jour, pas de test
 supplémentaire).
 
+**Lien « Administration » dans le menu du bandeau : FAIT.** Un administrateur
+connecté n'avait aucun moyen rapide de revenir au tableau de bord depuis les
+autres pages (catalogue, scanner, stats…) — il fallait retaper `/admin` dans
+la barre d'adresse. Nouveau global Jinja `est_admin(request)`
+(`app/templating.py`), qui réutilise `admin_auth.admin_connecte` (session
+admin par mot de passe, **distincte** du jeton bénévole — un administrateur
+peut être connecté sans avoir activé le jeton, et inversement).
+`_menu_benevole.html` (fragment partagé bandeau + tableau de bord admin) :
+lien « Administration » → `/admin` ajouté en fin de liste, visible
+UNIQUEMENT si `est_admin(request)`. Un seul point de maintenance : le lien
+apparaît automatiquement dans les deux rendus du bandeau (replié/à plat, cf.
+correctif menu ci-dessus) sans toucher à `base.html`. Portée volontairement
+limitée à `_menu_benevole.html` : un admin connecté a TOUJOURS
+`est_benevole(request)` vrai (`peut_ecrire` teste `admin_connecte` en
+premier), donc `_menu_visiteur.html` n'a jamais besoin de ce lien. **1 test
+ajouté** (absent sans session, présent dans les 2 rendus une fois connecté,
+disparaît après déconnexion). **Suite globale : 208 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
