@@ -53,24 +53,26 @@
     {% endfor %}
 
     <h2>Mes préférences de poste</h2>
-    <table class="pl-prefs">
-      <thead>
-        <tr><th>Poste</th>{% for n in niveaux %}<th>{{ libelles[n] }}</th>{% endfor %}</tr>
-      </thead>
-      <tbody>
-        {% for p in postes %}
-          <tr>
-            <th>{{ p.nom }}</th>
-            {% for n in niveaux %}
-              <td>
-                <input type="radio" name="pref_{{ p.id_poste }}" value="{{ n }}"
-                       {{ 'checked' if prefs.get(p.id_poste) == n }}>
-              </td>
-            {% endfor %}
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="pl-scroll">
+      <table class="pl-prefs">
+        <thead>
+          <tr><th>Poste</th>{% for n in niveaux %}<th>{{ libelles[n] }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for p in postes %}
+            <tr>
+              <th>{{ p.nom }}</th>
+              {% for n in niveaux %}
+                <td>
+                  <input type="radio" name="pref_{{ p.id_poste }}" value="{{ n }}"
+                         {{ 'checked' if prefs.get(p.id_poste) == n }}>
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
     <label class="champ">
       Remarque (facultatif)
