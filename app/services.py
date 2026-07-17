@@ -657,9 +657,12 @@ def _date_fr(iso: str | None) -> str:
 
 # En-têtes de l'export catalogue — choisis pour être RÉ-IMPORTABLES (mêmes
 # intitulés que ceux reconnus par scripts/import_csv.COLONNES).
+# Les deux dernières colonnes (rangement, §4.b) sont PAR EXEMPLAIRE : on
+# exporte un libellé LISIBLE (le nom de l'emplacement local, pas son id).
 EN_TETES_CATALOGUE = [
     "Code jeu", "Nom jeu", "Type", "Type jeu", "Nb joueurs", "Age joueurs",
     "Temps jeu", "Marque", "Auteur", "Année édition", "Date achat", "Descriptif",
+    "Emplacement événement", "Emplacement local",
 ]
 
 
@@ -682,11 +685,14 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
 
     rows = conn.execute(
         """
-        SELECT e.id_exemplaire, t.nom, t.type_jeu, t.categorie,
+        SELECT e.id_exemplaire, e.emplacement_evenement,
+               er.nom AS emplacement_local_nom,
+               t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
                t.editeur, t.auteur, t.annee_edition, t.descriptif, t.date_achat
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
+        LEFT JOIN emplacements_rangement er ON er.id_emplacement = e.emplacement_local_id
         ORDER BY t.nom COLLATE NOCASE, e.id_exemplaire
         """
     ).fetchall()
@@ -705,6 +711,8 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
             "Année édition": str(r["annee_edition"]) if r["annee_edition"] is not None else "",
             "Date achat": _date_fr(r["date_achat"]),
             "Descriptif": r["descriptif"] or "",
+            "Emplacement événement": r["emplacement_evenement"] or "",
+            "Emplacement local": r["emplacement_local_nom"] or "",
         })
     return EN_TETES_CATALOGUE, lignes
 
