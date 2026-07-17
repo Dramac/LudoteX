@@ -1538,12 +1538,14 @@ def emplacement_actuel(conn: sqlite3.Connection, id_exemplaire: str) -> str | No
 
 
 # ---------------------------------------------------------------------------
-# Page des manques (§4.d) : exemplaires SANS emplacement dans le contexte
-# actif, combler les trous après un import ou en continu.
+# Comptage des exemplaires SANS emplacement dans le contexte actif — sert au
+# compteur de /admin/rangement, au message post-import de /admin/donnees, et
+# (via `_clause_sans_emplacement`) à l'option « ne pas écraser » de
+# l'affectation en lot (§13.4). La liste détaillée équivalente (grain
+# exemplaire, ex-page des manques) a été remplacée par la vue « Ranger les
+# jeux » au grain titre (§13, `rangement_par_titre` + la route
+# /admin/rangement/ranger).
 # ---------------------------------------------------------------------------
-PAR_PAGE_MANQUES = 50  # taille de page, ~700 boîtes au total -> pagination sobre
-
-
 def _clause_sans_emplacement(contexte: str) -> str:
     """Fragment SQL (préfixe `x.`) : l'exemplaire n'a PAS d'emplacement dans ce contexte."""
     if contexte == "local":
@@ -1576,32 +1578,6 @@ def compter_exemplaires_sans_emplacement(
         params,
     ).fetchone()
     return n
-
-
-def exemplaires_sans_emplacement(
-    conn: sqlite3.Connection, categorie: str | None = None, q: str | None = None,
-    page: int = 1,
-) -> list[dict]:
-    """
-    Liste PAGINÉE (`PAR_PAGE_MANQUES` par page) des exemplaires sans
-    emplacement dans le contexte actif, triée par nom de jeu. `reference_titre`
-    est inclus pour construire les liens de saisie rapide (mêmes routes
-    d'édition à l'unité que la fiche admin, §4.c).
-    """
-    where, params = _filtre_manques(conn, categorie, q)
-    offset = max(page - 1, 0) * PAR_PAGE_MANQUES
-    rows = conn.execute(
-        f"""
-        SELECT x.id_exemplaire, x.reference_titre, t.nom, t.categorie
-        FROM exemplaires x
-        JOIN titres t ON t.reference_titre = x.reference_titre
-        WHERE {where}
-        ORDER BY t.nom COLLATE NOCASE, x.id_exemplaire
-        LIMIT ? OFFSET ?
-        """,
-        (*params, PAR_PAGE_MANQUES, offset),
-    ).fetchall()
-    return [dict(r) for r in rows]
 
 
 # ===========================================================================

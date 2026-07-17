@@ -1201,23 +1201,23 @@ def test_import_route_lien_vers_manques_apparait_si_boites_restantes(client):
     )
     assert r.status_code == 200
     assert "sans emplacement" in r.text
-    assert 'href="/admin/rangement/manques"' in r.text
+    assert 'href="/admin/rangement/ranger"' in r.text
 
 
 # ===========================================================================
-# Étape 8 — page des manques (/admin/rangement/manques)
+# Comptage des exemplaires sans emplacement (compteur réutilisé par
+# /admin/rangement et le message post-import de /admin/donnees ; la liste
+# détaillée équivalente est désormais la vue « Ranger les jeux », testée
+# plus haut sous « Addendum §13 »).
 # ===========================================================================
-def test_compter_et_lister_manques_evenement(conn):
+def test_compter_manques_evenement(conn):
     assert services.compter_exemplaires_sans_emplacement(conn) == 1
-    lignes = services.exemplaires_sans_emplacement(conn)
-    assert [l["id_exemplaire"] for l in lignes] == ["001"]
 
     services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
     assert services.compter_exemplaires_sans_emplacement(conn) == 0
-    assert services.exemplaires_sans_emplacement(conn) == []
 
 
-def test_compter_et_lister_manques_local(conn):
+def test_compter_manques_local(conn):
     services.ecrire_rangement_contexte(conn, "local")
     assert services.compter_exemplaires_sans_emplacement(conn) == 1
 
@@ -1228,7 +1228,7 @@ def test_compter_et_lister_manques_local(conn):
     assert services.compter_exemplaires_sans_emplacement(conn) == 0
 
 
-def test_manques_filtre_categorie_et_recherche(conn):
+def test_compter_manques_filtre_categorie_et_recherche(conn):
     conn.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
                  "('DOBBLE', 'Dobble', 'Rapidité')")
     conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
@@ -1242,65 +1242,10 @@ def test_manques_filtre_categorie_et_recherche(conn):
     assert services.compter_exemplaires_sans_emplacement(conn, q="introuvable") == 0
 
 
-def test_manques_pagination(conn, monkeypatch):
-    from app import services as _services
-
-    monkeypatch.setattr(_services, "PAR_PAGE_MANQUES", 1)
-    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
-                 "('002', 'CATAN')")
-    conn.commit()
-
-    page1 = services.exemplaires_sans_emplacement(conn, page=1)
-    page2 = services.exemplaires_sans_emplacement(conn, page=2)
-    assert len(page1) == 1
-    assert len(page2) == 1
-    assert page1[0]["id_exemplaire"] != page2[0]["id_exemplaire"]
-
-
-def test_route_manques_protegee_par_garde_admin(client):
-    r = client.get("/admin/rangement/manques", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/admin"
-
-
-def test_route_manques_liste_la_boite_par_defaut(client):
-    _connecter(client)
-    r = client.get("/admin/rangement/manques")
-    assert r.status_code == 200
-    assert "001" in r.text
-    assert "1 boîte" in r.text
-
-
-def test_route_manques_saisie_rapide_evenement_retire_de_la_liste(client):
-    _connecter(client)
-    r = client.post(
-        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
-        data={"emplacement_texte": "Étagère 9", "retour": "/admin/rangement/manques"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 303 and r.headers["location"] == "/admin/rangement/manques"
-
-    r2 = client.get("/admin/rangement/manques")
-    assert "Aucune boîte sans emplacement" in r2.text
-
-
-def test_route_manques_saisie_rapide_local_retire_de_la_liste(client):
-    _connecter(client)
-    id_totem = _id_emplacement("Totem")
-    client.post("/admin/rangement/contexte", data={"contexte": "local"})
-
-    r = client.post(
-        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
-        data={"emplacement_id": str(id_totem), "retour": "/admin/rangement/manques"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 303 and r.headers["location"] == "/admin/rangement/manques"
-
-    r2 = client.get("/admin/rangement/manques")
-    assert "Aucune boîte sans emplacement" in r2.text
-
-
-def test_route_manques_retour_ignore_url_externe(client):
-    # `retour` doit commencer par /admin/ pour être suivi (pas de redirect ouvert).
+def test_edition_unite_retour_ignore_url_externe(client):
+    # `retour` (routes d'édition à l'unité, réutilisées par "Ranger les
+    # jeux") doit commencer par /admin/ pour être suivi (pas de redirection
+    # ouverte). Un chemin interne valide est en revanche bien respecté.
     _connecter(client)
     r = client.post(
         "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
@@ -1309,32 +1254,27 @@ def test_route_manques_retour_ignore_url_externe(client):
     )
     assert r.status_code == 303 and r.headers["location"] == "/admin/jeu/CATAN"
 
+    r2 = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "Étagère 9", "retour": "/admin/rangement/ranger"},
+        follow_redirects=False,
+    )
+    assert r2.status_code == 303 and r2.headers["location"] == "/admin/rangement/ranger"
 
-def test_route_manques_filtre_categorie_query(client):
+
+def test_ancienne_route_manques_retiree(client):
+    # La page des manques (grain exemplaire) a été remplacée par « Ranger les
+    # jeux » (grain titre, §13) — l'ancienne route ne doit plus exister.
     _connecter(client)
-    conn2 = None
-    from app import db as _db
-    conn2 = _db.get_connection()
-    try:
-        conn2.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
-                       "('DOBBLE', 'Dobble', 'Rapidité')")
-        conn2.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
-                       "('002', 'DOBBLE')")
-        conn2.commit()
-    finally:
-        conn2.close()
-
-    r = client.get("/admin/rangement/manques", params={"categorie": "Rapidité"})
-    assert r.status_code == 200
-    assert "Dobble" in r.text
-    assert "Catan" not in r.text
+    r = client.get("/admin/rangement/manques")
+    assert r.status_code == 404
 
 
-def test_admin_rangement_affiche_compteur_et_lien_manques(client):
+def test_admin_rangement_affiche_compteur_et_lien_ranger(client):
     _connecter(client)
     r = client.get("/admin/rangement")
     assert r.status_code == 200
-    assert 'href="/admin/rangement/manques"' in r.text
+    assert 'href="/admin/rangement/ranger"' in r.text
     assert "1 boîte" in r.text
 
 

@@ -1090,63 +1090,16 @@ def rangement_emplacement_descendre(request: Request, id_emplacement: int):
     return RedirectResponse("/admin/rangement", status_code=303)
 
 
-# ---------------------------------------------------------------------------
-# Page des manques (§4.d) : exemplaires SANS emplacement dans le contexte
-# actif — pendant ciblé du mode rangement de masse au scanner. Filtrable
-# (nom/catégorie), paginée sobrement (~700 boîtes possibles). La saisie
-# rapide en ligne RÉUTILISE les routes d'édition à l'unité de la fiche admin
-# (exemplaire_emplacement_evenement/local ci-dessus, via leur paramètre
-# `retour`) — un seul point de maintenance pour l'écriture, pas de route
-# dupliquée.
-# ---------------------------------------------------------------------------
-def _url_manques(categorie: str | None, q: str | None, page: int) -> str:
-    """URL de /admin/rangement/manques avec filtres + page (query string minimale)."""
-    from urllib.parse import urlencode
-
-    params = {k: v for k, v in {"categorie": categorie, "q": q, "page": page}.items()
-              if v not in (None, "", 1)}
-    requete = urlencode(params)
-    return "/admin/rangement/manques" + (f"?{requete}" if requete else "")
-
-
-@router.get("/rangement/manques")
-def rangement_manques(
-    request: Request, categorie: str | None = None, q: str | None = None, page: int = 1,
-):
-    if (garde := _garde(request)):
-        return garde
-    q = (q or "").strip() or None
-    page = max(page, 1)
-    conn = get_connection()
-    try:
-        categories = services.lister_categories(conn)
-        filtre_cat = categorie if categorie in categories else None
-        total = services.compter_exemplaires_sans_emplacement(conn, filtre_cat, q)
-        contexte = services.rangement_contexte(conn)
-        emplacements_locaux = services.emplacements_actifs(conn) if contexte == "local" else []
-        exemplaires = services.exemplaires_sans_emplacement(conn, filtre_cat, q, page)
-    finally:
-        conn.close()
-    nb_pages = max(-(-total // services.PAR_PAGE_MANQUES), 1)  # division entière arrondie au sup.
-    return templates.TemplateResponse(
-        request, "admin_rangement_manques.html",
-        {
-            "exemplaires": exemplaires, "total": total, "categories": categories,
-            "categorie": filtre_cat, "q": q, "page": page, "nb_pages": nb_pages,
-            "contexte": contexte, "emplacements_locaux": emplacements_locaux,
-            "url_precedente": _url_manques(filtre_cat, q, page - 1) if page > 1 else None,
-            "url_suivante": _url_manques(filtre_cat, q, page + 1) if page < nb_pages else None,
-        },
-    )
-
 
 # ---------------------------------------------------------------------------
 # « Ranger les jeux » (§13, addendum post-phase 1) : affectation en lot par
 # JEU (pas par exemplaire) — réutilise services.lister_catalogue (mêmes
 # filtres que le catalogue public, categorie/q/age/joueurs, AUCUNE logique de
 # filtre réimplémentée, §13.2) puis enrichit avec services.rangement_par_titre
-# pour l'état de rangement dans le contexte actif. Remplace à terme la page
-# des manques ci-dessus (lot 4 : bascule des liens + retrait).
+# pour l'état de rangement dans le contexte actif. Remplace l'ancienne page
+# des manques (grain exemplaire, §4.d de la phase 1) : combler les trous en
+# masse comme réaffecter une catégorie entière se font désormais depuis ce
+# même écran, via l'interrupteur "afficher aussi les jeux déjà rangés".
 # ---------------------------------------------------------------------------
 PAR_PAGE_RANGER = 50  # grain titre : jusqu'à ~600 lignes au total, pagination sobre
 
