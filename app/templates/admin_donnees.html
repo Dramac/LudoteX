@@ -11,6 +11,12 @@
       {{ message[1] }}
     </p>
   {% endif %}
+  {% if manques %}
+    <p class="stats-note">
+      🗄️ Il reste {{ manques }} {{ pluriel(manques, 'boîte', 'boîtes') }} sans emplacement —
+      <a class="lien" href="/admin/rangement/manques">les compléter</a>.
+    </p>
+  {% endif %}
 
   <p class="dispo-titre">Actuellement : {{ nb_titres }} {{ pluriel(nb_titres, 'jeu', 'jeux') }},
      {{ nb_ex }} {{ pluriel(nb_ex, 'exemplaire', 'exemplaires') }}.</p>
