@@ -9,10 +9,24 @@ En secours (étiquette arrachée, QR illisible, caméra capricieuse), un petit
 formulaire sous la caméra permet de TAPER le code de la boîte (`id_exemplaire`)
 et d'arriver directement sur `/pret/<id>` — sans repasser par le catalogue.
 
-Ces deux surfaces sont protégées par le jeton bénévole, comme /pret.
+MODE RANGEMENT (docs/conception-rangement.md §4.a)
+---------------------------------------------------
+Un bénévole peut activer un « mode rangement » : au lieu d'ouvrir la fiche de
+prêt, chaque scan (ou saisie manuelle) AFFECTE l'emplacement actif à la boîte,
+sans jamais toucher à son état de prêt/pochette. L'emplacement actif est
+mémorisé dans un cookie D'APPAREIL (`rangement_actif`, comme le jeton bénévole)
+— chaque bénévole garde le sien, pas de réglage serveur partagé (plusieurs
+personnes rangent en parallèle dans des zones différentes). Sa valeur se lit
+par rapport au CONTEXTE courant (`services.rangement_contexte`, réglable en
+admin) : texte libre en contexte "evenement", id d'emplacement en contexte
+"local". Toujours résilient (`_etat_rangement`) : une valeur devenue invalide
+(contexte changé, emplacement archivé/supprimé entre-temps) est traitée comme
+"mode inactif", jamais une erreur.
+
+Ces surfaces sont protégées par le jeton bénévole, comme /pret.
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
 from app import services
@@ -22,64 +36,209 @@ from app.templating import templates
 
 router = APIRouter(tags=["scanner"])
 
+# Cookie d'appareil portant l'emplacement actif du mode rangement (§4.a).
+COOKIE_RANGEMENT = "rangement_actif"
+# Durée de vie du cookie : une session de rangement ne dépasse pas une
+# journée d'événement ; pas besoin de survivre plus longtemps (contrairement
+# au jeton bénévole, qui doit tenir plusieurs jours).
+DUREE_COOKIE_RANGEMENT = 12 * 3600  # 12h
+
+
+def _etat_rangement(conn, request: Request) -> dict:
+    """
+    Résout le cookie `rangement_actif` par rapport au contexte COURANT.
+
+    Returns:
+        dict avec :
+        - "actif": bool — un emplacement est-il sélectionné pour ce contexte ?
+        - "contexte": "evenement" ou "local".
+        - "label": le libellé à afficher (nom d'emplacement ou texte libre),
+          ou None si inactif.
+        - "valeur": la valeur à passer à `services.affecter_emplacement`
+          (texte libre, ou id d'emplacement en int), ou None si inactif.
+    """
+    contexte = services.rangement_contexte(conn)
+    brut = request.cookies.get(COOKIE_RANGEMENT)
+    inactif = {"actif": False, "contexte": contexte, "label": None, "valeur": None}
+    if not brut:
+        return inactif
+
+    if contexte == "local":
+        try:
+            id_emplacement = int(brut)
+        except ValueError:
+            return inactif
+        emplacement = services.get_emplacement_rangement(conn, id_emplacement)
+        if emplacement is None:
+            return inactif
+        return {"actif": True, "contexte": contexte, "label": emplacement["nom"],
+                "valeur": id_emplacement}
+
+    # Contexte "evenement" : texte libre, la valeur du cookie EST le libellé.
+    return {"actif": True, "contexte": contexte, "label": brut, "valeur": brut}
+
+
+def _contexte_scanner(conn, etat: dict, **extra) -> dict:
+    """Contexte commun de rendu de scanner.html (état du mode rangement + menu local)."""
+    emplacements = services.emplacements_actifs(conn) if etat["contexte"] == "local" else []
+    ctx = {"rangement": etat, "emplacements_locaux": emplacements}
+    ctx.update(extra)
+    return ctx
+
 
 @router.get("/scanner")
 def scanner(request: Request, _=Depends(exiger_jeton)):
-    """
-    Affiche la page du scanner caméra (protégée par jeton).
-
-    Args:
-        request: requête (nécessaire à Jinja2).
-        _: dépendance d'authentification (valeur ignorée).
-
-    Returns:
-        La page scanner.html.
-    """
-    return templates.TemplateResponse(request, "scanner.html", {})
+    conn = get_connection()
+    try:
+        etat = _etat_rangement(conn, request)
+        ctx = _contexte_scanner(conn, etat)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(request, "scanner.html", ctx)
 
 
 @router.get("/scanner/saisie")
 def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
     """
-    Saisie manuelle de secours : le bénévole tape le code de la boîte
-    (`id_exemplaire`) et est redirigé vers l'écran prêt/retour.
-
-    Jamais bloquant : un code vide ou inconnu ré-affiche le scanner avec un
-    message clair et le champ prêt à resservir (pas d'erreur brute).
-
-    `id_exemplaire` est du TEXT : on se contente de retirer les espaces autour
-    de la saisie (les zéros de tête, ex. "00472", sont préservés — jamais
-    d'interprétation en entier).
-
-    Args:
-        request: requête (nécessaire à Jinja2).
-        code: code de la boîte tapé dans le formulaire (paramètre GET).
-        _: dépendance d'authentification (valeur ignorée).
-
-    Returns:
-        Une redirection 303 vers /pret/<id> si le code existe, sinon la page
-        scanner.html ré-affichée avec un message et la valeur saisie.
+    Secours clavier. Comportement inchangé hors mode rangement (ouvre
+    /pret/<id>). En mode rangement, AFFECTE l'emplacement actif au lieu
+    d'ouvrir la fiche de prêt — même endpoint logique que le canal caméra
+    (§4.b), cohérent avec /scanner/ranger.
     """
     id_exemplaire = (code or "").strip()
-
-    if not id_exemplaire:
-        return templates.TemplateResponse(
-            request, "scanner.html",
-            {"erreur": "Veuillez saisir un code.", "code_saisi": ""},
-        )
-
     conn = get_connection()
     try:
+        etat = _etat_rangement(conn, request)
+
+        if not id_exemplaire:
+            return templates.TemplateResponse(
+                request, "scanner.html",
+                _contexte_scanner(conn, etat, erreur="Veuillez saisir un code.", code_saisi=""),
+            )
+
+        if etat["actif"]:
+            resultat = services.affecter_emplacement(
+                conn, id_exemplaire, etat["contexte"], etat["valeur"]
+            )
+            if resultat is None:
+                return templates.TemplateResponse(
+                    request, "scanner.html",
+                    _contexte_scanner(
+                        conn, etat,
+                        erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
+                               "Vérifiez et réessayez.",
+                        code_saisi=id_exemplaire,
+                    ),
+                )
+            return templates.TemplateResponse(
+                request, "scanner.html",
+                _contexte_scanner(
+                    conn, etat,
+                    confirmation_rangement=f"{resultat['nom']} rangé en {etat['label']}.",
+                ),
+            )
+
+        # Hors mode rangement : comportement historique (ouvre la fiche de prêt).
         info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return templates.TemplateResponse(
+                request, "scanner.html",
+                _contexte_scanner(
+                    conn, etat,
+                    erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
+                           "Vérifiez et réessayez.",
+                    code_saisi=id_exemplaire,
+                ),
+            )
     finally:
         conn.close()
 
-    if info is None:
+    return RedirectResponse(f"/pret/{id_exemplaire}", status_code=303)
+
+
+@router.get("/scanner/ranger")
+def ranger(request: Request, code: str = "", _=Depends(exiger_jeton)):
+    """
+    Cible du scan caméra EN MODE RANGEMENT (scanner.js redirige ici au lieu de
+    /pret/<id> tant que <body data-rangement="1"> est posé). Affecte
+    l'emplacement actif à la boîte scannée puis réaffiche /scanner, caméra
+    prête pour la suivante. Jamais bloquant : code inconnu -> message, pas
+    d'erreur brute ; mode déjà quitté entre-temps -> écran scanner normal.
+    """
+    id_exemplaire = (code or "").strip()
+    conn = get_connection()
+    try:
+        etat = _etat_rangement(conn, request)
+        if not etat["actif"]:
+            return templates.TemplateResponse(request, "scanner.html", _contexte_scanner(conn, etat))
+
+        if not id_exemplaire:
+            return templates.TemplateResponse(
+                request, "scanner.html",
+                _contexte_scanner(conn, etat, erreur="Code manquant.", code_saisi=""),
+            )
+
+        resultat = services.affecter_emplacement(conn, id_exemplaire, etat["contexte"], etat["valeur"])
+        if resultat is None:
+            return templates.TemplateResponse(
+                request, "scanner.html",
+                _contexte_scanner(
+                    conn, etat,
+                    erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
+                           "Vérifiez et réessayez.",
+                    code_saisi=id_exemplaire,
+                ),
+            )
         return templates.TemplateResponse(
             request, "scanner.html",
-            {"erreur": f"Aucune boîte ne porte le code « {id_exemplaire} ». "
-                       "Vérifiez et réessayez.",
-             "code_saisi": id_exemplaire},
+            _contexte_scanner(
+                conn, etat,
+                confirmation_rangement=f"{resultat['nom']} rangé en {etat['label']}.",
+            ),
         )
+    finally:
+        conn.close()
 
-    return RedirectResponse(f"/pret/{id_exemplaire}", status_code=303)
+
+@router.post("/scanner/rangement/activer")
+def rangement_activer(
+    request: Request,
+    emplacement_texte: str = Form(""),
+    emplacement_id: str = Form(""),
+    _=Depends(exiger_jeton),
+):
+    """
+    Active (ou change) l'emplacement actif du mode rangement : pose le cookie
+    d'appareil et revient sur /scanner. Formulaire vide/invalide -> ignoré
+    silencieusement (le <select> ne propose que des emplacements actifs ;
+    n'arrive en pratique qu'en cas de manipulation directe de l'URL).
+    """
+    conn = get_connection()
+    try:
+        contexte = services.rangement_contexte(conn)
+        if contexte == "local":
+            valeur = emplacement_id.strip()
+            if valeur:
+                actifs = {str(e["id_emplacement"]) for e in services.emplacements_actifs(conn)}
+                if valeur not in actifs:
+                    valeur = ""
+        else:
+            valeur = " ".join(emplacement_texte.split())
+    finally:
+        conn.close()
+
+    reponse = RedirectResponse("/scanner", status_code=303)
+    if valeur:
+        reponse.set_cookie(
+            COOKIE_RANGEMENT, valeur, max_age=DUREE_COOKIE_RANGEMENT,
+            httponly=True, samesite="lax", secure=(request.url.scheme == "https"),
+        )
+    return reponse
+
+
+@router.post("/scanner/rangement/quitter")
+def rangement_quitter(request: Request, _=Depends(exiger_jeton)):
+    """Quitte le mode rangement : efface le cookie, retour au scan-vers-prêt normal."""
+    reponse = RedirectResponse("/scanner", status_code=303)
+    reponse.delete_cookie(COOKIE_RANGEMENT)
+    return reponse

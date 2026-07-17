@@ -1412,3 +1412,31 @@ def deplacer_emplacement_rangement(conn: sqlite3.Connection, id_emplacement: int
         (a["ordre"], b["id_emplacement"]),
     )
     conn.commit()
+
+
+def affecter_emplacement(
+    conn: sqlite3.Connection, id_exemplaire: str, contexte: str, valeur
+) -> dict | None:
+    """
+    Affecte l'emplacement ACTIF à une boîte — cœur du mode rangement au
+    scanner (§4.a). `valeur` est le texte libre (contexte "evenement") ou
+    l'`id_emplacement` (contexte "local", int).
+
+    Permis quel que soit l'état de prêt de la boîte (une boîte sortie garde
+    son étagère d'origine) : ne touche JAMAIS aux tables prets/pochettes.
+
+    Returns:
+        Les infos de la boîte (`info_exemplaire`, dont le nom du jeu — utile
+        pour le message de confirmation), ou None si `id_exemplaire` est
+        inconnu (rien n'est modifié, jamais bloquant).
+    """
+    info = info_exemplaire(conn, id_exemplaire)
+    if info is None:
+        return None
+    colonne = "emplacement_local_id" if contexte == "local" else "emplacement_evenement"
+    conn.execute(
+        f"UPDATE exemplaires SET {colonne} = ? WHERE id_exemplaire = ?",
+        (valeur, id_exemplaire),
+    )
+    conn.commit()
+    return info

@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="/static/img/favicon-192.png">
   <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
 </head>
-<body{% if mode_formation %} class="mode-formation"{% endif %}>
+<body{% if mode_formation %} class="mode-formation"{% endif %}{% block body_attrs %}{% endblock %}>
   <div class="bandeau-groupe">
     {% if mode_formation %}
     <div class="formation-bandeau">🎓 SITE DE FORMATION — aucun effet sur LudoteX</div>

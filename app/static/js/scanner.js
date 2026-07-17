@@ -56,12 +56,24 @@
 
   /**
    * Ouvre l'écran prêt/retour pour l'id donné (et stoppe la boucle de scan).
+   *
+   * MODE RANGEMENT (§4.a) : tant que <body data-rangement="1"> est posé
+   * (bandeau actif, voir scanner.html), on redirige vers /scanner/ranger au
+   * lieu de /pret/<id> — le serveur affecte l'emplacement actif à la boîte
+   * puis réaffiche /scanner (caméra prête pour la suivante) au lieu d'ouvrir
+   * sa fiche.
+   *
    * @param {string} id - identifiant d'exemplaire.
    */
   function ouvrir(id) {
     fini = true;  // empêche une 2e détection de redéclencher une navigation
-    statut.textContent = "Jeu détecté — ouverture…";
-    window.location.href = "/pret/" + encodeURIComponent(id);
+    var enModeRangement = document.body.dataset.rangement === "1";
+    statut.textContent = enModeRangement
+      ? "Jeu détecté — rangement…"
+      : "Jeu détecté — ouverture…";
+    window.location.href = enModeRangement
+      ? "/scanner/ranger?code=" + encodeURIComponent(id)
+      : "/pret/" + encodeURIComponent(id);
   }
 
   /**

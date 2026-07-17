@@ -369,6 +369,20 @@ summary:focus-visible,
 }
 .rangement-ordre, .rangement-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 
+/* Mode rangement au scanner (bandeau d'état persistant, /scanner) : même
+   teinte bleue que .resultat-info / .pochette-num--retour (identité visuelle
+   "rangement" cohérente, y compris avec le futur bloc "où ranger" au retour).
+   Plus compact que .resultat (pas son padding 20px) : pensé pour rester
+   affiché en permanence au-dessus de la caméra, pas pour un message ponctuel. */
+.rangement-bandeau {
+  background: #e8f0fe; border: 2px solid #1a73e8; color: #1a73e8;
+  border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  font-weight: 600;
+}
+.rangement-bandeau form, .rangement-bandeau details { display: inline; margin: 0; }
+.rangement-bandeau summary { cursor: pointer; text-decoration: underline; }
+
 /* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
    Configuration). Le titre de groupe est masqué par défaut (mobile = référence
    inchangée : les items s'enchaînent comme une seule liste, .admin-menu n'ayant

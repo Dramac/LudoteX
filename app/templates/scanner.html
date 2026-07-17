@@ -1,29 +1,66 @@
 {% extends "base.html" %}
 {% block titre %}Scanner — {{ nom_association }}{% endblock %}
+{# Drapeau lu par scanner.js : tant qu'il est posé, un QR détecté redirige
+   vers /scanner/ranger au lieu de /pret/<id> (mode rangement, §4.a). #}
+{% block body_attrs %}{% if rangement.actif %} data-rangement="1"{% endif %}{% endblock %}
 
 {% block contenu %}
+{% if rangement.actif %}
+<div class="rangement-bandeau">
+  🗄️ Mode rangement — Emplacement : <strong>{{ rangement.label }}</strong>
+  <details>
+    <summary>Changer</summary>
+    {% include "_rangement_formulaire.html" %}
+  </details>
+  <form method="post" action="/scanner/rangement/quitter">
+    <button type="submit" class="bouton-filtrer">Quitter le mode</button>
+  </form>
+</div>
+{% endif %}
+
 <section class="carte">
   <h1>Scanner un jeu</h1>
+
+  {% if confirmation_rangement %}
+    <p class="resultat resultat-info">✓ {{ confirmation_rangement }}</p>
+  {% endif %}
+  {% if erreur %}
+    <p class="resultat resultat-attention">{{ erreur }}</p>
+  {% endif %}
+
   <p class="scanner-statut" id="statut" aria-live="polite">Démarrage de la caméra…</p>
   <div class="scanner-cadre">
     <video id="video" class="scanner-video" playsinline muted></video>
   </div>
   <canvas id="canvas" hidden></canvas>
   <p class="scanner-aide">
-    Visez le QR code de l'étiquette : l'écran de prêt / retour s'ouvre
-    automatiquement. Votre téléphone ne demandera l'autorisation caméra
-    qu'une seule fois.
+    {% if rangement.actif %}
+      Visez le QR code de l'étiquette : la boîte est rangée automatiquement à
+      l'emplacement actif, sans ouvrir sa fiche.
+    {% else %}
+      Visez le QR code de l'étiquette : l'écran de prêt / retour s'ouvre
+      automatiquement.
+    {% endif %}
+    Votre téléphone ne demandera l'autorisation caméra qu'une seule fois.
   </p>
+
+  {% if not rangement.actif %}
+  <details class="recherche">
+    <summary>🗄️ Activer le mode rangement</summary>
+    {% include "_rangement_formulaire.html" %}
+  </details>
+  {% endif %}
 </section>
 
 <section class="carte">
   <h2>Saisie manuelle</h2>
   <p class="scanner-aide">
-    QR illisible ou caméra capricieuse ? Tapez le code de la boîte.
+    {% if rangement.actif %}
+      QR illisible ou caméra capricieuse ? Tapez le code de la boîte à ranger.
+    {% else %}
+      QR illisible ou caméra capricieuse ? Tapez le code de la boîte.
+    {% endif %}
   </p>
-  {% if erreur %}
-    <p class="resultat resultat-attention">{{ erreur }}</p>
-  {% endif %}
   <form method="get" action="/scanner/saisie" class="saisie-manuelle">
     <div class="champ">
       <label for="code">Code de la boîte</label>
@@ -32,7 +69,9 @@
              spellcheck="false" placeholder="ex. 00472" required
              {% if erreur %}autofocus{% endif %}>
     </div>
-    <button type="submit" class="bouton-filtrer">Ouvrir la fiche de prêt</button>
+    <button type="submit" class="bouton-filtrer">
+      {{ 'Ranger cette boîte' if rangement.actif else 'Ouvrir la fiche de prêt' }}
+    </button>
   </form>
 </section>
 
