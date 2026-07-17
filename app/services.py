@@ -1442,6 +1442,39 @@ def affecter_emplacement(
     return info
 
 
+def rangement_visible(request) -> bool:
+    """
+    Le catalogue / la fiche publique doivent-ils afficher l'emplacement pour
+    CE visiteur ? Trois niveaux (§7 de docs/conception-rangement.md), lus
+    depuis `rangement_visibilite` : "tous", "benevoles" (défaut), "admin".
+
+    Exception délibérée à la convention `conn` en paramètre (voir en-tête du
+    module) : cette fonction est un GLOBAL JINJA (enregistré dans
+    app/templating.py, appelé depuis les gabarits comme
+    `rangement_visible(request)`) — seule la requête y est disponible, comme
+    pour `auth.peut_ecrire`/`modules.module_visible`, qui ouvrent chacun leur
+    propre connexion pour la même raison. Peut aussi être appelée directement
+    depuis une route (voir routes/catalogue.py::fiche).
+
+    L'écran de retour bénévole (/pret/<id>) n'est PAS concerné par ce réglage
+    (voir `emplacement_actuel`) : déjà derrière le jeton, il affiche toujours
+    l'emplacement.
+    """
+    from app import admin_auth, auth
+    from app.db import get_connection
+
+    conn = get_connection()
+    try:
+        niveau = rangement_visibilite(conn)
+    finally:
+        conn.close()
+    if niveau == "tous":
+        return True
+    if niveau == "admin":
+        return admin_auth.admin_connecte(request)
+    return auth.peut_ecrire(request)  # "benevoles" (défaut)
+
+
 def emplacement_actuel(conn: sqlite3.Connection, id_exemplaire: str) -> str | None:
     """
     Libellé d'affichage de l'emplacement de rangement ACTUEL d'une boîte,

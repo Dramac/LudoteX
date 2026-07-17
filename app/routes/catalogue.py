@@ -106,8 +106,15 @@ def fiche(request: Request, id_exemplaire: str):
     try:
         info = services.info_exemplaire(conn, id_exemplaire)
         total = disponible = 0
+        emplacement = None
         if info is not None:
             total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
+            # Emplacement de rangement (docs/conception-rangement.md §7) :
+            # seulement si le réglage de visibilité l'autorise pour ce
+            # visiteur ET qu'un emplacement est effectivement renseigné
+            # (jamais de « non renseigné » anxiogène).
+            if services.rangement_visible(request):
+                emplacement = services.emplacement_actuel(conn, id_exemplaire)
     finally:
         conn.close()
 
@@ -115,7 +122,7 @@ def fiche(request: Request, id_exemplaire: str):
         request,
         "fiche.html",
         {"id_exemplaire": id_exemplaire, "info": info,
-         "total": total, "disponible": disponible},
+         "total": total, "disponible": disponible, "emplacement": emplacement},
         status_code=200 if info else 404,
     )
 

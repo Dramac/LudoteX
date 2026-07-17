@@ -58,6 +58,11 @@ templates.env.globals["est_admin"] = admin_auth.admin_connecte
 #   {% if module_visible(request, "tournois") %} ... {% endif %}
 templates.env.globals["module_visible"] = modules.module_visible
 
+# Indique si l'emplacement de rangement doit être affiché à ce visiteur sur le
+# catalogue / la fiche publique (3 niveaux réglables en admin, voir
+# docs/conception-rangement.md §7). Usage : {% if rangement_visible(request) %}
+templates.env.globals["rangement_visible"] = services.rangement_visible
+
 # Accord singulier/pluriel disponible dans TOUS les gabarits, sans import :
 # {{ n }} {{ pluriel(n, 'jeu', 'jeux') }} -- remplace les pluriels parenthésés
 # type « jeu(x) », « prêt(s) » (docs/idees-ux.md Q2).
