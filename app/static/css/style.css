@@ -284,6 +284,11 @@ summary:focus-visible,
 }
 .badge-dispo { background: var(--vert-clair); color: var(--vert); }
 .badge-sorti { background: var(--rouge-clair); color: var(--rouge); }
+/* Réutilisées pour l'état des bases en supervision (tableau admin) : une
+   pastille compacte se lit mieux dans une cellule qu'une bannière .resultat
+   pleine largeur (padding 20px, prévue pour les écrans de prêt/retour). */
+.badge-ok { background: var(--vert-clair); color: var(--vert); }
+.badge-attention { background: var(--orange-clair); color: var(--orange); }
 
 /* Survol des cartes de jeu (léger relief) */
 .jeu {
