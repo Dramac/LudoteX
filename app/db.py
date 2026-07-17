@@ -91,6 +91,20 @@ _MIGRATIONS_COLONNES = [
     ("titres", "type_jeu", "TEXT"),
     ("prets", "motif", "TEXT NOT NULL DEFAULT 'pret'"),
     ("titres", "date_achat", "TEXT"),
+    ("exemplaires", "emplacement_evenement", "TEXT"),
+    ("exemplaires", "emplacement_local_id", "INTEGER"),
+]
+
+# Premier remplissage de la liste des emplacements de rangement LOCAL (voir
+# docs/conception-rangement.md §3). Appliqué une seule fois : si la table est
+# déjà peuplée (première init passée, ou admin qui a modifié la liste), on ne
+# touche à rien.
+_EMPLACEMENTS_RANGEMENT_SEED = [
+    "Totem",
+    "Puzzle",
+    "P'tits potes",
+    "valise 1",
+    "valise 2",
 ]
 
 
@@ -100,6 +114,24 @@ def _appliquer_migrations(conn: sqlite3.Connection) -> None:
         existantes = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
         if colonne not in existantes:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {type_sql}")
+    conn.commit()
+
+
+def _seed_emplacements_rangement(conn: sqlite3.Connection) -> None:
+    """
+    Premier remplissage de `emplacements_rangement` (idempotent).
+
+    N'insère les emplacements par défaut QUE si la table est vide : ne
+    duplique rien si `init_db` est rappelé, et ne recrée jamais une entrée
+    qu'un admin aurait supprimée/archivée depuis.
+    """
+    (nb,) = conn.execute("SELECT COUNT(*) FROM emplacements_rangement").fetchone()
+    if nb:
+        return
+    conn.executemany(
+        "INSERT INTO emplacements_rangement (nom, actif, ordre) VALUES (?, 1, ?)",
+        [(nom, ordre) for ordre, nom in enumerate(_EMPLACEMENTS_RANGEMENT_SEED)],
+    )
     conn.commit()
 
 
@@ -124,6 +156,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
             conn.executescript(statement)
         conn.commit()
         _appliquer_migrations(conn)
+        _seed_emplacements_rangement(conn)
     finally:
         # On ne ferme que si on a ouvert : ne pas fermer la connexion du test.
         if own_connection:

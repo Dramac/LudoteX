@@ -6,12 +6,14 @@ chaînes SQL, plus quelques constantes. Il n'ouvre aucune connexion : c'est
 ``app/db.py`` qui exécute ces instructions. Cette séparation permet de relire le
 schéma d'un coup d'œil, sans logique parasite.
 
-MODÈLE DE DONNÉES (voir docs/specification.md §3) — quatre tables :
+MODÈLE DE DONNÉES (voir docs/specification.md §3) — quatre tables de cœur, plus
+`emplacements_rangement` (suivi du rangement, voir docs/conception-rangement.md) :
 
-    titres        catalogue, niveau « référence » : un enregistrement par JEU.
-    exemplaires   boîtes physiques, niveau « unité prêtable » : un par QR.
-    prets         historique complet de tous les prêts (jamais purgé).
-    pochettes     occupation du moment des numéros de pochette (recyclés).
+    titres                  catalogue, niveau « référence » : un enregistrement par JEU.
+    emplacements_rangement  liste gérée en admin des emplacements de rangement LOCAL.
+    exemplaires             boîtes physiques, niveau « unité prêtable » : un par QR.
+    prets                   historique complet de tous les prêts (jamais purgé).
+    pochettes               occupation du moment des numéros de pochette (recyclés).
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -70,13 +72,34 @@ CREATE TABLE IF NOT EXISTS titres (
 """
 
 # ---------------------------------------------------------------------------
+# emplacements_rangement — liste gérée en admin des emplacements de RANGEMENT
+# LOCAL (contexte hors événement, cf. docs/conception-rangement.md §3/§5).
+# Doit précéder exemplaires dans SCHEMA_STATEMENTS : celle-ci la référence en FK.
+# ---------------------------------------------------------------------------
+SCHEMA_EMPLACEMENTS_RANGEMENT = """
+CREATE TABLE IF NOT EXISTS emplacements_rangement (
+    id_emplacement   INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom              TEXT NOT NULL,               -- libellé affiché (ex. "Totem", "valise 1")
+    actif            INTEGER NOT NULL DEFAULT 1,  -- 1 = proposé dans les menus, 0 = archivé (retrait doux)
+    ordre            INTEGER NOT NULL DEFAULT 0   -- tri d'affichage
+);
+"""
+
+# ---------------------------------------------------------------------------
 # exemplaires — les boîtes physiques, niveau « unité prêtable » (un par QR).
 # ---------------------------------------------------------------------------
+# emplacement_evenement / emplacement_local_id : suivi du rangement (voir
+# docs/conception-rangement.md). Deux contextes nullables, sans effet sur la
+# logique de prêt : événement = texte libre (salle qui change chaque année),
+# local = FK vers emplacements_rangement (liste stable, gérée en admin).
 SCHEMA_EXEMPLAIRES = """
 CREATE TABLE IF NOT EXISTS exemplaires (
-    id_exemplaire    TEXT PRIMARY KEY,            -- encodé dans le QR ; TEXT (zéros de tête)
-    reference_titre  TEXT NOT NULL,               -- FK -> titres.reference_titre
-    FOREIGN KEY (reference_titre) REFERENCES titres (reference_titre)
+    id_exemplaire         TEXT PRIMARY KEY,            -- encodé dans le QR ; TEXT (zéros de tête)
+    reference_titre       TEXT NOT NULL,               -- FK -> titres.reference_titre
+    emplacement_evenement TEXT,                        -- libellé libre, contexte événement
+    emplacement_local_id  INTEGER,                     -- FK -> emplacements_rangement, contexte local
+    FOREIGN KEY (reference_titre) REFERENCES titres (reference_titre),
+    FOREIGN KEY (emplacement_local_id) REFERENCES emplacements_rangement (id_emplacement)
 );
 """
 
@@ -140,9 +163,11 @@ CREATE INDEX IF NOT EXISTS idx_pochettes_occupe        ON pochettes (occupe);
 """
 
 # Ordre d'exécution imposé par les clés étrangères : les tables référencées
-# (titres, exemplaires) AVANT celles qui les référencent, puis les index.
+# (titres, emplacements_rangement, exemplaires) AVANT celles qui les
+# référencent, puis les index.
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
+    SCHEMA_EMPLACEMENTS_RANGEMENT,
     SCHEMA_EXEMPLAIRES,
     SCHEMA_PRETS,
     SCHEMA_POCHETTES,
