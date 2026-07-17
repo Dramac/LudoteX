@@ -946,6 +946,30 @@ def test_inscription_complet_route(client):
     assert plein.status_code == 400 and "complet" in plein.text.lower()
 
 
+def test_inscription_bouton_copier_code(client):
+    # M4 (docs/idees-ux.md) : bouton « Copier le code » sur la confirmation
+    # d'inscription (motif réutilisé de /admin/jeton).
+    r = client.post("/tournoi/nouveau", data={"nom": "T2", "inscription_en_ligne": "on"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    ok = client.post(f"/tournoi/{tid}/inscription", data={"pseudo": "Alice"})
+    assert ok.status_code == 200
+    assert 'onclick="copierCode()"' in ok.text
+    assert '<span id="copie-ok" class="copie-ok" hidden>copié ✓</span>' in ok.text
+    assert "navigator.clipboard.writeText(" in ok.text
+    # Le code injecté dans le JS est bien celui affiché à l'écran.
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        code = conn.execute(
+            "SELECT code_desinscription FROM inscriptions WHERE id_tournoi = ?", (int(tid),)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert code in ok.text
+
+
 def test_suppression_double_confirmation(client):
     r = client.post("/tournoi/nouveau", data={"nom": "À supprimer"},
                     follow_redirects=False)

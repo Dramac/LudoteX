@@ -516,6 +516,21 @@ def test_flux_collecte_publique(client):
                             f"pref_{po}": "prefere"}, follow_redirects=False)
     assert rep.status_code == 303 and "/merci?code=" in rep.headers["location"]
 
+    # M4 (docs/idees-ux.md) : la confirmation propose un bouton « Copier le
+    # code » (motif réutilisé de /admin/jeton).
+    merci = client.get(rep.headers["location"])
+    assert merci.status_code == 200
+    assert 'onclick="copierCode()"' in merci.text
+    assert '<span id="copie-ok" class="copie-ok" hidden>copié ✓</span>' in merci.text
+    code = rep.headers["location"].rsplit("code=", 1)[-1]
+    assert code in merci.text
+
+    # Filet de sécurité : la page /merci reste accessible SANS code (jamais
+    # bloquant) -- dans ce cas, pas de bouton copier (rien de sensé à copier).
+    sans_code = client.get(f"/planning/collecte/{ev}/merci")
+    assert sans_code.status_code == 200
+    assert "copierCode" not in sans_code.text
+
 
 def test_route_aide(client):
     r = client.get("/planning/aide")
