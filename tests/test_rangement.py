@@ -1359,3 +1359,139 @@ def test_apropos_lien_vers_aide_rangement(client):
     r = client.get("/apropos")
     assert r.status_code == 200
     assert 'href="/rangement/aide"' in r.text
+
+
+# ===========================================================================
+# Addendum §13 — affectation en lot par jeu (grain titre)
+# ===========================================================================
+def _ajouter_exemplaire(conn, id_exemplaire, reference_titre="CATAN"):
+    conn.execute(
+        "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
+        (id_exemplaire, reference_titre),
+    )
+    conn.commit()
+
+
+def _ajouter_titre(conn, reference_titre, nom):
+    conn.execute(
+        "INSERT INTO titres (reference_titre, nom) VALUES (?, ?)", (reference_titre, nom)
+    )
+    conn.commit()
+
+
+def test_resume_emplacement_titres_liste_vide(conn):
+    assert services._resume_emplacement_titres(conn, [], "evenement") == {}
+
+
+def test_rangement_par_titre_aucune_boite_affectee(conn):
+    _ajouter_exemplaire(conn, "002")  # 2 boîtes CATAN, aucune n'a d'emplacement
+    jeux = services.lister_catalogue(conn)
+    resultat = services.rangement_par_titre(conn, jeux, "evenement")
+    catan = [j for j in resultat if j["reference_titre"] == "CATAN"][0]
+    assert catan["rangement_affichage"] == "—"
+    assert catan["rangement_complet"] is False
+
+
+def test_rangement_par_titre_affectation_partielle_est_mixte(conn):
+    _ajouter_exemplaire(conn, "002")
+    services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
+    jeux = services.lister_catalogue(conn)
+    resultat = services.rangement_par_titre(conn, jeux, "evenement")
+    catan = [j for j in resultat if j["reference_titre"] == "CATAN"][0]
+    assert catan["rangement_affichage"] == "mixte"
+    assert catan["rangement_complet"] is False
+
+
+def test_rangement_par_titre_toutes_identiques_est_complet(conn):
+    _ajouter_exemplaire(conn, "002")
+    services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
+    services.affecter_emplacement(conn, "002", "evenement", "Étagère 2")
+    jeux = services.lister_catalogue(conn)
+    resultat = services.rangement_par_titre(conn, jeux, "evenement")
+    catan = [j for j in resultat if j["reference_titre"] == "CATAN"][0]
+    assert catan["rangement_affichage"] == "Étagère 2"
+    assert catan["rangement_complet"] is True
+
+
+def test_rangement_par_titre_valeurs_differentes_est_mixte(conn):
+    _ajouter_exemplaire(conn, "002")
+    services.affecter_emplacement(conn, "001", "evenement", "Étagère 2")
+    services.affecter_emplacement(conn, "002", "evenement", "Étagère 3")
+    jeux = services.lister_catalogue(conn)
+    resultat = services.rangement_par_titre(conn, jeux, "evenement")
+    catan = [j for j in resultat if j["reference_titre"] == "CATAN"][0]
+    assert catan["rangement_affichage"] == "mixte"
+    assert catan["rangement_complet"] is False
+
+
+def test_rangement_par_titre_contexte_local_resout_le_libelle(conn):
+    id_totem = [
+        l for l in services.lister_emplacements_rangement(conn) if l["nom"] == "Totem"
+    ][0]["id_emplacement"]
+    _ajouter_exemplaire(conn, "002")
+    services.affecter_emplacement(conn, "001", "local", id_totem)
+    services.affecter_emplacement(conn, "002", "local", id_totem)
+    jeux = services.lister_catalogue(conn)
+    resultat = services.rangement_par_titre(conn, jeux, "local")
+    catan = [j for j in resultat if j["reference_titre"] == "CATAN"][0]
+    assert catan["rangement_affichage"] == "Totem"
+    assert catan["rangement_complet"] is True
+
+
+def test_affecter_emplacement_lot_ecrase_par_defaut(conn):
+    _ajouter_exemplaire(conn, "002")
+    services.affecter_emplacement(conn, "001", "evenement", "Ancienne valeur")
+    resultat = services.affecter_emplacement_lot(conn, ["CATAN"], "evenement", "Nouvelle valeur")
+    assert resultat == {"titres": 1, "boites": 2}
+    valeurs = [
+        r[0] for r in conn.execute(
+            "SELECT emplacement_evenement FROM exemplaires WHERE reference_titre = 'CATAN'"
+        )
+    ]
+    assert valeurs == ["Nouvelle valeur", "Nouvelle valeur"]
+
+
+def test_affecter_emplacement_lot_ne_pas_ecraser_ne_comble_que_les_trous(conn):
+    _ajouter_exemplaire(conn, "002")
+    services.affecter_emplacement(conn, "001", "evenement", "Déjà rangé")
+    resultat = services.affecter_emplacement_lot(
+        conn, ["CATAN"], "evenement", "Nouvelle valeur", ecraser=False
+    )
+    assert resultat == {"titres": 1, "boites": 1}
+    valeurs = {
+        r["id_exemplaire"]: r["emplacement_evenement"]
+        for r in conn.execute(
+            "SELECT id_exemplaire, emplacement_evenement FROM exemplaires "
+            "WHERE reference_titre = 'CATAN'"
+        )
+    }
+    assert valeurs["001"] == "Déjà rangé"
+    assert valeurs["002"] == "Nouvelle valeur"
+
+
+def test_affecter_emplacement_lot_plusieurs_titres(conn):
+    _ajouter_titre(conn, "DOBBLE", "Dobble")
+    _ajouter_exemplaire(conn, "900", "DOBBLE")
+    resultat = services.affecter_emplacement_lot(
+        conn, ["CATAN", "DOBBLE"], "evenement", "Table du fond"
+    )
+    assert resultat == {"titres": 2, "boites": 2}
+
+
+def test_affecter_emplacement_lot_liste_vide(conn):
+    assert services.affecter_emplacement_lot(conn, [], "evenement", "X") == {"titres": 0, "boites": 0}
+
+
+def test_affecter_emplacement_lot_contexte_local_ecrit_id(conn):
+    id_puzzle = [
+        l for l in services.lister_emplacements_rangement(conn) if l["nom"] == "Puzzle"
+    ][0]["id_emplacement"]
+    _ajouter_exemplaire(conn, "002")
+    resultat = services.affecter_emplacement_lot(conn, ["CATAN"], "local", id_puzzle)
+    assert resultat == {"titres": 1, "boites": 2}
+    valeurs = [
+        r[0] for r in conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE reference_titre = 'CATAN'"
+        )
+    ]
+    assert valeurs == [id_puzzle, id_puzzle]

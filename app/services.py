@@ -1602,3 +1602,150 @@ def exemplaires_sans_emplacement(
         (*params, PAR_PAGE_MANQUES, offset),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ===========================================================================
+# Affectation en lot par jeu (§13 de docs/conception-rangement.md, addendum
+# post-phase 1) : la vue « Ranger les jeux » travaille au grain TITRE plutôt
+# qu'exemplaire, pour équiper d'un coup toutes les boîtes d'un même jeu.
+# ===========================================================================
+def _resume_emplacement_titres(
+    conn: sqlite3.Connection, reference_titres: list[str], contexte: str
+) -> dict[str, dict]:
+    """
+    Pour chaque titre de `reference_titres`, résume l'état de ses boîtes dans
+    le CONTEXTE donné : combien ont une valeur (`nb_avec`), combien de valeurs
+    DISTINCTES parmi elles (`nb_distinct`), et la valeur elle-même si elle est
+    unique (`valeur`, sinon None — non pertinente si `nb_distinct` != 1).
+
+    En contexte "local", `valeur` est un `id_emplacement` ; ce helper résout
+    aussi son libellé d'affichage (`libelle`, nom de l'emplacement même
+    archivé, comme `emplacement_actuel`). En contexte "evenement", `valeur`
+    EST déjà le libellé (texte libre).
+
+    Returns:
+        dict {reference_titre: {"nb_avec", "nb_distinct", "libelle"}}. Un
+        titre absent du résultat (aucune boîte) est à traiter par l'appelant
+        comme nb_avec=0.
+    """
+    if not reference_titres:
+        return {}
+    local = contexte == "local"
+    valeur_expr = "x.emplacement_local_id" if local else "NULLIF(TRIM(x.emplacement_evenement), '')"
+    placeholders = ",".join("?" * len(reference_titres))
+    rows = conn.execute(
+        f"""
+        SELECT x.reference_titre,
+               COUNT({valeur_expr}) AS nb_avec,
+               COUNT(DISTINCT {valeur_expr}) AS nb_distinct,
+               MIN({valeur_expr}) AS valeur
+        FROM exemplaires x
+        WHERE x.reference_titre IN ({placeholders})
+        GROUP BY x.reference_titre
+        """,
+        reference_titres,
+    ).fetchall()
+    noms_locaux: dict[int, str] = {}
+    if local:
+        ids = {r["valeur"] for r in rows if r["nb_distinct"] == 1 and r["valeur"] is not None}
+        if ids:
+            id_placeholders = ",".join("?" * len(ids))
+            noms_locaux = {
+                r2["id_emplacement"]: r2["nom"]
+                for r2 in conn.execute(
+                    f"SELECT id_emplacement, nom FROM emplacements_rangement "
+                    f"WHERE id_emplacement IN ({id_placeholders})",
+                    list(ids),
+                )
+            }
+    resultat = {}
+    for r in rows:
+        libelle = None
+        if r["nb_distinct"] == 1 and r["valeur"] is not None:
+            libelle = noms_locaux.get(r["valeur"]) if local else r["valeur"]
+        resultat[r["reference_titre"]] = {
+            "nb_avec": r["nb_avec"], "nb_distinct": r["nb_distinct"], "libelle": libelle,
+        }
+    return resultat
+
+
+def rangement_par_titre(conn: sqlite3.Connection, jeux: list[dict], contexte: str) -> list[dict]:
+    """
+    Enrichit une liste de jeux issue de `lister_catalogue()` (chaque dict a au
+    moins `reference_titre` et `total`) avec le statut de rangement dans le
+    CONTEXTE actif :
+
+    - `rangement_affichage` : le libellé si toutes les boîtes du titre ont le
+      MÊME emplacement non vide ; `"mixte"` si elles ont des valeurs mais pas
+      toutes identiques (ou seulement certaines) ; `"—"` si aucune n'a de
+      valeur.
+    - `rangement_complet` (bool) : True SEULEMENT dans le premier cas (toutes
+      identiques, non vide) — c'est le sens de « jeu déjà rangé » utilisé par
+      la vue « Ranger les jeux » pour le filtre « à ranger seulement » (§13.5).
+      Un jeu partiellement affecté ou aux copies divergentes reste « à
+      ranger », même si chaque boîte a individuellement une valeur : il reste
+      du travail (compléter ou harmoniser) dessus.
+
+    Ne modifie pas les dicts d'entrée ; retourne une nouvelle liste.
+    """
+    reference_titres = [j["reference_titre"] for j in jeux]
+    resume = _resume_emplacement_titres(conn, reference_titres, contexte)
+    resultat = []
+    for j in jeux:
+        r = resume.get(j["reference_titre"], {"nb_avec": 0, "nb_distinct": 0, "libelle": None})
+        if r["nb_avec"] == 0:
+            affichage, complet = "—", False
+        elif r["nb_distinct"] == 1 and r["nb_avec"] == j["total"]:
+            affichage, complet = r["libelle"], True
+        else:
+            affichage, complet = "mixte", False
+        resultat.append({**j, "rangement_affichage": affichage, "rangement_complet": complet})
+    return resultat
+
+
+def affecter_emplacement_lot(
+    conn: sqlite3.Connection, reference_titres: list[str], contexte: str, valeur,
+    ecraser: bool = True,
+) -> dict:
+    """
+    Affectation en lot (§13.1/13.4) : écrit `valeur` sur TOUTES les boîtes des
+    titres visés, dans le CONTEXTE donné — équivalent d'une boucle appelant
+    `affecter_emplacement` sur chaque exemplaire, mais en une seule requête
+    (adapté à ~700 boîtes).
+
+    Si `ecraser` est False, seules les boîtes SANS emplacement dans ce
+    contexte sont modifiées (ne comble que les trous, §13.4) — réutilise
+    `_clause_sans_emplacement`, la même clause que la page des manques.
+
+    `valeur` vide (texte vide/None) n'est PAS filtrée ici : le refus d'un lot
+    vide (§13.4, pas de wipe de masse) est la responsabilité de l'APPELANT
+    (route), qui ne doit pas appeler cette fonction dans ce cas.
+
+    Returns:
+        {"titres": nb de titres distincts effectivement modifiés,
+         "boites": nb d'exemplaires effectivement modifiés}. {0, 0} si
+        `reference_titres` est vide ou si aucune boîte ne correspond (rien à
+        écraser et `ecraser=False`).
+    """
+    if not reference_titres:
+        return {"titres": 0, "boites": 0}
+    colonne = "emplacement_local_id" if contexte == "local" else "emplacement_evenement"
+    placeholders = ",".join("?" * len(reference_titres))
+    where = f"reference_titre IN ({placeholders})"
+    params: list = list(reference_titres)
+    if not ecraser:
+        where += " AND " + _clause_sans_emplacement(contexte).replace("x.", "")
+    lignes = conn.execute(
+        f"SELECT id_exemplaire, reference_titre FROM exemplaires WHERE {where}", params
+    ).fetchall()
+    if not lignes:
+        return {"titres": 0, "boites": 0}
+    ids = [r["id_exemplaire"] for r in lignes]
+    titres_touches = {r["reference_titre"] for r in lignes}
+    id_placeholders = ",".join("?" * len(ids))
+    conn.execute(
+        f"UPDATE exemplaires SET {colonne} = ? WHERE id_exemplaire IN ({id_placeholders})",
+        (valeur, *ids),
+    )
+    conn.commit()
+    return {"titres": len(titres_touches), "boites": len(ids)}
