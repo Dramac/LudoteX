@@ -232,7 +232,7 @@
 <section class="carte">
   <h2>Fin d'événement</h2>
   <form method="post" action="/planning/admin/{{ ev.id_evenement }}/purger"
-        onsubmit="return confirm('Purger DÉFINITIVEMENT cet événement et toutes ses données (RGPD) ?');">
+        onsubmit="return confirm('Purger définitivement cet événement et toutes ses données ? Cette action est irréversible.');">
     <button class="bouton bouton-secondaire">🗑️ Purger cet événement</button>
   </form>
 </section>

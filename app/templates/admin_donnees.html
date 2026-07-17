@@ -71,7 +71,7 @@
     conséquences — à réserver à une vraie restauration.
   </p>
   <form method="post" action="/admin/sauvegarde/import" enctype="multipart/form-data"
-        onsubmit="return confirm('Ceci remplacera l\'intégralité des données actuelles (prêts, tournois, planning) par le contenu de ce fichier. Continuer ?');">
+        onsubmit="return confirm('Remplacer TOUTES les données par cette sauvegarde ? L\'état actuel sera d\'abord mis de côté automatiquement.');">
     <div class="champ">
       <label for="fichier-zip">Fichier de sauvegarde (.zip)</label>
       <input type="file" id="fichier-zip" name="fichier" accept=".zip,application/zip" required>

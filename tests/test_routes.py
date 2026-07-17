@@ -430,6 +430,26 @@ def test_admin_donnees_import_export(client, monkeypatch):
     assert r.status_code == 200 and "Import réussi" in r.text
     assert client.get("/jeu/900").status_code == 200
 
+    # M9 (docs/idees-ux.md) : confirmation de restauration reformulée (patron
+    # « Action ? + conséquence + porte de sortie », plus de détails techniques
+    # énumérés entre parenthèses).
+    page = client.get("/admin/donnees").text
+    assert "Remplacer TOUTES les données par cette sauvegarde ?" in page
+    assert "L\\'état actuel sera d\\'abord mis de côté automatiquement." in page
+
+
+def test_confirmations_reformulees_m9(client, monkeypatch):
+    # M9 (docs/idees-ux.md) : quelques confirm() trop techniques réécrits sur
+    # le patron « Action ? + conséquence principale + porte de sortie », sans
+    # détails techniques énumérés (états internes, listes de tables...).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    dashboard = client.get("/admin").text
+    assert ("Clôturer tous les prêts et sorties en cours ? Tout redeviendra "
+            "disponible, sans rien perdre de l\\'historique.") in dashboard
+    # L'ancienne formulation technique (parenthèse) a bien disparu.
+    assert "(L\\'historique et les statistiques sont conservés.)" not in dashboard
+
 
 def test_admin_etiquettes_lot(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
@@ -553,6 +573,11 @@ def test_formation_mode_actif(client, monkeypatch):
     r_admin = client.get("/admin")
     assert "SITE DE FORMATION" in r_admin.text
     assert "Réinitialiser les données de formation" in r_admin.text
+    # M9 (docs/idees-ux.md) : confirmation reformulée, sans énumération
+    # technique des tables concernées entre parenthèses.
+    assert ("Réinitialiser les données de formation ? Tout ce qui a été "
+            "modifié pendant cette session sera perdu.") in r_admin.text
+    assert "(jeux, prêts, tournoi)" not in r_admin.text
 
     # Bouton fonctionnel : vide + repeuple les bases de l'instance courante.
     r_reset = client.post("/admin/formation/reinitialiser")

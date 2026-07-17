@@ -350,7 +350,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   `deja_disponible` restent en orange (rien n'a été modifié). Test ajouté.
   Voir `CLAUDE.md`.
 
-### M9. Confirmations natives `confirm()` au ton très technique
+### ✅ FAIT — M9. Confirmations natives `confirm()` au ton très technique
 - **Où** : une dizaine de `onsubmit="return confirm('…')"` (clôture des prêts,
   restauration, jeton, planning…).
 - **Pourquoi** : le mécanisme est sain (et sans JS lourd — à garder), mais
@@ -360,6 +360,31 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   conséquence principale + porte de sortie », une idée par phrase, max 2
   phrases. Ex. : « Remplacer TOUTES les données par cette sauvegarde ? L'état
   actuel sera d'abord mis de côté automatiquement. »
+- **Corrigé** le 2026-07-18 : passage en revue des 17 `confirm()` du dépôt.
+  **5 réécrits** (ceux qui énuméraient vraiment des détails techniques) :
+  restauration de sauvegarde (`admin_donnees.html`, exactement l'exemple de
+  la fiche — plus de liste de tables entre parenthèses) ; clôture des prêts
+  (`admin_dashboard.html`, la parenthèse technique « (L'historique et les
+  statistiques sont conservés.) » devient une clause naturelle) ;
+  réinitialisation formation (`admin_dashboard.html`, la liste `(jeux, prêts,
+  tournoi)` et le verbe technique « Vider et repeupler » disparaissent au
+  profit du libellé déjà utilisé sur le bouton) ; purge RGPD d'un événement
+  planning (`planning_gerer.html`, le jargon `(RGPD)` et les majuscules
+  « DÉFINITIVEMENT » sont remplacés par l'idiome **déjà existant**
+  « Cette action est irréversible. », réutilisé tel quel depuis
+  `admin_rangement.html` plutôt que d'inventer une nouvelle formule) ;
+  ouverture groupée des tournois du jour (`tournoi_liste.html`, le nom
+  d'état interne « en brouillon » disparaît, non pertinent pour la décision
+  du bénévole). **12 confirmations laissées telles quelles** : déjà courtes
+  et sans jargon (jeton, générer planning, fermer questionnaire, suppressions
+  ponctuelles poste/créneau/participant, créer démo…), ou déjà couvertes par
+  un texte de contexte affiché à l'écran en plus du `confirm()` (suppression
+  de tournoi : bannière « Cette action est irréversible. » déjà visible avant
+  le clic, le `confirm()` final reste volontairement minimal). Aucune
+  dépendance ajoutée, mécanisme `confirm()` natif conservé partout. **4 tests
+  ajoutés/étendus** (les 5 nouveaux libellés vérifiés à l'écran, présence
+  confirmée et anciennes formulations techniques absentes). Suite globale :
+  323 tests verts.
 
 ---
 
@@ -423,6 +448,8 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
    point (voir CLAUDE.md).
 3. ✅ FAIT — Les finitions transverses : Q2, Q5–Q12. Corrigées le 2026-07-17,
    un commit par point (voir CLAUDE.md).
-4. M4–M9 un par un, à prioriser selon tes retours terrain.
+4. ✅ FAIT — M4–M9, un par un, un commit par point (M6 sans changement de
+   code, déjà couvert par un correctif antérieur — voir sa fiche). Corrigés
+   le 2026-07-17/18 (voir CLAUDE.md).
 5. S1/S4 en tâche de fond, au fil des retouches ; S2/S3 seulement si le besoin
    se confirme.

@@ -383,6 +383,11 @@ def test_ouvrir_aujourdhui_route(client):
     assert res.status_code == 200 and "ouvert(s)" in res.text
     # Le tournoi est désormais ouvert aux inscriptions.
     assert "Inscriptions ouvertes" in client.get(f"/tournoi/{tid}").text
+    # M9 (docs/idees-ux.md) : confirmation reformulée, sans le jargon d'état
+    # interne « en brouillon ».
+    liste = client.get("/tournois").text
+    assert "Ouvrir les inscriptions de tous les tournois du jour ?" in liste
+    assert "en brouillon" not in liste
 
 
 # --- Duplication ---
