@@ -155,11 +155,14 @@ def fiche_admin(request: Request, reference_titre: str):
     try:
         titre = services.get_titre(conn, reference_titre)
         exemplaires = services.lister_exemplaires_du_titre(conn, reference_titre) if titre else []
+        # Menu déroulant de l'édition « emplacement local » par exemplaire
+        # (§4.c) : mêmes emplacements actifs que partout ailleurs.
+        emplacements_locaux = services.emplacements_actifs(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "admin_fiche.html",
-        {"titre": titre, "exemplaires": exemplaires},
+        {"titre": titre, "exemplaires": exemplaires, "emplacements_locaux": emplacements_locaux},
         status_code=200 if titre else 404,
     )
 
@@ -172,6 +175,63 @@ def ajouter_exemplaire(request: Request, reference_titre: str):
     conn = get_connection()
     try:
         services.ajouter_exemplaire(conn, reference_titre)
+    finally:
+        conn.close()
+    return RedirectResponse(f"/admin/jeu/{reference_titre}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Édition à l'unité de l'emplacement de rangement d'un exemplaire (§4.c).
+# Les DEUX contextes sont éditables indépendamment ici (contrairement au
+# scanner, qui n'agit que sur le contexte GLOBALEMENT actif) : texte libre
+# pour l'événement, menu déroulant des emplacements actifs pour le local.
+# ---------------------------------------------------------------------------
+@router.post("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/emplacement-evenement")
+def exemplaire_emplacement_evenement(
+    request: Request, reference_titre: str, id_exemplaire: str,
+    emplacement_texte: str = Form(""),
+):
+    """Édite le texte libre « emplacement événement » d'un exemplaire. Vide = retire."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        valeur = " ".join(emplacement_texte.split()) or None
+        services.affecter_emplacement(conn, id_exemplaire, "evenement", valeur)
+    finally:
+        conn.close()
+    return RedirectResponse(f"/admin/jeu/{reference_titre}", status_code=303)
+
+
+@router.post("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/emplacement-local")
+def exemplaire_emplacement_local(
+    request: Request, reference_titre: str, id_exemplaire: str,
+    emplacement_id: str = Form(""),
+):
+    """
+    Édite l'emplacement LOCAL (menu déroulant) d'un exemplaire. Option
+    « — aucun — » (valeur vide) retire l'emplacement. Un id invalide/inconnu
+    (manipulation directe du formulaire — le <select> ne propose que des ids
+    réels, actifs ou l'archivé courant) est ignoré silencieusement, jamais
+    bloquant.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        brut = emplacement_id.strip()
+        valeur = None
+        id_valide = True
+        if brut:
+            try:
+                valeur = int(brut)
+            except ValueError:
+                id_valide = False
+            else:
+                if services.get_emplacement_rangement(conn, valeur) is None:
+                    id_valide = False
+        if id_valide:
+            services.affecter_emplacement(conn, id_exemplaire, "local", valeur)
     finally:
         conn.close()
     return RedirectResponse(f"/admin/jeu/{reference_titre}", status_code=303)

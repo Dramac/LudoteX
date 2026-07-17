@@ -35,6 +35,38 @@
       </div>
       <img class="etiquette-apercu" src="/admin/etiquette/{{ ex.id_exemplaire }}.png"
            alt="Étiquette {{ ex.id_exemplaire }}">
+
+      {# Rangement à l'unité (§4.c) : les deux contextes, indépendants. #}
+      <div class="rangement-edition">
+        <form method="post"
+              action="/admin/jeu/{{ titre.reference_titre }}/exemplaire/{{ ex.id_exemplaire }}/emplacement-evenement"
+              class="rangement-form-inline">
+          <label>🗄️ Événement :
+            <input type="text" name="emplacement_texte" value="{{ ex.emplacement_evenement or '' }}"
+                   placeholder="ex. Étagère 2">
+          </label>
+          <button type="submit" class="bouton-filtrer">Enregistrer</button>
+        </form>
+        <form method="post"
+              action="/admin/jeu/{{ titre.reference_titre }}/exemplaire/{{ ex.id_exemplaire }}/emplacement-local"
+              class="rangement-form-inline">
+          <label>🗄️ Local :
+            <select name="emplacement_id">
+              <option value="">— aucun —</option>
+              {% for e in emplacements_locaux %}
+              <option value="{{ e.id_emplacement }}"
+                      {% if ex.emplacement_local_id == e.id_emplacement %}selected{% endif %}>
+                {{ e.nom }}
+              </option>
+              {% endfor %}
+              {% if ex.emplacement_local_id and ex.emplacement_local_actif == False %}
+              <option value="{{ ex.emplacement_local_id }}" selected>{{ ex.emplacement_local_nom }} (archivé)</option>
+              {% endif %}
+            </select>
+          </label>
+          <button type="submit" class="bouton-filtrer">Enregistrer</button>
+        </form>
+      </div>
     </section>
   {% endfor %}
 {% endif %}

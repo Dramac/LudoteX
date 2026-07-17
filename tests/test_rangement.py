@@ -834,3 +834,154 @@ def test_retour_benevole_toujours_visible_malgre_visibilite_admin(client, monkey
     r = client.post("/pret/001/rendre")
     assert "Où ranger le jeu" in r.text
     assert "Étagère 2" in r.text
+
+
+# ===========================================================================
+# Étape 6 — édition à l'unité sur la fiche admin (/admin/jeu/CATAN)
+# ===========================================================================
+def _id_emplacement(nom):
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        return [
+            l for l in services.lister_emplacements_rangement(conn) if l["nom"] == nom
+        ][0]["id_emplacement"]
+    finally:
+        conn.close()
+
+
+def test_fiche_admin_affiche_les_deux_formulaires_independants(client):
+    _connecter(client)
+    r = client.get("/admin/jeu/CATAN")
+    assert r.status_code == 200
+    assert "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement" in r.text
+    assert "/admin/jeu/CATAN/exemplaire/001/emplacement-local" in r.text
+    for nom in ["Totem", "Puzzle", "P&#39;tits potes", "valise 1", "valise 2"]:
+        assert nom in r.text
+
+
+def test_fiche_admin_edite_emplacement_evenement(client):
+    _connecter(client)
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "Étagère 7"},
+    )
+    assert r.status_code == 200
+    assert 'value="Étagère 7"' in r.text
+
+
+def test_fiche_admin_evenement_vide_retire(client):
+    _connecter(client)
+    client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "Étagère 7"},
+    )
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "   "},
+    )
+    assert r.status_code == 200
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_evenement FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()
+        assert row["emplacement_evenement"] is None
+    finally:
+        conn.close()
+
+
+def test_fiche_admin_edite_emplacement_local(client):
+    _connecter(client)
+    id_totem = _id_emplacement("Totem")
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": str(id_totem)},
+    )
+    assert r.status_code == 200
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()
+        assert row["emplacement_local_id"] == id_totem
+    finally:
+        conn.close()
+
+
+def test_fiche_admin_local_aucun_retire(client):
+    _connecter(client)
+    id_totem = _id_emplacement("Totem")
+    client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": str(id_totem)},
+    )
+    client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": ""},
+    )
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()
+        assert row["emplacement_local_id"] is None
+    finally:
+        conn.close()
+
+
+def test_fiche_admin_local_id_invalide_ignore_silencieusement(client):
+    _connecter(client)
+    r = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": "999999"},
+    )
+    assert r.status_code == 200  # pas d'erreur brute
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT emplacement_local_id FROM exemplaires WHERE id_exemplaire = '001'"
+        ).fetchone()
+        assert row["emplacement_local_id"] is None
+    finally:
+        conn.close()
+
+
+def test_fiche_admin_emplacement_local_archive_reste_affiche(client):
+    _connecter(client)
+    id_totem = _id_emplacement("Totem")
+    client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": str(id_totem)},
+    )
+    from app import db as _db
+    conn = _db.get_connection()
+    try:
+        services.archiver_emplacement_rangement(conn, id_totem)
+    finally:
+        conn.close()
+
+    r = client.get("/admin/jeu/CATAN")
+    assert r.status_code == 200
+    assert "Totem (archivé)" in r.text
+    assert f'value="{id_totem}" selected' in r.text
+
+
+def test_fiche_admin_edition_protegee_par_garde_admin(client):
+    r1 = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-evenement",
+        data={"emplacement_texte": "Étagère 7"},
+        follow_redirects=False,
+    )
+    assert r1.status_code == 303 and r1.headers["location"] == "/admin"
+
+    r2 = client.post(
+        "/admin/jeu/CATAN/exemplaire/001/emplacement-local",
+        data={"emplacement_id": "1"},
+        follow_redirects=False,
+    )
+    assert r2.status_code == 303 and r2.headers["location"] == "/admin"
