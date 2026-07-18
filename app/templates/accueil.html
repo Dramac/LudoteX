@@ -14,7 +14,9 @@
 
   <nav class="accueil-outils">
     <a class="bouton bouton-principal" href="/catalogue">Catalogue des jeux</a>
+    {% if module_visible(request, "tournois") %}
     <a class="bouton bouton-secondaire" href="/tournois">Tournois</a>
+    {% endif %}
   </nav>
 </section>
 

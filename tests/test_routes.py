@@ -211,6 +211,64 @@ def test_accueil_tournoi_imminent(client):
     assert "Tournoi lointain" not in r.text
 
 
+def test_accueil_bouton_tournois_garde_par_module(client):
+    """
+    Fiche A3 : le bouton « Tournois » de l'accueil doit disparaître si le
+    module est désactivé — comme le fait déjà le pied de page/menu. Sans quoi
+    la promesse de /admin/fonctionnalites n'est pas tenue sur la page la plus
+    visible du site.
+    """
+    from app import db, modules
+
+    conn = db.get_connection()
+    modules.ecrire_etat_module(conn, "tournois", "desactive")
+    conn.close()
+
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "/tournois" not in r.text
+    assert "/tournoi/" not in r.text
+
+
+def test_accueil_bouton_tournois_present_module_actif(client):
+    # Non-régression : module à l'état par défaut ("tous"), le bouton reste.
+    r = client.get("/")
+    assert 'href="/tournois"' in r.text
+
+
+def test_accueil_planning_non_calcule_si_module_tournois_desactive(client):
+    """
+    Fiche A3 : le vrai risque n'est pas seulement le bouton — c'est que
+    l'accueil calculait ET affichait le planning/les tournois imminents même
+    module désactivé, ce qui aurait proposé un planning cliquable vers une
+    rubrique masquée.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app import db, modules
+    from app.tournoi import db as tdb
+    from app.tournoi import services as ts
+
+    conn_t = tdb.get_connection()
+    try:
+        proche = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+        idp = ts.creer_tournoi(conn_t, "Tournoi masqué", date_heure=proche)
+        ts.changer_etat(conn_t, idp, "inscriptions")
+        conn_t.commit()
+    finally:
+        conn_t.close()
+
+    conn = db.get_connection()
+    modules.ecrire_etat_module(conn, "tournois", "desactive")
+    conn.close()
+
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Tournoi masqué" not in r.text
+    assert "Ça commence bientôt" not in r.text
+    assert "Planning des tournois" not in r.text
+
+
 def test_menu_benevole_conditionnel(client, monkeypatch):
     monkeypatch.setenv("PRET_TOKEN", "jeton-menu-xyz")
     # Visiteur non activé : le menu PUBLIC est affiché (Catalogue visible, pas de Scanner).

@@ -18,6 +18,7 @@ from fastapi import APIRouter, Request
 
 from app import services
 from app.db import get_connection
+from app.modules import module_visible
 from app.templating import templates
 from app.tournoi import services as tournoi_services
 from app.tournoi.db import get_connection as get_tournoi_connection
@@ -46,20 +47,27 @@ def accueil(request: Request):
 
     # Planning sur 2 jours (jour de l'événement + lendemain), si une date est
     # réglée en admin. La frise n'apparaît que si elle contient des tournois.
+    # Fiche A3 : si le module tournois est désactivé (ou réservé aux
+    # bénévoles, pour un visiteur non activé), on ne calcule même pas ces
+    # données — sinon l'accueil afficherait un planning cliquable vers un
+    # module que l'administrateur vient de masquer.
     jours = []
-    if date_evenement:
-        try:
-            jour1 = datetime.strptime(date_evenement, "%Y-%m-%d").date()
-            jours = [jour1, jour1 + timedelta(days=1)]
-        except ValueError:
-            jours = []
+    imminents = []
+    planning = []
+    if module_visible(request, "tournois"):
+        if date_evenement:
+            try:
+                jour1 = datetime.strptime(date_evenement, "%Y-%m-%d").date()
+                jours = [jour1, jour1 + timedelta(days=1)]
+            except ValueError:
+                jours = []
 
-    conn_t = get_tournoi_connection()
-    try:
-        imminents = tournoi_services.tournois_imminents(conn_t)
-        planning = tournoi_services.planning(conn_t, jours) if jours else []
-    finally:
-        conn_t.close()
+        conn_t = get_tournoi_connection()
+        try:
+            imminents = tournoi_services.tournois_imminents(conn_t)
+            planning = tournoi_services.planning(conn_t, jours) if jours else []
+        finally:
+            conn_t.close()
 
     planning_non_vide = any(not j["vide"] for j in planning)
     return templates.TemplateResponse(
