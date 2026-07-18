@@ -262,7 +262,8 @@ def max_joueurs(conn: sqlite3.Connection) -> int:
 
 def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
                      q: str | None = None, age: int | None = None,
-                     joueurs: int | None = None) -> list[dict]:
+                     joueurs: int | None = None,
+                     dispo_seulement: bool = False) -> list[dict]:
     """
     Construit le catalogue AU NIVEAU TITRE, avec disponibilité et filtres.
 
@@ -284,9 +285,16 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
     naturellement exclus quand le filtre correspondant est actif (comparaison
     avec NULL = faux).
 
+    `dispo_seulement` filtre sur un AGRÉGAT (`disponible`), pas une colonne de
+    `titres` : il ne peut donc pas rejoindre les autres conditions dans le
+    `WHERE` (évalué avant le `GROUP BY`) et va dans un `HAVING`, appliqué après
+    agrégation.
+
     Args:
         conn: connexion SQLite ouverte.
         categorie, q, age, joueurs: filtres optionnels (voir ci-dessus).
+        dispo_seulement: si True, ne garde que les titres ayant au moins un
+            exemplaire disponible.
 
     Returns:
         Liste de dicts {reference_titre, nom, categorie, id_repr, total,
@@ -320,7 +328,10 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         params.extend([joueurs, joueurs])
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
-    sql += " GROUP BY t.reference_titre, t.nom, t.categorie ORDER BY t.nom COLLATE NOCASE"
+    sql += " GROUP BY t.reference_titre, t.nom, t.categorie"
+    if dispo_seulement:
+        sql += " HAVING SUM(CASE WHEN p.id_pret IS NULL THEN 1 ELSE 0 END) > 0"
+    sql += " ORDER BY t.nom COLLATE NOCASE"
     return [dict(r) for r in conn.execute(sql, params)]
 
 

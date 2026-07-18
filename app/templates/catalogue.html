@@ -45,6 +45,11 @@
         </select>
       </div>
 
+      <label class="case">
+        <input type="checkbox" name="dispo" value="1" {% if dispo %}checked{% endif %}>
+        Afficher uniquement les jeux disponibles
+      </label>
+
       <div class="recherche-actions">
         <button type="submit" class="bouton-filtrer">Filtrer</button>
         {% if filtres_actifs %}<a class="lien" href="/catalogue">Réinitialiser</a>{% endif %}

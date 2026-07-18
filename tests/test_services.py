@@ -51,6 +51,40 @@ def test_rendre_sans_pret_ne_bloque_pas(conn):
     assert services.rendre(conn, "001") == {"deja_disponible": True}
 
 
+def test_lister_catalogue_dispo_seulement_masque_titre_tout_sorti(conn):
+    # A4 : un titre dont tous les exemplaires sont sortis disparaît quand le
+    # filtre est actif, et reste présent sinon.
+    conn.execute(
+        "INSERT INTO titres (reference_titre, nom, categorie) "
+        "VALUES ('7WONDERS', '7 Wonders', 'Familial')"
+    )
+    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('010', '7WONDERS')")
+    conn.commit()
+    services.preter(conn, "010")
+
+    sans_filtre = {j["nom"] for j in services.lister_catalogue(conn)}
+    assert "7 Wonders" in sans_filtre
+
+    avec_filtre = {j["nom"] for j in services.lister_catalogue(conn, dispo_seulement=True)}
+    assert "7 Wonders" not in avec_filtre
+    assert "Catan" in avec_filtre  # les 3 exemplaires de Catan restent dispo
+
+
+def test_lister_catalogue_dispo_seulement_se_combine_avec_categorie(conn):
+    # A4 : le filtre dispo se combine avec les autres filtres (ici catégorie).
+    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    conn.execute(
+        "INSERT INTO titres (reference_titre, nom, categorie) "
+        "VALUES ('7WONDERS', '7 Wonders', 'Familial')"
+    )
+    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('010', '7WONDERS')")
+    conn.commit()
+    services.preter(conn, "010")
+
+    jeux = services.lister_catalogue(conn, categorie="Familial", dispo_seulement=True)
+    assert {j["nom"] for j in jeux} == {"Catan"}
+
+
 def test_repreter_clot_lancien_et_rouvre(conn):
     services.preter(conn, "001")              # n°1
     res = services.repreter(conn, "001")      # clôt n°1, en rouvre un
