@@ -61,18 +61,17 @@ def catalogue_xlsx(entetes: list[str], lignes: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-def construire_xlsx(data: dict, periode_txt: str, avec_pochette: bool = True) -> bytes:
+def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     """
     Construit un classeur Excel à trois feuilles : Synthèse, Palmarès, Détail.
+
+    La feuille « Détail » ne porte PAS de colonne « numéro de pochette » : ce
+    détail couvre une période, donc essentiellement des prêts clos, dont le
+    numéro est effacé à la clôture (fiche D5). La colonne serait vide.
 
     Args:
         data: dict de services.collecter_stats.
         periode_txt: libellé lisible de la période (ou « toutes périodes »).
-        avec_pochette: inclut la colonne du numéro de pochette dans la feuille
-            « Détail » si True. Le numéro de pochette est une information
-            sensible (voir CLAUDE.md, fiche D5) réservée aux bénévoles/admin ;
-            c'est à l'appelant (routes/stats.py) de déterminer si le
-            demandeur y a droit — ce module ne lit jamais la requête HTTP.
 
     Returns:
         Le contenu binaire du fichier .xlsx.
@@ -126,8 +125,6 @@ def construire_xlsx(data: dict, periode_txt: str, avec_pochette: bool = True) ->
     # --- Feuille 3 : Détail des prêts ---
     wd = wb.create_sheet("Détail")
     entetes_detail = ["Jeu", "Exemplaire", "Sortie", "Retour", "Durée"]
-    if avec_pochette:
-        entetes_detail.append("N° emplacement")
     for col, entete in enumerate(entetes_detail):
         c = wd.cell(row=1, column=1 + col, value=entete)
         c.font = gras
@@ -137,8 +134,6 @@ def construire_xlsx(data: dict, periode_txt: str, avec_pochette: bool = True) ->
         wd.cell(row=i, column=3, value=p["sortie_locale"])
         wd.cell(row=i, column=4, value=p["retour_local"] or "en cours")
         wd.cell(row=i, column=5, value=p["duree_txt"])
-        if avec_pochette:
-            wd.cell(row=i, column=6, value=p["numero_pochette"])
 
     # Largeurs de colonnes lisibles.
     for feuille, largeurs in ((ws, [24, 14]), (wp, [40, 10, 12, 12]),
@@ -156,21 +151,18 @@ SECTIONS_PDF = ("synthese", "plus", "moins", "detail")
 
 
 def construire_pdf(data: dict, periode_txt: str,
-                   sections: "set[str] | None" = None,
-                   avec_pochette: bool = True) -> bytes:
+                   sections: "set[str] | None" = None) -> bytes:
     """
     Construit un PDF de bilan, avec sections au choix.
+
+    Comme pour le classeur Excel, le tableau « Détail des prêts » ne porte pas
+    de colonne « numéro de pochette » (voir `construire_xlsx`).
 
     Args:
         data: dict de services.collecter_stats.
         periode_txt: libellé lisible de la période.
         sections: ensemble des sections à inclure parmi SECTIONS_PDF
             ("synthese", "plus", "moins", "detail"). None = toutes.
-        avec_pochette: inclut la colonne du numéro de pochette dans le
-            tableau « Détail des prêts » si True. Réservé aux
-            bénévoles/admin (voir CLAUDE.md, fiche D5) — c'est à l'appelant
-            (routes/stats.py) de trancher, ce module ne lit jamais la
-            requête HTTP.
 
     Returns:
         Le contenu binaire du fichier .pdf.
@@ -240,26 +232,14 @@ def construire_pdf(data: dict, periode_txt: str,
     if "detail" in sections:
         elements.append(Paragraph(f"Détail des prêts ({len(data['prets'])})",
                                   styles["Heading2"]))
-        if avec_pochette:
-            lignes = [[p["nom"], p["id_exemplaire"], p["sortie_locale"],
-                       p["retour_local"] or "en cours", p["duree_txt"],
-                       str(p["numero_pochette"])]
-                      for p in data["prets"]]
-        else:
-            lignes = [[p["nom"], p["id_exemplaire"], p["sortie_locale"],
-                       p["retour_local"] or "en cours", p["duree_txt"]]
-                      for p in data["prets"]]
+        lignes = [[p["nom"], p["id_exemplaire"], p["sortie_locale"],
+                   p["retour_local"] or "en cours", p["duree_txt"]]
+                  for p in data["prets"]]
         if lignes:
-            if avec_pochette:
-                elements.append(tableau(
-                    ["Jeu", "Ex.", "Sortie", "Retour", "Durée", "Empl."],
-                    lignes,
-                    [5.5 * cm, 1.8 * cm, 3 * cm, 3 * cm, 2 * cm, 1.4 * cm]))
-            else:
-                elements.append(tableau(
-                    ["Jeu", "Ex.", "Sortie", "Retour", "Durée"],
-                    lignes,
-                    [6.5 * cm, 2.2 * cm, 3.3 * cm, 3.3 * cm, 2.2 * cm]))
+            elements.append(tableau(
+                ["Jeu", "Ex.", "Sortie", "Retour", "Durée"],
+                lignes,
+                [6.5 * cm, 2.2 * cm, 3.3 * cm, 3.3 * cm, 2.2 * cm]))
         else:
             elements.append(Paragraph("Aucun prêt sur la période.", styles["Normal"]))
 
