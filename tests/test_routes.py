@@ -803,6 +803,17 @@ def test_admin_aide_contient_les_quatre_sections(client, monkeypatch):
         assert interdit not in r.text.lower()
 
 
+def test_admin_dashboard_lien_vers_aide(client, monkeypatch):
+    # Fiche C1 point 2 : entrée « ❓ Aide » dans le groupe Configuration du
+    # tableau de bord (convention de libellé de la fiche B2).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.get("/admin")
+    assert r.status_code == 200
+    assert 'href="/admin/aide"' in r.text
+    assert "❓" in r.text
+
+
 def test_formation_mode_inactif_par_defaut(client, monkeypatch):
     # Sans MODE_FORMATION : aucun bandeau, aucun filigrane, aucun bouton reset,
     # aucun lien (FORMATION_URL absente), route de reset fermée (404).
