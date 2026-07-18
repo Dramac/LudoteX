@@ -51,8 +51,8 @@
     </table>
 
     <p style="margin-top:1.2rem">
-      <button type="submit" id="btn-enregistrer" class="bouton"
-              style="background:#9e9e9e" disabled>Enregistrer</button>
+      <button type="submit" id="btn-enregistrer" class="bouton bouton-principal"
+              disabled>Enregistrer</button>
       &nbsp;
       <a class="lien" href="/admin">Retour au tableau de bord</a>
     </p>
@@ -64,8 +64,6 @@
     var btn = document.getElementById('btn-enregistrer');
     document.querySelectorAll('input[type="radio"]').forEach(function (r) {
       r.addEventListener('change', function () {
-        btn.style.background = '';
-        btn.classList.add('bouton-principal');
         btn.disabled = false;
       });
     });
