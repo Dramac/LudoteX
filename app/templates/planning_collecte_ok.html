@@ -4,27 +4,29 @@
 {% block contenu %}
 <section class="carte">
   <h1>Merci {{ benevole.nom if benevole else '' }} !</h1>
-  <p>Vos disponibilités ont bien été enregistrées
-    {% if ev %}pour « {{ ev.nom }} »{% endif %}.</p>
-
-  <p class="resultat resultat-ok">
-    Votre code pour revenir modifier votre réponse :
-    <strong class="pl-code">{{ code }}</strong>
-  </p>
   {% if code %}
+  <p class="code-personnel">{{ code }}</p>
   <p>
     <button type="button" class="bouton-filtrer" onclick="copierCode()">Copier le code</button>
     <span id="copie-ok" class="copie-ok" hidden>copié ✓</span>
   </p>
   {% endif %}
-  <p class="stats-note">Conservez ce code. Il sert aussi à consulter votre
-    planning une fois publié.</p>
+  <p class="resultat-consigne">
+    Vos disponibilités ont bien été enregistrées{% if ev %} pour
+    « {{ ev.nom }} »{% endif %}.{% if code %} Ce code sert à revenir modifier
+    votre réponse, et à consulter votre planning une fois publié.{% endif %}
+  </p>
+  {% if code %}
+  <p class="stats-note">Et si je le perds ? Remplissez à nouveau le
+    formulaire de disponibilités : une nouvelle réponse et un nouveau code
+    seront créés.</p>
 
   <p>
     <a class="lien" href="/planning/collecte/{{ ev.id_evenement }}?code={{ code }}">✏️ Modifier ma réponse</a>
     &nbsp;·&nbsp;
     <a class="lien" href="/planning/mon?code={{ code }}">📋 Voir mon planning</a>
   </p>
+  {% endif %}
 </section>
 
 {% if code %}

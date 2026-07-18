@@ -9,7 +9,7 @@
 
 <section class="carte">
   <h1>Votre code de désinscription</h1>
-  <p class="pochette-num">{{ code }}</p>
+  <p class="code-personnel">{{ code }}</p>
   <p>
     <button type="button" class="bouton-filtrer" onclick="copierCode()">Copier le code</button>
     <span id="copie-ok" class="copie-ok" hidden>copié ✓</span>
@@ -18,6 +18,10 @@
     Notez ce code. Il est le seul moyen de vous désinscrire (aucune adresse
     e-mail n'a été conservée).
   </p>
+  <p class="stats-note">Et si je le perds ? Demandez à un bénévole présent
+    de vous retirer de la liste des inscrits, sur l'écran de gestion du
+    tournoi — vous pourrez alors vous réinscrire.</p>
+
   {% if t.date_heure %}
     <a class="bouton bouton-secondaire" href="/tournoi/{{ t.id_tournoi }}/agenda.ics">
       📅 Ajouter à mon agenda</a>

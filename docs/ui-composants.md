@@ -226,3 +226,28 @@ Le composant `.aide-inline` lui-même (accordéon `<details>` d'aide
 contextuelle, introduit par S4) n'est pas décrit dans ce document — voir
 `app/static/css/style.css` et la fiche S4 de `docs/idees-ux.md`. Cette
 section ne porte que sur le **libellé des liens**.
+
+## 13. Code personnel — `.code-personnel`
+
+```html
+<p class="code-personnel">{{ code }}</p>
+```
+
+Ajouté par la fiche **D4** (`docs/audit-ux-2026-07-18.md`). Pour un code que
+la personne doit noter ou recopier à la main (code de désinscription tournoi,
+code de modification planning) : chasse fixe (`ui-monospace`) + espacement des
+caractères, qui lève l'ambiguïté 0/O et 1/l — exactement ce que demande un
+code recopié à la main. Remplace deux traitements qui n'avaient aucun rapport
+pour un même besoin : `.pochette-num` était **détournée** côté tournoi (cette
+classe désigne officiellement le numéro de pochette depuis la fiche D3,
+voir `docs/vocabulaire.md` — un détournement qui aurait piégé quiconque
+retoucherait un jour le style des numéros de pochette) ; `.pl-code`, plus
+petite, faisait déjà l'essentiel du travail côté planning mais son préfixe
+`pl-` la réservait au seul module planning. Structure commune des deux pages
+qui l'utilisent : titre → code → bouton copier → phrase disant à quoi il sert
+→ « et si je le perds ? » → liens d'action.
+
+Composant distinct de `.pochette-num`, qui reste réservée à son objet
+d'origine (numéro de pochette sur `/pret`) — et de `.rangement-valeur`, pensée
+pour un texte parfois long (nom d'étagère) plutôt qu'un code court à chasse
+fixe.

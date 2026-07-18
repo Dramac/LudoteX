@@ -573,6 +573,23 @@ def test_flux_collecte_publique(client):
     assert sans_code.status_code == 200
     assert "copierCode" not in sans_code.text
 
+    # Fiche D4 : la confirmation utilise désormais .code-personnel (partagée
+    # avec la confirmation d'inscription tournoi), plus une phrase de recours
+    # en cas de perte. Recours VÉRIFIÉ dans le code avant d'être écrit à
+    # l'écran : planning/services.py::supprimer_benevole existe mais n'est
+    # exposé par AUCUNE route — impossible de promettre « contactez
+    # l'organisateur pour vous retirer ». En revanche, enregistrer_souhaits()
+    # crée une NOUVELLE réponse (nouveau code) quand code_modif ne correspond
+    # à rien : renvoyer le formulaire est un recours réel, c'est celui-ci qui
+    # est affiché.
+    assert 'class="code-personnel"' in merci.text
+    assert 'class="pl-code"' not in merci.text
+    assert "Et si je le perds" in merci.text
+    assert "contactez l'organisateur" not in merci.text.lower()
+    # Le filet de sécurité (sans code) ne doit pas promettre un recours pour
+    # un code qui n'existe pas.
+    assert "Et si je le perds" not in sans_code.text
+
 
 def test_route_aide(client):
     r = client.get("/planning/aide")

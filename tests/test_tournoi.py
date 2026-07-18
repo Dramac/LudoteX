@@ -975,6 +975,26 @@ def test_inscription_bouton_copier_code(client):
     assert code in ok.text
 
 
+def test_d4_code_desinscription_utilise_code_personnel(client):
+    """
+    Fiche D4 : le code de désinscription détournait .pochette-num (classe
+    officiellement réservée au numéro de pochette depuis D3). Il utilise
+    désormais .code-personnel, partagée avec la confirmation planning ; la
+    page explique aussi le recours en cas de perte (vérifié dans le code :
+    services.supprimer_participant est exposé sur l'écran de gestion
+    bénévole, tournoi_gerer.html).
+    """
+    r = client.post("/tournoi/nouveau", data={"nom": "T4", "inscription_en_ligne": "on"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    ok = client.post(f"/tournoi/{tid}/inscription", data={"pseudo": "Alice"})
+    assert ok.status_code == 200
+    assert 'class="code-personnel"' in ok.text
+    assert 'class="pochette-num"' not in ok.text
+    assert "Et si je le perds" in ok.text
+
+
 def test_gerer_lancement_grise_champs_inapplicables(client):
     # M5 (docs/idees-ux.md) : le formulaire de lancement grise (disabled +
     # opacity) le nombre de rondes et le BO3 selon le mode choisi, en plus de
