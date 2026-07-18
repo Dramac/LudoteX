@@ -145,6 +145,27 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 
 /* --- Accessibilité & micro-interactions (tout le site) --- */
 
+/* Lien d'évitement (E1, docs/audit-ux-2026-07-18.md) : premier élément du
+   document, hors écran par défaut, ramené visible au focus clavier — motif
+   standard, pour ne pas obliger à traverser le bandeau (menu + jusqu'à deux
+   bandeaux formation/rangement) à chaque page. */
+.saut-contenu {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  z-index: 1000;
+  background: #fff;
+  color: var(--texte);
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 2px solid #7e57c2;
+  text-decoration: none;
+  font-weight: 600;
+}
+.saut-contenu:focus {
+  top: 8px;
+}
+
 /* Focus clavier visible et homogène (sans gêner le clic souris). */
 a:focus-visible,
 button:focus-visible,
@@ -812,4 +833,5 @@ body.mode-formation::after {
   .rangement-bandeau-global { display: none; }
   body.mode-formation::after { display: none; }
   .bouton-haut { display: none; }
+  .saut-contenu { display: none; }
 }
