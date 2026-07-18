@@ -6,6 +6,21 @@
   <h1>Accès bénévole</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
 
+  {# Fiche C1 point 3 : écran à risque — réinitialiser déconnecte TOUS les
+     appareils déjà activés, ce que le confirm() dit au moment du clic mais
+     que rien n'expliquait avant. #}
+  <details class="aide-inline">
+    <summary>❓ Quand faut-il réinitialiser ?</summary>
+    <p>Pour dépanner <strong>une seule personne</strong>, ne réinitialisez
+       pas : renvoyez-lui simplement le lien d'activation ci-dessus, il suffit
+       qu'elle l'ouvre sur son téléphone.</p>
+    <p>Réinitialiser fabrique un lien entièrement nouveau et
+       <strong>déconnecte tous les autres téléphones</strong>, qui devront
+       tous rouvrir le nouveau lien. À réserver à une fin de validité
+       dépassée, à une fuite du lien, ou à la rotation annuelle.</p>
+    <p><a class="lien" href="/admin/aide#probleme-jeton">Voir l'aide complète — accès bénévole</a></p>
+  </details>
+
   {% if jeton %}
     <p>Voici le <strong>lien d'activation</strong> à diffuser aux bénévoles. En
        l'ouvrant sur leur téléphone, leur appareil est autorisé jusqu'à la fin de

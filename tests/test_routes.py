@@ -814,6 +814,32 @@ def test_admin_dashboard_lien_vers_aide(client, monkeypatch):
     assert "❓" in r.text
 
 
+def test_ecrans_a_risque_portent_un_bloc_aide_inline(client, monkeypatch):
+    # Fiche C1 point 3 : les 4 écrans dont une action est irréversible ou
+    # lourde de conséquences portent un bloc .aide-inline renvoyant vers
+    # l'ancre correspondante de /admin/aide.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    aide = client.get("/admin/aide")
+    assert aide.status_code == 200
+
+    ecrans = {
+        "/admin/donnees": "probleme-restauration",
+        "/admin/jeton": "probleme-jeton",
+        "/admin/fonctionnalites": "probleme-module",
+        "/planning/admin": "avant-planning",
+    }
+    for url, ancre in ecrans.items():
+        r = client.get(url)
+        assert r.status_code == 200, url
+        assert 'class="aide-inline"' in r.text, url
+        assert f'href="/admin/aide#{ancre}"' in r.text, url
+        # L'ancre visée doit EXISTER dans la page d'aide : garde-fou contre un
+        # lien mort si les titres de /admin/aide sont réorganisés plus tard.
+        assert f'id="{ancre}"' in aide.text, ancre
+
+
 def test_formation_mode_inactif_par_defaut(client, monkeypatch):
     # Sans MODE_FORMATION : aucun bandeau, aucun filigrane, aucun bouton reset,
     # aucun lien (FORMATION_URL absente), route de reset fermée (404).

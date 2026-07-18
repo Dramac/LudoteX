@@ -6,6 +6,21 @@
   <h1>Données &amp; sauvegarde</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
 
+  {# Fiche C1 point 3 : écran à risque (un import écrase, une restauration
+     remplace tout). Deux ou trois phrases sur place, le détail dans la page
+     d'aide — dont les ancres sont la cible de ces liens. #}
+  <details class="aide-inline">
+    <summary>❓ Avant d'importer ou de restaurer</summary>
+    <p>Un <strong>import</strong> ne supprime aucun jeu, mais il écrase les
+       fiches dont le code figure dans le fichier — colonnes vides comprises.
+       Réimportez un fichier complet plutôt qu'un fichier partiel.</p>
+    <p>Une <strong>restauration</strong> remplace la totalité des données par
+       le contenu de l'archive. Le réflexe qui évite tout :
+       <strong>téléchargez d'abord une sauvegarde</strong> de l'état actuel,
+       elle sera votre retour en arrière.</p>
+    <p><a class="lien" href="/admin/aide#probleme-restauration">Voir l'aide complète — sauvegardes et restauration</a></p>
+  </details>
+
   {% if message %}
     <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
       {{ message[1] }}

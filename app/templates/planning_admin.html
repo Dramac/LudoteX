@@ -38,6 +38,19 @@
   {% else %}
     <p>Aucun planning pour l'instant.</p>
   {% endif %}
+  {# Fiche C1 point 3 : écran à risque — l'ordre des étapes n'est écrit nulle
+     part au moment où l'on clique, et la purge est irréversible. #}
+  <details class="aide-inline">
+    <summary>❓ Dans quel ordre procéder ?</summary>
+    <p>Créer l'édition et sa trame (postes et créneaux), partager le lien de
+       collecte, puis <strong>Fermer le questionnaire</strong>,
+       <strong>Générer le planning</strong>, ajuster les cases à la main, et
+       enfin <strong>publier</strong>.</p>
+    <p>Le remplissage automatique laisse volontairement des trous plutôt que
+       de placer quelqu'un contre ses souhaits : ces cases-là sont à vous.</p>
+    <p><a class="lien" href="/admin/aide#avant-planning">Voir l'aide complète — préparer le planning</a></p>
+  </details>
+
   <p><a class="lien" href="/admin">← Retour à l'administration</a>
     &nbsp;·&nbsp; <a class="lien" href="/planning/aide">❓ Aide</a></p>
 </section>
