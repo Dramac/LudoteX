@@ -89,14 +89,29 @@ async def gestion_http(request, exc: StarletteHTTPException):
     """
     Gestionnaire global des erreurs HTTP.
 
-    Cas spécial : un 403 (levé par `auth.exiger_jeton` quand l'appareil n'a pas
-    activé l'accès bénévole) renvoie une PAGE HTML conviviale plutôt qu'une
-    erreur JSON brute. Tous les autres codes retombent sur le comportement par
-    défaut de FastAPI.
+    Deux cas renvoient une PAGE HTML conviviale plutôt qu'une erreur JSON
+    brute ; tous les autres codes retombent sur le comportement par défaut de
+    FastAPI.
+
+    - 403 : levé par `auth.exiger_jeton` quand l'appareil n'a pas activé
+      l'accès bénévole, ou par `modules.garde_module` sur un module réservé.
+    - 404 : adresse ne correspondant à AUCUNE route (faute de frappe, vieux
+      lien, slash final). C'était le seul endroit du site où l'utilisateur
+      voyait sortir de la technique — `{"detail": "Not Found"}` sur fond
+      blanc, sans aucun lien pour repartir.
+
+    Les 404 MÉTIER ne passent pas ici : « exemplaire inconnu », « tournoi
+    inconnu » et « module désactivé » retournent leur propre gabarit avec
+    `status_code=404` au lieu de lever une exception. Elles gardent donc leur
+    message spécifique, plus utile que cette page générique.
     """
     if exc.status_code == 403:
         return templates.TemplateResponse(
             request, "acces_refuse.html", {"motif": "reserve"}, status_code=403
+        )
+    if exc.status_code == 404:
+        return templates.TemplateResponse(
+            request, "introuvable.html", {}, status_code=404
         )
     return await http_exception_handler(request, exc)
 
