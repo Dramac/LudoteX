@@ -16,7 +16,7 @@ Comme partout dans le projet, AUCUNE logique métier ici : on délègue à
 `app.services` (prêt) et `app.tournoi.services` (tournois), on assemble, on rend.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 
@@ -38,6 +38,35 @@ NB_MOUVEMENTS = 10
 # défaut si rien n'est encore renseigné.
 CLE_TITRE = "live_titre"
 TITRE_DEFAUT = NOM_ASSOCIATION
+
+# Annonce libre affichée en bandeau sur l'écran de salle (idée 5.2). Une seule
+# annonce à la fois, pas d'historique. `CLE_ANNONCE_EXPIRE` est optionnelle :
+# horodatage UTC ISO au-delà duquel l'annonce s'auto-masque (calculé à la
+# volée, jamais purgé en base — voir `annonce_active`). Sans date, l'annonce
+# reste affichée indéfiniment jusqu'à effacement manuel en admin.
+CLE_ANNONCE = "live_annonce"
+CLE_ANNONCE_EXPIRE = "live_annonce_expire"
+
+
+def annonce_active(conn) -> str | None:
+    """
+    Annonce actuellement affichable sur /live, ou None si aucune n'est
+    configurée OU si sa durée d'affichage est dépassée. Ne modifie jamais la
+    base (l'auto-masquage est un simple calcul de lecture) : le texte reste
+    tel quel en admin tant que personne ne le change, pour qu'une annonce
+    expirée reste rappelable/modifiable sans avoir à la retaper.
+    """
+    annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
+    if not annonce:
+        return None
+    expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
+    if expire_iso:
+        try:
+            if datetime.now(timezone.utc) > datetime.fromisoformat(expire_iso):
+                return None
+        except ValueError:
+            pass  # valeur corrompue : jamais bloquant, on affiche plutôt que planter
+    return annonce
 
 
 def _heure_locale(date_heure_utc: str | None) -> str:
@@ -62,6 +91,7 @@ def _collecter_donnees() -> dict:
         total, disponibles = services.compter_exemplaires_disponibles(conn)
         mouvements = services.derniers_mouvements(conn, NB_MOUVEMENTS)
         titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
+        annonce = annonce_active(conn)
     finally:
         conn.close()
 
@@ -93,7 +123,7 @@ def _collecter_donnees() -> dict:
         for t in imminents
     ]
 
-    return {
+    resultat = {
         "titre": titre,
         "jeux": {"total": total, "disponibles": disponibles,
                  "sortis": total - disponibles},
@@ -111,6 +141,11 @@ def _collecter_donnees() -> dict:
         ],
         "horodatage": datetime.now(FUSEAU_LOCAL).strftime("%H:%M"),
     }
+    # Jamais de champ "annonce" quand il n'y en a pas (ne jamais afficher une
+    # valeur absente, cf. rangement) : le bandeau de /live se fie à sa présence.
+    if annonce:
+        resultat["annonce"] = annonce
+    return resultat
 
 
 @router.get("/live")
