@@ -483,6 +483,20 @@ def test_confirmation_purge_reformulee_m9(client):
     assert "(RGPD)" not in page
 
 
+def test_aide_inline_grille_s4(client):
+    # S4 (docs/idees-ux.md) : la grille (couleurs grisé/trou/partiel/complet/
+    # surcharge) n'expliquait ses codes couleur nulle part -- aide contextuelle
+    # repliée ajoutée à la place de la simple note d'interaction.
+    _login_admin(client)
+    r = client.post("/planning/admin/demo", follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    page = client.get(f"/planning/admin/{ev}").text
+    assert 'class="aide-inline"' in page
+    assert "Comment lire et modifier la grille ?" in page
+    assert "trop de monde" in page
+    assert 'href="/planning/aide"' in page
+
+
 def test_flux_demo_publie_et_exports(client):
     _login_admin(client)
     # Crée la démo (redirige vers la gestion de l'événement).
