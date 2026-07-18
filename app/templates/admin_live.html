@@ -22,8 +22,45 @@
       <input type="text" id="titre" name="titre" maxlength="80"
              value="{{ titre or '' }}" placeholder="{{ titre_defaut }}">
     </div>
+
+    <div class="champ">
+      <label for="annonce">Annonce affichée en bandeau sur /live</label>
+      <textarea id="annonce" name="annonce" maxlength="200" rows="2"
+                placeholder="Ex. : Tombola à 15 h, stand accueil.">{{ annonce or '' }}</textarea>
+      <p class="stats-note">200 caractères maximum. Laissez vide pour ne rien
+        afficher.</p>
+    </div>
+
+    <div class="champ">
+      <label for="annonce_duree">Durée d'affichage (minutes)</label>
+      <input type="number" id="annonce_duree" name="annonce_duree" min="1"
+             value="{{ annonce_duree or '' }}" placeholder="illimitée">
+      <p class="stats-note">Optionnel. Passé ce délai, le bandeau disparaît
+        tout seul de l'écran de salle. Laissez vide pour un affichage sans
+        limite de durée (à effacer alors manuellement).</p>
+    </div>
+
+    {% if annonce %}
+      <p class="stats-note">
+        {% if annonce_expire_iso %}
+          Affichée en salle jusqu'à {{ annonce_expire_iso | heure_local }}.
+        {% else %}
+          Affichée en salle sans limite de durée.
+        {% endif %}
+      </p>
+    {% endif %}
+
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>
+
+  {% if annonce %}
+    <form method="post" action="/admin/ecran-salle" class="recherche-form">
+      <input type="hidden" name="titre" value="{{ titre or '' }}">
+      <input type="hidden" name="annonce" value="">
+      <input type="hidden" name="annonce_duree" value="">
+      <button type="submit" class="bouton bouton-secondaire">Effacer l'annonce</button>
+    </form>
+  {% endif %}
 
   <p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
 </section>

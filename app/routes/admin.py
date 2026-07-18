@@ -16,6 +16,7 @@ Toutes les routes (sauf la connexion) commencent par vérifier la session via
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from urllib.parse import quote
 
@@ -757,44 +758,108 @@ def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
     )
 
 
+def _minutes_restantes(expire_iso: str | None) -> int | None:
+    """
+    Minutes restantes avant l'expiration d'une annonce (arrondi supérieur), ou
+    None si aucune expiration n'est réglée ou qu'elle est déjà dépassée. Sert
+    uniquement à préremplir le champ « durée » lors du réaffichage du
+    formulaire, pour qu'enregistrer sans y toucher reconduise approximativement
+    la même échéance plutôt que de repasser en affichage illimité.
+    """
+    if not expire_iso:
+        return None
+    try:
+        reste = datetime.fromisoformat(expire_iso) - datetime.now(timezone.utc)
+    except ValueError:
+        return None
+    minutes = -(-int(reste.total_seconds()) // 60)  # arrondi supérieur
+    return minutes if minutes > 0 else None
+
+
 @router.get("/ecran-salle")
 def ecran_salle_formulaire(request: Request):
-    """Réglage du titre affiché en haut de l'écran de salle (/live)."""
+    """Réglage du titre et de l'annonce affichés sur l'écran de salle (/live)."""
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import CLE_TITRE, TITRE_DEFAUT
+    from app.routes.live import CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT
 
     conn = get_connection()
     try:
         titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
+        annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
+        annonce_expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "admin_live.html",
-        {"titre": titre, "titre_defaut": TITRE_DEFAUT, "message": None},
+        {"titre": titre, "titre_defaut": TITRE_DEFAUT,
+         "annonce": annonce, "annonce_duree": _minutes_restantes(annonce_expire_iso),
+         "annonce_expire_iso": annonce_expire_iso if annonce else None,
+         "message": None},
     )
 
 
 @router.post("/ecran-salle")
-def ecran_salle_enregistrer(request: Request, titre: str = Form("")):
+def ecran_salle_enregistrer(
+    request: Request,
+    titre: str = Form(""),
+    annonce: str = Form(""),
+    annonce_duree: str = Form(""),
+):
     """
-    Enregistre le titre de l'écran de salle. Vide => retour au titre par défaut.
+    Enregistre le titre et l'annonce de l'écran de salle.
+    - Titre vide => retour au titre par défaut.
+    - Annonce vide (champ vidé, ou bouton « Effacer l'annonce ») => aucun
+      bandeau sur /live.
+    - Durée (minutes) optionnelle : vide/0/invalide => affichage illimité,
+      comme avant. Une durée valide fixe une échéance (now + N min), au-delà
+      de laquelle l'annonce s'auto-masque (voir `live.annonce_active`) sans
+      jamais être effacée de force ici.
     """
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import CLE_TITRE, TITRE_DEFAUT
+    from app.routes.live import CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT
 
-    saisie = " ".join(titre.split())[:80]   # espaces normalisés, longueur bornée
+    saisie_titre = " ".join(titre.split())[:80]
+    saisie_annonce = " ".join(annonce.split())[:200]
+
+    duree_min = None
+    if saisie_annonce:
+        try:
+            duree_min = int(annonce_duree)
+        except (TypeError, ValueError):
+            duree_min = None
+        if duree_min is not None and duree_min <= 0:
+            duree_min = None
+
+    expire_iso = (
+        (datetime.now(timezone.utc) + timedelta(minutes=duree_min)).isoformat(timespec="seconds")
+        if duree_min else None
+    )
+
     conn = get_connection()
     try:
-        services.ecrire_parametre(conn, CLE_TITRE, saisie or None)
+        services.ecrire_parametre(conn, CLE_TITRE, saisie_titre or None)
+        services.ecrire_parametre(conn, CLE_ANNONCE, saisie_annonce or None)
+        services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
     finally:
         conn.close()
-    message = (("succes", "Titre enregistré.") if saisie
-               else ("succes", "Titre effacé — le titre par défaut est utilisé."))
+
+    partie_titre = ("Titre enregistré." if saisie_titre
+                     else "Titre effacé — le titre par défaut est utilisé.")
+    if saisie_annonce:
+        partie_annonce = (f"Annonce enregistrée, affichée en salle pendant {duree_min} min."
+                           if expire_iso else
+                           "Annonce enregistrée, affichée en salle sans limite de durée.")
+    else:
+        partie_annonce = "Annonce effacée."
+    message = ("succes", f"{partie_titre} {partie_annonce}")
+
     return templates.TemplateResponse(
         request, "admin_live.html",
-        {"titre": saisie or TITRE_DEFAUT, "titre_defaut": TITRE_DEFAUT,
+        {"titre": saisie_titre or TITRE_DEFAUT, "titre_defaut": TITRE_DEFAUT,
+         "annonce": saisie_annonce, "annonce_duree": _minutes_restantes(expire_iso),
+         "annonce_expire_iso": expire_iso if saisie_annonce else None,
          "message": message},
     )
 
