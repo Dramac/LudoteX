@@ -1862,3 +1862,53 @@ def test_bandeau_rangement_coexiste_avec_le_bandeau_formation(client, monkeypatc
     # Deux bandes distinctes, dans le même groupe sticky.
     assert "formation-bandeau" in r.text
     assert "rangement-bandeau-global" in r.text
+
+
+# ===========================================================================
+# D3 — « emplacement » désignait TROIS objets différents
+# (docs/audit-ux-2026-07-18.md). Arbitrage : pochette (casier à pièces
+# d'identité) / lieu (tournoi) / rangement (boîte). Le cas le plus explosif
+# était l'écran de retour d'une boîte rangée, qui affichait deux
+# « emplacements » à dix centimètres l'un de l'autre.
+# ===========================================================================
+def test_d3_retour_dune_boite_rangee_deux_noms_distincts(client):
+    _affecter("Étagère 2")
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/rendre")
+    assert r.status_code == 200
+
+    # Le casier à pièces d'identité...
+    assert "Récupérer la pièce d'identité dans la pochette n°" in r.text
+    # ...et la place de la boîte : deux noms sans ambiguïté possible.
+    assert "Où ranger le jeu" in r.text
+    assert "Étagère 2" in r.text
+    # Le mot ambigu a disparu de l'écran rendu.
+    assert "emplacement" not in r.text.lower()
+
+
+def test_d3_mot_emplacement_absent_des_ecrans_de_pret(client):
+    """
+    Garde-fou. Porte sur le HTML RENDU (pas sur la source des gabarits) :
+    c'est ce que l'utilisateur lit, et cela exclut naturellement les noms de
+    variables Jinja et de champs de formulaire, qui eux ne changent pas.
+    """
+    for url in ("/pret/001", "/aide"):
+        r = client.get(url)
+        assert r.status_code == 200, url
+        assert "emplacement" not in r.text.lower(), url
+
+    # Idem après chaque action de prêt (les bandeaux de résultat).
+    for action in ("preter", "rendre"):
+        r = client.post(f"/pret/001/{action}")
+        assert "emplacement" not in r.text.lower(), action
+
+
+def test_d3_libelle_lieu_pour_un_tournoi(client):
+    """Le champ de saisie d'un tournoi dit « Lieu », plus « Emplacement »."""
+    _connecter(client)
+    r = client.get("/tournoi/nouveau")
+    assert r.status_code == 200
+    assert "Lieu / table" in r.text
+    assert "Emplacement / table" not in r.text
+    # Le NOM du champ, lui, n'a pas bougé (renommer casserait les données).
+    assert 'name="emplacement"' in r.text

@@ -81,7 +81,7 @@
   <h3>Prêtés au public <small>({{ sortis_pret | length }})</small></h3>
   {% if sortis_pret %}
     <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th>{% if est_benevole(request) %}<th>Empl.</th>{% endif %}<th>Depuis</th></tr></thead>
+      <thead><tr><th>Jeu</th><th>Exemplaire</th>{% if est_benevole(request) %}<th>Pochette</th>{% endif %}<th>Depuis</th></tr></thead>
       <tbody>
         {% for p in sortis_pret %}
           <tr><td>{{ p.nom }}</td><td>{{ p.id_exemplaire }}</td>

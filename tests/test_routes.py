@@ -318,7 +318,7 @@ def test_stats_pochette_cloisonnee(client, monkeypatch):
     r = client.get("/stats")
     assert r.status_code == 200
     # Ni l'en-tête de colonne...
-    assert "Empl." not in r.text
+    assert "Pochette" not in r.text
     # ...ni la valeur.
     assert "<td>1</td>" not in r.text
     # Non-régression : le reste de la page (totaux, palmarès, tableau) est
@@ -332,7 +332,7 @@ def test_stats_pochette_cloisonnee(client, monkeypatch):
     # emplacement du tout, le numéro y serait toujours vide).
     client.cookies.set("jeton_pret", jeton_cookie)
     r2 = client.get("/stats")
-    assert r2.text.count("Empl.") == 1
+    assert r2.text.count("Pochette") == 1
     assert "<td>1</td>" in r2.text
 
 
@@ -351,7 +351,7 @@ def test_stats_detail_sans_colonne_emplacement(client, monkeypatch):
     r = client.get("/stats")
     assert r.status_code == 200
     detail = r.text.split("Détail des prêts", 1)[1]
-    assert "Empl." not in detail
+    assert "Pochette" not in detail
     # La liste elle-même est bien rendue (non-régression).
     assert "Catan" in detail
 
@@ -968,7 +968,7 @@ def test_saisie_manuelle_protegee_par_jeton(client, monkeypatch):
 def test_cycle_preter_puis_rendre(client):
     r = client.post("/pret/001/preter")
     assert r.status_code == 200
-    assert "Emplacement" in r.text and ">1<" in r.text.replace(" ", "")
+    assert "Pochette n°" in r.text and ">1<" in r.text.replace(" ", "")
 
     # Re-prêter alors que déjà sorti -> message, pas d'erreur
     r2 = client.get("/pret/001")
@@ -976,8 +976,8 @@ def test_cycle_preter_puis_rendre(client):
 
     r3 = client.post("/pret/001/rendre")
     assert r3.status_code == 200
-    # Numéro d'emplacement en grand au retour (Q3), même gabarit qu'au prêt.
-    assert "Récupérer la pièce d'identité à l'emplacement" in r3.text
+    # Numéro de pochette en grand au retour (Q3), même gabarit qu'au prêt.
+    assert "Récupérer la pièce d'identité dans la pochette" in r3.text
     assert '<p class="pochette-num pochette-num--retour">1</p>' in r3.text
 
     # Après retour : de nouveau disponible
