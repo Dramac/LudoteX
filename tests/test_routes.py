@@ -851,6 +851,131 @@ def test_live_titre_configurable(client):
 
 
 # ---------------------------------------------------------------------------
+# Annonces libres sur l'écran de salle (idée 5.2)
+# ---------------------------------------------------------------------------
+
+def test_live_annonce_absente_par_defaut(client):
+    # Aucun champ "annonce" quand rien n'est configuré (jamais de valeur
+    # absente affichée) ; le bandeau reste dans le HTML mais masqué en CSS.
+    assert "annonce" not in client.get("/live/data").json()
+    r = client.get("/live")
+    assert "bandeau-annonce" in r.text
+    assert '"annonce"' not in r.text  # rien dans le JSON embarqué non plus
+
+
+def test_admin_ecran_salle_garde(client, monkeypatch):
+    # Les deux routes (GET/POST) sont protégées par la garde admin existante.
+    r = client.get("/admin/ecran-salle", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+    r2 = client.post("/admin/ecran-salle", data={"titre": "x"}, follow_redirects=False)
+    assert r2.status_code == 303 and r2.headers["location"] == "/admin"
+
+
+def test_admin_ecran_salle_annonce_configurable(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    # Rien au départ : pas de bouton d'effacement.
+    assert "Effacer l'annonce" not in client.get("/admin/ecran-salle").text
+
+    # Enregistrement sans durée -> affichage illimité, répercuté sur /live.
+    r = client.post("/admin/ecran-salle",
+                     data={"titre": "", "annonce": "Tombola à 15 h", "annonce_duree": ""})
+    assert "Effacer l'annonce" in r.text
+    assert "sans limite de durée" in r.text
+    assert client.get("/live/data").json()["annonce"] == "Tombola à 15 h"
+
+    # Champ vidé puis enregistré efface (même route, même résultat que le
+    # bouton dédié).
+    r2 = client.post("/admin/ecran-salle",
+                      data={"titre": "", "annonce": "", "annonce_duree": ""})
+    assert "Annonce effacée." in r2.text
+    assert "annonce" not in client.get("/live/data").json()
+    assert "Effacer l'annonce" not in r2.text
+
+
+def test_admin_ecran_salle_bouton_effacer_annonce(client, monkeypatch):
+    # Le bouton "Effacer l'annonce" (mini-formulaire dédié) mène au même
+    # résultat qu'un champ vidé.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    client.post("/admin/ecran-salle",
+                data={"titre": "", "annonce": "À effacer", "annonce_duree": ""})
+    assert client.get("/live/data").json()["annonce"] == "À effacer"
+
+    r = client.post("/admin/ecran-salle", data={"titre": "", "annonce": "", "annonce_duree": ""})
+    assert "annonce" not in client.get("/live/data").json()
+    assert "Effacer l'annonce" not in r.text
+
+
+def test_admin_ecran_salle_annonce_longueur_bornee(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    client.post("/admin/ecran-salle",
+                data={"titre": "", "annonce": "x" * 300, "annonce_duree": ""})
+    assert len(client.get("/live/data").json()["annonce"]) == 200
+
+
+def test_admin_ecran_salle_duree_auto_masquage(client, monkeypatch):
+    # Coeur de la fonctionnalité : une durée dépassée masque l'annonce sur
+    # /live sans jamais l'effacer de la base (reste éditable/rappelable en
+    # admin, cf. décision "pas d'expiration automatique qui purge").
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    client.post("/admin/ecran-salle",
+                data={"titre": "", "annonce": "Encore un peu de temps", "annonce_duree": "30"})
+    assert client.get("/live/data").json()["annonce"] == "Encore un peu de temps"
+
+    # On simule l'écoulement du délai en réécrivant directement l'échéance.
+    from datetime import datetime, timedelta, timezone
+    from app import db as pret_db, services
+
+    conn = pret_db.get_connection()
+    try:
+        passee = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")
+        services.ecrire_parametre(conn, "live_annonce_expire", passee)
+    finally:
+        conn.close()
+
+    assert "annonce" not in client.get("/live/data").json()
+    # Toujours configurée en admin (pas purgée) : le champ reste rempli, et
+    # le bouton d'effacement reste disponible pour nettoyer si besoin.
+    r = client.get("/admin/ecran-salle")
+    assert "Encore un peu de temps" in r.text
+    assert "Effacer l'annonce" in r.text
+
+
+def test_admin_ecran_salle_duree_invalide_ou_negative(client, monkeypatch):
+    # Jamais bloquant : une durée non numérique ou négative retombe sur un
+    # affichage illimité plutôt que de produire une erreur.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.post("/admin/ecran-salle",
+                     data={"titre": "", "annonce": "Texte", "annonce_duree": "abc"})
+    assert "sans limite de durée" in r.text
+    assert client.get("/live/data").json()["annonce"] == "Texte"
+
+    r2 = client.post("/admin/ecran-salle",
+                      data={"titre": "", "annonce": "Texte", "annonce_duree": "-5"})
+    assert "sans limite de durée" in r2.text
+
+
+def test_admin_supervision_rappel_annonce(client, monkeypatch):
+    # Rappel (idée 5.2, décision 5) : la carte Supervision signale une
+    # annonce active, et seulement dans ce cas.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    assert "Annonce affichée en salle" not in client.get("/admin/supervision").text
+    assert "Annonce affichée en salle" not in client.get("/admin").text
+
+    client.post("/admin/ecran-salle",
+                data={"titre": "", "annonce": "Portefeuille trouvé", "annonce_duree": ""})
+    assert "Portefeuille trouvé" in client.get("/admin/supervision").text
+    assert "Portefeuille trouvé" in client.get("/admin").text
+
+
+# ---------------------------------------------------------------------------
 # Tests du système de fonctionnalités (activation / désactivation des modules)
 # ---------------------------------------------------------------------------
 
