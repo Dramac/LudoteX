@@ -323,6 +323,52 @@ def test_catalogue_filtre_joueurs_exclut_hors_bornes(client):
     assert "Catan" not in r.text
 
 
+def test_catalogue_dispo_seulement_masque_titre_tout_sorti(client):
+    # A4 : la case « disponibles seulement » masque un titre entièrement sorti.
+    from app import db
+    conn = db.get_connection()
+    conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('7WONDERS', '7 Wonders')")
+    conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('010', '7WONDERS')")
+    conn.commit()
+    conn.close()
+    client.post("/pret/010/preter")
+
+    r_sans = client.get("/catalogue")
+    assert "7 Wonders" in r_sans.text
+
+    r_avec = client.get("/catalogue", params={"dispo": "1"})
+    assert r_avec.status_code == 200
+    assert "7 Wonders" not in r_avec.text
+    assert "Catan" in r_avec.text
+
+
+def test_catalogue_dispo_seulement_puce_retrait_conserve_les_autres_filtres(client):
+    # A4 : la puce de retrait du filtre dispo doit ramener à la liste
+    # complète (ou conserver les autres filtres posés en même temps).
+    from app import db
+    conn = db.get_connection()
+    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    conn.commit()
+    conn.close()
+
+    r = client.get("/catalogue", params={"categorie": "Familial", "dispo": "1"})
+    assert r.status_code == 200
+    assert "disponibles seulement" in r.text
+    assert "/catalogue?categorie=Familial" in r.text  # puce dispo -> conserve categorie
+
+    r_sans_dispo = client.get("/catalogue", params={"categorie": "Familial"})
+    assert "Catan" in r_sans_dispo.text
+    assert "disponibles seulement" not in r_sans_dispo.text
+
+
+def test_catalogue_sans_parametre_dispo_non_regression(client):
+    # A4 : sans le paramètre, le catalogue est identique à avant la fiche.
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert "Catan" in r.text
+    assert "disponibles seulement" not in r.text
+
+
 def test_racine_sert_accueil(client):
     # La racine sert désormais la page d'accueil directement (plus de redirection).
     r = client.get("/", follow_redirects=False)

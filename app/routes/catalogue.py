@@ -157,18 +157,20 @@ def _entier_ou_none(valeur: str | None) -> int | None:
 
 @router.get("/catalogue")
 def catalogue(request: Request, categorie: str | None = None, q: str | None = None,
-              age: str | None = None, joueurs: str | None = None):
+              age: str | None = None, joueurs: str | None = None,
+              dispo: str | None = None):
     """
     Liste publique des jeux, avec recherche et filtres combinés.
 
-    Les quatre filtres (tous optionnels) viennent du panneau dépliable de
-    catalogue.html, en GET : `q` (texte), `categorie`, `age`, `joueurs`. On les
-    normalise ici (chaînes vides → None, conversion entière) avant de déléguer la
-    requête à `services.lister_catalogue`.
+    Les cinq filtres (tous optionnels) viennent du panneau dépliable de
+    catalogue.html, en GET : `q` (texte), `categorie`, `age`, `joueurs`,
+    `dispo` (case « disponibles seulement », `1` si cochée). On les normalise
+    ici (chaînes vides → None, conversion entière/booléenne) avant de déléguer
+    la requête à `services.lister_catalogue`.
 
     Args:
         request: requête (nécessaire à Jinja2).
-        categorie, q, age, joueurs: paramètres de requête bruts (chaînes).
+        categorie, q, age, joueurs, dispo: paramètres de requête bruts (chaînes).
 
     Returns:
         La page catalogue.html, avec la liste filtrée, les valeurs possibles des
@@ -178,6 +180,7 @@ def catalogue(request: Request, categorie: str | None = None, q: str | None = No
     q = (q or "").strip() or None
     age_i = _entier_ou_none(age)
     joueurs_i = _entier_ou_none(joueurs)
+    dispo_seulement = dispo == "1"
 
     conn = get_connection()
     try:
@@ -187,31 +190,35 @@ def catalogue(request: Request, categorie: str | None = None, q: str | None = No
         # Sécurité/robustesse : on n'accepte qu'une catégorie réellement existante
         # (une valeur inconnue dans l'URL revient à « pas de filtre catégorie »).
         filtre_cat = categorie if categorie in categories else None
-        jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i)
+        jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i,
+                                          dispo_seulement)
         derniers = services.derniers_achats(conn, 10)
     finally:
         conn.close()
 
     # `filtres_actifs` : sert au gabarit à ouvrir le panneau et afficher
     # « Réinitialiser » uniquement quand au moins un filtre est posé.
-    actifs = bool(q or filtre_cat or age_i is not None or joueurs_i is not None)
-    chips = _puces_filtres(q, filtre_cat, age_i, joueurs_i)
+    actifs = bool(q or filtre_cat or age_i is not None or joueurs_i is not None
+                  or dispo_seulement)
+    chips = _puces_filtres(q, filtre_cat, age_i, joueurs_i, dispo_seulement)
     return templates.TemplateResponse(
         request,
         "catalogue.html",
         {"jeux": jeux, "categories": categories, "ages": ages, "max_joueurs": max_j,
          "filtre": filtre_cat, "q": q, "age": age_i, "joueurs": joueurs_i,
+         "dispo": dispo_seulement,
          "filtres_actifs": actifs, "chips": chips, "derniers_achats": derniers},
     )
 
 
-def _puces_filtres(q, categorie, age, joueurs):
+def _puces_filtres(q, categorie, age, joueurs, dispo_seulement=False):
     """
     Construit la liste des « puces » de filtres actifs, chacune avec le lien qui
     RETIRE ce seul filtre (en conservant les autres).
 
     Args:
         q, categorie, age, joueurs: filtres normalisés en cours (str/int ou None).
+        dispo_seulement: état de la case « disponibles seulement ».
 
     Returns:
         Liste de dicts ``{"label": str, "url": str}``, dans l'ordre d'affichage.
@@ -219,7 +226,8 @@ def _puces_filtres(q, categorie, age, joueurs):
     """
     from urllib.parse import urlencode
 
-    tous = {"q": q, "categorie": categorie, "age": age, "joueurs": joueurs}
+    tous = {"q": q, "categorie": categorie, "age": age, "joueurs": joueurs,
+             "dispo": "1" if dispo_seulement else None}
 
     def _url_sans(cle):
         params = {k: v for k, v in tous.items()
@@ -237,4 +245,6 @@ def _puces_filtres(q, categorie, age, joueurs):
     if joueurs is not None:
         pluriel = "s" if joueurs > 1 else ""
         puces.append({"label": f"{joueurs} joueur{pluriel}", "url": _url_sans("joueurs")})
+    if dispo_seulement:
+        puces.append({"label": "disponibles seulement", "url": _url_sans("dispo")})
     return puces
