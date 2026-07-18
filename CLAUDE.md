@@ -1269,6 +1269,57 @@ en doublon), le second restant inchangé pour un jeu encore disponible. Wiki :
 **7 tests ajoutés (2 service + 3 route côté A4, 2 route côté fiche). Suite
 globale : 383 tests verts.**
 
+**Lot de finitions A3 + D2 + D4 + E1 + D1** (`docs/audit-ux-2026-07-18.md`,
+2026-07-18, un commit par fiche, dans cet ordre — D1 en dernier car passe
+mécanique sur ~40 gabarits) : **A3** — bouton « Tournois » de l'accueil
+gardé par `module_visible` ; correctif plus sérieux trouvé au passage :
+`routes/catalogue.py` calculait et affichait planning/tournois imminents sur
+l'accueil PUBLIQUE même module désactivé, désormais sauté entièrement dans
+ce cas. Audit des autres liens en dur (`/tournois`, `/planning`, `/stats`,
+`/live`) : tous les autres sont soit dans des fragments de menu déjà gardés,
+soit sur des pages qui ne sont atteignables que si le module l'est déjà
+(routeurs entiers gardés par `garde_module`), soit des liens admin vers un
+module qui, désactivé, renvoie la page « module indisponible » habituelle —
+rien d'autre à corriger. **D2** — les 6 derniers pluriels inline
+(`'s'`/`'x' if n > 1 else ''`) remplacés par `pluriel()`, test garde-fou
+ajouté (exclut les 2 occurrences JS de `admin_etiquettes.html`, décision
+déjà prise en Q2). **D4** — nouvelle classe `.code-personnel` (promotion de
+`.pl-code`, agrandie) unifiant le code de désinscription tournoi (qui
+détournait `.pochette-num`, terme officiellement réservé au numéro de
+pochette depuis D3) et le code de modification planning ; structure
+alignée (titre → code → copier → phrase d'usage → « et si je le perds ? »
+→ liens). Recours de perte **re-vérifiés dans le code avant affichage,
+comme demandé — la vérification a contredit la fiche côté planning** :
+`tournoi/services.py::supprimer_participant` est bien exposée (bouton
+bénévole sur `tournoi_gerer.html`), mais
+`planning/services.py::supprimer_benevole` **existe sans être appelée par
+aucune route ni gabarit** — impossible de promettre un recours qui n'existe
+pas ; le recours réellement affiché est de renvoyer le formulaire de
+collecte (`enregistrer_souhaits` crée une nouvelle réponse/code quand le
+code fourni est inconnu), au prix d'une réponse en double qu'aucun écran ne
+permet de nettoyer aujourd'hui — **limite préexistante, candidat de fiche à
+part entière** si le besoin se confirme. **E1** — lien d'évitement clavier
+(`.saut-contenu`) ajouté tout premier élément du `<body>`, avant les
+bandeaux formation/rangement ; vérifications rapides demandées : un seul
+`<h1>` par page partout (branches `{% if/else %}` mutuellement exclusives
+sur les 5 gabarits qui semblaient en avoir deux), et **deux écarts réels de
+hiérarchie h1→h2→h3 trouvés et documentés sans être corrigés** (pas des
+corrections d'une ligne) : `planning_gerer.html` (sections 1/2 en
+`<summary><strong>` sans vraie balise de titre, contenant des `<h3>`, alors
+que les sections 3/4 du même fichier ont un vrai `<h2>`) et
+`admin_supervision.html` (`<h1>` suivi directement des `<h3>` du fragment
+`_supervision_contenu.html`, inclus ailleurs sous un `<h2>` — corriger l'un
+casserait l'autre sans paramétrer le fragment). **D1** — convention unique
+de titre d'onglet sur 40 gabarits : `<Sujet spécifique> — <Module> —
+{{ nom_association }}`, module omis quand il n'apporte rien (règle et
+exemples gravés dans `docs/ui-composants.md` §14) ; `live.html` **laissé
+tel quel** (page autonome hors `base.html`, titre réglable en admin,
+défaut = nom de l'association — lui imposer le suffixe aurait doublonné ou
+bridé la personnalisation). `.code-personnel` documentée en §13. Tests
+garde-fous ajoutés pour D1/D2 (source des gabarits) et E1 (présence +
+première position + masquage impression). **Suite globale : 406 tests
+verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
