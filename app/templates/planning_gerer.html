@@ -8,7 +8,7 @@
   <p>État : <span class="pl-tag">{{ ev.etat }}</span>
     &nbsp;·&nbsp; {{ benevoles | length }} {{ pluriel(benevoles | length, 'réponse', 'réponses') }}
     &nbsp;·&nbsp; <a class="lien" href="/planning/admin">tous les plannings</a>
-    &nbsp;·&nbsp; <a class="lien" href="/planning/aide">aide</a></p>
+    &nbsp;·&nbsp; <a class="lien" href="/planning/aide">❓ Aide</a></p>
   {% if message %}<p class="resultat resultat-ok">{{ message }}</p>{% endif %}
 
   <div class="pl-actions">
@@ -160,7 +160,7 @@
        <strong>orange</strong> = incomplet, <strong>vert</strong> = complet,
        <strong>bleu</strong> = trop de monde, <strong>gris</strong> = aucun
        besoin sur cette case.</p>
-    <p><a class="lien" href="/planning/aide">Voir l'aide complète du planning</a></p>
+    <p><a class="lien" href="/planning/aide">Voir l'aide complète — planning bénévole</a></p>
   </details>
   {% for jour in grille.jours %}
     <h3>{{ jour.libelle }}</h3>
