@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import exports, services
+from app import auth, exports, services
 from app.db import get_connection
 from app.templating import templates
 
@@ -112,7 +112,10 @@ def export_xlsx(request: Request, tri: str = "total", debut: str | None = None,
                 fin: str | None = None):
     """Télécharge les statistiques au format Excel (.xlsx)."""
     data, periode = _exporter(tri, debut, fin)
-    contenu = exports.construire_xlsx(data, periode)
+    # Numéro de pochette réservé aux bénévoles/admin (CLAUDE.md, fiche D5) :
+    # /stats/export.xlsx est public, donc la colonne dépend du demandeur.
+    contenu = exports.construire_xlsx(data, periode,
+                                      avec_pochette=auth.peut_ecrire(request))
     return Response(
         content=contenu,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -133,7 +136,10 @@ def export_pdf(request: Request, tri: str = "total", debut: str | None = None,
     sections = set(request.query_params.getlist("sections")) or {"synthese", "plus", "moins"}
     sections &= set(exports.SECTIONS_PDF)  # ne garder que les sections connues
     data, periode = _exporter(tri, debut, fin)
-    contenu = exports.construire_pdf(data, periode, sections)
+    # Numéro de pochette réservé aux bénévoles/admin (CLAUDE.md, fiche D5) :
+    # /stats/export.pdf est public, donc la colonne dépend du demandeur.
+    contenu = exports.construire_pdf(data, periode, sections,
+                                     avec_pochette=auth.peut_ecrire(request))
     return Response(
         content=contenu,
         media_type="application/pdf",

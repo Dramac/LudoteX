@@ -1010,6 +1010,49 @@ par durée dépassée simulée en base, durée invalide/négative jamais
 bloquante, rappel supervision conditionnel). **Suite globale : 334 tests
 verts.**
 
+**D5 volet 1 — cloisonnement du numéro de pochette sur `/stats` : FAIT.**
+Écart de sécurité découvert lors de l'audit n°2 (`docs/audit-ux-2026-07-18.md`,
+fiche D5) : la règle « aucune mention du numéro de pochette sur un écran
+public » (posée plus haut pour `/live`) n'était pas tenue sur `/stats`, page
+publique par défaut — le numéro apparaissait en clair dans la liste détaillée
+des prêts et dans la vue « Jeux actuellement sortis », ainsi que dans les
+exports Excel/PDF associés. **Décision Simon (2026-07-18)** : le numéro
+n'est visible que du bénévole/admin ; cette décision est aussi consignée dans
+`docs/specification.md` §3.2 (qui documente en plus le volet 2, purge à la
+clôture — non traité par cette session, voir plus bas). Correctif du
+**volet 1 uniquement** (cloisonnement d'affichage, pas de purge de donnée) :
+`app/templates/stats.html` conditionne l'en-tête **et** la cellule des deux
+tableaux concernés (`{% if est_benevole(request) %}`, le global Jinja déjà
+existant, qui est en réalité `auth.peut_ecrire` — bénévole activé OU admin
+connecté, voir `templating.py`) ; `app/exports.py::construire_xlsx`/
+`construire_pdf` gagnent un paramètre `avec_pochette: bool = True` qui retire
+la colonne de la feuille « Détail »/du tableau « Détail des prêts » sans
+jamais lire la requête HTTP (séparation volontaire, `exports.py` ne connaît
+pas FastAPI) ; `app/routes/stats.py` calcule `auth.peut_ecrire(request)` et le
+transmet aux deux routes d'export (`/stats/export.xlsx`, `/stats/export.pdf`,
+publiques elles aussi). Rien d'autre n'a changé sur la page (palmarès,
+histogramme, durées, totaux, filtres de période restent publics — décision
+explicite de la fiche). **Vérification demandée par Simon** : grep de
+`numero_pochette` sur `app/` — les deux seules autres occurrences côté
+affichage (`app/templates/pret.html`, `app/routes/pret.py`) sont déjà
+protégées par `exiger_jeton` (écrans bénévole uniquement, jamais publics) ;
+`app/models.py` et `app/services.py` ne font qu'un usage interne (colonne/
+logique métier). Aucune autre fuite trouvée. **3 tests ajoutés**
+(`tests/test_routes.py`) : bascule visiteur/bénévole sur `/stats` (en
+retirant/reposant le cookie `jeton_pret` du même client, le prêt étant créé
+côté bénévole puisque `POST /pret/*` l'exige) ; export Excel lu via
+`openpyxl.load_workbook` (en-tête « N° emplacement » absent/présent) ; export
+PDF vérifié en interceptant `reportlab.platypus.Table` (le contenu généré par
+reportlab est compressé — FlateDecode/ASCII85 — donc illisible en clair dans
+les octets bruts ; le mock capture les en-têtes réellement transmises à la
+mise en page, car `construire_pdf` importe `Table` à l'intérieur de la
+fonction). **Suite globale : 337 tests verts.**
+**Volets 2 (purge du numéro à la clôture du prêt, migration du schéma de
+`prets`) et 3 (rejouer les migrations après restauration de sauvegarde)
+restent à faire** — hors périmètre de cette session par consigne explicite de
+Simon, chacun nécessite une session dédiée avec validation préalable (le
+volet 2 touche `prets`, la table la plus sensible du projet).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

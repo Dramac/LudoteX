@@ -299,6 +299,101 @@ def test_stats_exports(client):
     assert p.content[:4] == b"%PDF"
 
 
+def test_stats_pochette_cloisonnee(client, monkeypatch):
+    """
+    D5 volet 1 : le numéro de pochette (rattaché à une pièce d'identité,
+    voir CLAUDE.md) ne doit apparaître sur /stats — page PUBLIQUE — que pour
+    un bénévole activé ou un admin connecté (auth.peut_ecrire). Sans jeton
+    configuré, l'accès est en mode ouvert (tout le monde est "bénévole") :
+    on configure un jeton pour sortir de ce mode.
+    """
+    monkeypatch.setenv("PRET_TOKEN", "jeton-stats-pochette-xyz")
+    # Le prêt est créé côté bénévole (activation requise pour POST /pret/*).
+    client.get("/acces", params={"jeton": "jeton-stats-pochette-xyz"})
+    client.post("/pret/001/preter")  # prêt en cours -> numero_pochette = 1
+
+    # Visiteur non activé (on retire le cookie posé ci-dessus) : rien ne fuit.
+    jeton_cookie = client.cookies.get("jeton_pret")
+    client.cookies.delete("jeton_pret")
+    r = client.get("/stats")
+    assert r.status_code == 200
+    # Ni l'en-tête de colonne...
+    assert "Empl." not in r.text
+    # ...ni la valeur, dans aucune des deux tables concernées (jeux sortis +
+    # détail des prêts).
+    assert "<td>1</td>" not in r.text
+    # Non-régression : le reste de la page (totaux, palmarès, tableau) est
+    # inchangé.
+    assert "Catan" in r.text
+    assert "Jeux actuellement sortis" in r.text
+    assert "Prêtés au public" in r.text
+
+    # Bénévole activé : la colonne réapparaît, aux deux endroits.
+    client.cookies.set("jeton_pret", jeton_cookie)
+    r2 = client.get("/stats")
+    assert r2.text.count("Empl.") == 2
+    assert "<td>1</td>" in r2.text
+
+
+def test_stats_export_xlsx_pochette_cloisonnee(client, monkeypatch):
+    """D5 volet 1 : même cloisonnement sur l'export Excel (public lui aussi)."""
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    monkeypatch.setenv("PRET_TOKEN", "jeton-export-xlsx-pochette-xyz")
+    client.get("/acces", params={"jeton": "jeton-export-xlsx-pochette-xyz"})
+    client.post("/pret/001/preter")
+
+    jeton_cookie = client.cookies.get("jeton_pret")
+    client.cookies.delete("jeton_pret")
+    x = client.get("/stats/export.xlsx")
+    assert x.status_code == 200
+    entetes = [c.value for c in load_workbook(BytesIO(x.content))["Détail"][1]]
+    assert "N° emplacement" not in entetes
+
+    client.cookies.set("jeton_pret", jeton_cookie)
+    x2 = client.get("/stats/export.xlsx")
+    entetes2 = [c.value for c in load_workbook(BytesIO(x2.content))["Détail"][1]]
+    assert "N° emplacement" in entetes2
+
+
+def test_stats_export_pdf_pochette_cloisonnee(client, monkeypatch):
+    """
+    D5 volet 1 : même cloisonnement sur l'export PDF. Le PDF produit par
+    reportlab compresse ses flux de contenu (FlateDecode/ASCII85) : on ne
+    peut pas chercher "Empl." dans les octets bruts. On intercepte plutôt
+    `reportlab.platypus.Table` (importée à l'intérieur de
+    `exports.construire_pdf`, donc le mock est bien pris en compte) pour
+    inspecter les en-têtes réellement transmises à la mise en page.
+    """
+    import reportlab.platypus as platypus
+
+    captures = []
+    table_reelle = platypus.Table
+
+    def table_espion(data, *a, **k):
+        captures.append(data)
+        return table_reelle(data, *a, **k)
+
+    monkeypatch.setattr(platypus, "Table", table_espion)
+    monkeypatch.setenv("PRET_TOKEN", "jeton-export-pdf-pochette-xyz")
+    client.get("/acces", params={"jeton": "jeton-export-pdf-pochette-xyz"})
+    client.post("/pret/001/preter")
+
+    jeton_cookie = client.cookies.get("jeton_pret")
+    client.cookies.delete("jeton_pret")
+    r = client.get("/stats/export.pdf", params=[("sections", "detail")])
+    assert r.status_code == 200
+    assert "Empl." not in captures[-1][0]
+
+    captures.clear()
+    client.cookies.set("jeton_pret", jeton_cookie)
+    r2 = client.get("/stats/export.pdf", params=[("sections", "detail")])
+    assert r2.status_code == 200
+    assert "Empl." in captures[-1][0]
+
+
 def test_fiche_publique(client):
     r = client.get("/jeu/001")
     assert r.status_code == 200

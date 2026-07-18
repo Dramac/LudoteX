@@ -81,11 +81,11 @@
   <h3>Prêtés au public <small>({{ sortis_pret | length }})</small></h3>
   {% if sortis_pret %}
     <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Empl.</th><th>Depuis</th></tr></thead>
+      <thead><tr><th>Jeu</th><th>Exemplaire</th>{% if est_benevole(request) %}<th>Empl.</th>{% endif %}<th>Depuis</th></tr></thead>
       <tbody>
         {% for p in sortis_pret %}
           <tr><td>{{ p.nom }}</td><td>{{ p.id_exemplaire }}</td>
-              <td>{{ p.numero_pochette }}</td><td>{{ p.sortie_locale }} · {{ p.duree_txt }}</td></tr>
+              {% if est_benevole(request) %}<td>{{ p.numero_pochette }}</td>{% endif %}<td>{{ p.sortie_locale }} · {{ p.duree_txt }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -144,7 +144,7 @@
   <h2>Détail des prêts <small>({{ prets | length }})</small></h2>
   {% if prets %}
     <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th><th>Empl.</th></tr></thead>
+      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th>{% if est_benevole(request) %}<th>Empl.</th>{% endif %}</tr></thead>
       <tbody>
         {% for p in prets %}
           <tr>
@@ -153,7 +153,7 @@
             <td>{{ p.sortie_locale }}</td>
             <td>{{ p.retour_local or "en cours" }}</td>
             <td>{{ p.duree_txt }}</td>
-            <td>{{ p.numero_pochette }}</td>
+            {% if est_benevole(request) %}<td>{{ p.numero_pochette }}</td>{% endif %}
           </tr>
         {% endfor %}
       </tbody>
