@@ -740,6 +740,40 @@ button.lien {
   letter-spacing: 0.02em;
 }
 
+/* Bandeau GLOBAL du mode rangement (fiche B1) — même traitement que le
+   bandeau de formation ci-dessus (bande pleine largeur dans .bandeau-groupe,
+   donc sticky avec lui). Reprend le BLEU de l'identité « rangement » du site
+   (cf. .rangement-valeur / .rangement-bandeau), distinct du violet du bandeau
+   habituel et de l'orange de formation : les trois coexistent sans se
+   confondre. Contrairement au bandeau de formation, celui-ci porte une
+   action (quitter), d'où la mise en ligne flex.
+   ⚠️ Nom volontairement distinct de `.rangement-bandeau` (ligne ~415), qui
+   est le PANNEAU détaillé de /scanner — deux composants différents. */
+.rangement-bandeau-global {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #1a73e8;      /* bleu = identité "rangement" du site */
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 12px;
+}
+.rangement-bandeau-global form { margin: 0; }
+.rangement-quitter {
+  background: transparent;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  padding: 2px 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rangement-quitter:hover { background: rgba(255, 255, 255, 0.15); }
+
 /* Filigrane : texte « FORMATION » répété en diagonale, en surimpression très
    légère sur tout le contenu (pointer-events: none -> n'intercepte aucun clic).
    Pur CSS (image de fond SVG encodée en donnée), aucun JavaScript. */
@@ -757,6 +791,7 @@ body.mode-formation::after {
    lecture d'une page imprimée depuis une instance de formation). */
 @media print {
   .formation-bandeau { display: none; }
+  .rangement-bandeau-global { display: none; }
   body.mode-formation::after { display: none; }
   .bouton-haut { display: none; }
 }

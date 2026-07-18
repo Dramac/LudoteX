@@ -37,7 +37,10 @@ from app.templating import templates
 router = APIRouter(tags=["scanner"])
 
 # Cookie d'appareil portant l'emplacement actif du mode rangement (§4.a).
-COOKIE_RANGEMENT = "rangement_actif"
+# Le nom et la résolution du cookie vivent désormais dans `services` : le
+# bandeau global de base.html doit les connaître aussi (fiche B1), et ils ne
+# doivent avoir qu'un seul domicile. Alias conservé pour la lisibilité locale.
+COOKIE_RANGEMENT = services.COOKIE_RANGEMENT
 # Durée de vie du cookie : une session de rangement ne dépasse pas une
 # journée d'événement ; pas besoin de survivre plus longtemps (contrairement
 # au jeton bénévole, qui doit tenir plusieurs jours).
@@ -45,37 +48,19 @@ DUREE_COOKIE_RANGEMENT = 12 * 3600  # 12h
 
 
 def _etat_rangement(conn, request: Request) -> dict:
+    """Résout le cookie du mode rangement (voir `services.etat_rangement`)."""
+    return services.etat_rangement(conn, request)
+
+
+def _retour_interne(chemin: str) -> bool:
     """
-    Résout le cookie `rangement_actif` par rapport au contexte COURANT.
+    Le chemin de retour est-il une URL INTERNE sûre ?
 
-    Returns:
-        dict avec :
-        - "actif": bool — un emplacement est-il sélectionné pour ce contexte ?
-        - "contexte": "evenement" ou "local".
-        - "label": le libellé à afficher (nom d'emplacement ou texte libre),
-          ou None si inactif.
-        - "valeur": la valeur à passer à `services.affecter_emplacement`
-          (texte libre, ou id d'emplacement en int), ou None si inactif.
+    Refuse tout ce qui pourrait sortir du site : un chemin qui ne commence pas
+    par « / », et la forme « //hote » que les navigateurs interprètent comme
+    une URL absolue vers un autre domaine (redirection ouverte).
     """
-    contexte = services.rangement_contexte(conn)
-    brut = request.cookies.get(COOKIE_RANGEMENT)
-    inactif = {"actif": False, "contexte": contexte, "label": None, "valeur": None}
-    if not brut:
-        return inactif
-
-    if contexte == "local":
-        try:
-            id_emplacement = int(brut)
-        except ValueError:
-            return inactif
-        emplacement = services.get_emplacement_rangement(conn, id_emplacement)
-        if emplacement is None:
-            return inactif
-        return {"actif": True, "contexte": contexte, "label": emplacement["nom"],
-                "valeur": id_emplacement}
-
-    # Contexte "evenement" : texte libre, la valeur du cookie EST le libellé.
-    return {"actif": True, "contexte": contexte, "label": brut, "valeur": brut}
+    return chemin.startswith("/") and not chemin.startswith("//")
 
 
 def _contexte_scanner(conn, etat: dict, **extra) -> dict:
@@ -237,8 +222,19 @@ def rangement_activer(
 
 
 @router.post("/scanner/rangement/quitter")
-def rangement_quitter(request: Request, _=Depends(exiger_jeton)):
-    """Quitte le mode rangement : efface le cookie, retour au scan-vers-prêt normal."""
-    reponse = RedirectResponse("/scanner", status_code=303)
+def rangement_quitter(request: Request, retour: str = Form(""), _=Depends(exiger_jeton)):
+    """
+    Quitte le mode rangement : efface le cookie, retour au scan-vers-prêt
+    normal.
+
+    Le bandeau global (base.html, fiche B1) permet de quitter depuis
+    N'IMPORTE QUELLE page : il transmet alors `retour` pour qu'on revienne là
+    où l'on était plutôt que d'être téléporté au scanner. Seuls les chemins
+    INTERNES sont acceptés (jamais de redirection ouverte vers un site tiers),
+    avec un repli sur /scanner — comportement historique quand le champ est
+    absent, ce qui reste le cas du formulaire de la page scanner elle-même.
+    """
+    destination = retour if _retour_interne(retour) else "/scanner"
+    reponse = RedirectResponse(destination, status_code=303)
     reponse.delete_cookie(COOKIE_RANGEMENT)
     return reponse

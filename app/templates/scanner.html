@@ -6,15 +6,17 @@
 
 {% block contenu %}
 {% if rangement.actif %}
+{# Le libellé de l'emplacement actif et le bouton « Quitter » sont désormais
+   portés par le bandeau GLOBAL de base.html, visible sur toutes les pages
+   (fiche B1) : les répéter ici, à dix centimètres, n'apprendrait rien. Ce
+   panneau ne garde donc que ce qui lui est propre — changer d'emplacement
+   sans quitter le mode. #}
 <div class="rangement-bandeau">
-  🗄️ Mode rangement — Emplacement : <strong>{{ rangement.label }}</strong>
+  🗄️ Rangement en cours vers <strong>{{ rangement.label }}</strong>
   <details>
-    <summary>Changer</summary>
+    <summary>Changer d'emplacement</summary>
     {% include "_rangement_formulaire.html" %}
   </details>
-  <form method="post" action="/scanner/rangement/quitter">
-    <button type="submit" class="bouton-filtrer">Quitter le mode</button>
-  </form>
 </div>
 {% endif %}
 
@@ -22,7 +24,10 @@
   <h1>Scanner un jeu</h1>
 
   {% if confirmation_rangement %}
-    <p class="resultat resultat-info">✓ {{ confirmation_rangement }}</p>
+    {# Icône plutôt qu'un « ✓ » générique : c'est celle du bandeau de mode,
+       pour qu'une confirmation de RANGEMENT ne puisse pas se lire comme une
+       confirmation de prêt par quelqu'un qui va vite (point 2 de B1). #}
+    <p class="resultat resultat-info">🗄️ {{ confirmation_rangement }}</p>
   {% endif %}
   {% if erreur %}
     <p class="resultat resultat-attention">{{ erreur }}</p>

@@ -525,7 +525,9 @@ def test_activer_mode_evenement_pose_bandeau_et_flag(client):
     assert "Mode rangement" in r.text
     assert "Étagère 2, zone Jeux duel" in r.text
     assert 'data-rangement="1"' in r.text
-    assert "Quitter le mode" in r.text
+    # B1 : le bouton de sortie est désormais porté par le bandeau GLOBAL
+    # (base.html), plus par le panneau du scanner qui le répétait.
+    assert "Quitter" in r.text
 
 
 def test_scan_en_mode_rangement_affecte_et_confirme(client):
@@ -1774,3 +1776,89 @@ def test_ranger_appliquer_redirige_en_conservant_les_filtres(client):
     finally:
         conn.close()
     assert valeur == "Table du fond"
+
+
+# ===========================================================================
+# B1 — le mode rangement doit être visible SUR TOUTES LES PAGES
+# (docs/audit-ux-2026-07-18.md). C'est le seul mode persistant de
+# l'application et il change la signification du geste central : scanner
+# range au lieu de prêter. Il n'était signalé que sur /scanner.
+# ===========================================================================
+def test_bandeau_rangement_absent_par_defaut(client):
+    for url in ("/catalogue", "/scanner", "/stats"):
+        r = client.get(url)
+        assert r.status_code == 200
+        assert "Mode rangement" not in r.text, url
+
+
+def test_bandeau_rangement_visible_sur_toutes_les_pages(client):
+    """Le scénario redouté : ranger le matin, revenir à l'ouverture, et
+    croire que l'on prête. Le mode doit se voir sans revenir au scanner."""
+    _activer_evenement(client, "Étagère 2")
+
+    for url in ("/catalogue", "/stats", "/scanner", "/jeu/001", "/aide"):
+        r = client.get(url)
+        assert r.status_code == 200, url
+        assert "Mode rangement" in r.text, url
+        assert "Étagère 2" in r.text, url
+        # Une sortie est offerte depuis n'importe où.
+        assert "/scanner/rangement/quitter" in r.text, url
+
+
+def test_quitter_depuis_une_autre_page_revient_sur_cette_page(client):
+    """On quitte le mode depuis là où l'on est, sans être téléporté au scanner."""
+    _activer_evenement(client, "Étagère 2")
+
+    r = client.post(
+        "/scanner/rangement/quitter",
+        data={"retour": "/catalogue"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/catalogue"
+    assert "Mode rangement" not in client.get("/catalogue").text
+
+
+def test_quitter_refuse_une_redirection_externe(client):
+    """`retour` ne doit jamais permettre de sortir du site (redirection ouverte)."""
+    _activer_evenement(client, "Étagère 2")
+
+    for cible in ("//evil.example.com", "https://evil.example.com"):
+        _activer_evenement(client, "Étagère 2")
+        r = client.post(
+            "/scanner/rangement/quitter",
+            data={"retour": cible},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == "/scanner", cible
+
+
+def test_bandeau_rangement_jamais_visible_dun_visiteur(client, monkeypatch):
+    """
+    Le mode n'a de sens que derrière le jeton bénévole. Un visiteur qui
+    porterait le cookie (appareil partagé, jeton expiré depuis) ne doit pas
+    voir de bandeau sur les pages publiques.
+    """
+    _activer_evenement(client, "Étagère 2")
+    monkeypatch.setenv("PRET_TOKEN", "jeton-b1-visiteur-xyz")  # sortir du mode ouvert
+
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert "Mode rangement" not in r.text
+
+
+def test_bandeau_rangement_coexiste_avec_le_bandeau_formation(client, monkeypatch):
+    """Rendu combiné : les deux bandeaux s'affichent sans s'exclure."""
+    from app import templating
+
+    _activer_evenement(client, "Étagère 2")
+    monkeypatch.setitem(templating.templates.env.globals, "mode_formation", True)
+
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert "SITE DE FORMATION" in r.text
+    assert "Mode rangement" in r.text
+    # Deux bandes distinctes, dans le même groupe sticky.
+    assert "formation-bandeau" in r.text
+    assert "rangement-bandeau-global" in r.text
