@@ -63,6 +63,13 @@ templates.env.globals["module_visible"] = modules.module_visible
 # docs/conception-rangement.md §7). Usage : {% if rangement_visible(request) %}
 templates.env.globals["rangement_visible"] = services.rangement_visible
 
+# État du MODE RANGEMENT de cet appareil (cookie de 12 h), pour le bandeau
+# global de base.html : tant qu'il est actif, scanner un QR range la boîte au
+# lieu d'ouvrir l'écran de prêt. Le mode n'était visible que sur /scanner, ce
+# qui en faisait le seul mode caché de l'application (fiche B1 de
+# docs/audit-ux-2026-07-18.md). Usage : {% set rgt = rangement_actif(request) %}
+templates.env.globals["rangement_actif"] = services.rangement_actif
+
 # Accord singulier/pluriel disponible dans TOUS les gabarits, sans import :
 # {{ n }} {{ pluriel(n, 'jeu', 'jeux') }} -- remplace les pluriels parenthésés
 # type « jeu(x) », « prêt(s) » (docs/idees-ux.md Q2).

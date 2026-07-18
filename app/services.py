@@ -1513,6 +1513,85 @@ def affecter_emplacement(
     return info
 
 
+# Cookie d'appareil portant l'emplacement actif du mode rangement (§4.a de
+# docs/conception-rangement.md). Défini ici plutôt que dans routes/scanner.py
+# depuis que `base.html` doit lui aussi savoir si le mode est actif : le nom
+# du cookie et sa résolution n'ont qu'un seul domicile.
+COOKIE_RANGEMENT = "rangement_actif"
+
+
+def etat_rangement(conn: sqlite3.Connection, request) -> dict:
+    """
+    Résout le cookie `rangement_actif` par rapport au CONTEXTE courant.
+
+    Toujours résilient : une valeur devenue invalide (contexte changé,
+    emplacement archivé ou supprimé entre-temps) est traitée comme « mode
+    inactif », jamais comme une erreur.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        request: requête (pour lire le cookie).
+
+    Returns:
+        dict avec :
+        - "actif": bool — un emplacement est-il sélectionné pour ce contexte ?
+        - "contexte": "evenement" ou "local".
+        - "label": libellé à afficher (nom d'emplacement ou texte libre), ou None.
+        - "valeur": valeur à passer à `affecter_emplacement`, ou None.
+    """
+    contexte = rangement_contexte(conn)
+    brut = request.cookies.get(COOKIE_RANGEMENT)
+    inactif = {"actif": False, "contexte": contexte, "label": None, "valeur": None}
+    if not brut:
+        return inactif
+
+    if contexte == "local":
+        try:
+            id_emplacement = int(brut)
+        except ValueError:
+            return inactif
+        emplacement = get_emplacement_rangement(conn, id_emplacement)
+        if emplacement is None:
+            return inactif
+        return {"actif": True, "contexte": contexte, "label": emplacement["nom"],
+                "valeur": id_emplacement}
+
+    # Contexte "evenement" : texte libre, la valeur du cookie EST le libellé.
+    return {"actif": True, "contexte": contexte, "label": brut, "valeur": brut}
+
+
+def rangement_actif(request) -> dict:
+    """
+    État du mode rangement pour l'appareil courant, à l'usage de `base.html`
+    (bandeau global, fiche B1 de docs/audit-ux-2026-07-18.md).
+
+    Le mode rangement est mémorisé dans un cookie de 12 h et change la
+    signification du geste central : tant qu'il est posé, scanner un QR RANGE
+    la boîte au lieu d'ouvrir l'écran de prêt. Il n'était visible que sur
+    `/scanner` ; un bénévole qui rangeait le matin et revenait à l'ouverture
+    pouvait croire qu'il prêtait. D'où ce bandeau sur toutes les pages.
+
+    Même exception à la convention `conn` en paramètre que `rangement_visible`
+    (global Jinja : seule la requête est disponible), et même parade — une
+    connexion ouverte puis refermée ici.
+
+    Returns:
+        Le dict de `etat_rangement` ; "actif" est False pour un visiteur non
+        bénévole, quel que soit son cookie (le mode n'a de sens que derrière
+        le jeton, qui protège /scanner).
+    """
+    from app import auth
+    from app.db import get_connection
+
+    if not auth.peut_ecrire(request):
+        return {"actif": False, "contexte": None, "label": None, "valeur": None}
+    conn = get_connection()
+    try:
+        return etat_rangement(conn, request)
+    finally:
+        conn.close()
+
+
 def rangement_visible(request) -> bool:
     """
     Le catalogue / la fiche publique doivent-ils afficher l'emplacement pour

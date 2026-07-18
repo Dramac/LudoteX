@@ -15,6 +15,22 @@
     {% if mode_formation %}
     <div class="formation-bandeau">🎓 SITE DE FORMATION — aucun effet sur LudoteX</div>
     {% endif %}
+    {# Mode rangement : mémorisé dans un cookie d'appareil de 12 h, il change
+       la signification du geste central (scanner range au lieu de prêter).
+       Il n'était signalé que sur /scanner — d'où ce bandeau sur TOUTES les
+       pages, et une sortie possible d'où que l'on soit (fiche B1). #}
+    {% set rgt = rangement_actif(request) %}
+    {% if rgt.actif %}
+    <div class="rangement-bandeau-global">
+      <span>🗄️ Mode rangement — {{ rgt.label }}</span>
+      <form method="post" action="/scanner/rangement/quitter">
+        {# Revenir là où l'on était : on quitte le mode depuis n'importe
+           quelle page, pas seulement depuis le scanner. #}
+        <input type="hidden" name="retour" value="{{ request.url.path }}">
+        <button type="submit" class="rangement-quitter">Quitter</button>
+      </form>
+    </div>
+    {% endif %}
     <header class="bandeau">
       <a class="bandeau-titre" href="/">{{ nom_association }}</a>
       {# DEUX rendus du même menu (fragments partagés, un seul point de
