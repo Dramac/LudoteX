@@ -1152,6 +1152,69 @@ changer d'emplacement sans quitter le mode. La sortie accepte un `retour`
 sur la page d'où l'on quitte, repli sur `/scanner`. **6 tests**, 1 adapté.
 **Suite globale : 363 tests verts.**
 
+**C1 + B2 — le lot « aide » : FAIT.** Les deux fiches traitent le même
+constat pris par les deux bouts : l'aide existait, bien écrite, mais
+introuvable au moment où l'on en a besoin — quatre pages écrites chacune au
+moment de son module, sans index, sans porte d'entrée visiteur, et rien du
+tout côté administration.
+**C1** : nouvelle page `GET /admin/aide` (`admin_aide.html`), derrière la
+garde admin existante (accès non authentifié = **redirection** vers `/admin`,
+pas un 403 — motif `_garde`). Organisée par MOMENT de la vie de l'événement
+(**Avant / Pendant / Après / En cas de problème**) et non par écran, sans
+index alphabétique (écarté : double maintenance). Deux règles de contenu
+gravées en commentaire dans le gabarit : **aucune exploitation serveur**
+(SSH, systemd, nginx, certbot — elle reste dans `docs/deploiement.md`) et
+**aucune marche à suivre non vérifiée dans le code**, le bureau visé n'ayant
+pas les moyens de repérer une procédure plausible mais fausse. Entrée
+« ❓ Aide » en fin du groupe « Configuration » du tableau de bord. Blocs
+`.aide-inline` (composant de S4) sur les **4 écrans à risque**
+(`/admin/donnees`, `/admin/jeton`, `/admin/fonctionnalites`,
+`/planning/admin`), chacun renvoyant vers l'ancre correspondante.
+**Deux recours annoncés par la fiche ont dû être réécrits, la vérification
+ayant montré qu'ils n'existent pas** : (1) « j'ai restauré la mauvaise
+sauvegarde » — le filet de sécurité est bien créé dans `data/sauvegardes/`,
+mais **aucune route ne permet de le lister ni de le télécharger**, le
+rattrapage suppose un accès serveur ; la page le dit franchement et met en
+avant le seul geste actionnable (télécharger une sauvegarde AVANT d'en
+restaurer une), et le manque devient la **fiche C3** de l'audit ; (2) « j'ai
+importé le mauvais fichier » — la première rédaction proposait de supprimer
+les jeux ajoutés par erreur, or **aucune route de suppression de jeu
+n'existe** ; corrigé avant commit. Trois nuances tirées du code et absentes
+des docs y figurent aussi : la clôture efface les numéros de pochette (D5,
+donc récupérer les pièces d'identité avant) ; réinitialiser l'accès pour
+dépanner une seule personne déconnecte **tous** les autres téléphones ; un
+import écrase les fiches existantes, colonnes vides comprises, sauf le
+rangement (`COALESCE`). Un écart de mise en œuvre :
+`/admin/fonctionnalites` avait DÉJÀ un `.aide-inline` (légende des états,
+S4) — le lien de sortie y a été ajouté **dans le bloc existant** plutôt que
+d'empiler un second accordéon.
+**B2** : `/aide` restructurée en **hub** (URL conservée — elle est dans le
+menu et dans les habitudes) : `<h1>Aide</h1>` neutre à la place de « Mode
+d'emploi (bénévoles) » (titre qui promettait moins que ce que le site
+contient), carte « Par où commencer ? » à trois blocs d'audience, contenu
+d'origine déplacé TEL QUEL sous « Prêter et rendre un jeu » (ancre `#pret`,
+`h2`→`h3` ; **pas de découpage en `/aide/pret`**, le volume ne le justifie
+pas), puis carte des autres pages d'aide avec une phrase disant ce qu'on y
+trouve. **Deux ajouts par rapport à la lettre de la fiche, validés avec
+Simon** : les liens vers tournois/planning sont gardés par `module_visible`
+(sinon le hub proposerait de l'aide sur une rubrique masquée — défaut même
+de la fiche A3, non traitée), et le bloc « J'administre » est conditionné à
+`est_admin(request)`. Lien « Aide » ajouté à `_menu_visiteur.html` (le
+visiteur n'en avait aucun). **Convention de libellé** gravée dans
+`docs/ui-composants.md` **§12** — « ❓ Aide » pour un lien de navigation,
+« Voir l'aide complète — <sujet> » pour la sortie d'un `.aide-inline` —
+appliquée à 6 libellés, avec **trois familles exclues par décision** (les
+fragments de menu du bandeau, dont les entrées sont des mots simples sans
+icône ; `aide.html` lui-même, dont les liens sont volontairement descriptifs ;
+`apropos.html`, mots au fil d'une phrase), documentées dans le test
+garde-fou. Liens « ❓ Aide » ajoutés sur les 3 écrans publics qui en
+manquaient (`tournoi_detail`, `tournoi_inscription`, `planning_collecte` —
+ce dernier n'avait même **aucun** lien de sortie, un retour vers `/planning`
+a été ajouté au passage). `test_aide_page` **adapté en connaissance de
+cause** (il assertait « Mode d'emploi ») ; le garde-fou D3 sur `/aide` passe
+sans modification. **12 tests ajoutés, 1 adapté. Suite globale : 376 tests
+verts.**
+
 **Wiki mis à jour** (D5 + A1) : `Guide-Benevole` (le repli « appareil photo
 natif » menait à la fiche publique sans dire comment continuer — c'était le
 cul-de-sac corrigé par A1 ; le bouton « 📷 Prêter / rendre ce jeu » est

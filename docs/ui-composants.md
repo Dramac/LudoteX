@@ -183,3 +183,46 @@ couleurs V/N/D) — déjà une bonne réutilisation, pas d'écart.
 - **S4 (aide contextuelle repliée)** : périmètre distinct, non traité ici.
 - **S2/S3** : la fiche S1 ne les couvre pas ; à traiter seulement si le
   besoin se confirme (voir `docs/idees-ux.md`).
+
+## 12. Liens d'aide — convention de libellé
+
+Ajouté par la fiche **B2** (`docs/audit-ux-2026-07-18.md`). Les liens vers les
+pages d'aide n'avaient aucune convention : on relevait « ❓ Aide », « Aide »,
+« aide », « Aide — comment organiser un tournoi », « Voir l'aide complète du
+planning », « ❓ Aide — rangement des boîtes ». Chaque module avait inventé la
+sienne au moment où il a été écrit.
+
+**Deux formes, et deux seulement :**
+
+```html
+<!-- 1. NAVIGATION vers une page d'aide (pied de carte, barre de liens) -->
+<a class="lien" href="/tournoi/aide">❓ Aide</a>
+
+<!-- 2. SORTIE d'un bloc .aide-inline, vers l'aide complète du sujet -->
+<a class="lien" href="/admin/aide#probleme-jeton">Voir l'aide complète — accès bénévole</a>
+```
+
+Le sujet de la seconde forme est **le domaine, pas la page** : « — tournois »,
+« — planning bénévole », « — accès bénévole ». Il répond à « l'aide complète
+de quoi ? », ce que « Voir l'aide complète » seul ne dit pas quand plusieurs
+pages d'aide coexistent.
+
+**Trois exceptions, par décision et non par oubli** (le test garde-fou
+`tests/test_routes.py::test_convention_des_libelles_de_liens_daide` les
+exclut explicitement, avec leur raison) :
+
+- **Fragments de menu du bandeau** (`_menu_benevole.html`,
+  `_menu_visiteur.html`) : leurs entrées sont des mots simples sans icône
+  (« Catalogue », « Scanner »…). Poser une icône sur la seule entrée « Aide »
+  jurerait dans la ligne, et le bandeau est l'élément le plus contraint sur
+  petit écran. La cohérence interne du menu prime.
+- **`aide.html`**, le hub : ses liens sont volontairement descriptifs
+  (« Organiser un tournoi », « Ranger les boîtes ») — le rôle d'un index est
+  de dire ce qu'on trouve derrière chaque lien, pas de répéter « Aide ».
+- **`apropos.html`** : les libellés y sont des mots au fil d'une phrase, pas
+  des liens de navigation.
+
+Le composant `.aide-inline` lui-même (accordéon `<details>` d'aide
+contextuelle, introduit par S4) n'est pas décrit dans ce document — voir
+`app/static/css/style.css` et la fiche S4 de `docs/idees-ux.md`. Cette
+section ne porte que sur le **libellé des liens**.
