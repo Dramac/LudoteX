@@ -420,6 +420,47 @@ def test_stats_export_pdf_sans_colonne_emplacement(client, monkeypatch):
     assert "Empl." not in captures[-1][0]
 
 
+def test_url_inconnue_page_conviviale(client):
+    """
+    A2 : une adresse ne correspondant à aucune route renvoyait
+    `{"detail": "Not Found"}` en JSON brut — seul endroit du site où
+    l'utilisateur voyait sortir de la technique, et cul-de-sac total.
+    """
+    r = client.get("/url-qui-nexiste-pas")
+    assert r.status_code == 404
+    assert "text/html" in r.headers["content-type"]
+    # Plus de charge JSON brute (le mot « detail » seul ne suffit pas comme
+    # test : le menu du bandeau contient un <details>).
+    assert '{"detail"' not in r.text
+    assert "introuvable" in r.text.lower()
+    assert 'href="/catalogue"' in r.text   # de quoi repartir
+
+
+def test_url_inconnue_non_regression_404_metier(client):
+    """
+    Les 404 MÉTIER gardent leur message spécifique : elles retournent leur
+    gabarit avec status 404 au lieu de lever une HTTPException, donc ne
+    passent pas par le nouveau gestionnaire.
+    """
+    r = client.get("/jeu/inconnu")
+    assert r.status_code == 404
+    assert "Exemplaire inconnu" in r.text
+    assert "Page introuvable" not in r.text
+
+
+def test_url_inconnue_non_regression_module_desactive(client):
+    """Un module désactivé garde sa propre page, pas la 404 générique."""
+    from app import db, modules
+
+    conn = db.get_connection()
+    modules.ecrire_etat_module(conn, "stats", "desactive")
+    conn.close()
+
+    r = client.get("/stats")
+    assert r.status_code == 404
+    assert "Page introuvable" not in r.text
+
+
 def test_fiche_sorties_de_page_visiteur(client, monkeypatch):
     """
     A1 : la fiche est la cible des 703 QR et était un cul-de-sac. Un visiteur
