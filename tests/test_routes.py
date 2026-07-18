@@ -52,8 +52,37 @@ def test_page_erreur_500(client, monkeypatch):
 
 
 def test_aide_page(client):
+    # Fiche B2 : la page s'intitule désormais « Aide » et sert de hub — le
+    # titre « Mode d'emploi (bénévoles) » a disparu EN CONNAISSANCE DE CAUSE
+    # (il promettait moins que ce que le site contient). L'assertion porte
+    # donc sur le contenu, qui lui n'a pas bougé, plutôt que sur le titre.
     r = client.get("/aide")
-    assert r.status_code == 200 and "Mode d'emploi" in r.text
+    assert r.status_code == 200
+    assert "<h1>Aide</h1>" in r.text
+    for geste in ("Prêter un jeu", "Rendre un jeu", "Le re-prêter"):
+        assert geste in r.text
+
+
+def test_aide_hub_renvoie_vers_les_autres_pages_daide(client):
+    # Fiche B2 point 1 : le hub doit mener aux autres pages d'aide.
+    r = client.get("/aide")
+    assert r.status_code == 200
+    for cible in ("/tournoi/aide", "/planning/aide", "/rangement/aide"):
+        assert f'href="{cible}"' in r.text, cible
+    # L'ancre du contenu « prêt », conservée sur place (pas de sur-découpage
+    # en /aide/pret : le volume ne le justifie pas).
+    assert 'id="pret"' in r.text and 'href="#pret"' in r.text
+    # Un visiteur ne se voit pas proposer l'aide d'administration.
+    assert "/admin/aide" not in r.text
+
+
+def test_aide_hub_montre_ladministration_a_un_admin(client, monkeypatch):
+    # …mais un administrateur connecté, lui, y a accès depuis le hub.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.get("/aide")
+    assert r.status_code == 200
+    assert 'href="/admin/aide"' in r.text
 
 
 def test_apropos_page(client):
