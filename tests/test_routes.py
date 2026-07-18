@@ -505,9 +505,39 @@ def test_admin_table_css_responsive(client):
     # Retour terrain : le tableau "Bases de données" de /admin/supervision
     # débordait à droite sur iPhone (.admin-table n'avait aucune règle CSS,
     # largeur au contenu du navigateur). Vérifie que la règle existe bien.
+    # Depuis S1 (docs/ui-composants.md §9), .detail et .admin-table partagent
+    # les mêmes règles (même composant, deux noms) : la sélection couvre
+    # les deux classes plutôt que .admin-table isolée.
     r = client.get("/static/css/style.css")
     assert r.status_code == 200
-    assert ".admin-table { width: 100%;" in r.text or ".admin-table {width:100%;" in r.text
+    assert ".admin-table { width: 100%;" in r.text or ".detail, .admin-table { width: 100%;" in r.text
+    assert "vertical-align: top; word-break: break-word;" in r.text
+
+
+def test_pas_de_bouton_sans_variante(client):
+    # S1 (docs/ui-composants.md) : .bouton seul n'a pas de couleur de fond
+    # (seules .bouton-principal/.bouton-secondaire en définissent une) — un
+    # bouton avec la seule classe "bouton" s'affiche donc avec un texte blanc
+    # sur le gris par défaut du navigateur, peu ou pas lisible. Garde-fou
+    # contre la réintroduction de ce défaut (trouvé et corrigé sur 7 boutons
+    # du module planning + module_desactive.html + admin_fonctionnalites.html).
+    import pathlib
+
+    templates = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
+    fautifs = []
+    for fichier in templates.glob("*.html"):
+        if 'class="bouton"' in fichier.read_text(encoding="utf-8"):
+            fautifs.append(fichier.name)
+    assert fautifs == []
+
+
+def test_bouton_disabled_css(client):
+    # Composant générique ajouté avec le correctif ci-dessus (voir
+    # docs/ui-composants.md §10) : un bouton désactivé doit être grisé sans
+    # recourir à un style inline propre à chaque gabarit.
+    r = client.get("/static/css/style.css")
+    assert r.status_code == 200
+    assert ".bouton:disabled" in r.text
 
 
 def test_admin_dashboard_supervision_embarquee(client, monkeypatch):

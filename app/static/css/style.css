@@ -351,21 +351,19 @@ summary:focus-visible,
 .stats-export { font-weight: 600; }
 .case { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .case input { width: auto; }
-.detail { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.detail th, .detail td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord); }
-.detail th { color: var(--gris); }
-
-/* Administration */
-/* Tableaux admin (supervision, fonctionnalités) : n'avaient aucune règle
-   dédiée -> largeur au contenu par défaut du navigateur, débordement à droite
-   constaté sur mobile (iPhone 13 mini). Même recette que .detail, qui s'en
-   sort bien sur petit écran ailleurs dans l'appli. */
-.admin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+/* Tableau de données dense (lecture) : .detail (stats/tournois) et
+   .admin-table (admin) sont le même composant, apparu à deux moments du
+   projet sous deux noms (voir docs/ui-composants.md §9). Règles fusionnées :
+   .detail hérite au passage du correctif anti-débordement mobile
+   (vertical-align/word-break) qui n'existait jusqu'ici que pour .admin-table
+   (retour terrain iPhone 13 mini). */
+.detail, .admin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.detail th, .detail td,
 .admin-table th, .admin-table td {
   text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--bord);
   vertical-align: top; word-break: break-word;
 }
-.admin-table th { color: var(--gris); }
+.detail th, .admin-table th { color: var(--gris); }
 
 .admin-menu { list-style: none; margin: 0; padding: 0; }
 .admin-menu li { margin: 10px 0; font-size: 1.1rem; }
