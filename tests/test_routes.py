@@ -873,6 +873,10 @@ def test_fonctionnalites_admin_page(client, monkeypatch):
     assert "Tournois" in r.text
     assert "Statistiques" in r.text
     assert "Écran de salle" in r.text
+    # S4 (docs/idees-ux.md) : la légende des états était affichée en
+    # permanence en haut de page -- repliée dans une aide contextuelle.
+    assert 'class="aide-inline"' in r.text
+    assert "Que signifient ces états ?" in r.text
 
 
 def test_module_desactive_bloque_route(client, tmp_path):

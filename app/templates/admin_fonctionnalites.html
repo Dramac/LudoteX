@@ -5,12 +5,15 @@
 {% block contenu %}
 <section class="carte">
   <h1>Fonctionnalités</h1>
-  <dl class="fonct-legende">
-    {% for etat in etats_valides %}
-    <dt>{{ labels_etats[etat] }}</dt>
-    <dd>{{ descriptions_etats[etat] }}</dd>
-    {% endfor %}
-  </dl>
+  <details class="aide-inline">
+    <summary>❓ Que signifient ces états ?</summary>
+    <dl class="fonct-legende">
+      {% for etat in etats_valides %}
+      <dt>{{ labels_etats[etat] }}</dt>
+      <dd>{{ descriptions_etats[etat] }}</dd>
+      {% endfor %}
+    </dl>
+  </details>
   {% if message %}
     <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
       {{ message[1] }}
