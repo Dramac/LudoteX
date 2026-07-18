@@ -17,7 +17,7 @@
       <span class="badge {{ 'badge-dispo' if t.places_restantes > 0 else 'badge-sorti' }}">
         {{ t.nb_inscrits }} / {{ t.nb_places }} inscrits</span>
     {% else %}
-      <span class="badge badge-dispo">{{ t.nb_inscrits }} inscrit{{ 's' if t.nb_inscrits > 1 else '' }}</span>
+      <span class="badge badge-dispo">{{ t.nb_inscrits }} {{ pluriel(t.nb_inscrits, 'inscrit', 'inscrits') }}</span>
     {% endif %}
     {% if est_benevole(request) %}
       <a class="lien" href="/tournoi/{{ t.id_tournoi }}/gerer">Gérer</a>

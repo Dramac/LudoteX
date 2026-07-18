@@ -7,8 +7,8 @@
        alt="{{ nom_association }}">
   <h1>{{ nom_association }}</h1>
   <p class="accueil-dispo">
-    <strong>{{ disponible }}</strong> jeu{{ 'x' if disponible > 1 else '' }}
-    disponible{{ 's' if disponible > 1 else '' }} au prêt
+    <strong>{{ disponible }}</strong> {{ pluriel(disponible, 'jeu', 'jeux') }}
+    {{ pluriel(disponible, 'disponible', 'disponibles') }} au prêt
     <span class="accueil-dispo-total">sur {{ total }}</span>
   </p>
 
@@ -71,7 +71,7 @@
           <span class="badge {{ 'badge-dispo' if t.places_restantes > 0 else 'badge-sorti' }}">
             {{ t.nb_inscrits }} / {{ t.nb_places }} inscrits</span>
         {% else %}
-          <span class="badge badge-dispo">{{ t.nb_inscrits }} inscrit{{ 's' if t.nb_inscrits > 1 else '' }}</span>
+          <span class="badge badge-dispo">{{ t.nb_inscrits }} {{ pluriel(t.nb_inscrits, 'inscrit', 'inscrits') }}</span>
         {% endif %}
       </li>
     {% endfor %}
