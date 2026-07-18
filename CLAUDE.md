@@ -798,6 +798,40 @@ Pas de pagination ajoutée (hors périmètre de la suggestion retenue). **1
 test ajouté** (ancre + bouton présents). **Suite globale : 321 tests
 verts.**
 
+**S1 — Inventaire des composants d'interface : EN COURS.** Fiche
+`docs/idees-ux.md` (§ Améliorations structurantes) : deux « designs de
+formulaire » cohabiteraient (prêt vs tournois/planning/admin). Constat
+réévalué avant de coder : moins sévère qu'à l'audit — `.champ`/`.carte`/
+`.resultat` sont déjà largement réutilisés partout, `.bouton-filtrer` (action
+compacte/filtre) et `.pl-*` (grille planning dense) répondent à des besoins
+réellement différents, pas à une duplication accidentelle. Nouveau document
+**`docs/ui-composants.md`** : 10 composants canoniques (bouton principal/
+secondaire/compact, champ, lien, carte, message de résultat, badge, tableau
+de données) avec règle de choix entre variantes — référence à consulter/
+étendre au fil des prochaines retouches, pas une passe unique refermée. Revue
+systématique de tous les gabarits pour trouver les vrais écarts (plutôt que
+ceux supposés par l'audit initial) ; **4 corrigés** : (1) **7 boutons**
+`class="bouton"` seuls, sans `-principal`/`-secondaire` donc **sans couleur
+de fond** (le CSS force pourtant un texte blanc → peu ou pas lisible selon le
+navigateur), dans le module planning (`planning_case.html`,
+`planning_admin.html`, `planning_collecte.html`, `planning_gerer.html` ×4,
+`planning_creneau.html`) → `bouton-principal` ; (2) même défaut sur le lien
+de retour de `module_desactive.html`, aligné sur le motif `.lien` des pages
+sœurs (`acces_refuse.html`, `erreur.html`) ; (3) `admin_fonctionnalites.html` :
+bouton désactivé bricolé en style inline + classe ajoutée en JS, faute de
+composant partagé → nouvelle règle générique **`.bouton:disabled`** (CSS),
+gabarit simplifié ; (4) **`.detail` et `.admin-table` identifiés comme le
+même composant sous deux noms** (tableau de données dense, apparus à deux
+moments du projet) → règles CSS fusionnées, `.detail` hérite au passage du
+correctif anti-débordement mobile qui n'existait jusqu'ici que pour
+`.admin-table`. **2 tests garde-fous ajoutés** (plus aucun `.bouton` sans
+variante dans les gabarits ; présence de `.bouton:disabled`), 1 test existant
+adapté à la fusion CSS. **Suite globale : 325 tests verts.** Reste ouvert
+(documenté dans `docs/ui-composants.md` §11, pas de code) : pas de variante
+« danger » pour un bouton destructeur — pas une incohérence en soi (aucune
+page du site n'a de bouton rouge aujourd'hui), à ajouter si le besoin se
+confirme ailleurs.
+
 **M9 — Confirmations natives `confirm()` reformulées : FAIT.** Passage en
 revue des 17 `confirm()` du dépôt (mécanisme natif conservé partout, jamais
 remplacé par une modale JS). **5 réécrits** sur le patron « Action ? +

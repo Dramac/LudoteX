@@ -390,7 +390,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 
 ## 3. AMÉLIORATIONS STRUCTURANTES
 
-### S1. Deux « designs de formulaire » cohabitent
+### S1. Deux « designs de formulaire » cohabitent — EN COURS
 - **Constat** : les écrans du prêt (2023-style : gros boutons `.bouton`,
   cartes aérées) et les écrans tournois/planning/admin (formulaires plus denses,
   `.bouton-filtrer`, tableaux `pl-*`) n'ont pas la même densité ni les mêmes
@@ -404,6 +404,33 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   secondaire, LE champ, LA carte, LE message de résultat, avec leurs classes
   canoniques — puis, au fil des retouches de chaque gabarit, remplacer les
   variantes locales par le composant canonique. Q12 en est la première brique.
+- **Fait (2026-07-18)** : `docs/ui-composants.md` rédigé (10 composants
+  canoniques + règle de choix bouton principal/secondaire/`.bouton-filtrer`).
+  Constat réévalué à cette occasion : moins sévère qu'à l'audit — `.champ`,
+  `.carte` et `.resultat` sont déjà largement réutilisés dans tournois/
+  planning, pas seulement dans le prêt ; `.bouton-filtrer` et `.pl-*`
+  correspondent à des besoins réellement différents (action compacte/filtre,
+  grille dense), pas à une duplication accidentelle. Revue systématique de
+  tous les gabarits menée pour trouver les vrais écarts (pas seulement ceux
+  supposés par l'audit) ; 4 corrigés, un commit chacun : (1) **7 boutons**
+  `class="bouton"` seuls (sans `-principal`/`-secondaire`, donc sans couleur
+  de fond, texte blanc peu lisible sur gris par défaut) dans le module
+  planning (`planning_case.html`, `planning_admin.html`, `planning_collecte.html`,
+  `planning_gerer.html` ×4, `planning_creneau.html`) → `bouton-principal` ;
+  (2) `module_desactive.html` : même défaut sur le lien de retour, aligné sur
+  le motif `.lien` des pages sœurs (`acces_refuse.html`, `erreur.html`) ;
+  (3) `admin_fonctionnalites.html` : bouton désactivé en style inline + classe
+  ajoutée en JS → nouvelle règle générique `.bouton:disabled` (CSS), gabarit
+  simplifié ; (4) `.detail`/`.admin-table` identifiés comme le **même
+  composant sous deux noms** (tableau dense) — règles CSS fusionnées, `.detail`
+  hérite au passage du correctif anti-débordement mobile qui n'existait que
+  pour `.admin-table`. 2 tests garde-fous ajoutés (plus de `.bouton` sans
+  variante dans les gabarits ; présence de `.bouton:disabled`), 1 test
+  existant adapté à la fusion. **Suite globale : 325 tests verts.**
+  **Reste ouvert** : pas de variante « danger » pour un bouton destructeur
+  (voir `docs/ui-composants.md` §11, non traité faute de besoin confirmé
+  ailleurs) ; l'inventaire est la référence à consulter/étendre au fil des
+  prochaines retouches, pas une passe unique refermée.
 
 ### S2. Le feedback après action repose entièrement sur le rechargement de page
 - **Constat** : chaque action = POST + redirection + nouvelle page. C'est
@@ -451,5 +478,6 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 4. ✅ FAIT — M4–M9, un par un, un commit par point (M6 sans changement de
    code, déjà couvert par un correctif antérieur — voir sa fiche). Corrigés
    le 2026-07-17/18 (voir CLAUDE.md).
-5. S1/S4 en tâche de fond, au fil des retouches ; S2/S3 seulement si le besoin
-   se confirme.
+5. 🔶 EN COURS — S1 : inventaire + première passe de correctifs faite le
+   2026-07-18 (voir sa fiche). S4 en tâche de fond, au fil des retouches ;
+   S2/S3 seulement si le besoin se confirme.
