@@ -72,6 +72,102 @@ def test_historique_jamais_purge(conn):
     assert n == 2  # deux lignes d'historique, dont une clôturée
 
 
+# ---------------------------------------------------------------------------
+# Effacement du numéro de pochette à la clôture (fiche D5, volet 2).
+# Le numéro désigne le casier d'une pièce d'identité : il n'a d'utilité que
+# pendant le prêt et ne doit pas survivre dans les exports/sauvegardes.
+# ---------------------------------------------------------------------------
+def _numeros(conn, id_exemplaire="001"):
+    """Numéros de pochette de toutes les lignes de prêt, de la plus ancienne."""
+    return [
+        r["numero_pochette"]
+        for r in conn.execute(
+            "SELECT numero_pochette FROM prets WHERE id_exemplaire = ? ORDER BY id_pret",
+            (id_exemplaire,),
+        )
+    ]
+
+
+def test_rendre_efface_le_numero_mais_l_affiche_d_abord(conn):
+    """
+    Le bénévole doit TOUJOURS voir le numéro pour retrouver la pièce
+    d'identité — c'est le geste central de l'application. L'effacement en base
+    ne doit donc pas le priver de l'information rendue à l'écran.
+    """
+    services.preter(conn, "001")               # n°1
+    res = services.rendre(conn, "001")
+
+    assert res["numero_libere"] == 1           # ...affiché au bénévole
+    assert _numeros(conn) == [None]            # ...mais effacé en base
+
+
+def test_pret_en_cours_conserve_son_numero(conn):
+    """Contre-test : on ne purge pas trop large (reprise après incident)."""
+    services.preter(conn, "001")
+    assert _numeros(conn) == [1]
+
+
+def test_retour_de_tournoi_efface_aussi_le_numero(conn):
+    services.sortir_tournoi(conn, "001")       # marqueur 0
+    services.rendre(conn, "001")
+    assert _numeros(conn) == [None]
+
+
+def test_repreter_efface_lancien_numero_pas_le_nouveau(conn):
+    services.preter(conn, "001")               # n°1
+    res = services.repreter(conn, "001")
+    assert res["ancien_numero"] == 1           # affiché au bénévole
+    # Ligne close purgée, nouveau prêt intact avec son numéro.
+    assert _numeros(conn) == [None, res["nouveau_numero"]]
+
+
+def test_cloturer_tous_les_prets_efface_les_numeros(conn):
+    services.preter(conn, "001")
+    services.preter(conn, "002")
+    services.sortir_tournoi(conn, "003")
+
+    assert services.cloturer_tous_les_prets(conn) == 3
+
+    restants = conn.execute(
+        "SELECT COUNT(*) FROM prets WHERE numero_pochette IS NOT NULL"
+    ).fetchone()[0]
+    assert restants == 0
+    # L'historique, lui, est intact : les lignes et leurs dates sont là.
+    assert conn.execute("SELECT COUNT(*) FROM prets").fetchone()[0] == 3
+    assert conn.execute(
+        "SELECT COUNT(*) FROM prets WHERE date_retour IS NOT NULL"
+    ).fetchone()[0] == 3
+
+
+def test_purge_sans_effet_sur_les_statistiques(conn):
+    """
+    Non-régression : aucune requête statistique n'agrège ni ne filtre sur
+    `numero_pochette`. Totaux, palmarès et histogramme doivent être identiques
+    que les lignes closes portent un numéro ou non.
+    """
+    services.preter(conn, "001"); services.rendre(conn, "001")
+    services.preter(conn, "002"); services.rendre(conn, "002")
+    services.preter(conn, "003")
+
+    avant = (
+        services.stats_globales(conn),
+        services.palmares(conn, sens="desc", metrique="total"),
+        services.prets_par_heure(conn),
+    )
+
+    # On remet artificiellement des numéros sur les lignes closes (état
+    # d'AVANT la purge) : les mêmes chiffres doivent sortir.
+    conn.execute("UPDATE prets SET numero_pochette = 9 WHERE date_retour IS NOT NULL")
+    conn.commit()
+
+    apres = (
+        services.stats_globales(conn),
+        services.palmares(conn, sens="desc", metrique="total"),
+        services.prets_par_heure(conn),
+    )
+    assert avant == apres
+
+
 def test_stats_globales_et_palmares(conn):
     # 001 prêté 2 fois (1 clôturé + 1 en cours), 002 une fois, 003 jamais.
     services.preter(conn, "001"); services.rendre(conn, "001"); services.preter(conn, "001")

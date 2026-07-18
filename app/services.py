@@ -881,6 +881,28 @@ def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
     conn.commit()
 
 
+def _effacer_pochette(conn: sqlite3.Connection, id_pret: int) -> None:
+    """
+    Efface le numéro de pochette d'une ligne de prêt CLOSE ; ne committe pas.
+
+    Le numéro désigne le casier où se trouve une pièce d'identité : il n'a
+    d'utilité que pendant le prêt (décision Simon du 2026-07-18, voir
+    docs/specification.md §3.2 et le commentaire de models.SCHEMA_PRETS). Une
+    fois la pochette rendue et recyclée, le conserver ne renseignerait plus sur
+    rien d'utile mais l'exposerait dans tous les exports et toutes les
+    sauvegardes.
+
+    La LIGNE, elle, n'est jamais supprimée : dates et motif restent, donc
+    l'historique et les statistiques sont intacts.
+
+    ⚠️ À appeler APRÈS avoir lu le numéro quand il doit être affiché au
+    bénévole (cas de `rendre`).
+    """
+    conn.execute(
+        "UPDATE prets SET numero_pochette = NULL WHERE id_pret = ?", (id_pret,)
+    )
+
+
 def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
     Enregistre le retour d'un exemplaire : clôt le prêt/sortie en cours et, s'il
@@ -890,6 +912,11 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         conn: connexion SQLite ouverte.
         id_exemplaire: identifiant de la boîte rendue.
 
+    Le numéro de pochette est EFFACÉ de la ligne close (voir `_effacer_pochette`)
+    — mais seulement après avoir été lu : il est renvoyé à l'appelant, qui doit
+    l'afficher au bénévole pour qu'il retrouve la pièce d'identité à restituer.
+    C'est le geste central de l'application.
+
     Returns:
         {"numero_libere": n, "motif": "pret"} pour un prêt au public,
         {"motif": "tournoi"} pour un retour de tournoi (pas d'emplacement), ou
@@ -898,17 +925,19 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     courant = pret_en_cours(conn, id_exemplaire)
     if courant is None:
         return {"deja_disponible": True}
+    numero = courant["numero_pochette"]          # lu AVANT effacement
     conn.execute(
         "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
         (maintenant(), courant["id_pret"]),
     )
+    _effacer_pochette(conn, courant["id_pret"])
     if courant["motif"] == "tournoi":
         conn.commit()
         return {"motif": "tournoi"}
     # Prêt au public : on libère le numéro d'emplacement.
-    liberer_numero(conn, courant["numero_pochette"])
+    liberer_numero(conn, numero)
     conn.commit()
-    return {"numero_libere": courant["numero_pochette"], "motif": "pret"}
+    return {"numero_libere": numero, "motif": "pret"}
 
 
 def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
@@ -920,11 +949,16 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
     sur tout ce qui était encore ouvert, et de libérer toutes les pochettes. Cela
     couvre aussi les sorties tournoi encore ouvertes.
 
+    Les numéros de pochette des lignes ainsi closes sont effacés dans la MÊME
+    requête (voir `_effacer_pochette` pour le pourquoi) : à la fin d'un
+    événement, plus aucun numéro ne subsiste en base.
+
     Returns:
         Le nombre de prêts/sorties clôturés.
     """
     cur = conn.execute(
-        "UPDATE prets SET date_retour = ? WHERE date_retour IS NULL",
+        "UPDATE prets SET date_retour = ?, numero_pochette = NULL "
+        "WHERE date_retour IS NULL",
         (maintenant(),),
     )
     nb = cur.rowcount
@@ -956,14 +990,18 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         # Incohérence bénigne : rien à clore, on ouvre simplement un prêt.
         return {"nouveau_numero": preter(conn, id_exemplaire), "etait_disponible": True}
     # Clôture de l'ancien prêt + libération de son numéro...
+    ancien = courant["numero_pochette"]          # lu AVANT effacement
     conn.execute(
         "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
         (maintenant(), courant["id_pret"]),
     )
-    liberer_numero(conn, courant["numero_pochette"])
+    # ... dont on efface le numéro : il est clos. Le NOUVEAU prêt ouvert
+    # juste après garde le sien, évidemment (c'est lui qui est en cours).
+    _effacer_pochette(conn, courant["id_pret"])
+    liberer_numero(conn, ancien)
     # ... puis ouverture d'un nouveau prêt (preter() committe l'ensemble).
     nouveau = preter(conn, id_exemplaire)
-    return {"ancien_numero": courant["numero_pochette"], "nouveau_numero": nouveau}
+    return {"ancien_numero": ancien, "nouveau_numero": nouveau}
 
 
 # ===========================================================================
