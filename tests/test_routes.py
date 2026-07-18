@@ -76,6 +76,48 @@ def test_aide_hub_renvoie_vers_les_autres_pages_daide(client):
     assert "/admin/aide" not in r.text
 
 
+def test_convention_des_libelles_de_liens_daide():
+    """
+    Fiche B2 point 3 (convention gravée dans docs/ui-composants.md §12).
+
+    Garde-fou sur la SOURCE des gabarits : un lien vers une page d'aide porte
+    soit « ❓ Aide » (navigation), soit « Voir l'aide complète — <sujet> »
+    (sortie d'un bloc .aide-inline).
+
+    Trois familles sont exclues, volontairement et non par oubli :
+    - les fragments de menu du bandeau (`_menu_*.html`), où les entrées sont
+      des mots simples sans icône (« Catalogue », « Scanner »…) : y mettre une
+      icône sur la seule entrée « Aide » jurerait, et le bandeau est déjà
+      l'élément le plus contraint sur petit écran ;
+    - `aide.html`, le hub lui-même, dont les liens sont volontairement
+      descriptifs (« Organiser un tournoi », « Ranger les boîtes ») — c'est ce
+      que la fiche demande : dire ce qu'on trouve derrière, pas répéter
+      « Aide » huit fois ;
+    - `apropos.html`, où les libellés sont des mots au fil d'une phrase, pas
+      des liens de navigation.
+    """
+    import pathlib
+    import re
+
+    dossier = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
+    exclus = {"aide.html", "apropos.html", "_menu_benevole.html", "_menu_visiteur.html"}
+    # Capture le libellé d'un <a ...href="…/aide[#ancre]"…>LIBELLÉ</a>.
+    motif = re.compile(r'<a[^>]*href="[^"]*/aide(?:#[^"]*)?"[^>]*>(.*?)</a>', re.S)
+
+    fautifs = []
+    for fichier in sorted(dossier.glob("*.html")):
+        if fichier.name in exclus:
+            continue
+        for libelle in motif.findall(fichier.read_text(encoding="utf-8")):
+            # Le libellé peut contenir du balisage (l'icône du tableau de bord
+            # est dans un <span class="admin-icone">) : on compare le TEXTE.
+            texte = " ".join(re.sub(r"<[^>]+>", " ", libelle).split())
+            if texte == "❓ Aide" or texte.startswith("Voir l'aide complète — "):
+                continue
+            fautifs.append(f"{fichier.name}: {texte!r}")
+    assert fautifs == []
+
+
 def test_menu_visiteur_contient_un_lien_aide(client):
     # Fiche B2 point 2 : un visiteur (sans cookie bénévole) doit pouvoir
     # atteindre l'aide depuis le bandeau. Le fragment est rendu DEUX fois par
