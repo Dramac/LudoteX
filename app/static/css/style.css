@@ -237,6 +237,25 @@ summary:focus-visible,
 .pochette-num--retour { color: #1a73e8; }
 .resultat-consigne { margin: 0; font-weight: 600; }
 
+/* Code personnel (fiche D4, docs/audit-ux-2026-07-18.md) : code de
+   désinscription tournoi, code de modification planning — même besoin
+   (perdre le code = perdre la main sur son inscription/sa réponse), même
+   classe. Remplace deux traitements sans rapport : côté tournoi, .pochette-num
+   était DÉTOURNÉE (elle désigne officiellement le numéro de pochette depuis
+   D3, docs/vocabulaire.md — un détournement trompeur pour qui modifierait un
+   jour le style des numéros de pochette) ; côté planning, .pl-code (préfixe
+   propre au module planning) faisait déjà l'essentiel du travail (chasse
+   fixe : lève l'ambiguïté 0/O et 1/l, utile pour un code recopié à la main)
+   mais était trop petite pour porter seule l'attention sur un écran de
+   confirmation. Promue et agrandie plutôt que dupliquée. */
+.code-personnel {
+  font-family: ui-monospace, monospace;
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  margin: 4px 0;
+}
+
 .lien { color: #1a73e8; }
 .lien-fiche { margin: 16px 0 0; text-align: center; }
 
@@ -685,7 +704,6 @@ button.lien {
   display: inline-block; background: #eef; color: #334; border-radius: 10px;
   padding: 1px 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: .03em;
 }
-.pl-code { font-family: ui-monospace, monospace; font-size: 1.2rem; letter-spacing: .05em; }
 .pl-cases { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 14px; }
 .pl-case-dispo {
   display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bord);
