@@ -1047,11 +1047,56 @@ reportlab est compressé — FlateDecode/ASCII85 — donc illisible en clair dan
 les octets bruts ; le mock capture les en-têtes réellement transmises à la
 mise en page, car `construire_pdf` importe `Table` à l'intérieur de la
 fonction). **Suite globale : 337 tests verts.**
-**Volets 2 (purge du numéro à la clôture du prêt, migration du schéma de
-`prets`) et 3 (rejouer les migrations après restauration de sauvegarde)
-restent à faire** — hors périmètre de cette session par consigne explicite de
-Simon, chacun nécessite une session dédiée avec validation préalable (le
-volet 2 touche `prets`, la table la plus sensible du projet).
+**D5 volets 2 et 3 — purge du numéro de pochette à la clôture : FAIT.**
+Quatre commits. **Volet 3 d'abord** (prérequis) :
+`sauvegarde.restaurer_zip_sauvegarde` remplaçait les fichiers de base et
+s'arrêtait là, alors que les migrations ne tournaient qu'au démarrage du
+serveur — or une restauration se fait à chaud. Nouveau
+`_migrer_bases_restaurees()` (les trois `init_db()`, idempotents par
+conception) appelé en fin de restauration. Défaut **préexistant** (une
+sauvegarde antérieure aux colonnes `motif`/`age`/rangement produisait déjà
+ce genre de panne), que le volet 2 rendait bloquant.
+**Schéma** : `numero_pochette` passe de `INTEGER NOT NULL` à `INTEGER`
+nullable. Voie retenue : **reconstruction de table**, pas la sentinelle `0`
+(qui n'efface rien, s'afficherait « 0 », et collisionne avec le marqueur des
+sorties tournoi). `db._migrer_pochette_nullable`, avec trois garde-fous —
+idempotence par le drapeau `notnull` de `PRAGMA table_info` (pas de table de
+versions) ; `PRAGMA foreign_keys` désactivé **avant** le `BEGIN` (il est
+ignoré à l'intérieur d'une transaction) puis `foreign_key_check` après ;
+comptage des lignes avant/après **dans** la transaction, tout écart lève et
+annule donc le `DROP`. Recrée explicitement les index de `prets` (que
+`DROP TABLE` emporte, `SCHEMA_INDEXES` s'exécutant avant les migrations) et
+refuse de tourner si le schéma réel diverge de `_COLONNES_PRETS` plutôt que
+de laisser tomber une colonne silencieusement. **Purge rétroactive** dans la
+même transaction (`numero_pochette = NULL WHERE date_retour IS NOT NULL`),
+**sorties tournoi closes comprises** — vérifié avant de trancher : aucune
+lecture de la colonne ne porte sur une ligne close (`pret_en_cours` et
+`lister_prets_en_cours` filtrent `date_retour IS NULL`,
+`lister_prets_periode` et les exports filtrent `motif = 'pret'`), c'est
+`motif` qui porte l'information. **Pas de sauvegarde de sécurité avant
+migration** (proposé, écarté avec Simon) : le zip contiendrait précisément
+les numéros que l'on efface, en clair dans `data/sauvegardes/`, dossier
+jamais purgé — ce serait D5 à l'envers.
+**Purge aux trois points de clôture** via `services._effacer_pochette` :
+`rendre` (numéro lu **avant** effacement et toujours renvoyé à l'écran — le
+bénévole doit voir « emplacement n° 7 » pour récupérer la pièce d'identité,
+c'est le geste central de l'appli), `repreter` (ancien prêt seulement, jamais
+le nouveau), `cloturer_tous_les_prets` (même requête `UPDATE`). Les prêts
+**en cours** gardent leur numéro : la reprise après incident pendant
+l'événement reste assurée par les sauvegardes, **rien n'a été ajouté de ce
+côté**. **Conséquence d'affichage** : la liste détaillée de `/stats` et les
+exports Excel/PDF perdent complètement leur colonne « emplacement » (elle
+porte sur une période, donc sur des prêts clos : elle serait toujours vide),
+et le paramètre `avec_pochette` d'`exports.py`, introduit au volet 1 pour ces
+deux seuls emplacements, disparaît — la donnée n'existe plus au lieu d'être
+masquée conditionnellement. La colonne subsiste dans « Jeux actuellement
+sortis » (prêts en cours), toujours réservée aux bénévoles/admin.
+**14 tests ajoutés** (`tests/test_migration_prets.py` : migration sans perte
+de ligne, purge, contre-test du prêt en cours, index recréés, idempotence,
+continuité de l'AUTOINCREMENT, refus d'un schéma inattendu ;
+`test_services.py` : les trois points de clôture + non-régression
+statistique ; `test_sauvegarde.py` : restauration d'une sauvegarde au schéma
+ancien) et 3 tests du volet 1 adaptés. **Suite globale : 351 tests verts.**
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
