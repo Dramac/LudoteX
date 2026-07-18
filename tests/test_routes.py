@@ -319,8 +319,7 @@ def test_stats_pochette_cloisonnee(client, monkeypatch):
     assert r.status_code == 200
     # Ni l'en-tête de colonne...
     assert "Empl." not in r.text
-    # ...ni la valeur, dans aucune des deux tables concernées (jeux sortis +
-    # détail des prêts).
+    # ...ni la valeur.
     assert "<td>1</td>" not in r.text
     # Non-régression : le reste de la page (totaux, palmarès, tableau) est
     # inchangé.
@@ -328,15 +327,41 @@ def test_stats_pochette_cloisonnee(client, monkeypatch):
     assert "Jeux actuellement sortis" in r.text
     assert "Prêtés au public" in r.text
 
-    # Bénévole activé : la colonne réapparaît, aux deux endroits.
+    # Bénévole activé : la colonne réapparaît — dans « Jeux actuellement
+    # sortis » UNIQUEMENT (volet 2 : la liste détaillée n'a plus de colonne
+    # emplacement du tout, le numéro y serait toujours vide).
     client.cookies.set("jeton_pret", jeton_cookie)
     r2 = client.get("/stats")
-    assert r2.text.count("Empl.") == 2
+    assert r2.text.count("Empl.") == 1
     assert "<td>1</td>" in r2.text
 
 
-def test_stats_export_xlsx_pochette_cloisonnee(client, monkeypatch):
-    """D5 volet 1 : même cloisonnement sur l'export Excel (public lui aussi)."""
+def test_stats_detail_sans_colonne_emplacement(client, monkeypatch):
+    """
+    D5 volet 2 : la liste détaillée des prêts porte sur une PÉRIODE, donc
+    essentiellement sur des prêts clos — dont le numéro est effacé à la
+    clôture. La colonne a été retirée : une colonne toujours vide est pire
+    que pas de colonne. Vrai même pour un bénévole activé.
+    """
+    monkeypatch.setenv("PRET_TOKEN", "jeton-detail-empl-xyz")
+    client.get("/acces", params={"jeton": "jeton-detail-empl-xyz"})
+    client.post("/pret/001/preter")
+    client.post("/pret/001/rendre")          # prêt clos : numéro effacé
+
+    r = client.get("/stats")
+    assert r.status_code == 200
+    detail = r.text.split("Détail des prêts", 1)[1]
+    assert "Empl." not in detail
+    # La liste elle-même est bien rendue (non-régression).
+    assert "Catan" in detail
+
+
+def test_stats_export_xlsx_sans_colonne_emplacement(client, monkeypatch):
+    """
+    D5 volet 2 : la colonne disparaît de la feuille « Détail », pour tout le
+    monde — y compris un bénévole activé. Elle n'est plus cloisonnée par rôle
+    (volet 1) : la donnée n'existe tout simplement plus sur des prêts clos.
+    """
     from io import BytesIO
 
     from openpyxl import load_workbook
@@ -345,24 +370,24 @@ def test_stats_export_xlsx_pochette_cloisonnee(client, monkeypatch):
     client.get("/acces", params={"jeton": "jeton-export-xlsx-pochette-xyz"})
     client.post("/pret/001/preter")
 
-    jeton_cookie = client.cookies.get("jeton_pret")
+    def entetes_detail():
+        x = client.get("/stats/export.xlsx")
+        assert x.status_code == 200
+        return [c.value for c in load_workbook(BytesIO(x.content))["Détail"][1]]
+
+    # Bénévole activé...
+    assert "N° emplacement" not in entetes_detail()
+    assert "Durée" in entetes_detail()          # les autres colonnes restent
+    # ...et visiteur.
     client.cookies.delete("jeton_pret")
-    x = client.get("/stats/export.xlsx")
-    assert x.status_code == 200
-    entetes = [c.value for c in load_workbook(BytesIO(x.content))["Détail"][1]]
-    assert "N° emplacement" not in entetes
-
-    client.cookies.set("jeton_pret", jeton_cookie)
-    x2 = client.get("/stats/export.xlsx")
-    entetes2 = [c.value for c in load_workbook(BytesIO(x2.content))["Détail"][1]]
-    assert "N° emplacement" in entetes2
+    assert "N° emplacement" not in entetes_detail()
 
 
-def test_stats_export_pdf_pochette_cloisonnee(client, monkeypatch):
+def test_stats_export_pdf_sans_colonne_emplacement(client, monkeypatch):
     """
-    D5 volet 1 : même cloisonnement sur l'export PDF. Le PDF produit par
-    reportlab compresse ses flux de contenu (FlateDecode/ASCII85) : on ne
-    peut pas chercher "Empl." dans les octets bruts. On intercepte plutôt
+    D5 volet 2 : idem sur l'export PDF. Le PDF produit par reportlab
+    compresse ses flux de contenu (FlateDecode/ASCII85) : on ne peut pas
+    chercher "Empl." dans les octets bruts. On intercepte plutôt
     `reportlab.platypus.Table` (importée à l'intérieur de
     `exports.construire_pdf`, donc le mock est bien pris en compte) pour
     inspecter les en-têtes réellement transmises à la mise en page.
@@ -381,17 +406,18 @@ def test_stats_export_pdf_pochette_cloisonnee(client, monkeypatch):
     client.get("/acces", params={"jeton": "jeton-export-pdf-pochette-xyz"})
     client.post("/pret/001/preter")
 
-    jeton_cookie = client.cookies.get("jeton_pret")
-    client.cookies.delete("jeton_pret")
+    # Bénévole activé : plus de colonne emplacement, mais le tableau est bien là.
     r = client.get("/stats/export.pdf", params=[("sections", "detail")])
     assert r.status_code == 200
     assert "Empl." not in captures[-1][0]
+    assert "Durée" in captures[-1][0]
 
+    # Visiteur : identique.
     captures.clear()
-    client.cookies.set("jeton_pret", jeton_cookie)
+    client.cookies.delete("jeton_pret")
     r2 = client.get("/stats/export.pdf", params=[("sections", "detail")])
     assert r2.status_code == 200
-    assert "Empl." in captures[-1][0]
+    assert "Empl." not in captures[-1][0]
 
 
 def test_fiche_publique(client):

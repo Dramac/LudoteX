@@ -144,7 +144,12 @@
   <h2>Détail des prêts <small>({{ prets | length }})</small></h2>
   {% if prets %}
     <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th>{% if est_benevole(request) %}<th>Empl.</th>{% endif %}</tr></thead>
+      {# Pas de colonne « emplacement » ici : cette liste porte sur une période,
+         donc essentiellement sur des prêts CLOS, dont le numéro de pochette est
+         effacé à la clôture (fiche D5). La colonne serait toujours vide. Elle
+         reste en revanche dans « Jeux actuellement sortis », où le numéro
+         existe et sert. #}
+      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th></tr></thead>
       <tbody>
         {% for p in prets %}
           <tr>
@@ -153,7 +158,6 @@
             <td>{{ p.sortie_locale }}</td>
             <td>{{ p.retour_local or "en cours" }}</td>
             <td>{{ p.duree_txt }}</td>
-            {% if est_benevole(request) %}<td>{{ p.numero_pochette }}</td>{% endif %}
           </tr>
         {% endfor %}
       </tbody>
