@@ -420,6 +420,52 @@ def test_stats_export_pdf_sans_colonne_emplacement(client, monkeypatch):
     assert "Empl." not in captures[-1][0]
 
 
+def test_fiche_sorties_de_page_visiteur(client, monkeypatch):
+    """
+    A1 : la fiche est la cible des 703 QR et était un cul-de-sac. Un visiteur
+    doit pouvoir repartir (catalogue, catégorie) — et ne jamais voir de lien
+    vers l'écran de prêt.
+    """
+    monkeypatch.setenv("PRET_TOKEN", "jeton-fiche-a1-xyz")   # sortir du mode ouvert
+    from app import db
+
+    conn = db.get_connection()
+    conn.execute("UPDATE titres SET categorie = 'Jeu de plateau' WHERE reference_titre='CATAN'")
+    conn.commit()
+    conn.close()
+
+    r = client.get("/jeu/001")
+    assert r.status_code == 200
+    assert 'href="/catalogue"' in r.text
+    assert "/catalogue?categorie=Jeu%20de%20plateau" in r.text
+    assert "/pret/" not in r.text
+
+
+def test_fiche_bouton_pret_pour_le_benevole(client, monkeypatch):
+    """
+    A1, le correctif critique : quand la caméra embarquée refuse de démarrer,
+    le bénévole scanne avec l'appareil photo natif et atterrit sur /jeu/<id>.
+    Il doit atteindre l'écran de prêt en un tap, sans repasser par /scanner.
+    """
+    monkeypatch.setenv("PRET_TOKEN", "jeton-fiche-a1-benevole-xyz")
+    client.get("/acces", params={"jeton": "jeton-fiche-a1-benevole-xyz"})
+
+    r = client.get("/jeu/001")
+    assert r.status_code == 200
+    assert 'href="/pret/001"' in r.text
+    # Les sorties de page restent présentes pour lui aussi.
+    assert 'href="/catalogue"' in r.text
+
+
+def test_fiche_sans_categorie_pas_de_lien_vide(client, monkeypatch):
+    """Sans catégorie renseignée, pas de lien de filtre vide (jamais de « None »)."""
+    monkeypatch.setenv("PRET_TOKEN", "jeton-fiche-a1-sans-cat-xyz")
+    r = client.get("/jeu/001")          # la fixture ne pose pas de catégorie
+    assert r.status_code == 200
+    assert "categorie=" not in r.text
+    assert 'href="/catalogue"' in r.text
+
+
 def test_fiche_publique(client):
     r = client.get("/jeu/001")
     assert r.status_code == 200
