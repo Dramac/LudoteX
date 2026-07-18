@@ -58,6 +58,14 @@
 
     {% if "lance" in transitions %}
       <h3>Lancer le tournoi</h3>
+      <details class="aide-inline">
+        <summary>❓ Comment ça marche ?</summary>
+        <p>Le mode de scoring (score le plus haut, ronde suisse, élimination
+           directe, round robin) et le format (BO3) se choisissent au lancement,
+           une seule fois. Chaque mode ouvre ensuite son propre écran de saisie
+           des résultats.</p>
+        <p><a class="lien" href="/tournoi/aide">Voir l'aide complète sur les tournois</a></p>
+      </details>
       {% if participants %}
         <form method="post" action="/tournoi/{{ t.id_tournoi }}/lancer" class="recherche-form">
           <div class="champ">
