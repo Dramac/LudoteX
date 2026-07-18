@@ -11,6 +11,11 @@
   <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
 </head>
 <body{% if mode_formation %} class="mode-formation"{% endif %}{% block body_attrs %}{% endblock %}>
+  {# Lien d'évitement (E1, docs/audit-ux-2026-07-18.md) : premier élément
+     focusable du document, pour qu'un utilisateur au clavier/lecteur
+     d'écran n'ait pas à traverser le bandeau (menu + jusqu'à deux bandeaux
+     formation/rangement) à chaque page avant d'atteindre le contenu. #}
+  <a class="saut-contenu" href="#contenu">Aller au contenu</a>
   <div class="bandeau-groupe">
     {% if mode_formation %}
     <div class="formation-bandeau">🎓 SITE DE FORMATION — aucun effet sur LudoteX</div>
@@ -56,7 +61,7 @@
       </div>
     </header>
   </div>
-  <main class="contenu {% block conteneur_extra %}{% endblock %}">
+  <main class="contenu {% block conteneur_extra %}{% endblock %}" id="contenu">
     {% block contenu %}{% endblock %}
   </main>
   <footer class="pied">

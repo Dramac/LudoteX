@@ -1640,3 +1640,33 @@ def test_d2_pluriel_joueurs_menu_filtre(client):
     assert r.status_code == 200
     assert "1 joueur<" in r.text
     assert "joueurs<" in r.text
+
+
+def test_e1_lien_devitement_present(client, monkeypatch):
+    """
+    Fiche E1 : lien d'évitement clavier — premier élément focusable du
+    document, avant même le(s) bandeau(x) — sur une page de chaque famille
+    (public, bénévole, admin ; toutes étendent base.html).
+    """
+    urls = ["/catalogue", "/scanner"]  # public, puis bénévole (mode ouvert)
+
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    urls.append("/admin")
+
+    for url in urls:
+        r = client.get(url)
+        assert r.status_code == 200, url
+        assert '<a class="saut-contenu" href="#contenu">Aller au contenu</a>' in r.text
+        assert 'id="contenu"' in r.text
+        # Le lien précède le bandeau (donc tout menu/bandeau formation ou
+        # rangement) : c'est le tout premier élément focusable de la page.
+        pos_lien = r.text.index('class="saut-contenu"')
+        pos_bandeau = r.text.index('class="bandeau-groupe"')
+        assert pos_lien < pos_bandeau, url
+
+
+def test_e1_lien_devitement_masque_impression(client):
+    r = client.get("/static/css/style.css")
+    assert r.status_code == 200
+    assert ".saut-contenu { display: none; }" in r.text
