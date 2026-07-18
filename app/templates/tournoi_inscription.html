@@ -44,6 +44,9 @@
     pouvoir vous désinscrire. Évitez d'utiliser votre vrai nom complet comme
     pseudo si vous ne le souhaitez pas.
   </p>
-  <p class="lien-fiche"><a class="lien" href="/tournoi/{{ t.id_tournoi }}">← Retour au tournoi</a></p>
+  {# Fiche B2 point 4 : écran PUBLIC où naissent les questions (pourquoi un
+     pseudo, à quoi sert le code, et si l'on peut se désinscrire). #}
+  <p class="lien-fiche"><a class="lien" href="/tournoi/{{ t.id_tournoi }}">← Retour au tournoi</a>
+     &nbsp;·&nbsp; <a class="lien" href="/tournoi/aide">❓ Aide</a></p>
 </section>
 {% endblock %}
