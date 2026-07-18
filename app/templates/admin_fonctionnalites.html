@@ -13,6 +13,9 @@
       <dd>{{ descriptions_etats[etat] }}</dd>
       {% endfor %}
     </dl>
+    {# Fiche C1 point 3 : cet écran avait DÉJÀ son bloc .aide-inline (S4). On
+       lui ajoute son lien de sortie plutôt que d'empiler un second bloc. #}
+    <p><a class="lien" href="/admin/aide#probleme-module">Voir l'aide complète — modules masqués ou désactivés</a></p>
   </details>
   {% if message %}
     <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
