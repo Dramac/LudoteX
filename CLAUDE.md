@@ -1127,6 +1127,41 @@ inconnu », `module_desactive.html`) **retournent** leur gabarit avec
 gestionnaire et gardent leur message spécifique. **3 tests** dont les deux
 non-régressions. **Suite globale : 357 tests verts.**
 
+**B1 — mode rangement visible sur toutes les pages : FAIT.** Le mode est
+mémorisé dans un cookie d'appareil de 12 h et change la signification du
+geste central (scanner **range** au lieu d'ouvrir l'écran de prêt), mais
+n'était signalé que sur `/scanner` — seul mode caché de l'appli. Résolution
+du cookie **extraite** de `routes/scanner.py` vers `services.etat_rangement`
+(un seul domicile, `scanner.py` délègue) + `services.rangement_actif(request)`,
+global Jinja sur le modèle de `rangement_visible` (ouvre sa propre connexion :
+seule la requête est disponible dans un gabarit). Bandeau dans `base.html`,
+dans `.bandeau-groupe` avec celui de formation, donc sticky avec lui ; les
+deux coexistent (testé). **Jamais affiché à un visiteur non bénévole**, même
+porteur du cookie. Confirmation de rangement : « ✓ » générique remplacé par
+l'icône 🗄️ du bandeau (ne peut plus se lire comme une confirmation de prêt).
+`DUREE_COOKIE_RANGEMENT` **non touchée** (12 h, arbitrage de la fiche).
+Deux décisions en cours de route : (a) **collision de nom évitée** —
+`.rangement-bandeau` désignait déjà le PANNEAU détaillé de `/scanner`, une
+règle homonyme placée plus bas dans `style.css` l'aurait silencieusement
+restylé ; le bandeau global prend `.rangement-bandeau-global` et reprend le
+**bleu** de l'identité « rangement » ; (b) **panneau du scanner simplifié**
+(la fiche demandait de trancher) : libellé et « Quitter » étant désormais
+globaux et toujours visibles, il ne garde que ce qui lui est propre —
+changer d'emplacement sans quitter le mode. La sortie accepte un `retour`
+(chemins internes uniquement, `//hote` et URL absolues refusées) pour revenir
+sur la page d'où l'on quitte, repli sur `/scanner`. **6 tests**, 1 adapté.
+**Suite globale : 363 tests verts.**
+
+**Wiki mis à jour** (D5 + A1) : `Guide-Benevole` (le repli « appareil photo
+natif » menait à la fiche publique sans dire comment continuer — c'était le
+cul-de-sac corrigé par A1 ; le bouton « 📷 Prêter / rendre ce jeu » est
+désormais indiqué), `Module-Pret` et `Rgpd` (numéro de pochette effacé une
+fois le prêt terminé), `Module-Statistiques` (numéro réservé aux
+bénévoles/admin, jamais dans la liste détaillée). **Lacune connue non
+comblée : le module Rangement reste absent du wiki en totalité** (déjà
+signalé dans `docs/guide-utilisateur-cadrage.md` §1) — B1 n'a rien rendu
+faux, il n'y avait rien à corriger ; une page dédiée reste à écrire.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
