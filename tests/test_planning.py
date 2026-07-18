@@ -517,6 +517,21 @@ def test_flux_demo_publie_et_exports(client):
     assert p.content[:4] == b"%PDF"
 
 
+def test_collecte_publique_porte_un_lien_daide(client):
+    # Fiche B2 point 4 : le formulaire de collecte est PUBLIC, et le sens des
+    # quatre niveaux de préférence (prefere/ok/si_vraiment/surtout_pas) ne s'y
+    # devine pas. Il n'offrait aucun accès à l'aide qui les explique.
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": "Test aide"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+
+    page = client.get(f"/planning/collecte/{ev}").text
+    assert 'href="/planning/aide"' in page
+    assert "❓ Aide" in page
+
+
 def test_flux_collecte_publique(client):
     _login_admin(client)
     # Crée un événement vide (état collecte) + une trame minimale.

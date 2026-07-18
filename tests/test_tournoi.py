@@ -997,6 +997,22 @@ def test_gerer_lancement_grise_champs_inapplicables(client):
     assert 'href="/tournoi/aide"' in page
 
 
+def test_ecrans_publics_tournoi_portent_un_lien_daide(client):
+    # Fiche B2 point 4 : la page de suivi et le formulaire d'inscription sont
+    # les deux écrans PUBLICS du module, et n'offraient aucun accès à l'aide —
+    # alors que c'est là que naissent les questions (« bye », classement,
+    # code de désinscription).
+    r = client.post("/tournoi/nouveau", data={"nom": "Coup de cœur"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+
+    for url in (f"/tournoi/{tid}", f"/tournoi/{tid}/inscription"):
+        page = client.get(url).text
+        assert 'href="/tournoi/aide"' in page, url
+        assert "❓ Aide" in page, url
+
+
 def test_suppression_double_confirmation(client):
     r = client.post("/tournoi/nouveau", data={"nom": "À supprimer"},
                     follow_redirects=False)
