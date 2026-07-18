@@ -22,6 +22,16 @@
     <p class="dispo-titre">{{ disponible }} / {{ total }} {{ pluriel(total, 'exemplaire', 'exemplaires') }}
        de ce jeu {{ pluriel(total, 'disponible', 'disponibles') }}</p>
 
+    {# Bénévole : accès direct à l'écran de prêt. Placé AVANT les
+       caractéristiques — il n'est pas là pour lire le descriptif. Sert de
+       repli quand la caméra embarquée refuse de démarrer et que le scan passe
+       par l'appareil photo natif : le QR mène ici, pas à /pret. #}
+    {% if est_benevole(request) %}
+      <a class="bouton bouton-principal" href="/pret/{{ info.id_exemplaire }}">
+        📷 Prêter / rendre ce jeu
+      </a>
+    {% endif %}
+
     <dl class="caracteristiques">
       {% if info.type_jeu %}<dt>Type</dt><dd>{{ info.type_jeu }}</dd>{% endif %}
       {% if info.categorie %}<dt>Catégorie</dt><dd>{{ info.categorie }}</dd>{% endif %}
@@ -42,6 +52,17 @@
     {% if info.descriptif %}
       <p class="descriptif">{{ info.descriptif }}</p>
     {% endif %}
+
+    {# Sorties de page : la fiche est la cible des 703 QR, c'était jusqu'ici
+       un cul-de-sac (aucun lien de retour, aucun rebond). #}
+    <p class="lien-fiche">
+      <a class="lien" href="/catalogue">← Retour au catalogue</a>
+      {% if info.categorie %}
+        &nbsp;·&nbsp;
+        <a class="lien" href="/catalogue?categorie={{ info.categorie | urlencode }}">
+          Voir les autres jeux « {{ info.categorie }} »</a>
+      {% endif %}
+    </p>
   </section>
 {% endif %}
 {% endblock %}
