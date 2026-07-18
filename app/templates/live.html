@@ -22,6 +22,8 @@
       --orange: #fbbf24;
       --rouge: #f87171;
       --bordure: #334155;
+      --annonce-fond: #b45309;   /* ambre soutenu, distinct du reste de la palette */
+      --annonce-texte: #fff7ed;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
@@ -62,6 +64,20 @@
       animation: pulse 2s ease-in-out infinite;
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    /* --- Bandeau d'annonce libre (idée 5.2), piloté depuis /admin/ecran-salle --- */
+    .bandeau-annonce {
+      display: none;   /* affiché en JS seulement quand une annonce est active */
+      background: var(--annonce-fond);
+      color: var(--annonce-texte);
+      border-radius: 0.8vw;
+      padding: 0.9vw 1.6vw;
+      font-size: 1.5em;
+      font-weight: 700;
+      align-items: baseline;
+      gap: 0.7em;
+    }
+    .bandeau-annonce .puce-annonce { font-size: 1.2em; }
 
     /* --- Grandes cartes de chiffres --- */
     .chiffres {
@@ -169,6 +185,10 @@
       <div class="horloge"><span class="point"></span><span id="horloge">--:--</span></div>
     </header>
 
+    <section class="bandeau-annonce" id="bandeau-annonce">
+      <span class="puce-annonce">📣</span><span id="annonce-texte"></span>
+    </section>
+
     <section class="chiffres">
       <div class="carte">
         <div class="libelle">Jeux sortis</div>
@@ -270,11 +290,25 @@
       }).join("");
     }
 
+    function rendreAnnonce(texte) {
+      // Bandeau d'annonce libre : apparition/disparition sans rechargement.
+      // textContent uniquement (jamais innerHTML) : le texte vient d'une
+      // saisie libre en admin.
+      const el = document.getElementById("bandeau-annonce");
+      if (texte) {
+        document.getElementById("annonce-texte").textContent = texte;
+        el.style.display = "flex";
+      } else {
+        el.style.display = "none";
+      }
+    }
+
     function rendre(d) {
       if (d.titre) {
         document.getElementById("titre").textContent = d.titre;
         document.title = d.titre + " — Tableau de bord";
       }
+      rendreAnnonce(d.annonce);
       document.getElementById("c-sortis").textContent = d.jeux.sortis;
       document.getElementById("c-dispo").textContent = d.jeux.disponibles;
       document.getElementById("c-total").textContent = d.jeux.total;
