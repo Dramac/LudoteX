@@ -117,6 +117,129 @@ def _appliquer_migrations(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+# Colonnes de `prets`, dans l'ordre, telles que définies par models.SCHEMA_PRETS.
+# Utilisées par _migrer_pochette_nullable, qui recopie la table ligne à ligne :
+# toute divergence avec le schéma réel FAIT ÉCHOUER la migration plutôt que de
+# laisser tomber silencieusement une colonne. Tenir à jour avec models.py.
+_COLONNES_PRETS = (
+    "id_pret",
+    "id_exemplaire",
+    "numero_pochette",
+    "date_sortie",
+    "date_retour",
+    "motif",
+)
+
+
+def _pochette_deja_nullable(conn: sqlite3.Connection) -> bool:
+    """Vrai si `prets.numero_pochette` a déjà perdu sa contrainte NOT NULL."""
+    for _, nom, _type, notnull, _defaut, _pk in conn.execute("PRAGMA table_info(prets)"):
+        if nom == "numero_pochette":
+            return not notnull
+    # Colonne absente : base inattendue, on ne touche à rien.
+    return True
+
+
+def _migrer_pochette_nullable(conn: sqlite3.Connection) -> None:
+    """
+    Rend `prets.numero_pochette` NULLABLE et purge l'historique déjà constitué
+    (fiche D5 ; voir le commentaire de models.SCHEMA_PRETS).
+
+    SQLite ne sait pas retirer un NOT NULL par ALTER TABLE : il faut
+    reconstruire la table. `prets` étant la table la plus sensible du projet
+    (son historique n'est jamais purgé), la procédure suit à la lettre le motif
+    officiel SQLite et s'entoure de trois garde-fous :
+
+    - IDEMPOTENCE : on sort immédiatement si la colonne est déjà nullable —
+      c'est le drapeau `notnull` de PRAGMA table_info qui sert de témoin, pas
+      une table de versions à maintenir.
+    - CLÉS ÉTRANGÈRES : `PRAGMA foreign_keys` est un NO-OP à l'intérieur d'une
+      transaction ; il est donc désactivé AVANT le BEGIN, et l'intégrité est
+      revérifiée après coup par `PRAGMA foreign_key_check`.
+    - AUCUNE LIGNE PERDUE : les lignes sont comptées avant et après, DANS la
+      même transaction. Tout écart lève, donc annule le DROP — la base reste
+      exactement dans son état d'origine.
+    """
+    if _pochette_deja_nullable(conn):
+        return
+
+    reelles = tuple(r[1] for r in conn.execute("PRAGMA table_info(prets)"))
+    if reelles != _COLONNES_PRETS:
+        raise RuntimeError(
+            "Migration de `prets` impossible : les colonnes réelles "
+            f"{reelles} ne correspondent pas à _COLONNES_PRETS "
+            f"{_COLONNES_PRETS}. Mettre les deux listes en accord (voir "
+            "app/models.py) avant de relancer."
+        )
+
+    colonnes = ", ".join(_COLONNES_PRETS)
+    conn.commit()                       # rien ne doit rester en cours...
+    conn.execute("PRAGMA foreign_keys = OFF")   # ... le pragma serait sinon ignoré
+    try:
+        conn.execute("BEGIN")
+        (avant,) = conn.execute("SELECT COUNT(*) FROM prets").fetchone()
+
+        conn.execute(
+            """
+            CREATE TABLE prets_nouveau (
+                id_pret          INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_exemplaire    TEXT NOT NULL,
+                numero_pochette  INTEGER,
+                date_sortie      TEXT NOT NULL,
+                date_retour      TEXT,
+                motif            TEXT NOT NULL DEFAULT 'pret',
+                FOREIGN KEY (id_exemplaire) REFERENCES exemplaires (id_exemplaire)
+            )
+            """
+        )
+        # id_pret est recopié explicitement : la numérotation ne repart pas de
+        # zéro et sqlite_sequence se recale sur le maximum inséré.
+        conn.execute(
+            f"INSERT INTO prets_nouveau ({colonnes}) SELECT {colonnes} FROM prets"
+        )
+
+        (apres,) = conn.execute("SELECT COUNT(*) FROM prets_nouveau").fetchone()
+        if apres != avant:
+            raise RuntimeError(
+                f"Migration de `prets` interrompue : {avant} ligne(s) avant, "
+                f"{apres} après. Aucune modification n'a été validée."
+            )
+
+        # Purge rétroactive : sans elle, tout l'historique déjà constitué
+        # resterait en clair (fiche D5). Règle uniforme, sorties tournoi
+        # closes comprises — leur marqueur `0` n'est lu nulle part sur une
+        # ligne close, c'est `motif` qui porte l'information.
+        conn.execute(
+            "UPDATE prets_nouveau SET numero_pochette = NULL "
+            "WHERE date_retour IS NOT NULL"
+        )
+
+        # DROP TABLE emporte aussi les index de `prets` : les recréer ici, car
+        # models.SCHEMA_INDEXES a déjà été exécuté (avant les migrations).
+        conn.execute("DROP TABLE prets")
+        conn.execute("ALTER TABLE prets_nouveau RENAME TO prets")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prets_exemplaire ON prets (id_exemplaire)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prets_retour_null "
+            "ON prets (id_exemplaire) WHERE date_retour IS NULL"
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+    orphelines = conn.execute("PRAGMA foreign_key_check(prets)").fetchall()
+    if orphelines:
+        raise RuntimeError(
+            f"Migration de `prets` : {len(orphelines)} ligne(s) orpheline(s) "
+            "détectée(s) après reconstruction."
+        )
+
+
 def _seed_emplacements_rangement(conn: sqlite3.Connection) -> None:
     """
     Premier remplissage de `emplacements_rangement` (idempotent).
@@ -156,6 +279,9 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
             conn.executescript(statement)
         conn.commit()
         _appliquer_migrations(conn)
+        # Après les migrations de colonnes : celle-ci recopie la table `prets`
+        # et suppose donc `motif` déjà présent.
+        _migrer_pochette_nullable(conn)
         _seed_emplacements_rangement(conn)
     finally:
         # On ne ferme que si on a ouvert : ne pas fermer la connexion du test.

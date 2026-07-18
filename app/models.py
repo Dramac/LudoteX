@@ -107,13 +107,38 @@ CREATE TABLE IF NOT EXISTS exemplaires (
 # prets — l'historique complet de tous les prêts (jamais purgé).
 # ---------------------------------------------------------------------------
 # Un exemplaire est SORTI s'il possède une ligne avec date_retour NULL,
-# DISPONIBLE sinon (état déduit, pas stocké). numero_pochette est conservé même
-# après retour (trace historique, sans incidence sur les statistiques).
+# DISPONIBLE sinon (état déduit, pas stocké).
+#
+# numero_pochette — DÉCISION Simon du 2026-07-18 (révoque le choix initial,
+# qui le conservait après retour comme trace historique) : ce numéro désigne
+# le casier où se trouve une PIÈCE D'IDENTITÉ. Il n'est donc jamais montré à
+# un visiteur, et il n'a d'utilité que PENDANT le prêt. Une fois date_retour
+# posée, la pochette est libérée et recyclée : le numéro ne renseigne plus sur
+# rien d'utile mais resterait exposé dans les exports et les sauvegardes.
+#
+# COMPORTEMENT EFFECTIF (fiche D5, docs/audit-ux-2026-07-18.md ; spécification :
+# docs/specification.md §3.2) :
+#   - la colonne est NULLABLE : NULL = prêt clos, numéro effacé ;
+#   - le numéro est effacé aux TROIS points de clôture (services.rendre,
+#     services.repreter pour l'ancien prêt seulement, et
+#     services.cloturer_tous_les_prets) ;
+#   - les bases antérieures sont rattrapées par db._migrer_pochette_nullable
+#     (reconstruction de table — SQLite ne sait pas retirer un NOT NULL par
+#     ALTER TABLE), qui purge aussi rétroactivement l'historique déjà
+#     constitué.
+# La LIGNE de prêt n'est jamais supprimée : historique et statistiques restent
+# intacts (aucune requête n'agrège ni ne filtre sur ce champ). Les prêts EN
+# COURS conservent leur numéro, donc les sauvegardes prises pendant
+# l'événement permettent toujours la reprise après incident.
+#
+# ⚠️ Si une colonne est ajoutée ici, la mettre AUSSI à jour dans
+# db._migrer_pochette_nullable (qui recopie les lignes une à une) — la
+# migration refuse de tourner si les deux listes divergent.
 SCHEMA_PRETS = """
 CREATE TABLE IF NOT EXISTS prets (
     id_pret          INTEGER PRIMARY KEY AUTOINCREMENT,
     id_exemplaire    TEXT NOT NULL,               -- FK -> exemplaires.id_exemplaire
-    numero_pochette  INTEGER NOT NULL,            -- numéro attribué (0 = sortie tournoi, sans emplacement)
+    numero_pochette  INTEGER,                     -- numéro attribué ; NULL = prêt clos (effacé), 0 = sortie tournoi en cours
     date_sortie      TEXT NOT NULL,               -- horodatage ISO 8601 (UTC)
     date_retour      TEXT,                        -- NULL tant que l'exemplaire est sorti
     motif            TEXT NOT NULL DEFAULT 'pret', -- 'pret' (au public) ou 'tournoi'
