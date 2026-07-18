@@ -152,8 +152,16 @@
 <!-- ===================== GRILLE ÉDITABLE ===================== -->
 <section class="carte">
   <h2>4. Grille</h2>
-  <p class="stats-note">Cliquez sur une case pour la modifier (remplacer,
-    ajouter, retirer, verrouiller). Cliquez sur un horaire pour changer la durée.</p>
+  <details class="aide-inline">
+    <summary>❓ Comment lire et modifier la grille ?</summary>
+    <p>Cliquez sur une case pour la modifier (remplacer, ajouter, retirer,
+       verrouiller un bénévole). Cliquez sur un horaire pour changer sa durée.</p>
+    <p>Couleur des cases : <strong>rouge</strong> = personne dessus,
+       <strong>orange</strong> = incomplet, <strong>vert</strong> = complet,
+       <strong>bleu</strong> = trop de monde, <strong>gris</strong> = aucun
+       besoin sur cette case.</p>
+    <p><a class="lien" href="/planning/aide">Voir l'aide complète du planning</a></p>
+  </details>
   {% for jour in grille.jours %}
     <h3>{{ jour.libelle }}</h3>
     <div class="pl-scroll">
