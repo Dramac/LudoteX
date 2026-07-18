@@ -42,7 +42,9 @@
              value="{{ t.nb_places if edition and t.nb_places else '' }}">
     </div>
     <div class="champ">
-      <label for="emplacement">Emplacement / table</label>
+      {# Libellé « Lieu » (le nom du champ, lui, ne bouge pas : renommer
+         `emplacement` casserait formulaires, tests et données). #}
+      <label for="emplacement">Lieu / table</label>
       <input type="text" id="emplacement" name="emplacement"
              value="{{ t.emplacement if edition and t.emplacement else '' }}">
     </div>

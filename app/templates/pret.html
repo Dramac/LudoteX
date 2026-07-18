@@ -14,27 +14,27 @@
   {% if resultat %}
     {% if resultat.type == "prete" %}
       <section class="resultat resultat-ok">
-        <p class="resultat-libelle">Emplacement n°</p>
+        <p class="resultat-libelle">Pochette n°</p>
         <p class="pochette-num">{{ resultat.numero }}</p>
         <p class="resultat-consigne">Glissez-y la pièce d'identité.</p>
       </section>
     {% elif resultat.type == "repret" %}
       <section class="resultat resultat-ok">
-        <p class="resultat-libelle">Nouvel emplacement n°</p>
+        <p class="resultat-libelle">Nouvelle pochette n°</p>
         <p class="pochette-num">{{ resultat.nouveau }}</p>
         <p class="resultat-consigne">
-          {% if resultat.ancien %}Ancien prêt (emplacement n°{{ resultat.ancien }}) clôturé.{% endif %}
-          Glissez la pièce d'identité dans l'emplacement n°{{ resultat.nouveau }}.
+          {% if resultat.ancien %}Ancien prêt (pochette n°{{ resultat.ancien }}) clôturé.{% endif %}
+          Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
         </p>
       </section>
     {% elif resultat.type == "rendu" %}
       <section class="resultat resultat-ok">
-        <p class="resultat-libelle">Récupérer la pièce d'identité à l'emplacement n°</p>
+        <p class="resultat-libelle">Récupérer la pièce d'identité dans la pochette n°</p>
         <p class="pochette-num pochette-num--retour">{{ resultat.numero }}</p>
       </section>
     {% elif resultat.type == "tournoi_sorti" %}
       <section class="resultat resultat-info">
-        <p>Sorti pour un tournoi (sans emplacement). Ce jeu n'est pas comptabilisé dans les statistiques.</p>
+        <p>Sorti pour un tournoi (sans pochette). Ce jeu n'est pas comptabilisé dans les statistiques.</p>
       </section>
     {% elif resultat.type == "rendu_tournoi" %}
       <section class="resultat resultat-ok">
@@ -42,7 +42,7 @@
       </section>
     {% elif resultat.type == "deja_sorti" %}
       <section class="resultat resultat-attention">
-        <p>Cet exemplaire était déjà sorti (emplacement n°{{ resultat.numero }}). Rien n'a été modifié.</p>
+        <p>Cet exemplaire était déjà sorti (pochette n°{{ resultat.numero }}). Rien n'a été modifié.</p>
       </section>
     {% elif resultat.type == "deja_disponible" %}
       <section class="resultat resultat-attention">
@@ -70,10 +70,10 @@
         </button>
       </form>
     {% elif pret_actuel %}
-      <p class="etat etat-sorti">Sorti — emplacement n°{{ pret_actuel.numero_pochette }}</p>
+      <p class="etat etat-sorti">Sorti — pochette n°{{ pret_actuel.numero_pochette }}</p>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
         <button class="bouton bouton-principal" type="submit">
-          Rendre <span class="bouton-sous">libère l'emplacement n°{{ pret_actuel.numero_pochette }}</span>
+          Rendre <span class="bouton-sous">libère la pochette n°{{ pret_actuel.numero_pochette }}</span>
         </button>
       </form>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/repreter">
