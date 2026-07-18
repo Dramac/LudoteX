@@ -16,7 +16,7 @@
       <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat"
             onsubmit="return confirm('Fermer le questionnaire ? Les bénévoles ne pourront plus déclarer leurs disponibilités.');">
         <input type="hidden" name="etat" value="brouillon">
-        <button class="bouton">🔒 Fermer le questionnaire</button>
+        <button class="bouton bouton-principal">🔒 Fermer le questionnaire</button>
       </form>
     {% elif ev.etat == "brouillon" %}
       <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
@@ -25,7 +25,7 @@
       </form>
       <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
         <input type="hidden" name="etat" value="publie">
-        <button class="bouton">📢 Publier</button>
+        <button class="bouton bouton-principal">📢 Publier</button>
       </form>
     {% elif ev.etat == "publie" %}
       <form method="post" action="/planning/admin/{{ ev.id_evenement }}/etat">
@@ -114,7 +114,7 @@
           </tbody>
         </table>
       </div>
-      <button class="bouton">Enregistrer les besoins</button>
+      <button class="bouton bouton-principal">Enregistrer les besoins</button>
     </form>
     {% else %}
       <p>Définissez d'abord des postes et des créneaux.</p>
@@ -127,7 +127,7 @@
   <h2>3. Générer le planning</h2>
   <form method="post" action="/planning/admin/{{ ev.id_evenement }}/prefiller"
         onsubmit="return confirm('Générer le planning ? Les cases non verrouillées seront recalculées.');">
-    <button class="bouton">⚙️ Générer le planning</button>
+    <button class="bouton bouton-principal">⚙️ Générer le planning</button>
   </form>
   <p class="stats-note">Brouillon dégrossi : remplit au mieux et laisse les trous.
     Les cases <strong>verrouillées</strong> sont conservées.</p>
