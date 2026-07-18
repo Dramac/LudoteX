@@ -633,6 +633,43 @@ def test_fiche_sans_categorie_pas_de_lien_vide(client, monkeypatch):
     assert 'href="/catalogue"' in r.text
 
 
+def test_fiche_jeu_tout_sorti_propose_le_lien_disponibles(client):
+    """
+    A1 point 3 (débloqué par A4) : un jeu totalement sorti renvoie vers les
+    jeux DISPONIBLES de sa catégorie plutôt que vers « les autres jeux »
+    (qui pourraient être tout aussi sortis) — un seul lien de catégorie,
+    jamais les deux en doublon.
+    """
+    from app import db
+    conn = db.get_connection()
+    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    conn.commit()
+    conn.close()
+    client.post("/pret/001/preter")   # seul exemplaire du titre -> tout sorti
+
+    r = client.get("/jeu/001")
+    assert r.status_code == 200
+    assert "/catalogue?categorie=Familial&dispo=1" in r.text
+    assert "Voir les jeux disponibles" in r.text
+    assert "Voir les autres jeux" not in r.text
+
+
+def test_fiche_jeu_disponible_garde_le_lien_categorie_sans_filtre(client):
+    """Non-régression : un jeu encore disponible garde le lien de catégorie
+    d'origine (sans filtre dispo)."""
+    from app import db
+    conn = db.get_connection()
+    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    conn.commit()
+    conn.close()
+
+    r = client.get("/jeu/001")
+    assert r.status_code == 200
+    assert "/catalogue?categorie=Familial" in r.text
+    assert "dispo=1" not in r.text
+    assert "Voir les autres jeux" in r.text
+
+
 def test_fiche_publique(client):
     r = client.get("/jeu/001")
     assert r.status_code == 200

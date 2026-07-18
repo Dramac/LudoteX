@@ -54,13 +54,23 @@
     {% endif %}
 
     {# Sorties de page : la fiche est la cible des 703 QR, c'était jusqu'ici
-       un cul-de-sac (aucun lien de retour, aucun rebond). #}
+       un cul-de-sac (aucun lien de retour, aucun rebond). Point 3 de A1 :
+       quand ce jeu est tout sorti, le rebond de catégorie devient le lien
+       DISPONIBLES SEULEMENT (A4) plutôt que « les autres jeux » — proposer à
+       nouveau des jeux potentiellement tout aussi sortis ne rendrait pas
+       service à quelqu'un qui cherche à jouer maintenant. Un seul lien de
+       catégorie à la fois, jamais les deux en doublon. #}
     <p class="lien-fiche">
       <a class="lien" href="/catalogue">← Retour au catalogue</a>
       {% if info.categorie %}
         &nbsp;·&nbsp;
-        <a class="lien" href="/catalogue?categorie={{ info.categorie | urlencode }}">
-          Voir les autres jeux « {{ info.categorie }} »</a>
+        {% if disponible == 0 %}
+          <a class="lien" href="/catalogue?categorie={{ info.categorie | urlencode }}&dispo=1">
+            Voir les jeux disponibles « {{ info.categorie }} »</a>
+        {% else %}
+          <a class="lien" href="/catalogue?categorie={{ info.categorie | urlencode }}">
+            Voir les autres jeux « {{ info.categorie }} »</a>
+        {% endif %}
       {% endif %}
     </p>
   </section>
