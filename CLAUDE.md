@@ -1162,6 +1162,31 @@ comblée : le module Rangement reste absent du wiki en totalité** (déjà
 signalé dans `docs/guide-utilisateur-cadrage.md` §1) — B1 n'a rien rendu
 faux, il n'y avait rien à corriger ; une page dédiée reste à écrire.
 
+**D3 — « emplacement » ne désigne plus trois objets : FAIT.** Le mot servait
+au casier à pièces d'identité, au lieu d'un tournoi ET à la place d'une
+boîte, sur des écrans enchaînés en trente secondes (cas le plus explosif : au
+retour d'une boîte rangée, « à l'emplacement n° 7 » en très gros puis « Où
+ranger le jeu : Étagère 3 » juste dessous). Renommages : **pochette**
+(`pret.html` ×9, `aide.html` ×5, en-tête « Empl. » → « Pochette » dans « Jeux
+actuellement sortis »), **lieu** (`tournoi_form`, `tournoi_aide` ; les trois
+autres gabarits tournoi disaient déjà « Lieu »), **rangement** inchangé.
+**Deux écarts par rapport à la fiche, arbitrés avant de coder** : (1)
+`aide.html` est PUBLIQUE et la fiche se contredisait à son sujet — renommée
+quand même, car le mot « pochette » est **déjà public** (wiki,
+spécification) ; ce qui doit rester interne est le NUMÉRO rattaché à un jeu,
+pas le vocabulaire, et une page d'aide doit employer les mots de l'écran
+qu'elle explique. (2) « Emplacement » est **conservé dans le module
+Rangement** (~15 écrans admin) plutôt que banni partout : la collision
+disparaît d'elle-même une fois pochette et lieu renommés. Seules des chaînes
+**affichées** changent — aucun nom de colonne, de champ (`name="emplacement"`),
+de clé ni d'en-tête d'export. La question « à examiner » des exports était
+déjà réglée par D5 (plus aucune colonne pochette) ; `/live` n'affichait déjà
+ni le mot ni un numéro (tests existants). Nouveau **`docs/vocabulaire.md`**
+(trois termes officiels, règle de discrétion du numéro, garde-fous).
+**3 tests ajoutés, 6 adaptés. Suite globale : 366 tests verts.** Wiki :
+`Module-Tournois` (« lieu ») — le reste du wiki disait **déjà** « pochette »,
+le renommage supprime donc une divergence guide/écran préexistante.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
