@@ -172,16 +172,38 @@ summary:focus-visible,
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: none; }
 }
-.recherche[open] > *:not(summary) {
+.recherche[open] > *:not(summary),
+.aide-inline[open] > *:not(summary) {
   animation: recherche-ouverture .18s ease-out;
 }
 .recherche > summary { transition: color .12s ease; }
+
+/* Aide contextuelle repliée (S4, docs/idees-ux.md) : même langage visuel que
+   .recherche (bordure, résumé cliquable, <details> natif, sans JS), teinte de
+   fond différente pour ne jamais être confondue avec un panneau de filtre. Un
+   <details class="aide-inline"><summary>❓ …</summary>…</details> par écran
+   dense, 2-3 phrases + lien vers la page d'aide complète quand elle existe. */
+.aide-inline {
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 12px 0;
+  background: #f8f6fb;
+}
+.aide-inline > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #4a148c;
+  transition: color .12s ease;
+}
+.aide-inline p:last-child { margin-bottom: 0; }
 
 /* Respect des préférences système : on coupe tout mouvement. */
 @media (prefers-reduced-motion: reduce) {
   .jeu, .bouton, .bouton-filtrer, .chip-filtre { transition: none; }
   .jeu:hover, .bouton:active, .bouton-filtrer:active, .chip-filtre:active { transform: none; }
-  .recherche[open] > *:not(summary) { animation: none; }
+  .recherche[open] > *:not(summary),
+  .aide-inline[open] > *:not(summary) { animation: none; }
 }
 
 /* Page d'accueil */
