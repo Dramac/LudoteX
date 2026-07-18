@@ -990,6 +990,11 @@ def test_gerer_lancement_grise_champs_inapplicables(client):
     assert 'mode.value !== "high_score"' in page
     # La notice explicative reste présente (repli si JS indisponible).
     assert "Le nombre de rondes ne" in page
+    # S4 (docs/idees-ux.md) : aide contextuelle repliée ajoutée EN PLUS de la
+    # notice ci-dessus (ne la remplace pas, celle-ci sert de repli JS).
+    assert 'class="aide-inline"' in page
+    assert "Comment ça marche ?" in page
+    assert 'href="/tournoi/aide"' in page
 
 
 def test_suppression_double_confirmation(client):
