@@ -18,4 +18,9 @@
   {% if module_visible(request, "apropos") %}
   <a href="/apropos">À propos</a>
   {% endif %}
+  {# Fiche B2 point 2 : le visiteur n'avait aucune porte d'entrée vers l'aide
+     (seul le menu bénévole en avait une). /aide est désormais un hub qui le
+     mène à la bonne page — inscription à un tournoi, code de désinscription,
+     disponibilités. #}
+  <a href="/aide">Aide</a>
 </nav>
