@@ -138,6 +138,10 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 }
 .bouton-principal { background: var(--vert); }
 .bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord); }
+/* Bouton désactivé (générique, tout usage) : avant cette règle, chaque écran
+   qui en avait besoin réinventait son propre gris en style inline
+   (voir admin_fonctionnalites.html) faute de composant partagé. */
+.bouton:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 
 /* --- Accessibilité & micro-interactions (tout le site) --- */
 
