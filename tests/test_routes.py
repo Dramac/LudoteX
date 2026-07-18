@@ -76,6 +76,15 @@ def test_aide_hub_renvoie_vers_les_autres_pages_daide(client):
     assert "/admin/aide" not in r.text
 
 
+def test_menu_visiteur_contient_un_lien_aide(client):
+    # Fiche B2 point 2 : un visiteur (sans cookie bénévole) doit pouvoir
+    # atteindre l'aide depuis le bandeau. Le fragment est rendu DEUX fois par
+    # base.html (accordéon sous 640px + copie à plat au-delà), d'où le compte.
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert r.text.count('href="/aide"') == 2
+
+
 def test_aide_hub_montre_ladministration_a_un_admin(client, monkeypatch):
     # …mais un administrateur connecté, lui, y a accès depuis le hub.
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
