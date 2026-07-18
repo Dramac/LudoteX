@@ -452,7 +452,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   colonne `creneaux.jour` (date ISO) alimentée par migration depuis les données
   existantes, le libellé devenant un simple format d'affichage.
 
-### S4. L'aide est dans des pages, pas dans les écrans
+### S4. L'aide est dans des pages, pas dans les écrans — EN COURS
 - **Constat** : les pages d'aide (`/aide`, `/tournoi/aide`, `/planning/aide`)
   sont bien faites, mais l'utilisateur coincé sur un écran ne va pas les lire ;
   les explications longues finissent incrustées dans les formulaires (ex. bloc
@@ -463,6 +463,30 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   d'aide complète. Sans JS, déjà dans le langage visuel du site (`<details>`
   du catalogue). Appliquer d'abord aux 3 écrans les plus denses : lancement de
   tournoi, grille planning admin, page fonctionnalités.
+- **Fait (2026-07-18)** : composant `.aide-inline` créé (`app/static/css/
+  style.css`) — même langage visuel que `.recherche` (bordure, `<details>`
+  natif, résumé cliquable), teinte de fond différente pour ne pas être
+  confondue avec un panneau de filtre. Constat réévalué avant d'appliquer :
+  les 3 écrans cités ne se ressemblaient pas autant que prévu. (1)
+  `admin_fonctionnalites.html` correspondait exactement au constat (légende
+  toujours affichée, aucun lien d'aide) → repliée telle quelle. (2) La grille
+  planning (`planning_gerer.html`) n'avait pas vraiment de « longue
+  explication incrustée », mais un vrai trou : ses 5 couleurs (grisé/trou/
+  partiel/complet/surcharge) n'étaient expliquées nulle part, ni à l'écran ni
+  sur `/planning/aide` → la note d'interaction existante est remplacée par un
+  `aide-inline` qui ajoute la légende manquante + un lien vers l'aide. (3)
+  Lancement de tournoi (`tournoi_gerer.html`) : la notice existante
+  (mode/rondes/BO3, voir M5) sert aussi de **repli visible sans JS** pour le
+  grisage de champs — la remplacer l'aurait cachée derrière un clic. Décision
+  prise avec Simon : un `aide-inline` **distinct** est ajouté en plus (avant
+  le formulaire), la notice reste inchangée. **4 tests ajoutés/étendus**
+  (présence du bloc + contenu sur les 3 écrans, notice de M5 toujours
+  présente). **Suite globale : 326 tests verts.**
+- **Reste ouvert** : le motif n'a été appliqué qu'à ces 3 écrans (portée
+  volontaire de cette session, conforme à l'approche incrémentale de la
+  fiche). D'autres écrans denses pourraient en bénéficier plus tard (ex.
+  écran des rondes/arbre de tournoi), à évaluer au fil des retouches plutôt
+  qu'en une passe supplémentaire dédiée maintenant.
 
 ---
 
@@ -479,5 +503,6 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
    code, déjà couvert par un correctif antérieur — voir sa fiche). Corrigés
    le 2026-07-17/18 (voir CLAUDE.md).
 5. 🔶 EN COURS — S1 : inventaire + première passe de correctifs faite le
-   2026-07-18 (voir sa fiche). S4 en tâche de fond, au fil des retouches ;
-   S2/S3 seulement si le besoin se confirme.
+   2026-07-18 (voir sa fiche). S4 : composant `.aide-inline` créé et appliqué
+   aux 3 écrans cités, le 2026-07-18 (voir sa fiche). S2/S3 seulement si le
+   besoin se confirme.

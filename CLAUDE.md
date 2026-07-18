@@ -832,6 +832,32 @@ adapté à la fusion CSS. **Suite globale : 325 tests verts.** Reste ouvert
 page du site n'a de bouton rouge aujourd'hui), à ajouter si le besoin se
 confirme ailleurs.
 
+**S4 — Aide contextuelle repliée : EN COURS.** Fiche `docs/idees-ux.md`
+(§ Améliorations structurantes) : les explications longues finissent
+incrustées dans les formulaires plutôt que dans les pages d'aide dédiées
+(`/aide`, `/tournoi/aide`, `/planning/aide`). Nouveau composant
+**`.aide-inline`** (`app/static/css/style.css`) : `<details
+class="aide-inline"><summary>❓ …</summary>…</details>`, même langage visuel
+que `.recherche` (bordure, `<details>` natif, sans JS), teinte de fond
+différente pour ne pas être confondu avec un panneau de filtre. Appliqué aux
+3 écrans cités par la fiche, chacun avec un traitement différent selon ce que
+la revue du code a montré : (1) `admin_fonctionnalites.html` — la légende des
+états (`<dl class="fonct-legende">`), affichée en permanence sans aucun lien
+d'aide, est repliée telle quelle ; (2) `planning_gerer.html` (grille) — pas
+une longue explication à déplacer, mais un vrai trou : les 5 couleurs de la
+grille (grisé/trou/partiel/complet/surcharge) n'étaient expliquées nulle
+part, ni à l'écran ni sur `/planning/aide` ; la note d'interaction existante
+est remplacée par un `aide-inline` qui ajoute la légende manquante + un lien
+vers l'aide complète ; (3) `tournoi_gerer.html` (lancement) — la notice
+existante (mode/rondes/BO3, voir M5) sert aussi de **repli visible sans JS**
+pour le grisage de champs : la remplacer l'aurait cachée derrière un clic, un
+`aide-inline` **distinct** est donc ajouté EN PLUS (la notice reste
+inchangée). **4 tests ajoutés/étendus** (présence + contenu du bloc sur les
+3 écrans, notice M5 toujours présente). **Suite globale : 326 tests verts.**
+Reste ouvert : le motif n'a été appliqué qu'à ces 3 écrans (portée de cette
+session) ; d'autres écrans denses (ex. rondes/arbre de tournoi) pourraient en
+bénéficier plus tard, au fil des retouches.
+
 **M9 — Confirmations natives `confirm()` reformulées : FAIT.** Passage en
 revue des 17 `confirm()` du dépôt (mécanisme natif conservé partout, jamais
 remplacé par une modale JS). **5 réécrits** sur le patron « Action ? +
