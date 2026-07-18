@@ -1098,6 +1098,22 @@ continuité de l'AUTOINCREMENT, refus d'un schéma inattendu ;
 statistique ; `test_sauvegarde.py` : restauration d'une sauvegarde au schéma
 ancien) et 3 tests du volet 1 adaptés. **Suite globale : 351 tests verts.**
 
+**A1 — fiche publique sortie du cul-de-sac : FAIT.** `/jeu/<id>` est l'URL
+encodée dans les 703 QR et n'offrait aucune sortie. `fiche.html` gagne (1) un
+bouton « 📷 Prêter / rendre ce jeu » vers `/pret/<id>`, conditionné à
+`est_benevole(request)` et placé **avant** les caractéristiques — correctif
+critique : quand la caméra embarquée refuse de démarrer, le repli « appareil
+photo natif » documenté dans `aide.html` mène à `/jeu/<id>` et non à `/pret`,
+ce qui rendait le bénévole inopérant sauf à retaper l'URL ; (2) un pied de
+carte `.lien-fiche` (motif de `pret.html`) : retour au catalogue + lien
+`/catalogue?categorie=…` si la catégorie est renseignée (filtre existant,
+aucun service écrit). **Point 3 de la fiche non implémenté** (rebond « voir
+les jeux DISPONIBLES de la même catégorie ») : `lister_catalogue` n'a pas de
+filtre de disponibilité, le lien montrerait aussi les jeux sortis — la phrase
+promettrait autre chose que ce qu'elle donne. Aucune classe CSS ajoutée.
+**3 tests** (visiteur sans lien `/pret/`, bénévole avec, jeu sans catégorie).
+**Suite globale : 354 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
