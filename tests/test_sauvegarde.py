@@ -145,6 +145,100 @@ def test_restaurer_remplace_les_donnees_et_garde_un_filet_de_securite(bases, tmp
     assert set(_lister_titres(extrait)) == {"CATAN", "AZUL"}
 
 
+def _base_pret_schema_ancien(chemin: Path) -> None:
+    """
+    Écrit à `chemin` une base de PRÊT au schéma d'une version ANTÉRIEURE :
+    `prets` sans la colonne `motif`, `exemplaires` sans les colonnes de
+    rangement, et pas de table `emplacements_rangement`. Sert à simuler la
+    restauration d'une sauvegarde ancienne.
+    """
+    conn = sqlite3.connect(chemin)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE titres (
+                reference_titre TEXT PRIMARY KEY,
+                nom TEXT NOT NULL
+            );
+            CREATE TABLE exemplaires (
+                id_exemplaire TEXT PRIMARY KEY,
+                reference_titre TEXT NOT NULL
+            );
+            CREATE TABLE prets (
+                id_pret INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_exemplaire TEXT NOT NULL,
+                numero_pochette INTEGER NOT NULL,
+                date_sortie TEXT NOT NULL,
+                date_retour TEXT
+            );
+            CREATE TABLE pochettes (
+                numero_pochette INTEGER PRIMARY KEY,
+                occupe INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE parametres (cle TEXT PRIMARY KEY, valeur TEXT);
+
+            INSERT INTO titres (reference_titre, nom) VALUES ('CATAN', 'Catan');
+            INSERT INTO exemplaires (id_exemplaire, reference_titre)
+                VALUES ('00472', 'CATAN');
+            INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie)
+                VALUES ('00472', 7, '2026-07-18T09:00:00+00:00');
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_restaurer_rejoue_les_migrations_sur_une_sauvegarde_ancienne(bases, tmp_path):
+    """
+    Une sauvegarde au schéma d'époque doit être MIGRÉE à la restauration, qui se
+    fait à chaud (sans redémarrage du serveur, seul moment où `init_db` tournait
+    jusqu'ici). Sans ça, le code actuel écrirait dans une base amputée de ses
+    colonnes récentes — panne au moment précis où l'on restaure.
+    """
+    from app import sauvegarde
+
+    ancienne = tmp_path / "ancienne-pret.db"
+    _base_pret_schema_ancien(ancienne)
+
+    chemin_zip = tmp_path / "sauvegarde-ancienne.zip"
+    with zipfile.ZipFile(chemin_zip, "w") as zf:
+        zf.writestr("pret-jeux.db", ancienne.read_bytes())
+        zf.writestr("tournoi.db", Path(bases["tournoi"]).read_bytes())
+        zf.writestr("planning.db", Path(bases["planning"]).read_bytes())
+
+    sauvegarde.restaurer_zip_sauvegarde(chemin_zip)
+
+    conn = sqlite3.connect(bases["pret"])
+    try:
+        colonnes_prets = {r[1] for r in conn.execute("PRAGMA table_info(prets)")}
+        colonnes_ex = {r[1] for r in conn.execute("PRAGMA table_info(exemplaires)")}
+        tables = {
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        # Les données restaurées sont intactes...
+        assert _lister_titres(bases["pret"]) == ["CATAN"]
+        (nb_prets,) = conn.execute("SELECT COUNT(*) FROM prets").fetchone()
+        assert nb_prets == 1
+    finally:
+        conn.close()
+
+    # ... et le schéma a été rattrapé (colonnes et table apparues après coup).
+    assert "motif" in colonnes_prets
+    assert {"emplacement_evenement", "emplacement_local_id"} <= colonnes_ex
+    assert "emplacements_rangement" in tables
+
+    # L'application fonctionne sans redémarrage : une requête métier qui touche
+    # les colonnes récentes passe (elle échouerait sur la base non migrée).
+    from app import db, services
+
+    conn = db.get_connection()
+    try:
+        assert services.lister_prets_en_cours(conn)["pret"]
+    finally:
+        conn.close()
+
+
 # ===========================================================================
 # Routes (/admin/sauvegarde/*), via TestClient
 # ===========================================================================

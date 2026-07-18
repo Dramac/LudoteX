@@ -36,6 +36,18 @@ RESTAURATION : SÛRETÉ
   éventuels fichiers annexes `-wal`/`-shm`/`-journal` de la base REMPLACÉE sont
   supprimés au préalable, pour ne jamais mélanger d'anciennes écritures non
   validées avec le contenu restauré.
+
+MIGRATIONS APRÈS RESTAURATION
+-----------------------------
+Une sauvegarde ancienne contient une base au SCHÉMA DE SON ÉPOQUE. Or les
+migrations (`init_db()` de chaque module) ne tournaient jusqu'ici qu'au
+DÉMARRAGE du serveur (`app/main.py`), alors qu'une restauration se fait à
+chaud, sans redémarrage : le code actuel se retrouvait donc à écrire dans une
+base qui n'a jamais connu ses colonnes récentes — panne au pire moment, celui
+où l'on restaure justement parce qu'un incident vient d'avoir lieu.
+`restaurer_zip_sauvegarde` rejoue donc les trois `init_db()` juste après avoir
+remplacé les fichiers. Ils sont idempotents par conception, donc sans risque
+sur une base déjà à jour.
 """
 
 from __future__ import annotations
@@ -204,6 +216,19 @@ def _remplacer_fichier(destination: Path, source: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def _migrer_bases_restaurees() -> None:
+    """
+    Rejoue `init_db()` sur les 3 bases juste restaurées (voir « MIGRATIONS
+    APRÈS RESTAURATION » dans la docstring du module).
+
+    Chaque `init_db()` est idempotent par conception (`CREATE TABLE IF NOT
+    EXISTS` + migrations conditionnelles) : l'appel est sans effet sur une
+    base déjà à jour, et ne touche jamais aux données.
+    """
+    for module in _MODULES.values():
+        module.init_db()
+
+
 def restaurer_zip_sauvegarde(chemin_zip: Path) -> None:
     """
     Restaure les 3 bases depuis un zip de sauvegarde, en REMPLAÇANT
@@ -213,6 +238,8 @@ def restaurer_zip_sauvegarde(chemin_zip: Path) -> None:
         1. Valide le zip (lève `ZipInvalide` sinon, sans rien modifier).
         2. Crée le filet de sécurité de l'état actuel (`sauvegarde_de_securite`).
         3. Remplace chaque fichier de base par son contenu dans l'archive.
+        4. Rejoue les migrations de schéma sur les bases restaurées (voir
+           `_migrer_bases_restaurees`).
     """
     valider_zip_sauvegarde(chemin_zip)
     sauvegarde_de_securite()
@@ -223,3 +250,5 @@ def restaurer_zip_sauvegarde(chemin_zip: Path) -> None:
             extrait = tmp_path / nom
             extrait.write_bytes(zf.read(nom))
             _remplacer_fichier(module.get_database_path(), extrait)
+
+    _migrer_bases_restaurees()
