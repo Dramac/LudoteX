@@ -1250,6 +1250,25 @@ ni le mot ni un numéro (tests existants). Nouveau **`docs/vocabulaire.md`**
 `Module-Tournois` (« lieu ») — le reste du wiki disait **déjà** « pochette »,
 le renommage supprime donc une divergence guide/écran préexistante.
 
+**A4 — filtre « disponibles seulement » au catalogue, et point 3 de A1
+débloqué : FAIT.** `services.lister_catalogue` gagne un paramètre
+`dispo_seulement` : la disponibilité étant un AGRÉGAT (`SUM(...)` sur les
+exemplaires non prêtés), le filtre va dans un `HAVING` inséré entre le
+`GROUP BY` et le `ORDER BY` existants, jamais dans le `WHERE` (qui s'applique
+avant l'agrégation — l'aurait faussé silencieusement). Route `/catalogue` :
+paramètre `dispo=1`, transmis au service et ajouté à `_puces_filtres` (retrait
+en un tap, label « disponibles seulement »). Gabarit : `<label class="case">`
+dans le panneau de recherche, re-cochée quand le filtre est actif — motif déjà
+utilisé par les cases de sections de l'export PDF sur `/stats`. **Débloque le
+point 3 de A1**, jusque-là écarté faute de ce filtre : sur la fiche d'un jeu
+tout sorti (`disponible == 0`), le lien de catégorie du pied de carte devient
+« Voir les jeux disponibles « X » » (`/catalogue?categorie=X&dispo=1`) au lieu
+de « Voir les autres jeux » — un seul lien affiché à la fois (jamais les deux
+en doublon), le second restant inchangé pour un jeu encore disponible. Wiki :
+`Module-Pret.md` (case ajoutée à la description des filtres du catalogue).
+**7 tests ajoutés (2 service + 3 route côté A4, 2 route côté fiche). Suite
+globale : 383 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
