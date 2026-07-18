@@ -769,6 +769,40 @@ def test_admin_dashboard_supervision_embarquee(client, monkeypatch):
     assert r2.status_code == 200 and "Bases de données" in r2.text
 
 
+def test_admin_aide_exige_la_session_admin(client):
+    # Fiche C1 : comme TOUTES les routes admin, l'accès non authentifié
+    # REDIRIGE vers la page de connexion (motif `_garde`), et ne renvoie pas
+    # un 403 comme le font les écrans bénévole protégés par le jeton.
+    r = client.get("/admin/aide", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/admin"
+
+
+def test_admin_aide_contient_les_quatre_sections(client, monkeypatch):
+    # Fiche C1 : plan arbitré = 4 sections par moment de la vie de
+    # l'événement, dans cet ordre, sans index alphabétique des écrans.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    r = client.get("/admin/aide")
+    assert r.status_code == 200
+    for ancre, titre in (
+        ("avant", "Avant l'événement"),
+        ("pendant", "Pendant l'événement"),
+        ("apres", "Après l'événement"),
+        ("probleme", "En cas de problème"),
+    ):
+        assert f'id="{ancre}"' in r.text
+        assert titre in r.text
+    # Ordre des sections (le parcours structure la page, pas l'inventaire).
+    positions = [r.text.index(f'id="{a}"') for a in ("avant", "pendant", "apres", "probleme")]
+    assert positions == sorted(positions)
+
+    # Aucune exploitation serveur ici : elle reste dans docs/deploiement.md.
+    for interdit in ("systemctl", "nginx", "certbot", "sudo ", "journalctl", "ssh "):
+        assert interdit not in r.text.lower()
+
+
 def test_formation_mode_inactif_par_defaut(client, monkeypatch):
     # Sans MODE_FORMATION : aucun bandeau, aucun filigrane, aucun bouton reset,
     # aucun lien (FORMATION_URL absente), route de reset fermée (404).

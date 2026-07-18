@@ -709,6 +709,23 @@ def supervision_page(request: Request):
     return templates.TemplateResponse(request, "admin_supervision.html", {"etat": etat})
 
 
+# ---------------------------------------------------------------------------
+# Aide en ligne de l'ADMINISTRATEUR (fiche C1, docs/audit-ux-2026-07-18.md)
+#
+# Page STATIQUE (aucune donnée à calculer) mais placée derrière la garde admin
+# comme le reste de l'espace : elle décrit des actions qui n'ont de sens que
+# pour qui y a accès, et évite d'exposer publiquement la cartographie des
+# écrans d'administration. Accès non authentifié => redirection vers /admin
+# (motif `_garde`), pas un 403.
+# ---------------------------------------------------------------------------
+@router.get("/aide")
+def aide_admin(request: Request):
+    """Mode d'emploi administrateur, organisé par moment de la vie de l'événement."""
+    if (garde := _garde(request)):
+        return garde
+    return templates.TemplateResponse(request, "admin_aide.html", {})
+
+
 @router.get("/evenement")
 def evenement_formulaire(request: Request):
     """Réglage de la date de l'événement (jour 1 du planning public sur 2 jours)."""

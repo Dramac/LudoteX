@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block titre %}Aide — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{#
+  Aide en ligne de l'ADMINISTRATEUR (fiche C1, docs/audit-ux-2026-07-18.md).
+  Organisée par MOMENT de la vie de l'événement, pas par écran : c'est ainsi
+  que pense le bureau de l'association. Un même écran peut donc apparaître
+  dans deux sections, c'est voulu.
+
+  Deux règles de contenu, à tenir en cas de modification :
+  1. AUCUNE exploitation serveur ici (SSH, systemd, nginx, certbot) — elle
+     reste dans docs/deploiement.md, que le bureau n'a pas à ouvrir.
+  2. AUCUNE marche à suivre qui ne soit vérifiée dans le code : le lecteur
+     n'a pas les moyens de repérer une procédure plausible mais fausse, et
+     il l'appliquera le jour de l'événement.
+
+  Les ancres (#avant, #pendant, #apres, #probleme, et les sous-ancres) sont
+  la cible des blocs .aide-inline posés sur les écrans concernés : ne pas les
+  renommer sans mettre à jour ces gabarits.
+#}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Aide — Administration</h1>
+  <p class="stats-note">Ce qu'il y a à faire avant, pendant et après
+     l'événement, et comment se rattraper si quelque chose se passe mal.</p>
+  <ul class="admin-menu">
+    <li><a class="lien" href="#avant">Avant l'événement</a></li>
+    <li><a class="lien" href="#pendant">Pendant l'événement</a></li>
+    <li><a class="lien" href="#apres">Après l'événement</a></li>
+    <li><a class="lien" href="#probleme">En cas de problème</a></li>
+  </ul>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section class="carte" id="avant">
+  <h2>Avant l'événement</h2>
+
+  <h3 id="avant-catalogue">Importer le catalogue des jeux</h3>
+  <p>Depuis <a class="lien" href="/admin/donnees">Données &amp; sauvegarde</a>,
+     envoyez le fichier CSV ou Excel du catalogue. L'import
+     <strong>n'efface jamais</strong> de jeu : il met à jour les fiches dont le
+     code figure dans le fichier et ajoute celles qui manquent. Vous pouvez donc
+     le relancer autant de fois que nécessaire.</p>
+  <p>À retenir tout de même : pour un jeu déjà connu, une colonne
+     <strong>laissée vide dans le fichier vide aussi la fiche</strong>
+     (sauf les colonnes de rangement, qui sont préservées). Réimportez un
+     fichier complet plutôt qu'un fichier partiel.</p>
+
+  <h3 id="avant-etiquettes">Imprimer les étiquettes</h3>
+  <p><a class="lien" href="/admin/etiquettes">Étiquettes (lot)</a> produit une
+     planche A4 pour les jeux que vous cochez — toutes les boîtes de chaque jeu
+     choisi. La mise en page (nombre de colonnes et de lignes, marges) est
+     réglable juste au-dessus du bouton.</p>
+  <p class="resultat resultat-attention">⚠️ Le QR code contient
+     <strong>l'adresse du site</strong>. N'imprimez la série définitive
+     qu'une fois cette adresse arrêtée : si elle change ensuite, toutes les
+     étiquettes sont à refaire.</p>
+
+  <h3 id="avant-date">Régler la date de l'événement</h3>
+  <p><a class="lien" href="/admin/evenement">Date de l'événement</a> détermine
+     la frise du planning des tournois affichée sur la page d'accueil publique
+     (ce jour-là et le lendemain). <strong>Tant que la date n'est pas
+     renseignée, cette frise ne s'affiche pas du tout</strong> — c'est l'oubli
+     le plus courant d'une édition à l'autre.</p>
+
+  <h3 id="avant-planning">Préparer le planning des bénévoles</h3>
+  <p>Depuis <a class="lien" href="/planning/admin">Planning bénévole</a>, dans
+     l'ordre : créer l'édition et sa trame (postes et créneaux), partager le
+     lien de collecte pour que chacun déclare ses disponibilités, puis
+     <strong>Fermer le questionnaire</strong>, <strong>Générer le
+     planning</strong>, ajuster les cases à la main, et enfin
+     <strong>publier</strong>.</p>
+  <p>Le remplissage automatique est volontairement prudent : il
+     <strong>laisse des trous</strong> plutôt que de placer quelqu'un contre
+     ses souhaits. Ces trous sont à vous.
+     <a class="lien" href="/planning/aide">❓ Aide</a> détaille chaque étape.</p>
+
+  <h3 id="avant-jeton">Générer et distribuer l'accès bénévole</h3>
+  <p><a class="lien" href="/admin/jeton">Accès bénévole</a> fabrique un
+     <strong>lien d'activation</strong> à envoyer aux bénévoles (boutons
+     WhatsApp, e-mail, SMS, ou copie du lien). Chacun l'ouvre une fois sur son
+     téléphone, qui devient alors autorisé à prêter et à scanner.</p>
+  <p>Ce lien a une <strong>date de fin de validité</strong>, une semaine par
+     défaut. Vérifiez qu'elle couvre bien tout l'événement, et prolongez-la
+     depuis le même écran si besoin.</p>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section class="carte" id="pendant">
+  <h2>Pendant l'événement</h2>
+
+  <h3 id="pendant-live">L'écran de salle</h3>
+  <p><a class="lien" href="/live">L'écran de salle</a> s'affiche sur un
+     projecteur ou une télévision et se met à jour tout seul : jeux sortis et
+     disponibles, tournois en cours et à venir, derniers prêts et retours.
+     Aucune manipulation une fois ouvert.</p>
+  <p>Depuis <a class="lien" href="/admin/ecran-salle">Écran de salle</a>, vous
+     pouvez changer son titre et surtout y afficher une
+     <strong>annonce</strong> ponctuelle (« Tombola à 15 h », « portefeuille
+     trouvé à l'accueil »). L'annonce apparaît et disparaît sans avoir à
+     toucher à l'écran projeté. Une <strong>durée en minutes</strong> est
+     proposée : passé ce délai l'annonce se masque d'elle-même. Laissée vide,
+     elle reste jusqu'à ce que vous l'effaciez.</p>
+
+  <h3 id="pendant-tournois">Ouvrir les tournois du jour</h3>
+  <p>Sur <a class="lien" href="/tournois">Tournois</a>, le bouton
+     <strong>Ouvrir tous les tournois du jour</strong> fait passer d'un coup
+     en « inscriptions ouvertes » tous les tournois encore en brouillon datés
+     du jour même. Les autres jours ne sont pas touchés.</p>
+
+  <h3 id="pendant-supervision">Vérifier que tout va bien</h3>
+  <p><a class="lien" href="/admin/supervision">Supervision</a> — également
+     affichée à droite du tableau de bord sur un écran d'ordinateur — répond en
+     quelques secondes : les trois bases de données sont-elles là, reste-t-il de
+     la place sur le disque, à quand remonte la dernière sauvegarde, l'accès
+     bénévole est-il encore valable, quelle version est installée. C'est une
+     page de lecture seule : rien ne peut y être cassé.</p>
+
+  <h3 id="pendant-benevole">Un bénévole n'arrive plus à prêter</h3>
+  <p>Le plus souvent, son téléphone n'a jamais été activé, ou il a effacé ses
+     données de navigation. <strong>Renvoyez-lui simplement le lien
+     d'activation</strong> depuis
+     <a class="lien" href="/admin/jeton">Accès bénévole</a> : il l'ouvre, et
+     c'est réglé.</p>
+  <p class="resultat resultat-attention">⚠️ Ne réinitialisez
+     <strong>pas</strong> l'accès pour dépanner une seule personne :
+     réinitialiser fabrique un lien entièrement nouveau et
+     <strong>déconnecte du même coup tous les autres téléphones</strong>, qui
+     devront tous rouvrir le nouveau lien.</p>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section class="carte" id="apres">
+  <h2>Après l'événement</h2>
+
+  <h3 id="apres-stats">Exporter les statistiques — en premier</h3>
+  <p>Depuis <a class="lien" href="/stats">Statistiques</a>, exportez en Excel
+     ou en PDF (les filtres de période que vous avez posés sont repris dans
+     l'export). <strong>Faites-le avant de clôturer les prêts</strong> :
+     l'historique reste, mais autant garder une copie hors de
+     l'application.</p>
+
+  <h3 id="apres-cloture">Clôturer les prêts en cours</h3>
+  <p>Au tableau de bord, section <em>Fin d'événement</em>,
+     <strong>Clôturer tous les prêts en cours</strong> marque comme rendus les
+     jeux encore sortis et libère toutes les pochettes. L'historique et les
+     statistiques sont conservés.</p>
+  <p>Un point à connaître : la clôture <strong>efface les numéros de
+     pochette</strong> des prêts terminés. C'est voulu — un numéro de pochette
+     indique où se trouve une pièce d'identité, il n'a plus lieu d'être une
+     fois le jeu rendu. Récupérez donc les dernières pièces d'identité
+     <em>avant</em> de clôturer.</p>
+
+  <h3 id="apres-sauvegarde">Faire une sauvegarde et la mettre à l'abri</h3>
+  <p>Sur <a class="lien" href="/admin/donnees">Données &amp; sauvegarde</a>,
+     <strong>Télécharger la sauvegarde complète</strong> produit un fichier zip
+     contenant les trois bases de l'application (prêts, tournois, planning).
+     <strong>Conservez-le ailleurs que sur le serveur</strong> — sur
+     l'ordinateur du bureau, un disque externe ou un espace de stockage en
+     ligne : c'est ce qui vous protège d'une panne du serveur lui-même.</p>
+
+  <h3 id="apres-rgpd">Purger les données du planning (RGPD)</h3>
+  <p>Le planning bénévole est le seul module qui enregistre des
+     <strong>données personnelles</strong> (noms, contacts, disponibilités).
+     Une fois l'événement passé et le planning devenu inutile,
+     <strong>Purger cet événement</strong>, sur l'écran de gestion de
+     l'édition, supprime l'édition et tout ce qui s'y rattache : bénévoles,
+     souhaits et affectations.</p>
+  <p>C'est <strong>irréversible</strong> et sans rapport avec les autres
+     modules : le catalogue, les prêts et les tournois ne sont pas touchés.</p>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section class="carte" id="probleme">
+  <h2>En cas de problème</h2>
+
+  <h3 id="probleme-jeton">« Les bénévoles ne peuvent plus rien scanner »</h3>
+  <p>Le lien d'activation a probablement dépassé sa date de validité : dans ce
+     cas, l'accès est fermé pour tout le monde d'un coup. Le
+     <a class="lien" href="/admin/supervision">tableau de supervision</a> vous
+     le dit, et votre <strong>mot de passe administrateur reste valable</strong>
+     — il est indépendant de l'accès bénévole.</p>
+  <p>Rendez-vous sur <a class="lien" href="/admin/jeton">Accès bénévole</a> et
+     réinitialisez l'accès en choisissant une nouvelle date de fin, puis
+     rediffusez le lien : chaque bénévole doit l'ouvrir à nouveau.</p>
+
+  <h3 id="probleme-module">« Une rubrique a disparu du site »</h3>
+  <p>Les tournois, les statistiques, le planning, l'écran de salle et la page
+     « À propos » peuvent être masqués depuis
+     <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a>. Quatre
+     réglages par rubrique :</p>
+  <ul>
+    <li><strong>Visible par tous</strong> — le fonctionnement normal.</li>
+    <li><strong>Bénévoles uniquement</strong> — les visiteurs ne la voient pas
+        et ne peuvent pas y accéder.</li>
+    <li><strong>Accessible, lien masqué</strong> — l'adresse fonctionne, mais
+        le lien n'apparaît plus dans les menus. Pratique pour l'écran de
+        salle, qu'on ouvre sur le projecteur sans l'afficher aux visiteurs.</li>
+    <li><strong>Désactivé</strong> — l'adresse renvoie une page « module
+        indisponible ».</li>
+  </ul>
+  <p>Repassez la rubrique concernée sur <em>Visible par tous</em> et
+     enregistrez : rien n'a été perdu entre-temps.</p>
+
+  <h3 id="probleme-import">« J'ai importé le mauvais fichier »</h3>
+  <p>Rassurez-vous : un import <strong>ne supprime aucun jeu</strong>. Il a pu
+     en revanche écraser des fiches existantes avec le contenu du fichier, et
+     ajouter des jeux qui n'avaient rien à y faire.</p>
+  <p>Réimportez le bon fichier : les fiches reprennent leurs valeurs
+     correctes. En revanche, <strong>les jeux ajoutés par erreur
+     restent</strong> — l'application ne permet pas de supprimer un jeu. Le
+     seul moyen de revenir en arrière complètement est de
+     <strong>restaurer une sauvegarde antérieure à l'import</strong>, d'où
+     l'intérêt d'en télécharger une avant toute grosse opération.</p>
+
+  <h3 id="probleme-restauration">« J'ai restauré la mauvaise sauvegarde »</h3>
+  <p>Une restauration <strong>remplace la totalité</strong> des données
+     actuelles. L'application conserve bien une copie de l'état précédent sur
+     le serveur avant de remplacer quoi que ce soit, mais
+     <strong>elle n'est pas récupérable depuis cet écran</strong> : il faut
+     l'aide de la personne qui s'occupe du serveur.</p>
+  <p>D'où le réflexe qui évite tout : <strong>téléchargez une sauvegarde juste
+     avant d'en restaurer une</strong>
+     (<a class="lien" href="/admin/donnees">Données &amp; sauvegarde</a>).
+     Vous disposez alors d'un retour en arrière que vous maîtrisez seul.</p>
+
+  <h3 id="probleme-motdepasse">« J'ai oublié le mot de passe administrateur »</h3>
+  <p>Il n'y a <strong>aucune récupération depuis l'application</strong>, et pas
+     d'envoi par e-mail : l'application ne conserve aucune adresse. Seule la
+     personne qui s'occupe du serveur peut le redéfinir.</p>
+  <p>L'accès bénévole, lui, n'est pas concerné : les téléphones déjà activés
+     continuent de fonctionner normalement.</p>
+
+  <h3 id="probleme-message">« Un message inattendu s'affiche »</h3>
+  <p>C'est prévu. L'application ne bloque jamais : chaque message
+     s'accompagne de l'action à faire, à portée d'un appui. Un jeu annoncé
+     « déjà sorti » alors qu'il est devant vous ? Le bouton
+     <strong>Le re-prêter</strong> règle le cas.</p>
+  <p>Si une page d'erreur s'affiche malgré tout, revenez à l'accueil et
+     recommencez : rien n'est perdu. Signalez-la ensuite au référent
+     technique.</p>
+</section>
+
+<section class="carte">
+  <p class="lien-fiche"><a class="lien" href="/admin">← Tableau de bord</a>
+     &nbsp;·&nbsp; <a class="lien" href="/aide">❓ Aide</a> (bénévoles et
+     visiteurs)</p>
+</section>
+{% endblock %}
