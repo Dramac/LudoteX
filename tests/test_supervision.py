@@ -144,5 +144,5 @@ def test_etat_supervision_rassemble_tout(bases):
         etat = supervision.etat_supervision(conn)
     finally:
         conn.close()
-    assert set(etat) == {"bases", "disque", "sauvegarde", "jeton", "version"}
+    assert set(etat) == {"bases", "disque", "sauvegarde", "jeton", "annonce", "version"}
     assert len(etat["bases"]) == 3

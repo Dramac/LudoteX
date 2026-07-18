@@ -105,6 +105,20 @@ def derniere_sauvegarde() -> dict:
     }
 
 
+def annonce_ecran_salle(conn: sqlite3.Connection) -> str | None:
+    """
+    Annonce actuellement affichée sur l'écran de salle (/live), ou None. Réutilise
+    `app.routes.live.annonce_active` (import différé, même motif que
+    `routes/admin.py`, pour éviter tout souci d'import circulaire) plutôt que
+    de dupliquer la lecture/logique d'expiration ici. Objectif (idée 5.2) :
+    qu'une annonce ne puisse pas rester affichée toute la journée sans que le
+    bureau ne la voie côté admin.
+    """
+    from app.routes.live import annonce_active
+
+    return annonce_active(conn)
+
+
 def etat_jeton(conn: sqlite3.Connection) -> dict:
     """Jeton bénévole : défini ou non, date d'expiration, expiré ou valide."""
     jeton = auth.jeton_actuel(conn)
@@ -133,5 +147,6 @@ def etat_supervision(conn: sqlite3.Connection) -> dict:
         "disque": espace_disque(),
         "sauvegarde": derniere_sauvegarde(),
         "jeton": etat_jeton(conn),
+        "annonce": annonce_ecran_salle(conn),
         "version": version_deployee(),
     }

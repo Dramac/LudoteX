@@ -72,5 +72,14 @@
 <p class="stats-note">Pour le lien d'activation ou le réinitialiser,
    voir <a class="lien" href="/admin/jeton">Accès bénévole</a>.</p>
 
+{% if etat.annonce %}
+<h3>Écran de salle</h3>
+<p class="resultat resultat-attention">
+  Annonce affichée en salle : « {{ etat.annonce }} ».
+</p>
+<p class="stats-note">Pour la modifier ou l'effacer,
+   voir <a class="lien" href="/admin/ecran-salle">Écran de salle</a>.</p>
+{% endif %}
+
 <h3>Version déployée</h3>
 <p>{{ etat.version }}</p>
