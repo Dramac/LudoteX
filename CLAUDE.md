@@ -969,6 +969,47 @@ fixture autouse ajoutée dans `tests/conftest.py` (nouveau fichier) pour
 réinitialiser ce compteur avant chaque test. **25 tests ajoutés** pour cet
 addendum. **Suite globale : 319 tests verts.**
 
+**Annonces libres sur l'écran de salle (idée 5.2) : FAIT.** Le bureau peut
+afficher un message ponctuel en bandeau sur `/live` (« Tombola à 15 h »,
+« portefeuille trouvé à l'accueil ») sans toucher au code ni recharger
+l'écran projeté, en suivant le patron déjà écrit pour le titre de l'écran
+(seconde clé sur la même page, aucune route/fichier nouveau). **Clé**
+`live_annonce` (`parametres`, une seule annonce à la fois, pas d'historique) +
+`app.routes.live.annonce_active(conn)` qui lit et renvoie le texte, exposé par
+`_collecter_donnees()` donc à la fois par `/live` et `/live/data` — **absent
+du JSON quand il n'y en a pas** (jamais de valeur absente affichée). Écran
+`/admin/ecran-salle` étendu (mêmes route/gabarit que le titre, pas de seconde
+page) : textarea 200 caractères + bouton **« Effacer l'annonce »** (mini-
+formulaire dédié, visible seulement si une annonce est active ; un champ vidé
+puis enregistré mène au même résultat). Bandeau conditionnel sur `/live`
+(`.bandeau-annonce`, teinte ambre distincte du reste de la palette, CSS/JS
+inline comme le reste du fichier), apparition ET disparition sans
+rechargement dans `rendre(d)`, texte injecté via **`textContent`** (jamais
+`innerHTML` — l'annonce est une saisie libre en admin).
+
+**Durée d'affichage en minutes (auto-masquage, ajout à la conception
+initiale) : FAIT.** Champ optionnel sur `/admin/ecran-salle` : vide =
+affichage illimité (comme prévu à l'origine) ; une valeur fixe une échéance
+`live_annonce_expire` (`parametres`, horodatage UTC ISO = *now* + N min au
+moment de l'enregistrement). Passé ce délai, `annonce_active()` masque
+l'annonce **par simple calcul à la lecture** — rien n'est jamais purgé en
+base : le texte reste éditable/rappelable en admin tant que personne ne le
+change, et le bouton d'effacement reste disponible même après expiration.
+Durée non numérique ou ≤ 0 → jamais bloquant, retombe sur l'illimité. Le
+champ « durée » est préaffiché avec les minutes restantes (calcul à
+l'affichage) pour qu'un enregistrement du titre seul ne réinitialise pas
+silencieusement une échéance en cours. **Rappel en supervision** (décision
+prise pour éviter qu'une annonce périmée passe inaperçue toute la journée) :
+`supervision.annonce_ecran_salle()` réutilise `annonce_active` (import
+différé, pas de duplication de la logique d'expiration) ; ligne « Annonce
+affichée en salle : … » dans `_supervision_contenu.html` (fragment partagé
+`/admin/supervision` + tableau de bord), affichée uniquement si une annonce
+est active. **8 tests dédiés** (absence par défaut, garde admin des deux
+routes, configuration/effacement/bouton dédié, longueur bornée, auto-masquage
+par durée dépassée simulée en base, durée invalide/négative jamais
+bloquante, rappel supervision conditionnel). **Suite globale : 334 tests
+verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
