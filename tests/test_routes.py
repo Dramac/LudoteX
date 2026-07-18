@@ -1670,3 +1670,67 @@ def test_e1_lien_devitement_masque_impression(client):
     r = client.get("/static/css/style.css")
     assert r.status_code == 200
     assert ".saut-contenu { display: none; }" in r.text
+
+
+@pytest.mark.parametrize("url", [
+    "/",
+    "/catalogue",
+    "/apropos",
+    "/aide",
+    "/stats",
+    "/scanner",
+    "/tournois",
+    "/tournoi/aide",
+    "/planning",
+    "/planning/aide",
+    "/rangement/aide",
+    "/live",
+    "/admin",          # non connecté : page de connexion.
+])
+def test_d1_titre_onglet_se_termine_par_nom_association(client, url):
+    """
+    Fiche D1 : convention unique de titre d'onglet
+    "<Sujet spécifique> — <Module> — {{ nom_association }}", module omis
+    quand il n'apporte rien. Garde-fou paramétré sur les routes principales,
+    par famille (public, bénévole, tournois, planning, admin). live.html
+    n'étend pas base.html (page autonome, décision de la fiche) et n'est PAS
+    dans cette liste pour cette raison — son titre reste géré indépendamment
+    (voir commit D1) ; /live lui-même est bien testé, mais uniquement pour
+    vérifier que la page répond (le contenu du <title> de live.html étant
+    hors périmètre du garde-fou).
+    """
+    r = client.get(url)
+    assert r.status_code == 200, url
+    if url == "/live":
+        return
+    assert "<title>" in r.text, url
+    debut = r.text.index("<title>") + len("<title>")
+    fin = r.text.index("</title>")
+    titre = r.text[debut:fin]
+    assert titre.endswith("Des jeux plein la Manche"), f"{url}: {titre!r}"
+
+
+def test_d1_titre_onglet_tournoi_et_planning_avec_objet(client):
+    # Familles nécessitant un objet existant (tournoi, planning) : couvertes
+    # séparément, la fixture de base n'en crée aucun.
+    r = client.post("/tournoi/nouveau", data={"nom": "T-D1"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    for url in (f"/tournoi/{tid}", f"/tournoi/{tid}/gerer"):
+        page = client.get(url)
+        assert page.status_code == 200, url
+        titre = page.text[page.text.index("<title>") + 7:page.text.index("</title>")]
+        assert titre.endswith("Des jeux plein la Manche"), f"{url}: {titre!r}"
+        assert "Tournois" in titre, f"{url}: {titre!r}"
+
+    from app.planning.db import get_connection as get_planning_connection
+    from app.planning import services as planning_services
+    conn_p = get_planning_connection()
+    try:
+        idev = planning_services.creer_evenement(conn_p, "Événement D1")
+    finally:
+        conn_p.close()
+    page = client.get(f"/planning/collecte/{idev}")
+    assert page.status_code == 200
+    titre = page.text[page.text.index("<title>") + 7:page.text.index("</title>")]
+    assert titre.endswith("Des jeux plein la Manche")
+    assert "Planning" in titre

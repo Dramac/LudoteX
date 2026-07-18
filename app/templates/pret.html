@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour{% endblock %}
+{% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 {% if info is none %}

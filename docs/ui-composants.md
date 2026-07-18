@@ -251,3 +251,47 @@ Composant distinct de `.pochette-num`, qui reste réservée à son objet
 d'origine (numéro de pochette sur `/pret`) — et de `.rangement-valeur`, pensée
 pour un texte parfois long (nom d'étagère) plutôt qu'un code court à chasse
 fixe.
+
+## 14. Titre d'onglet — convention unique
+
+Ajouté par la fiche **D1** (`docs/audit-ux-2026-07-18.md`). Trois conventions
+coexistaient (`Sujet — {{ nom_association }}`, `Administration — Sujet` **et**
+`Sujet — Administration` dans le même module, ou ni l'un ni l'autre) : 39
+gabarits sur 55 ne portaient même pas `{{ nom_association }}`.
+
+**Convention unique, du plus spécifique au plus général :**
+
+```
+{% block titre %}<Sujet spécifique> — <Module> — {{ nom_association }}{% endblock %}
+```
+
+Le `<Module>` est **omis** quand il n'apporte rien :
+
+- la page EST le module (sa propre page d'accueil) : `Catalogue — LudoteX`,
+  `Statistiques — LudoteX`, `Tournois — LudoteX`, `Planning — LudoteX` ;
+- la page est un point d'entrée générique sans rapport avec un module
+  particulier : `Aide — LudoteX`, `À propos — LudoteX`, l'accueil
+  (`{{ nom_association }}` seul) ;
+- le sujet contient déjà l'information (`Mon planning — LudoteX` : « planning »
+  est déjà dans le sujet, ajouter « — Planning — » serait redondant).
+
+Sinon, le module apparaît explicitement : `Scores — Coup de cœur — Tournois —
+LudoteX`, `Mes disponibilités — Planning — LudoteX`, `Supervision —
+Administration — LudoteX`. Le module utilise le nom court du bandeau/menu
+(« Tournois », « Planning »), pas le nom long des libellés de titre `<h1>`
+(« Planning bénévole ») — ce ne sont pas la même chose : le `<h1>` s'adresse
+au lecteur de la page, le titre d'onglet sert à distinguer des onglets entre
+eux.
+
+**Exception assumée** : `live.html` n'étend pas `base.html` — c'est une page
+autonome pensée pour un projecteur/TV, avec son propre `<title>{{ data.titre
+}} — Tableau de bord</title>`. `data.titre` est réglable en admin
+(`/admin/ecran-salle`, défaut = nom de l'association) : lui ajouter
+inconditionnellement `— {{ nom_association }}` doublonnerait le nom par
+défaut et braderait la personnalisation admin. Laissé tel quel, décision
+prise dans la fiche elle-même.
+
+Garde-fou : `tests/test_routes.py::test_d1_titre_onglet_se_termine_par_nom_association`
+(paramétré sur les routes principales de chaque famille) et
+`test_d1_titre_onglet_tournoi_et_planning_avec_objet` (pages qui exigent un
+tournoi/événement existant).
