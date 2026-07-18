@@ -1562,3 +1562,81 @@ def test_fonctionnalites_enregistrer(client, tmp_path, monkeypatch):
         assert services.lire_parametre(conn, "module_tournois") == "desactive"
     finally:
         conn.close()
+
+
+def test_d2_aucun_pluriel_inline_ne_subsiste():
+    """
+    Fiche D2 : la fiche Q2 avait introduit le global Jinja `pluriel()` et
+    corrigé 15 occurrences de pluriels parenthésés ("jeu(x)", "prêt(s)"),
+    mais 6 occurrences de la forme `{{ 's' if n > 1 else '' }}` (ou son
+    équivalent `'x' if …`) subsistaient. Garde-fou sur la SOURCE des
+    gabarits : plus aucune de ces deux formes ne doit y apparaître.
+
+    Exclusion volontaire, non par oubli : `admin_etiquettes.html` construit
+    son compteur ("N étiquette(s) sélectionnée(s)…") en JavaScript côté
+    client, qui ne peut pas appeler le global Jinja `pluriel()` — décision
+    déjà prise lors de la fiche Q2 (docs/idees-ux.md). Ce fichier utilise de
+    toute façon la forme parenthésée "(s)", pas le ternaire visé ici ; il est
+    exclu explicitement pour que la règle reste vraie même si son JS évolue.
+    """
+    import pathlib
+    import re
+
+    dossier = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
+    exclus = {"admin_etiquettes.html"}
+    motif = re.compile(r"'[sx]' if .*? else ''")
+
+    fautifs = []
+    for fichier in sorted(dossier.glob("*.html")):
+        if fichier.name in exclus:
+            continue
+        if motif.search(fichier.read_text(encoding="utf-8")):
+            fautifs.append(fichier.name)
+    assert fautifs == []
+
+
+def test_d2_pluriels_accueil_dispo(client):
+    # Non-régression : "1 jeu disponible" / "2 jeux disponibles" (deux mots
+    # s'accordent dans la même phrase — attention relevée par la fiche D2).
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        conn.execute("DELETE FROM prets")
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.get("/")
+    assert "<strong>1</strong> jeu" in r.text and "disponible " in r.text
+    assert "jeus" not in r.text.lower()
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('D2X', 'CATAN')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    r = client.get("/")
+    assert "jeux" in r.text and "disponibles" in r.text
+
+
+def test_d2_pluriel_joueurs_menu_filtre(client):
+    # catalogue.html et admin_rangement_ranger.html partagent le même menu
+    # "N joueur(s)" — vérifié ici côté catalogue public. La fixture ne pose
+    # aucun nb_joueurs_max par défaut (menu vide) : on en renseigne un pour
+    # obtenir un menu de 1 à 4.
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE titres SET nb_joueurs_max = 4 WHERE reference_titre = 'CATAN'")
+        conn.commit()
+    finally:
+        conn.close()
+
+    r = client.get("/catalogue")
+    assert r.status_code == 200
+    assert "1 joueur<" in r.text
+    assert "joueurs<" in r.text

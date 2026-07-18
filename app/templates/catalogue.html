@@ -40,7 +40,7 @@
         <select id="joueurs" name="joueurs">
           <option value="">Indifférent</option>
           {% for n in range(1, max_joueurs + 1) %}
-            <option value="{{ n }}" {% if n == joueurs %}selected{% endif %}>{{ n }} joueur{{ 's' if n > 1 else '' }}</option>
+            <option value="{{ n }}" {% if n == joueurs %}selected{% endif %}>{{ n }} {{ pluriel(n, 'joueur', 'joueurs') }}</option>
           {% endfor %}
         </select>
       </div>
