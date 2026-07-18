@@ -1114,6 +1114,19 @@ promettrait autre chose que ce qu'elle donne. Aucune classe CSS ajoutée.
 **3 tests** (visiteur sans lien `/pret/`, bénévole avec, jeu sans catégorie).
 **Suite globale : 354 tests verts.**
 
+**A2 — page conviviale pour les adresses inexistantes : FAIT.** `gestion_http`
+(`app/main.py`) ne traitait que le 403 ; tout le reste retombait sur le
+gestionnaire par défaut de FastAPI, donc `{"detail":"Not Found"}` en texte
+brut — seul endroit du site montrant de la technique, et sans lien de sortie.
+Nouveau gabarit `introuvable.html` (calqué sur `erreur.html`) + branche
+`elif exc.status_code == 404`. **Vérifié avant d'écrire** : les seules
+`HTTPException` levées dans le code sont des **403** (`auth.exiger_jeton`,
+`modules.garde_module`) ; les 404 métier (« exemplaire inconnu », « tournoi
+inconnu », `module_desactive.html`) **retournent** leur gabarit avec
+`status_code=404` au lieu de lever — elles ne passent donc pas par ce
+gestionnaire et gardent leur message spécifique. **3 tests** dont les deux
+non-régressions. **Suite globale : 357 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
@@ -1203,6 +1216,47 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
   ngrok) au-dessus de `uvicorn` local, pour tester le **scan caméra depuis un
   smartphone**. Raison : le scanner caméra (`getUserMedia`) exige un contexte
   sécurisé (HTTPS ou `localhost`). Déploiement VPS dans un second temps.
+
+### ⚠️ Tenir le wiki à jour — contrainte de CHAQUE session
+
+Le dossier `wiki/` (14 pages) est **le guide utilisateur** du projet : bénévoles
+et bureau, public non développeur. Il vit dans le dépôt précisément pour être
+corrigé **dans le même commit** que le code qui le périme.
+
+**Le constat qui motive cette règle** (audit du 2026-07-18,
+`docs/guide-utilisateur-cadrage.md` §1) : quatre pages étaient fausses ou
+incomplètes — module Rangement absent en totalité, « les trois modes de
+scoring » alors qu'il y en a quatre, menu « Base de données » renommé
+« Données & sauvegarde » depuis la fusion, annonces de l'écran de salle et mode
+formation non documentés. Aucune de ces dérives n'est due à une négligence
+ponctuelle : elles viennent de ce que **rien ne signalait, au moment du
+changement, que la doc devait suivre**. D'où cette section.
+
+**La règle.** Avant de clore une session, si le travail a touché à l'un de ces
+points, vérifier si une page de `wiki/` le mentionne — et la corriger :
+
+- un **écran** ajouté, supprimé ou réorganisé ;
+- un **libellé de bouton, de menu ou de champ** modifié (le guide cite les
+  libellés mot pour mot : s'ils divergent, c'est le guide qu'on accusera) ;
+- une **URL publique** ajoutée ou renommée ;
+- un **comportement métier** visible de l'utilisateur (règle de pochette,
+  états d'un tournoi, modes de scoring, contextes de rangement, visibilité) ;
+- un **nouveau module** ou une nouvelle option d'administration.
+
+Ne PAS documenter dans `wiki/` : refactorisations internes, tests, migrations,
+noms de fichiers ou de fonctions. Le wiki ne parle jamais de code.
+
+**Où écrire quoi** : `wiki/` = utilisateur (aucun jargon, aucun chemin de
+fichier) ; `docs/` = conception et décisions ; `CLAUDE.md` = ce résumé
+opérationnel. Une même information n'a qu'un seul de ces trois domiciles.
+
+**Conventions rédactionnelles du wiki** (détail complet et plan de refonte dans
+`docs/guide-utilisateur-cadrage.md`) : infinitif pour les gestes, « vous » pour
+s'adresser au lecteur, jamais de tutoiement ; libellés de boutons en gras et
+identiques à l'écran ; section « Si ça ne marche pas » obligatoire sur toute
+page décrivant une action ; diagrammes en **Mermaid** dans le markdown ;
+captures dans `wiki/images/`, **jamais de numéro de pochette réel, de pseudo,
+de nom de bénévole ni de jeton visible**.
 
 ## Séquence de dev (brief §6) — état
 
