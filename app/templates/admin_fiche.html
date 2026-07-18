@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block titre %}Administration — {{ titre.nom if titre else "Inconnu" }}{% endblock %}
+{% block titre %}{{ titre.nom if titre else "Jeu inconnu" }} — Administration — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 {% if titre is none %}

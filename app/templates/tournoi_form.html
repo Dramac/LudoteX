@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set edition = t is not none %}
-{% block titre %}{{ "Modifier" if edition else "Nouveau" }} tournoi{% endblock %}
+{% block titre %}{{ "Modifier" if edition else "Nouveau" }} tournoi — Tournois — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
