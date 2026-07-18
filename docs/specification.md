@@ -65,9 +65,36 @@ Quelles que soient les évolutions du CSV, deux champs doivent exister et rester
 |---|---|
 | `id_pret` | clé primaire |
 | `id_exemplaire` | clé étrangère → `exemplaires` |
-| `numero_pochette` | numéro de pochette attribué pour ce prêt |
+| `numero_pochette` | numéro de pochette attribué pour ce prêt ; **effacé une fois le prêt clos** (voir ci-dessous) |
 | `date_sortie` | horodatage de sortie |
 | `date_retour` | horodatage de retour ; **vide tant que le jeu est sorti** |
+
+> **Décision Simon du 2026-07-18 — durée de vie du numéro de pochette.**
+> Le numéro de pochette est une donnée **sensible** : il désigne le casier où
+> se trouve une pièce d'identité. Il n'est donc jamais visible d'un visiteur
+> (seuls bénévoles et administrateurs y ont accès), et il n'a d'utilité que
+> **pendant** le prêt — pour retrouver la pièce à restituer. Une fois
+> `date_retour` posée, la pochette est libérée et recyclée : le numéro
+> conservé ne renseigne plus sur rien d'utile mais resterait exposé dans tous
+> les exports et toutes les sauvegardes. Il est donc **effacé à la clôture du
+> prêt** (retour, re-prêt, clôture de fin d'événement).
+>
+> Cette décision **révoque** le choix initial (« numéro conservé après retour
+> comme trace historique »). Elle ne change rien à la règle « historique
+> jamais purgé » : la **ligne** de prêt reste, avec ses dates et son motif —
+> seul le numéro est effacé. Aucune statistique n'est affectée (aucune requête
+> n'agrège ni ne filtre sur ce champ), et les prêts **en cours** conservent
+> leur numéro en base, donc dans les sauvegardes — la reprise après incident
+> pendant l'événement reste assurée.
+>
+> **Mise en œuvre : FAITE** (fiche **D5** de `docs/audit-ux-2026-07-18.md`).
+> L'effacement a lieu aux trois points de clôture (`services.rendre` — après
+> avoir affiché le numéro au bénévole —, `services.repreter` pour l'ancien
+> prêt seulement, et `services.cloturer_tous_les_prets`). La colonne
+> `prets.numero_pochette` est devenue NULLABLE par reconstruction de table
+> (`db._migrer_pochette_nullable`), qui purge au passage l'historique déjà
+> constitué. La liste détaillée de `/stats` et les exports Excel/PDF n'ont
+> plus de colonne « emplacement » : elle y serait toujours vide.
 
 **`pochettes`** — l'occupation du moment (quels numéros sont actuellement utilisés).
 
@@ -79,7 +106,7 @@ Quelles que soient les évolutions du CSV, deux champs doivent exister et rester
 ### 3.3 Règles dérivées
 
 - Un exemplaire est **disponible** s'il n'a aucun prêt avec `date_retour` vide ; il est **sorti** sinon.
-- Le **numéro de pochette** n'est qu'une occupation du moment : il est libéré au retour et réutilisable. L'historique du prêt conserve néanmoins son `numero_pochette`, sans incidence sur les statistiques.
+- Le **numéro de pochette** n'est qu'une occupation du moment : il est libéré au retour et réutilisable. Il est aussi **effacé de la ligne de prêt** à la clôture (voir §3.2) ; la ligne, elle, demeure, et les statistiques sont inchangées (aucune requête n'agrège ni ne filtre sur ce champ).
 - L'historique des prêts n'est jamais supprimé : c'est lui qui alimente les statistiques (volume total, prêts par heure, palmarès).
 
 ---
