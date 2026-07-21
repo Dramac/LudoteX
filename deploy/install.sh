@@ -416,7 +416,7 @@ etape "Sauvegarde automatique"
 chmod +x "$INSTALL_DIR/deploy/sauvegarde.sh"
 read -r -p "Configurer la sauvegarde quotidienne automatique (3h du matin) ? [O/n] : " CONFIG_SAUVEGARDE
 if [[ "${CONFIG_SAUVEGARDE,,}" != n* ]]; then
-    LIGNE_CRON="0 3 * * * $INSTALL_DIR/deploy/sauvegarde.sh $DATA_DIR/pret-jeux.db $DATA_DIR/sauvegardes >> /var/log/ludotex-sauvegarde.log 2>&1"
+    LIGNE_CRON="0 3 * * * $INSTALL_DIR/deploy/sauvegarde.sh $INSTALL_DIR $DATA_DIR/sauvegardes >> /var/log/ludotex-sauvegarde.log 2>&1"
     CRON_ACTUEL="$(crontab -u "$SERVICE_USER" -l 2>/dev/null || true)"
     if echo "$CRON_ACTUEL" | grep -qF "sauvegarde.sh"; then
         info "Une tâche de sauvegarde existe déjà dans le crontab de $SERVICE_USER."

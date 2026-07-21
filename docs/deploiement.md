@@ -170,13 +170,17 @@ Si acceptée pendant l'installation, une sauvegarde quotidienne automatique
 sudo crontab -u pretjeux -l
 ```
 
+Chaque sauvegarde est une archive `.zip` regroupant les **trois bases** (prêt,
+tournois, planning) — directement restaurable depuis l'espace admin
+(`/admin/données` → « Restaurer une sauvegarde »).
+
 Pour une copie **hors serveur** (recommandé, protège contre une panne du VPS
 lui-même) : installer `rclone`, configurer une cible (Nextcloud, Google
 Drive...), puis décommenter la ligne `rclone copy` dans
 `deploy/sauvegarde.sh`. Test manuel d'une sauvegarde :
 
 ```bash
-sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /var/lib/ludotex/pret-jeux.db /var/lib/ludotex/sauvegardes
+sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes
 ```
 
 ## 7bis. Site de formation (optionnel)
@@ -353,8 +357,8 @@ sudo certbot --nginx -d pret.example.fr
 
 ```bash
 chmod +x /opt/ludotex/deploy/sauvegarde.sh
-sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh
+sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes
 sudo -u pretjeux crontab -e
 # ajouter (sauvegarde quotidienne à 3h) :
-# 0 3 * * * /opt/ludotex/deploy/sauvegarde.sh >> /var/log/ludotex-sauvegarde.log 2>&1
+# 0 3 * * * /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes >> /var/log/ludotex-sauvegarde.log 2>&1
 ```
