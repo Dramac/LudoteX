@@ -15,6 +15,13 @@ mise en œuvre quand elle coule de source.
 > `✅ RÉALISÉ`, `↑ renforcée` (le code livré depuis a rapproché ou facilité
 > l'idée), `= intacte` (rien n'a bougé de ce côté) ou `↓ réduite`.
 > Bilan chiffré et reliquats : voir la synthèse en fin de document.
+>
+> **Re-vérification du 2026-07-21.** État confirmé : aucun des 8 chantiers marqués
+> ✅ RÉALISÉ n'a régressé, et les commits intervenus depuis (fiches d'audit
+> A/B/C/D/E) ne portent pas sur ce document. Seul ajout de code pertinent ici :
+> le filtre `dispo_seulement` de `lister_catalogue` (fiche A4), qui renforce 1.3
+> et 1.4 (voir leurs lignes « MàJ 2026-07-21 »). Le mode formation (7.1) a été
+> ré-audité en détail — voir le topo dédié remis à Simon ce jour.
 
 ---
 
@@ -52,12 +59,21 @@ mise en œuvre quand elle coule de source.
   été réutilisée telle quelle par l'écran « Ranger les jeux » — elle a fait la
   preuve qu'on peut bâtir un écran entier par-dessus sans réimplémenter de
   filtre. L'assistant de choix devient une simple 3ᵉ façade sur le même service.
+- **MàJ 2026-07-21.** `lister_catalogue` a depuis gagné un paramètre
+  `dispo_seulement` (fiche A4, filtre par agrégat en `HAVING`) : le « dispo
+  uniquement » central à cette idée n'est donc plus à écrire, il ne reste que la
+  présentation guidée (3 questions) et l'`ORDER BY RANDOM()` du « surprends-moi ».
 
 ### 1.4 Jeux similaires sur la fiche
 - **Valeur** : rebond quand le jeu convoité est sorti — « dans la même veine,
   disponibles maintenant : … ». Transforme une frustration en découverte.
 - **Note** : similarité simple par catégorie/âge/durée ; BGG (1.2) l'affinerait.
-- **Pertinence = intacte.** Rien livré de ce côté sur la fiche.
+- **Pertinence ↑ légèrement renforcée (MàJ 2026-07-21).** Rien livré sur la
+  fiche elle-même, mais le « disponibles maintenant » de l'idée est désormais
+  outillé : `lister_catalogue(..., dispo_seulement=True)` existe (fiche A4) et la
+  fiche `/jeu/<id>` propose déjà un rebond « Voir les jeux disponibles de la
+  catégorie X » quand le jeu est tout sorti. La brique manquante n'est donc plus
+  le filtre de dispo mais uniquement le critère de similarité (catégorie/âge/durée).
 
 ### 1.5 File d'attente anonyme sur un jeu sorti
 - **Valeur** : « prévenez-moi quand il revient » sans donnée perso : le visiteur
