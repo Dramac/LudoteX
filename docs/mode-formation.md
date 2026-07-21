@@ -59,15 +59,42 @@ première) :
    ```
 
 Dans les deux cas, le script (`app/formation.py`) **vide puis repeuple**
-entièrement les bases de l'instance de formation : environ 20 jeux fictifs
-(« Jeu d'essai n°1 »…), quelques prêts en cours et quelques prêts déjà rendus
-(historique), et un tournoi d'exemple ouvert aux inscriptions. Il est
-**idempotent** : le relancer plusieurs fois produit toujours le même état.
+entièrement les **trois** bases de l'instance de formation :
+
+- **Catalogue & prêts** : environ 60 jeux dont les noms sont tirés **au hasard
+  du vrai catalogue** de l'association (pour une formation plus parlante que des
+  « Jeu d'essai n°… »). Les prêts sont **datés** pour simuler un événement en
+  cours depuis plusieurs heures : quelques dizaines de prêts terminés aux durées
+  variées (~15 min à ~2 h) répartis dans le temps, plus une douzaine encore en
+  cours. Les **statistiques** (palmarès, histogramme horaire, durée moyenne,
+  jeux actuellement sortis) sont ainsi fournies et crédibles — de quoi servir
+  aussi de **démonstration au bureau**.
+- **Tournois** : plusieurs tournois d'exemple couvrant les états et les modes —
+  un brouillon, un ouvert aux inscriptions, un par équipes, un high score en
+  cours (avec scores), une ronde suisse, une élimination directe, et un tournoi
+  terminé avec classement.
+- **Planning bénévole** : un planning prérempli complet (postes, créneaux, ~28
+  bénévoles fictifs, préremplissage) plus un jumeau resté « collecte ouverte ».
+
+Il est **idempotent** : le relancer repart d'un état propre (seuls les noms de
+jeux tirés au hasard peuvent varier d'une fois à l'autre).
+
+> **D'où viennent les noms de jeux ?** Le script LIT le catalogue de production
+> en **lecture seule** pour en tirer des noms — jamais il ne l'écrit. Il utilise
+> la base pointée par `FORMATION_SOURCE_DB` si elle est définie, sinon le chemin
+> de production par défaut (`data/pret-jeux.db`). S'il n'y accède pas (cas
+> fréquent sur un serveur de formation isolé), il retombe sur une **liste
+> intégrée** de jeux connus — la formation fonctionne quand même. Pour des noms
+> fidèles au vrai catalogue sur le VPS, ajouter
+> `FORMATION_SOURCE_DB=/var/lib/ludotex/app.db` (chemin de la base de prod) dans
+> `/etc/ludotex-formation.env`.
 
 > Ce script vide les bases qu'il cible — ne jamais le lancer en pointant vers
-> les bases de PRODUCTION (`DATABASE_PATH`/`TOURNOI_DATABASE_PATH` de
-> l'instance de prod). Sur un poste local (hors serveur), vérifier son `.env`
-> avant de taper `python -m app.formation`.
+> les bases de PRODUCTION (`DATABASE_PATH`/`TOURNOI_DATABASE_PATH`/
+> `PLANNING_DATABASE_PATH` de l'instance de prod). Sur un poste local (hors
+> serveur), vérifier son `.env` avant de taper `python -m app.formation`.
+> En local, `python lancer.py --formation` s'occupe de tout (bases jetables
+> `data/formation-*.db`, peuplement au premier lancement).
 
 ## Imprimer des QR d'entraînement
 

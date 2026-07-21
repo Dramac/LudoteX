@@ -1110,12 +1110,20 @@ def test_formation_mode_actif(client, monkeypatch):
     assert "(jeux, prêts, tournoi)" not in r_admin.text
 
     # Bouton fonctionnel : vide + repeuple les bases de l'instance courante.
+    # On force le repli sur la liste de noms intégrée (source catalogue absente)
+    # pour un test déterministe, sans lire le vrai catalogue du dépôt.
+    monkeypatch.setenv("FORMATION_SOURCE_DB", "/formation-source-inexistante.db")
     r_reset = client.post("/admin/formation/reinitialiser")
     assert r_reset.status_code == 200
     assert "réinitialisées" in r_reset.text
+    # Compteurs annoncés dans le message (jeux + tournois multiples + planning).
+    assert "60 jeux" in r_reset.text
+    assert "7 tournois" in r_reset.text
     catalogue = client.get("/catalogue")
-    assert "essai n°1" in catalogue.text  # apostrophe échappée en HTML (&#39;)
-    assert "Catan" not in catalogue.text  # jeu de la fixture, effacé par le reset
+    assert catalogue.status_code == 200
+    # L'exemplaire de la fixture (Catan, id 001) a bien été effacé : les jeux de
+    # formation reçoivent des id AUTO préfixés « A », jamais « 001 ».
+    assert "/jeu/001" not in catalogue.text
 
 
 def test_formation_lien_admin_production(client, monkeypatch):
