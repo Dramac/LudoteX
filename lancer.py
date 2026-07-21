@@ -22,6 +22,22 @@ CE QUE FAIT CE SCRIPT, DANS L'ORDRE
 7. Reste en attente (Ctrl+C ou bouton « Arrêter ») puis ferme proprement les
    sous-processus.
 
+OPTION « --formation »
+----------------------
+    python lancer.py              # démarre l'application normale (comportement historique)
+    python lancer.py --formation  # démarre EN PLUS le site de formation
+
+Avec `--formation`, une SECONDE instance de la même application est lancée en
+parallèle sur le port 8100, en MODE FORMATION (bandeau + filigrane), avec ses
+propres bases SQLite jetables (`data/formation-*.db`) — jamais celles de
+production. Elle est accessible sur cet ordinateur à http://localhost:8100.
+Le premier lancement peuple ces bases avec des données fictives (jeux d'essai,
+un tournoi d'exemple) ; les lancements suivants les conservent (pour repartir
+d'un état propre, utiliser le bouton « Réinitialiser les données de formation »
+dans l'admin du site de formation). Le lien « 🎓 Site de formation » apparaît
+alors dans le tableau de bord admin de l'instance normale (via `FORMATION_URL`).
+Le site de formation n'a PAS de tunnel Cloudflare : il reste local à la machine.
+
 AUCUNE DÉPENDANCE SUPPLÉMENTAIRE : `qrcode`/`pillow` sont déjà dans
 `requirements.txt` (réutilise `app.etiquettes.image_qr_nu`, le même dessin de
 QR que le reste de l'application) ; `http.server` est dans la bibliothèque
@@ -36,6 +52,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 import re
 import shutil
 import socket
@@ -50,9 +67,18 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-PORT_APP = 8000            # uvicorn
+PORT_APP = 8000            # uvicorn (instance normale)
 PORT_CONTROLE = 8001       # serveur de contrôle (statut + arrêt)
+PORT_FORMATION = 8100      # uvicorn (instance de formation, option --formation)
 HOTE = "127.0.0.1"
+
+# Bases SQLite jetables du site de formation (ne jamais confondre avec la prod).
+DOSSIER_DATA = BASE_DIR / "data"
+BASES_FORMATION = {
+    "DATABASE_PATH": DOSSIER_DATA / "formation-pret.db",
+    "TOURNOI_DATABASE_PATH": DOSSIER_DATA / "formation-tournoi.db",
+    "PLANNING_DATABASE_PATH": DOSSIER_DATA / "formation-planning.db",
+}
 
 URL_TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
@@ -60,13 +86,17 @@ URL_TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 etat: dict[str, object] = {
     "uvicorn_ok": False,
     "cloudflared_ok": False,
+    "formation_ok": False,
     "url": None,
+    "url_formation": None,
     "erreur": None,
 }
 _verrou = threading.Lock()
 evenement_arret = threading.Event()
 
-processus: dict[str, subprocess.Popen | None] = {"uvicorn": None, "cloudflared": None}
+processus: dict[str, subprocess.Popen | None] = {
+    "uvicorn": None, "cloudflared": None, "uvicorn_formation": None,
+}
 serveur_controle: dict[str, ThreadingHTTPServer | None] = {"instance": None}
 
 
@@ -110,7 +140,7 @@ def _port_libre(port: int) -> bool:
         s.close()
 
 
-def verifier_prerequis() -> list[str]:
+def verifier_prerequis(formation: bool = False) -> list[str]:
     """Renvoie la liste des problèmes bloquants (liste vide = tout est prêt)."""
     problemes = []
     if chemin_python_venv() is None:
@@ -129,6 +159,11 @@ def verifier_prerequis() -> list[str]:
             "occupé). Arrêter l'instance existante (bouton « Arrêter LudoteX » "
             "de sa page, ou fermer les fenêtres/processus concernés) avant "
             "de relancer."
+        )
+    if formation and not _port_libre(PORT_FORMATION):
+        problemes.append(
+            f"Le port {PORT_FORMATION} (site de formation) est déjà occupé. "
+            "Arrêter l'instance de formation existante avant de relancer."
         )
     return problemes
 
@@ -149,26 +184,63 @@ def _attendre_port(port: int, timeout: float) -> bool:
     return False
 
 
-def demarrer_uvicorn() -> None:
+def demarrer_uvicorn(cle: str = "uvicorn", port: int = PORT_APP,
+                     env_extra: dict[str, str] | None = None) -> None:
     """
-    Lance uvicorn en sous-processus, caché.
+    Lance uvicorn en sous-processus, caché, et le range sous la clé `cle` de
+    `processus` (pour qu'`arreter_tout` le termine aussi).
 
     `sys.executable` est déjà l'interpréteur du venv du projet (garanti par
     lancer.vbs / lancer.bat, qui invoquent explicitement
     `.venv\\Scripts\\python[w].exe lancer.py`). `cwd=BASE_DIR` assure que
     `load_dotenv()` (dans app/db.py) retrouve le `.env` à la racine.
+
+    `env_extra` (optionnel) surcharge des variables d'environnement pour ce
+    seul processus — utilisé pour l'instance de formation (MODE_FORMATION=1 +
+    bases jetables) et pour poser FORMATION_URL sur l'instance normale. Les
+    valeurs passées ici priment sur `.env` (python-dotenv n'écrase jamais une
+    variable déjà présente dans l'environnement).
     """
     kwargs = {}
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-    processus["uvicorn"] = subprocess.Popen(
+    env = {**os.environ, **env_extra} if env_extra else None
+
+    processus[cle] = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app",
-         "--host", HOTE, "--port", str(PORT_APP)],
+         "--host", HOTE, "--port", str(port)],
         cwd=str(BASE_DIR),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
         **kwargs,
+    )
+
+
+def env_formation() -> dict[str, str]:
+    """Variables d'environnement de l'instance de formation (bases jetables)."""
+    env = {"MODE_FORMATION": "1"}
+    env.update({cle: str(chemin) for cle, chemin in BASES_FORMATION.items()})
+    return env
+
+
+def preparer_bases_formation() -> None:
+    """
+    Au PREMIER lancement seulement, crée et peuple les bases de formation
+    (jeux fictifs + tournoi d'exemple) via `python -m app.formation`. Si la base
+    de prêt de formation existe déjà, on ne touche à rien (on ne réécrase pas
+    les données de la session en cours — le bouton d'admin sert à cela).
+    """
+    DOSSIER_DATA.mkdir(parents=True, exist_ok=True)
+    if BASES_FORMATION["DATABASE_PATH"].exists():
+        return
+    print("Première initialisation des bases de formation (données fictives)…")
+    subprocess.run(
+        [sys.executable, "-m", "app.formation"],
+        cwd=str(BASE_DIR),
+        env={**os.environ, **env_formation()},
+        check=True,
     )
 
 
@@ -318,6 +390,12 @@ _PAGE_LANCEUR = """<!DOCTYPE html>
   }
   .arreter:hover { background: #b52a22; }
   .msg { margin-top: 1rem; font-size: .85rem; color: #777; min-height: 1.2em; }
+  .formation {
+    margin: 0 0 1.25rem; padding: 10px 14px; border-radius: 6px;
+    background: #fff3e0; border: 1px solid #ffcc80; color: #e65100;
+    font-size: .9rem; word-break: break-all;
+  }
+  .formation a { color: #e65100; }
 </style>
 </head>
 <body>
@@ -330,6 +408,7 @@ _PAGE_LANCEUR = """<!DOCTYPE html>
       <span><span id="puce-uvicorn" class="puce __CLASSE_UVICORN__"></span>Application</span>
       <span><span id="puce-tunnel" class="puce __CLASSE_TUNNEL__"></span>Tunnel</span>
     </div>
+    __BLOC_FORMATION__
     <button class="arreter" onclick="arreterLudoteX()">Arrêter LudoteX</button>
     <p class="msg" id="message"></p>
   </div>
@@ -421,6 +500,15 @@ def ecrire_page_lanceur(url: str) -> Path:
     qr_b64 = generer_qr_base64(url)
     with _verrou:
         s = dict(etat)
+    url_formation = s.get("url_formation")
+    if url_formation:
+        bloc_formation = (
+            f'<div class="formation">🎓 Site de formation (sur cet ordinateur) : '
+            f'<a href="{url_formation}" target="_blank" rel="noopener">'
+            f'{url_formation}</a></div>'
+        )
+    else:
+        bloc_formation = ""
     html = (
         _PAGE_LANCEUR
         .replace("__QR_B64__", qr_b64)
@@ -428,6 +516,7 @@ def ecrire_page_lanceur(url: str) -> Path:
         .replace("__PORT_CONTROLE__", str(PORT_CONTROLE))
         .replace("__CLASSE_UVICORN__", "ok" if s["uvicorn_ok"] else "ko")
         .replace("__CLASSE_TUNNEL__", "ok" if s["cloudflared_ok"] else "ko")
+        .replace("__BLOC_FORMATION__", bloc_formation)
     )
     return ecrire_temp_html(html, prefixe="lancer-ludotex-")
 
@@ -446,8 +535,34 @@ def _afficher_erreur(problemes: list[str]) -> None:
 # Orchestration
 # =====================================================================
 
-def main() -> None:
-    problemes = verifier_prerequis()
+def demarrer_instance_formation() -> bool:
+    """
+    Prépare (au 1er lancement) puis démarre l'instance de formation sur
+    PORT_FORMATION. Renvoie True si elle est joignable. Un échec ici n'est PAS
+    bloquant pour l'instance normale : on le signale et on continue.
+    """
+    try:
+        preparer_bases_formation()
+    except subprocess.CalledProcessError:
+        print("ERREUR : impossible d'initialiser les bases de formation.")
+        return False
+
+    print("Démarrage du site de formation (uvicorn)…")
+    demarrer_uvicorn("uvicorn_formation", PORT_FORMATION, env_formation())
+    if not _attendre_port(PORT_FORMATION, timeout=30):
+        print("Le site de formation n'a pas démarré à temps.")
+        return False
+
+    url_formation = f"http://localhost:{PORT_FORMATION}"
+    with _verrou:
+        etat["formation_ok"] = True
+        etat["url_formation"] = url_formation
+    print("Site de formation démarré sur", url_formation)
+    return True
+
+
+def main(formation: bool = False) -> None:
+    problemes = verifier_prerequis(formation)
     if problemes:
         _afficher_erreur(problemes)
         return
@@ -457,8 +572,16 @@ def main() -> None:
 
     demarrer_serveur_controle()
 
+    # Si l'on veut le site de formation, on le démarre AVANT l'instance normale
+    # pour lui passer FORMATION_URL (→ le lien « Site de formation » apparaît
+    # dans l'admin de l'instance normale).
+    env_normale: dict[str, str] | None = None
+    if formation:
+        if demarrer_instance_formation():
+            env_normale = {"FORMATION_URL": f"http://localhost:{PORT_FORMATION}"}
+
     print("Démarrage de l'application (uvicorn)…")
-    demarrer_uvicorn()
+    demarrer_uvicorn("uvicorn", PORT_APP, env_normale)
     if not _attendre_port(PORT_APP, timeout=30):
         _afficher_erreur([
             "L'application n'a pas démarré à temps. Relancer via lancer.bat "
@@ -496,6 +619,10 @@ def main() -> None:
 
     chemin_page = ecrire_page_lanceur(url)
     webbrowser.open(chemin_page.as_uri())
+    with _verrou:
+        url_formation = etat.get("url_formation")
+    if url_formation:
+        print("Site de formation accessible sur cet ordinateur :", url_formation)
     print("LudoteX est prêt. Fermer cette console ou cliquer sur "
           "« Arrêter LudoteX » dans la page pour tout arrêter.")
 
@@ -514,4 +641,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print("Usage : python lancer.py [--formation]")
+        print("  (sans option)  démarre l'application normale")
+        print("  --formation    démarre EN PLUS le site de formation "
+              "(port 8100, bases jetables)")
+        sys.exit(0)
+    main(formation="--formation" in args)

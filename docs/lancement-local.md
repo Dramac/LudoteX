@@ -58,7 +58,36 @@ Pour un déploiement permanent sur un vrai serveur, voir plutôt
 
 - Pour arrêter : cliquer sur **« Arrêter LudoteX »** dans la page ouverte
   (confirmation demandée), ou fermer la console si lancé via `lancer.bat`
-  (Ctrl+C).
+  (Ctrl+C). Le site de formation, s'il a été lancé, s'arrête en même temps.
+
+## Lancer aussi le site de formation (`--formation`)
+
+Pour former des bénévoles sans toucher aux vraies données, on peut démarrer en
+plus une **seconde instance** en mode formation (bandeau + filigrane, bases
+jetables). Depuis un terminal, à la racine du projet :
+
+```
+.venv\Scripts\python.exe lancer.py --formation
+```
+
+(ou, si le venv est activé : `python lancer.py --formation`. Sous macOS/Linux :
+`.venv/bin/python lancer.py --formation`.)
+
+On peut aussi créer un raccourci Windows vers `lancer.bat --formation`.
+
+Cela démarre, **en plus** de l'application normale :
+
+- le **site de formation** sur `http://localhost:8100` (accessible sur cet
+  ordinateur ; il n'a pas de tunnel Cloudflare, il reste local) ;
+- ses propres bases jetables `data/formation-*.db` (jamais celles de
+  production). Le **premier** lancement les peuple de données fictives (jeux
+  d'essai, un tournoi d'exemple) ; les lancements suivants les conservent.
+
+Le lien **« 🎓 Site de formation »** apparaît alors dans le tableau de bord
+admin de l'application normale, et l'URL de formation est rappelée sur la page
+du lanceur. Pour repartir d'un état propre, utiliser le bouton
+**« Réinitialiser les données de formation »** dans l'admin du site de
+formation (ou supprimer les fichiers `data/formation-*.db`).
 
 ## Ce que fait `lancer.py`
 
