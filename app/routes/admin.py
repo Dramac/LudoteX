@@ -917,8 +917,9 @@ def formation_reinitialiser(request: Request):
     resume = formation.peupler()
     message = (
         "succes",
-        f"Données de formation réinitialisées : {resume['jeux']} jeux fictifs, "
-        f"{resume['tournois']} tournoi d'exemple.",
+        f"Données de formation réinitialisées : {resume['jeux']} jeux, "
+        f"{resume['tournois']} tournois d'exemple et un planning bénévole "
+        f"prérempli ({resume['benevoles']} bénévoles).",
     )
     return _rendre_dashboard(request, message)
 
