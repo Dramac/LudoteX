@@ -5,5 +5,6 @@ REM
 REM Utiliser lancer.vbs à la place pour un démarrage silencieux, sans console.
 
 cd /d "%~dp0"
-.venv\Scripts\python.exe lancer.py
+REM Les arguments éventuels sont transmis (ex. lancer.bat --formation).
+.venv\Scripts\python.exe lancer.py %*
 pause
