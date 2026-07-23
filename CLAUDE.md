@@ -1495,6 +1495,34 @@ page décrivant une action ; diagrammes en **Mermaid** dans le markdown ;
 captures dans `wiki/images/`, **jamais de numéro de pochette réel, de pseudo,
 de nom de bénévole ni de jeton visible**.
 
+### 🔢 Proposer une montée de version — à la fin de CHAQUE session
+
+Depuis la **1.0.0** (première mise en production, 2026-07-23), l'application est
+versionnée en **`MAJEUR.MINEUR.CORRECTIF`** (SemVer). Marche à suivre complète :
+`docs/versioning.md`.
+
+**La règle.** Quand une session a produit un changement destiné à être déployé,
+**proposer à Simon** (sans l'appliquer d'office — c'est lui qui tranche) le
+numéro de version adapté au travail réalisé :
+
+- **CORRECTIF** (`x.y.Z`) — corrections de bugs, retouches d'UI/texte/
+  accessibilité, refactorisations, optimisations : rien de neuf pour
+  l'utilisateur.
+- **MINEUR** (`x.Y.0`) — une nouvelle fonctionnalité ou un nouveau module, sans
+  casse.
+- **MAJEUR** (`X.0.0`) — grande étape / changement de cap, ou évolution qui
+  demande une intervention à la mise à jour au-delà d'`update.sh`.
+
+En cas de doute entre deux niveaux, proposer le plus élevé, en expliquant
+pourquoi. Ne PAS proposer de montée pour un travail qui ne change rien au
+déploiement (documentation seule, notes, exploration).
+
+**Si Simon accepte**, mettre à jour dans le même commit les **trois** porteurs
+du numéro — `app/version.py` (`APP_VERSION`), `VERSION` (numéro + date +
+résumé), `CHANGELOG.md` (nouvelle section en tête, puces tournées utilisateur :
+elles s'affichent sur `/apropos`) — puis rappeler à Simon de poser le tag git
+`vX.Y.Z` après le push. Les trois fichiers portent **toujours le même numéro**.
+
 ## Séquence de dev (brief §6) — état
 
 1. [fait] Structure du dépôt + `requirements.txt` + README.

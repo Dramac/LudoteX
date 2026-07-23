@@ -22,7 +22,7 @@ from app.modules import module_visible
 from app.templating import templates
 from app.tournoi import services as tournoi_services
 from app.tournoi.db import get_connection as get_tournoi_connection
-from app.version import APP_VERSION
+from app.version import APP_VERSION, nouveautes_recentes
 
 # `tags` regroupe ces routes dans la doc auto (/docs).
 router = APIRouter(tags=["catalogue"])
@@ -96,7 +96,9 @@ def apropos(request: Request):
     données ni jeton requis."""
     return templates.TemplateResponse(
         request, "apropos.html",
-        {"version": APP_VERSION, "depot_url": "https://github.com/Dramac/LudoteX"},
+        {"version": APP_VERSION,
+         "nouveautes": nouveautes_recentes(),
+         "depot_url": "https://github.com/Dramac/LudoteX"},
     )
 
 
