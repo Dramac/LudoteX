@@ -50,7 +50,10 @@
 
     {% if annonce %}
       <p class="stats-note">
-        {% if annonce_expire_iso %}
+        {% if annonce_expiree %}
+          Cette annonce est <strong>expirée</strong> — elle ne s'affiche plus
+          en salle. Ré-enregistrez-la pour la réafficher.
+        {% elif annonce_expire_iso %}
           Affichée en salle jusqu'à {{ annonce_expire_iso | heure_local }}.
         {% else %}
           Affichée en salle sans limite de durée.
