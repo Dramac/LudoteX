@@ -235,6 +235,10 @@ summary:focus-visible,
   margin: 8px 0;
 }
 .apercu-annonce-salle .apercu-annonce-puce { font-size: 1.1em; }
+
+/* Boutons de durée rapide sous le champ "annonce_duree" (point I). */
+.duree-rapide { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.duree-rapide .bouton-filtrer { padding: 6px 14px; font-size: 0.9rem; }
 .apercu-annonce-salle .apercu-annonce-label {
   font-weight: 400;
   font-size: 0.75em;

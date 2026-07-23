@@ -46,6 +46,12 @@
       <p class="stats-note">Optionnel. Passé ce délai, le bandeau disparaît
         tout seul de l'écran de salle. Laissez vide pour un affichage sans
         limite de durée (à effacer alors manuellement).</p>
+      <p class="duree-rapide">
+        <button type="button" class="bouton-filtrer" data-min="15">15 min</button>
+        <button type="button" class="bouton-filtrer" data-min="30">30 min</button>
+        <button type="button" class="bouton-filtrer" data-min="60">1 h</button>
+        <button type="button" class="bouton-filtrer" data-min="">illimitée</button>
+      </p>
     </div>
 
     {% if annonce %}
@@ -75,4 +81,15 @@
 
   <p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
 </section>
+
+<script>
+  // Point I : remplit le champ durée au pouce (debout, une main), sans
+  // recharger la page. Un petit script inline, dans le style déjà utilisé
+  // ailleurs dans le projet (ex. copier-coller de code).
+  document.querySelectorAll(".duree-rapide button[data-min]").forEach(function (bouton) {
+    bouton.addEventListener("click", function () {
+      document.getElementById("annonce_duree").value = bouton.dataset.min;
+    });
+  });
+</script>
 {% endblock %}
