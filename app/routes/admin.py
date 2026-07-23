@@ -798,13 +798,20 @@ def ecran_salle_formulaire(request: Request):
     """Réglage du titre et de l'annonce affichés sur l'écran de salle (/live)."""
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT
+    from app.routes.live import (
+        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT, annonce_active,
+    )
 
     conn = get_connection()
     try:
         titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
         annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
         annonce_expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
+        # Aperçu (point C) : ce qui est RÉELLEMENT affiché en salle en ce
+        # moment, donc calculé avec la même fonction que /live (respecte
+        # l'expiration), pas le paramètre brut ci-dessus (qui reste rempli
+        # même après expiration, pour rester rappelable).
+        annonce_affichee = annonce_active(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -812,6 +819,7 @@ def ecran_salle_formulaire(request: Request):
         {"titre": titre, "titre_defaut": TITRE_DEFAUT,
          "annonce": annonce, "annonce_duree": _minutes_restantes(annonce_expire_iso),
          "annonce_expire_iso": annonce_expire_iso if annonce else None,
+         "annonce_affichee": annonce_affichee,
          "message": None},
     )
 
@@ -835,7 +843,9 @@ def ecran_salle_enregistrer(
     """
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT
+    from app.routes.live import (
+        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT, annonce_active,
+    )
 
     saisie_titre = " ".join(titre.split())[:80]
     saisie_annonce = " ".join(annonce.split())[:200]
@@ -859,6 +869,8 @@ def ecran_salle_enregistrer(
         services.ecrire_parametre(conn, CLE_TITRE, saisie_titre or None)
         services.ecrire_parametre(conn, CLE_ANNONCE, saisie_annonce or None)
         services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
+        # Aperçu (point C), calculé sur l'état qu'on vient d'écrire.
+        annonce_affichee = annonce_active(conn)
     finally:
         conn.close()
 
@@ -877,6 +889,7 @@ def ecran_salle_enregistrer(
         {"titre": saisie_titre or TITRE_DEFAUT, "titre_defaut": TITRE_DEFAUT,
          "annonce": saisie_annonce, "annonce_duree": _minutes_restantes(expire_iso),
          "annonce_expire_iso": expire_iso if saisie_annonce else None,
+         "annonce_affichee": annonce_affichee,
          "message": message},
     )
 

@@ -16,6 +16,14 @@
     </p>
   {% endif %}
 
+  {% if annonce_affichee %}
+    <p class="stats-note">Aperçu de ce qui est affiché en salle en ce moment :</p>
+    <div class="apercu-annonce-salle">
+      <span class="apercu-annonce-puce">📣</span>
+      <span>{{ annonce_affichee }}</span>
+    </div>
+  {% endif %}
+
   <form method="post" action="/admin/ecran-salle" class="recherche-form">
     <div class="champ">
       <label for="titre">Titre de l'écran de salle</label>

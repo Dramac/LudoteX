@@ -219,6 +219,30 @@ summary:focus-visible,
 }
 .aide-inline p:last-child { margin-bottom: 0; }
 
+/* Aperçu, en admin, du bandeau d'annonce réellement affiché sur l'écran de
+   salle (/live, point C) : mêmes couleurs que .bandeau-annonce dans
+   live.html (ambre soutenu, texte clair, puce 📣) pour que l'admin voie
+   fidèlement ce que projette la salle, plutôt qu'un style admin générique. */
+.apercu-annonce-salle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  background: #b45309;
+  color: #fff7ed;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.apercu-annonce-salle .apercu-annonce-puce { font-size: 1.1em; }
+.apercu-annonce-salle .apercu-annonce-label {
+  font-weight: 400;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+
 /* Respect des préférences système : on coupe tout mouvement. */
 @media (prefers-reduced-motion: reduce) {
   .jeu, .bouton, .bouton-filtrer, .chip-filtre { transition: none; }
