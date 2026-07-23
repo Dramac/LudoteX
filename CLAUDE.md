@@ -1320,6 +1320,50 @@ garde-fous ajoutés pour D1/D2 (source des gabarits) et E1 (présence +
 première position + masquage impression). **Suite globale : 406 tests
 verts.**
 
+**Refonte UX de l'écran de salle `/live` (audit dédié, 8 points A→G+I, le H —
+défilement auto du flux — écarté) : FAIT.** `live.html` reste autonome (CSS/JS
+inline, n'étend pas `base.html`), `/live` et `/live/data` toujours alimentés
+par le même `_collecter_donnees()`. **A** : les trois compteurs passent d'une
+grille de 3 grandes cartes à une **barre compacte sur une ligne** (mêmes `id`
+`c-sortis`/`c-dispo`/`c-total`/`c-tournois`, JS inchangé) pour rendre la
+hauteur au bloc vivant (tournois + mouvements) ; correctif du bug latent où le
+bandeau d'annonce (masqué par défaut) décalait les pistes de la grille
+`.ecran` — passage de `.ecran` en **flexbox colonne** (`.colonnes` en
+`flex:1 1 auto`, le reste en `flex:0 0 auto`), robuste que l'annonce soit
+affichée ou non. **B** : noms de jeux/tournois (`.mouv .nom`, `.tournoi .nom`)
+en **clamp 2 lignes** (`-webkit-line-clamp`) au lieu d'un ellipsis une ligne ou
+d'un débordement ; grilles réalignées en haut (`align-items: start`/
+`flex-start`). **C** : `/admin/ecran-salle` affiche désormais un **aperçu**
+fidèle du bandeau (mêmes couleurs ambre + puce 📣, nouvelle classe
+`.apercu-annonce-salle` dans `style.css`), calculé via `live.annonce_active(conn)`
+(donc respecte l'expiration) dans les deux handlers GET/POST — jamais le
+paramètre brut. **D** : nouvel état **« annonce expirée »** explicite en admin
+(`admin._annonce_expiree`) : au lieu d'afficher une heure passée, un message
+clair invite à ré-enregistrer ; le texte reste dans le formulaire (rappelable),
+rien n'est jamais effacé de force. **E** : chaque tournoi à venir porte
+désormais un `minutes_avant` (calcul de présentation, `live._minutes_avant`,
+au même titre que `_heure_locale`) ; le plus proche (liste triée par heure
+croissante) est **surligné** (« BIENTÔT ») et affiche « heure · dans N min ».
+**F** : l'horloge **tique localement chaque seconde** (JS pur, indépendante du
+polling — `d.horodatage` ne sert plus qu'à la concordance `/live`↔`/live/data`)
+et un **indicateur « hors ligne »** apparaît après 3 échecs consécutifs de
+`/live/data` (~30 s), pour ne plus donner l'illusion d'un écran vivant figé.
+**G** : quand aucun tournoi (ni en cours, ni à venir), `.colonnes` bascule en
+**une seule colonne** (classe `sans-tournois`, calculée dans `rendre()` donc au
+chargement comme au rafraîchissement) et le flux des mouvements occupe toute
+la largeur. **I** : boutons de durée rapide (15/30/60 min, illimitée) sous le
+champ durée de `/admin/ecran-salle` (`.bouton-filtrer`, script inline minimal).
+La logique JS pure (A affichage, B clamp, E surlignage, F horloge/hors-ligne,
+G bascule) n'est pas couverte par pytest (pas de moteur JS dans les tests) :
+vérifiée par relecture + `node --check` sur le script extrait. **1 test
+ajouté** (E : `minutes_avant` entier ≥ 0 sur un tournoi imminent + non-fuite du
+numéro de pochette), 1 test existant étendu (D : note « expirée »). Wiki
+vérifié (`grep -ri "écran de salle|/live|salle" wiki/`) : rien n'y décrivait
+l'aperçu, l'état expiré ni les boutons de durée rapide, donc rien n'y est
+devenu faux — aucune correction nécessaire (le module Écran de salle du wiki
+ne documente d'ailleurs pas non plus l'annonce elle-même, lacune préexistante
+hors périmètre de cette session). **Suite globale : 410 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
