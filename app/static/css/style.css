@@ -593,6 +593,14 @@ summary:focus-visible,
   .form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; align-items: start; }
   .form-2col .champ-large { grid-column: 1 / -1; }
 }
+/* 3d. Liste de jeux (/admin/jeux) en grille 2 colonnes. Classe additionnelle
+   posée à côté de .catalogue-liste (partagée avec le catalogue public) pour
+   isoler ce changement à cet écran admin — .catalogue-liste/.jeu ne sont pas
+   modifiées directement. */
+@media (min-width: 900px) {
+  .catalogue-grille { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
+  .catalogue-grille .jeu { margin-bottom: 0; }
+}
 
 /* Légende des états de fonctionnalités */
 .fonct-legende { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 20px; }

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Jeux — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
 <section class="carte">
@@ -15,7 +16,7 @@
   <p class="catalogue-compte">{{ jeux | length }} {{ pluriel(jeux | length, 'jeu', 'jeux') }}</p>
 </section>
 
-<ul class="catalogue-liste">
+<ul class="catalogue-liste catalogue-grille">
   {% for jeu in jeux %}
     <li class="jeu">
       <a class="jeu-lien" href="/admin/jeu/{{ jeu.reference_titre }}">
