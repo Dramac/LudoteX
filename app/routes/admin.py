@@ -793,6 +793,21 @@ def _minutes_restantes(expire_iso: str | None) -> int | None:
     return minutes if minutes > 0 else None
 
 
+def _annonce_expiree(annonce: str | None, expire_iso: str | None) -> bool:
+    """
+    Vrai quand une annonce est enregistrée mais que sa durée d'affichage est
+    dépassée (point D) : le texte reste dans le formulaire (rappelable), mais
+    la note affichée doit le dire clairement plutôt que montrer une heure
+    passée, prêtant à confusion.
+    """
+    if not annonce or not expire_iso:
+        return False
+    try:
+        return datetime.fromisoformat(expire_iso) < datetime.now(timezone.utc)
+    except ValueError:
+        return False
+
+
 @router.get("/ecran-salle")
 def ecran_salle_formulaire(request: Request):
     """Réglage du titre et de l'annonce affichés sur l'écran de salle (/live)."""
@@ -820,6 +835,7 @@ def ecran_salle_formulaire(request: Request):
          "annonce": annonce, "annonce_duree": _minutes_restantes(annonce_expire_iso),
          "annonce_expire_iso": annonce_expire_iso if annonce else None,
          "annonce_affichee": annonce_affichee,
+         "annonce_expiree": _annonce_expiree(annonce, annonce_expire_iso),
          "message": None},
     )
 
@@ -890,6 +906,7 @@ def ecran_salle_enregistrer(
          "annonce": saisie_annonce, "annonce_duree": _minutes_restantes(expire_iso),
          "annonce_expire_iso": expire_iso if saisie_annonce else None,
          "annonce_affichee": annonce_affichee,
+         "annonce_expiree": _annonce_expiree(saisie_annonce, expire_iso),
          "message": message},
     )
 

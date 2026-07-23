@@ -1451,6 +1451,10 @@ def test_admin_ecran_salle_duree_auto_masquage(client, monkeypatch):
     r = client.get("/admin/ecran-salle")
     assert "Encore un peu de temps" in r.text
     assert "Effacer l'annonce" in r.text
+    # Point D : la note dit clairement que l'annonce est expirée, plutôt que
+    # d'afficher une heure passée prêtant à confusion.
+    assert "expirée" in r.text
+    assert "Affichée en salle jusqu'à" not in r.text
 
 
 def test_admin_ecran_salle_duree_invalide_ou_negative(client, monkeypatch):
