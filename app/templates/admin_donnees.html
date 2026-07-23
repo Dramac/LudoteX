@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block titre %}Données &amp; sauvegarde — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
+<div class="admin-cols">
 <section class="carte">
   <h1>Données &amp; sauvegarde</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
@@ -94,4 +96,5 @@
     <button type="submit" class="bouton bouton-secondaire">Restaurer</button>
   </form>
 </section>
+</div>
 {% endblock %}

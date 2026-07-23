@@ -569,6 +569,31 @@ summary:focus-visible,
   .admin-icone { font-size: 1.4em; }
 }
 
+/* Écrans d'administration denses : deux colonnes sur grand écran (le conteneur
+   passe en .contenu-large via conteneur_extra). Sous 900px : rien ne change,
+   les cartes s'empilent comme avant (mobile-first préservé). Même point de
+   rupture que .admin-dashboard-grille pour la cohérence. */
+/* 3a. Répartition « maçonnerie » de cartes indépendantes en 2 colonnes.
+   CSS multi-colonnes : aucune restructuration HTML lourde, l'ordre source est
+   conservé (colonne 1 remplie, puis colonne 2). break-inside évite qu'une
+   carte soit coupée en deux entre les colonnes. */
+@media (min-width: 900px) {
+  .admin-cols { column-count: 2; column-gap: 20px; }
+  .admin-cols > .carte { break-inside: avoid; margin-top: 0; }
+}
+/* 3b. Rangée de deux cartes côte à côte (grille explicite, pour des cartes
+   qu'on veut réellement alignées sur une même ligne). */
+@media (min-width: 900px) {
+  .admin-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .admin-duo > .carte { margin-bottom: 0; }
+}
+/* 3c. Formulaire de saisie en 2 colonnes de champs (pour les formulaires longs).
+   Le champ « pleine largeur » (textarea, bouton) reçoit .champ-large. */
+@media (min-width: 900px) {
+  .form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; align-items: start; }
+  .form-2col .champ-large { grid-column: 1 / -1; }
+}
+
 /* Légende des états de fonctionnalités */
 .fonct-legende { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 20px; }
 .fonct-legende dt { font-weight: 700; white-space: nowrap; }
