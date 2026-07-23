@@ -161,8 +161,12 @@ def test_apropos_nouveautes_version(client):
     from app.version import nouveautes_recentes
     puces = nouveautes_recentes()
     assert puces, "le changelog devrait fournir au moins une puce"
-    # La première puce de la version courante apparaît bien à l'écran.
-    assert puces[0] in r.text
+    # La première puce de la version courante apparaît bien à l'écran. Jinja
+    # échappe le HTML (apostrophes -> &#39;, guillemets, &, < >…) : on compare
+    # donc à la version ÉCHAPPÉE, jamais au texte brut du changelog — sinon une
+    # simple apostrophe (quasi inévitable en français) casserait ce test.
+    from markupsafe import escape
+    assert str(escape(puces[0])) in r.text
 
 
 def test_nouveautes_recentes_parsing(tmp_path, monkeypatch):
