@@ -155,11 +155,20 @@
       text-transform: uppercase; letter-spacing: 1px;
     }
     .tournoi {
-      display: flex; align-items: baseline; justify-content: space-between;
+      display: flex; align-items: flex-start; justify-content: space-between;
       gap: 1em; padding: 0.5vw 0; border-bottom: 1px solid var(--bordure);
     }
-    .tournoi .nom { font-size: 1.35em; font-weight: 700; }
-    .tournoi .meta { font-size: 1.05em; color: var(--attenue); white-space: nowrap; }
+    .tournoi .nom {
+      font-size: 1.35em; font-weight: 700;
+      /* Clamp à 2 lignes plutôt qu'un débordement incontrôlé (point B) : un
+         nom de jeu/tournoi coupé fait perdre l'info sur un écran lu de loin. */
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .tournoi .meta {
+      font-size: 1.05em; color: var(--attenue); white-space: nowrap;
+      flex: 0 0 auto;
+    }
     .puce {
       display: inline-block; padding: 0.1em 0.6em; border-radius: 0.5em;
       font-size: 0.85em; font-weight: 700; vertical-align: middle;
@@ -171,7 +180,9 @@
     .mouv {
       display: grid;
       grid-template-columns: auto 1fr auto;
-      align-items: center; gap: 1em;
+      /* start (pas center) : le badge et l'heure doivent rester calés en
+         haut quand le nom passe sur 2 lignes (point B). */
+      align-items: start; gap: 1em;
       padding: 0.55vw 0; border-bottom: 1px solid var(--bordure);
     }
     .mouv .badge {
@@ -181,10 +192,16 @@
     .mouv .badge.pret   { background: rgba(251,191,36,0.18); color: var(--orange); }
     .mouv .badge.retour { background: rgba(74,222,128,0.18); color: var(--vert); }
     .mouv .nom {
-      font-size: 1.3em; font-weight: 600; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis;
+      font-size: 1.3em; font-weight: 600;
+      /* Clamp à 2 lignes plutôt qu'un ellipsis sur une seule ligne : un nom
+         coupé fait perdre l'info sur un écran lu de loin (point B). */
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
     }
-    .mouv .quand { font-size: 1.1em; color: var(--attenue); font-variant-numeric: tabular-nums; }
+    .mouv .quand {
+      font-size: 1.1em; color: var(--attenue); font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
     .vide { color: var(--attenue); font-size: 1.2em; padding: 1vw 0; font-style: italic; }
 
     /* --- Pied : bouton retour vers le menu de l'application --- */
