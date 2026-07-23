@@ -8,16 +8,11 @@ vers l'utilisateur.
 
 ## 1.1.0 — 2026-07-23
 
-- Planning bénévole : à la création d'un nouveau planning, possibilité de
-  reprendre la structure d'une édition existante (postes, créneaux et
-  besoins), avec recalage automatique des dates sur le 1er jour de la
-  nouvelle édition.
+- Planning bénévole : à la création d'un nouveau planning, possibilité de reprendre la structure d'une édition existante (postes, créneaux et besoins), avec recalage automatique des dates sur le 1er jour de la nouvelle édition.
 
 ## 1.0.1 — 2026-07-23
 
-- Écrans d'administration (Données et sauvegarde, Nouveau jeu, Jeux,
-  Étiquettes, Rangement) mieux répartis en deux colonnes sur ordinateur —
-  affichage mobile inchangé.
+- Écrans d'administration (Données et sauvegarde, Nouveau jeu, Jeux, Étiquettes, Rangement) mieux répartis en deux colonnes sur ordinateur — affichage mobile inchangé.
 
 ## 1.0.0 — 2026-07-23
 
