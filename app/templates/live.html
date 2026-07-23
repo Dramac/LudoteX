@@ -36,16 +36,20 @@
       font-size: clamp(14px, 1.6vw, 30px);
     }
 
+    /* Colonne flexbox plutôt qu'une grille à pistes positionnelles : le
+       bandeau d'annonce (masqué par défaut) ne doit jamais décaler quelle
+       piste hérite de l'espace restant — voir le bug corrigé au point A. */
     .ecran {
       height: 100vh;
-      display: grid;
-      grid-template-rows: auto auto 1fr auto;
+      display: flex;
+      flex-direction: column;
       gap: 1.2vw;
       padding: 1.4vw 1.8vw;
     }
 
     /* --- En-tête --- */
     .entete {
+      flex: 0 0 auto;
       display: flex;
       align-items: baseline;
       justify-content: space-between;
@@ -67,6 +71,7 @@
 
     /* --- Bandeau d'annonce libre (idée 5.2), piloté depuis /admin/ecran-salle --- */
     .bandeau-annonce {
+      flex: 0 0 auto;
       display: none;   /* affiché en JS seulement quand une annonce est active */
       background: var(--annonce-fond);
       color: var(--annonce-texte);
@@ -79,33 +84,51 @@
     }
     .bandeau-annonce .puce-annonce { font-size: 1.2em; }
 
-    /* --- Grandes cartes de chiffres --- */
-    .chiffres {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1.2vw;
-    }
-    .carte {
+    /* --- Barre de compteurs, compacte et sur une seule ligne (point A) :
+       les trois chiffres ne doivent pas écraser l'info vivante (tournois +
+       mouvements) qui suit. --- */
+    .barre-chiffres {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 1.8vw;
       background: var(--carte);
       border: 1px solid var(--bordure);
       border-radius: 1vw;
-      padding: 1.2vw 1.5vw;
+      padding: 0.6vw 1.6vw;
     }
-    .carte .libelle {
-      font-size: 1.05em; color: var(--attenue);
-      text-transform: uppercase; letter-spacing: 1px;
+    .barre-chiffres .item {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5em;
     }
-    .carte .grand {
-      font-size: 4.6em; font-weight: 800; line-height: 1.05;
+    .barre-chiffres .nombre {
+      font-size: 2.3em; font-weight: 800; line-height: 1;
       font-variant-numeric: tabular-nums;
     }
-    .carte .sous { font-size: 1.2em; color: var(--attenue); }
-    .grand.sortis { color: var(--orange); }
-    .grand.dispo  { color: var(--vert); }
-    .grand.poch   { color: var(--accent); }
+    .barre-chiffres .detail {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.25;
+    }
+    .barre-chiffres .libelle {
+      font-size: 0.85em; color: var(--attenue);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .barre-chiffres .sous { font-size: 0.8em; color: var(--attenue); }
+    .barre-chiffres .separateur {
+      align-self: stretch;
+      width: 1px;
+      background: var(--bordure);
+    }
+    .nombre.sortis { color: var(--orange); }
+    .nombre.dispo  { color: var(--vert); }
+    .nombre.poch   { color: var(--accent); }
 
-    /* --- Deux colonnes du bas --- */
+    /* --- Deux colonnes du bas : le bloc vivant, doit prendre toute la
+       hauteur restante, que le bandeau d'annonce soit affiché ou non. --- */
     .colonnes {
+      flex: 1 1 auto;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 1.2vw;
@@ -165,7 +188,7 @@
     .vide { color: var(--attenue); font-size: 1.2em; padding: 1vw 0; font-style: italic; }
 
     /* --- Pied : bouton retour vers le menu de l'application --- */
-    .pied-live { display: flex; justify-content: center; }
+    .pied-live { flex: 0 0 auto; display: flex; justify-content: center; }
     .bouton-menu {
       display: inline-flex; align-items: center; gap: 0.5em;
       padding: 0.5em 1.4em; border-radius: 0.6em;
@@ -189,21 +212,29 @@
       <span class="puce-annonce">📣</span><span id="annonce-texte"></span>
     </section>
 
-    <section class="chiffres">
-      <div class="carte">
-        <div class="libelle">Jeux sortis</div>
-        <div class="grand sortis" id="c-sortis">–</div>
-        <div class="sous"><span id="c-total">–</span> au total</div>
+    <section class="barre-chiffres">
+      <div class="item">
+        <span class="nombre sortis" id="c-sortis">–</span>
+        <span class="detail">
+          <span class="libelle">Jeux sortis</span>
+          <span class="sous"><span id="c-total">–</span> au total</span>
+        </span>
       </div>
-      <div class="carte">
-        <div class="libelle">Jeux disponibles</div>
-        <div class="grand dispo" id="c-dispo">–</div>
-        <div class="sous">prêts à emprunter</div>
+      <span class="separateur"></span>
+      <div class="item">
+        <span class="nombre dispo" id="c-dispo">–</span>
+        <span class="detail">
+          <span class="libelle">Jeux disponibles</span>
+          <span class="sous">prêts à emprunter</span>
+        </span>
       </div>
-      <div class="carte">
-        <div class="libelle">Tournois en cours</div>
-        <div class="grand poch" id="c-tournois">–</div>
-        <div class="sous">en ce moment</div>
+      <span class="separateur"></span>
+      <div class="item">
+        <span class="nombre poch" id="c-tournois">–</span>
+        <span class="detail">
+          <span class="libelle">Tournois en cours</span>
+          <span class="sous">en ce moment</span>
+        </span>
       </div>
     </section>
 
