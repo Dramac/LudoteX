@@ -12,6 +12,23 @@
       Nom
       <input type="text" name="nom" placeholder="ex. Festival 2026" required>
     </label>
+    <div class="champ">
+      <label for="source">Reprendre la structure d'une édition existante</label>
+      <select id="source" name="source">
+        <option value="">— aucune (partir de zéro) —</option>
+        {% for e in evenements %}
+          <option value="{{ e.id_evenement }}" {% if loop.first %}selected{% endif %}>{{ e.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <label class="champ">
+      Date du 1er jour de la nouvelle édition
+      <input type="date" name="date_debut">
+    </label>
+    <p class="stats-note">Si une édition est reprise, ses postes, créneaux et
+      besoins sont recopiés ; en indiquant la date du 1er jour, tous les
+      créneaux sont recalés d'autant (jours et heures conservés). Rien n'est
+      figé : tout reste modifiable avant publication.</p>
     <button type="submit" class="bouton bouton-principal">Créer</button>
   </form>
 

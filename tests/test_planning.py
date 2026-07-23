@@ -91,6 +91,33 @@ def test_dupliquer_trame(conn):
     # Les besoins sont reportés, mais aucun bénévole recopié.
     assert sum(services.matrice_besoins(conn, new).values()) == 2
     assert services.compter_reponses(conn, new) == 0
+    # Rétrocompatibilité : sans décalage (par défaut ou explicitement 0), les
+    # bornes UTC sont recopiées telles quelles.
+    creneau_source = services.lister_creneaux(conn, ev)[0]
+    creneau_copie = services.lister_creneaux(conn, new)[0]
+    assert creneau_copie["debut"] == creneau_source["debut"]
+    assert creneau_copie["fin"] == creneau_source["fin"]
+
+
+def test_dupliquer_trame_decalage(conn):
+    ev = services.creer_evenement(conn, "Edition A")
+    p = services.ajouter_poste(conn, ev, "Accueil")
+    cr = _creneau(conn, ev, "Samedi", 14, 16)
+    services.definir_besoin(conn, cr, p, 2)
+
+    new = services.dupliquer_trame(conn, ev, "Edition B", decalage_jours=7)
+    src = services.lister_creneaux(conn, ev)[0]
+    copie = services.lister_creneaux(conn, new)[0]
+
+    # Décalé de 7 jours (jour de semaine et heure locale conservés).
+    assert copie["debut"] == "2026-09-19T12:00:00+00:00"
+    assert copie["fin"] == "2026-09-19T14:00:00+00:00"
+    assert copie["libelle_jour"] == src["libelle_jour"] == "Samedi"
+    # Les besoins restent reportés malgré le décalage.
+    assert sum(services.matrice_besoins(conn, new).values()) == 2
+
+    new_zero = services.dupliquer_trame(conn, ev, "Edition C", decalage_jours=0)
+    assert services.lister_creneaux(conn, new_zero)[0]["debut"] == src["debut"]
 
 
 # ===========================================================================
@@ -468,6 +495,65 @@ def test_route_admin_protegee(client):
     # Sans connexion admin -> redirection vers /admin.
     r = client.get("/planning/admin", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/admin"
+
+
+def test_route_admin_creer_vierge(client):
+    # Sans source : création vierge, comportement inchangé.
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": "Sans source"},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        assert services.get_evenement(conn, ev)["nom"] == "Sans source"
+        assert services.lister_postes(conn, ev) == []
+        assert services.lister_creneaux(conn, ev) == []
+    finally:
+        conn.close()
+
+
+def test_route_admin_creer_avec_source_et_decalage(client):
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": "Edition A"},
+                    follow_redirects=False)
+    ev_source = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev_source}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev_source}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                      "fin": "2026-09-12T16:00", "type_creneau": "poste"})
+
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        cr = services.lister_creneaux(conn, ev_source)[0]["id_creneau"]
+        po = services.lister_postes(conn, ev_source)[0]["id_poste"]
+        services.definir_besoin(conn, cr, po, 3)
+    finally:
+        conn.close()
+
+    # Reprend "Edition A" en la décalant d'une semaine (samedi -> samedi).
+    r2 = client.post("/planning/admin/creer",
+                      data={"nom": "Edition B", "source": str(ev_source),
+                            "date_debut": "2026-09-19"},
+                      follow_redirects=False)
+    ev_new = int(r2.headers["location"].rsplit("/", 1)[-1])
+
+    conn = get_connection()
+    try:
+        postes = services.lister_postes(conn, ev_new)
+        creneaux = services.lister_creneaux(conn, ev_new)
+        assert [p["nom"] for p in postes] == ["Accueil"]
+        assert len(creneaux) == 1
+        assert creneaux[0]["libelle_jour"] == "Samedi"
+        assert creneaux[0]["debut"].startswith("2026-09-19T")
+        assert sum(services.matrice_besoins(conn, ev_new).values()) == 3
+        assert services.get_evenement(conn, ev_new)["etat"] == "collecte"
+    finally:
+        conn.close()
 
 
 def test_confirmation_purge_reformulee_m9(client):

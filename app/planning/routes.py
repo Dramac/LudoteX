@@ -26,6 +26,7 @@ CARTE DES URL
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Form, Request
@@ -34,6 +35,7 @@ from fastapi.responses import RedirectResponse, Response
 from app import admin_auth
 from app.planning import demo, exports, services
 from app.planning.db import get_connection
+from app.services import FUSEAU_LOCAL
 from app.templating import templates
 
 router = APIRouter(tags=["planning"])
@@ -230,15 +232,53 @@ def admin_liste(request: Request):
 
 
 @router.post("/planning/admin/creer")
-def admin_creer(request: Request, nom: str = Form("")):
+def admin_creer(
+    request: Request,
+    nom: str = Form(""),
+    source: str = Form(""),
+    date_debut: str = Form(""),
+):
     if (r := _garde(request)) is not None:
         return r
     conn = get_connection()
     try:
-        ev = services.creer_evenement(conn, nom)
+        id_source = int(source) if source.strip().isdigit() else None
+        if id_source is not None and services.get_evenement(conn, id_source) is None:
+            id_source = None  # source invalide/disparue : jamais bloquant
+
+        if id_source is None:
+            ev = services.creer_evenement(conn, nom)
+        else:
+            decalage = _decalage_depuis_saisie(conn, id_source, date_debut)
+            ev = services.dupliquer_trame(conn, id_source, nom, decalage)
     finally:
         conn.close()
     return RedirectResponse(f"/planning/admin/{ev}", status_code=303)
+
+
+def _decalage_depuis_saisie(conn, id_source: int, date_debut: str) -> int:
+    """
+    Calcule le décalage (en jours) entre le 1er jour de la trame source et la
+    date saisie pour la nouvelle édition. Repli sur 0 (recopie verbatim) si la
+    saisie est absente/invalide ou si la source n'a aucun créneau — jamais
+    bloquant.
+    """
+    if not date_debut:
+        return 0
+    try:
+        cible = date.fromisoformat(date_debut)
+    except ValueError:
+        return 0
+
+    creneaux = services.lister_creneaux(conn, id_source)
+    if not creneaux:
+        return 0
+    premier_debut = min(c["debut"] for c in creneaux)
+    try:
+        origine = datetime.fromisoformat(premier_debut).astimezone(FUSEAU_LOCAL).date()
+    except (ValueError, TypeError):
+        return 0
+    return (cible - origine).days
 
 
 @router.post("/planning/admin/demo")

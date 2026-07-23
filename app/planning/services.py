@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.config import NOM_ASSOCIATION
 from app.planning.models import ETATS, NIVEAUX_PREFERENCE, TYPES_CRENEAU
@@ -398,11 +398,28 @@ def matrice_besoins(conn: sqlite3.Connection, id_evenement: int) -> dict[tuple[i
 # ===========================================================================
 # Duplication de la trame (gain de temps d'une édition à l'autre)
 # ===========================================================================
-def dupliquer_trame(conn: sqlite3.Connection, id_source: int, nom: str) -> int:
+def _decaler_iso(horodatage_iso: str, delta: timedelta) -> str:
+    """Décale un horodatage UTC ISO d'un `delta` ; renvoie tel quel si illisible."""
+    try:
+        return (datetime.fromisoformat(horodatage_iso) + delta).isoformat()
+    except (ValueError, TypeError):
+        return horodatage_iso
+
+
+def dupliquer_trame(
+    conn: sqlite3.Connection, id_source: int, nom: str, decalage_jours: int = 0
+) -> int:
     """
     Crée un nouvel événement (état 'collecte') en recopiant la TRAME de
     `id_source` : postes, créneaux et besoins. NE recopie PAS les bénévoles ni
     les affectations (copie indépendante repartant à zéro côté souhaits).
+
+    `decalage_jours` (0 par défaut, comportement inchangé) décale `debut` et
+    `fin` de chaque créneau copié d'un nombre ENTIER de jours — préserve donc
+    le jour de semaine et l'heure locale (`libelle_jour` recopié tel quel,
+    jamais recalculé). Cas limite assumé : un décalage de plusieurs semaines
+    peut faire varier l'heure locale d'1h autour d'un changement d'heure
+    (DST) — acceptable pour un événement annuel de même saison.
 
     Returns:
         L'id du nouvel événement.
@@ -416,13 +433,18 @@ def dupliquer_trame(conn: sqlite3.Connection, id_source: int, nom: str) -> int:
             conn, nouveau, p["nom"], bool(p["demande_experience"]), p["ordre"]
         )
 
-    # Créneaux : on recopie les bornes UTC telles quelles (pas de reconversion).
+    # Créneaux : on recopie les bornes UTC telles quelles (sauf décalage demandé).
+    delta = timedelta(days=decalage_jours)
     corr_creneaux: dict[int, int] = {}
     for c in lister_creneaux(conn, id_source):
+        debut, fin = c["debut"], c["fin"]
+        if decalage_jours:
+            debut = _decaler_iso(debut, delta)
+            fin = _decaler_iso(fin, delta)
         cur = conn.execute(
             "INSERT INTO creneaux (id_evenement, libelle_jour, debut, fin, type, "
             "libelle, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (nouveau, c["libelle_jour"], c["debut"], c["fin"], c["type"],
+            (nouveau, c["libelle_jour"], debut, fin, c["type"],
              c["libelle"], c["ordre"]),
         )
         corr_creneaux[c["id_creneau"]] = cur.lastrowid
