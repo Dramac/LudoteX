@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Impression d'étiquettes — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
 <section class="carte">
@@ -27,37 +28,43 @@
 
   <form method="post" action="/admin/etiquettes/pdf" id="form-etiquettes">
 
-    <h2>Mise en page (A4, en mm)</h2>
-    <div class="grille-params">
-      <label>Marge gauche <input type="number" name="marge_gauche" value="8" min="0" step="0.5"></label>
-      <label>Marge droite <input type="number" name="marge_droite" value="8" min="0" step="0.5"></label>
-      <label>Marge haut <input type="number" name="marge_haut" value="8" min="0" step="0.5"></label>
-      <label>Marge bas <input type="number" name="marge_bas" value="8" min="0" step="0.5"></label>
-      <label>Colonnes <input type="number" id="colonnes" name="colonnes" value="2" min="1" step="1"></label>
-      <label>Lignes <input type="number" id="lignes" name="lignes" value="8" min="1" step="1"></label>
-    </div>
-    <p class="compteur" id="compteur">—</p>
+    <div class="admin-duo">
+      <div>
+        <h2>Mise en page (A4, en mm)</h2>
+        <div class="grille-params">
+          <label>Marge gauche <input type="number" name="marge_gauche" value="8" min="0" step="0.5"></label>
+          <label>Marge droite <input type="number" name="marge_droite" value="8" min="0" step="0.5"></label>
+          <label>Marge haut <input type="number" name="marge_haut" value="8" min="0" step="0.5"></label>
+          <label>Marge bas <input type="number" name="marge_bas" value="8" min="0" step="0.5"></label>
+          <label>Colonnes <input type="number" id="colonnes" name="colonnes" value="2" min="1" step="1"></label>
+          <label>Lignes <input type="number" id="lignes" name="lignes" value="8" min="1" step="1"></label>
+        </div>
+        <p class="compteur" id="compteur">—</p>
+      </div>
 
-    <h2>Jeux à imprimer {% if filtre %}<small>(catégorie « {{ filtre }} »)</small>{% endif %}</h2>
-    <div class="select-actions">
-      <button type="button" class="lien-bouton" onclick="cocherTout(true)">Tout cocher</button>
-      <button type="button" class="lien-bouton" onclick="cocherTout(false)">Tout décocher</button>
-    </div>
+      <div>
+        <h2>Jeux à imprimer {% if filtre %}<small>(catégorie « {{ filtre }} »)</small>{% endif %}</h2>
+        <div class="select-actions">
+          <button type="button" class="lien-bouton" onclick="cocherTout(true)">Tout cocher</button>
+          <button type="button" class="lien-bouton" onclick="cocherTout(false)">Tout décocher</button>
+        </div>
 
-    <ul class="liste-jeux">
-      {% for jeu in jeux %}
-        <li>
-          <label class="case">
-            <input type="checkbox" name="references" value="{{ jeu.reference_titre }}"
-                   data-nb="{{ jeu.nb_exemplaires }}" onchange="majCompteur()">
-            {{ jeu.nom }}
-            <span class="jeu-nb">{{ jeu.nb_exemplaires }} ét.</span>
-          </label>
-        </li>
-      {% else %}
-        <li><em>Aucun jeu.</em></li>
-      {% endfor %}
-    </ul>
+        <ul class="liste-jeux">
+          {% for jeu in jeux %}
+            <li>
+              <label class="case">
+                <input type="checkbox" name="references" value="{{ jeu.reference_titre }}"
+                       data-nb="{{ jeu.nb_exemplaires }}" onchange="majCompteur()">
+                {{ jeu.nom }}
+                <span class="jeu-nb">{{ jeu.nb_exemplaires }} ét.</span>
+              </label>
+            </li>
+          {% else %}
+            <li><em>Aucun jeu.</em></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
 
     <button type="submit" class="bouton-filtrer">Générer le PDF</button>
   </form>
