@@ -152,6 +152,12 @@
       gap: 1.2vw;
       min-height: 0;            /* autorise le défilement interne */
     }
+    /* Point G : aucun tournoi (ni en cours, ni à venir) -> le panneau
+       tournois ne mérite plus la moitié de l'écran pour un simple message,
+       le flux des mouvements prend toute la largeur. Bascule posée en JS
+       (voir rendre()), au chargement comme au rafraîchissement. */
+    .colonnes.sans-tournois { grid-template-columns: 1fr; }
+    .colonnes.sans-tournois .panneau-tournois { display: none; }
     .panneau {
       background: var(--carte);
       border: 1px solid var(--bordure);
@@ -286,7 +292,7 @@
     </section>
 
     <section class="colonnes">
-      <div class="panneau">
+      <div class="panneau panneau-tournois">
         <h2>🏆 Tournois</h2>
         <div class="liste">
           <div class="bloc-titre">En cours</div>
@@ -409,6 +415,11 @@
       rendreTournoisEnCours(d.tournois_en_cours);
       rendreTournoisAVenir(d.tournois_a_venir);
       rendreMouvements(d.mouvements);
+      // Point G : zéro tournoi (en cours ET à venir) -> le flux des
+      // mouvements occupe toute la largeur. Recalculé à chaque rendu (donc
+      // au chargement comme au rafraîchissement).
+      const sansTournois = !d.tournois_en_cours.length && !d.tournois_a_venir.length;
+      document.querySelector(".colonnes").classList.toggle("sans-tournois", sansTournois);
     }
 
     function tiquerHorloge() {
