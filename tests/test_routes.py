@@ -1337,6 +1337,34 @@ def test_live_data(client):
     assert d2["mouvements"][0]["type"] == "retour"
 
 
+def test_live_tournois_a_venir_minutes_avant(client):
+    # Point E : chaque tournoi à venir porte un délai en minutes (entier >= 0),
+    # calculé côté serveur pour mettre en avant le plus proche sur l'écran.
+    from datetime import datetime, timedelta, timezone
+
+    from app.tournoi import db as tdb
+    from app.tournoi import services as ts
+
+    conn = tdb.get_connection()
+    try:
+        proche = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+        idp = ts.creer_tournoi(conn, "Tournoi imminent", date_heure=proche)
+        ts.changer_etat(conn, idp, "inscriptions")
+        conn.commit()
+    finally:
+        conn.close()
+
+    d = client.get("/live/data").json()
+    a_venir = d["tournois_a_venir"]
+    assert len(a_venir) == 1
+    assert isinstance(a_venir[0]["minutes_avant"], int)
+    assert a_venir[0]["minutes_avant"] >= 0
+    # Marge large (25-35 min) : évite un test fragile lié à la seconde près.
+    assert 25 <= a_venir[0]["minutes_avant"] <= 35
+    # Sécurité : toujours aucun numéro de pochette dans la réponse.
+    assert "pochette" not in client.get("/live/data").text.lower()
+
+
 def test_live_horodatage_sans_secondes(client):
     # L'heure est au format HH:MM (pas de secondes).
     import re

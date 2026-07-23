@@ -80,6 +80,26 @@ def _heure_locale(date_heure_utc: str | None) -> str:
     return dt.astimezone(FUSEAU_LOCAL).strftime("%H:%M")
 
 
+def _minutes_avant(date_heure_utc: str | None) -> int | None:
+    """
+    Minutes avant le début d'un tournoi (arrondi supérieur, jamais négatif),
+    ou None si la date est absente/invalide. Calcul de présentation, admis
+    dans la route au même titre que `_heure_locale` (point E) : met en
+    évidence le tournoi le plus proche sur l'écran de salle.
+    """
+    if not date_heure_utc:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_heure_utc)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    reste = dt - datetime.now(timezone.utc)
+    minutes = -(-int(reste.total_seconds()) // 60)  # arrondi supérieur
+    return max(0, minutes)
+
+
 def _collecter_donnees() -> dict:
     """
     Rassemble toutes les données du tableau de bord (partagé par la page et
@@ -118,6 +138,7 @@ def _collecter_donnees() -> dict:
         {
             "nom": t["nom"],
             "heure": _heure_locale(t["date_heure"]),
+            "minutes_avant": _minutes_avant(t["date_heure"]),
             "places_restantes": t["places_restantes"],
         }
         for t in imminents

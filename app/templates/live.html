@@ -175,6 +175,16 @@
     }
     .puce.live { background: rgba(74,222,128,0.18); color: var(--vert); }
     .puce.heure { background: rgba(56,189,248,0.18); color: var(--accent); }
+    .puce.bientot { background: rgba(56,189,248,0.28); color: var(--accent); }
+
+    /* Tournoi le plus proche (point E) : mis en avant, sobrement. */
+    .tournoi.bientot {
+      background: var(--carte-2);
+      border-radius: 0.5em;
+      border-bottom-color: transparent;
+      border-left: 0.3em solid var(--accent);
+      padding-left: 0.7em;
+    }
 
     /* Flux des mouvements */
     .mouv {
@@ -307,13 +317,21 @@
         el.innerHTML = '<div class="vide">Rien dans les 2 prochaines heures.</div>';
         return;
       }
-      el.innerHTML = liste.map(t => {
+      // Triée par heure croissante côté serveur : le premier élément est
+      // donc le plus proche, on le met en avant (point E).
+      el.innerHTML = liste.map((t, i) => {
         const places = (t.places_restantes == null)
           ? "" : ` · ${t.places_restantes} place${t.places_restantes > 1 ? "s" : ""}`;
+        let dans = "";
+        if (t.minutes_avant != null) {
+          dans = t.minutes_avant === 0 ? " · maintenant" : ` · dans ${t.minutes_avant} min`;
+        }
+        const bientot = i === 0;
+        const puceBientot = bientot ? ' <span class="puce bientot">BIENTÔT</span>' : "";
         return `
-        <div class="tournoi">
-          <span class="nom">${echapper(t.nom)}</span>
-          <span class="meta"><span class="puce heure">${echapper(t.heure)}</span>${places}</span>
+        <div class="tournoi${bientot ? " bientot" : ""}">
+          <span class="nom">${echapper(t.nom)}${puceBientot}</span>
+          <span class="meta"><span class="puce heure">${echapper(t.heure)}</span>${dans}${places}</span>
         </div>`;
       }).join("");
     }
