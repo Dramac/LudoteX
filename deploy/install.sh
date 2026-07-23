@@ -333,8 +333,10 @@ info "Initialisation de la base du planning (app.planning.db)..."
 
 if [[ "$GENERER_ENV" -eq 1 ]]; then
     info "Génération du jeton bénévole définitif (expiration : 1 semaine)..."
-    SCRIPT_JETON="$(mktemp)"
-    cat > "$SCRIPT_JETON" <<'PYEOF'
+    # Le code est passé au python de pretjeux via STDIN (heredoc), sans fichier
+    # temporaire : un mktemp créé par root (droits 600) serait illisible par
+    # l'utilisateur pretjeux -> "Permission denied".
+    JETON="$(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/python" - <<'PYEOF'
 from app.db import get_connection
 from app import auth
 
@@ -345,8 +347,7 @@ finally:
     conn.close()
 print(jeton)
 PYEOF
-    JETON="$(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/python" "$SCRIPT_JETON")"
-    rm -f "$SCRIPT_JETON"
+)"
     # On aligne le .env sur le jeton réellement actif (purement informatif :
     # l'application lit d'abord la base, cf app/auth.jeton_actuel).
     sed -i "s#^PRET_TOKEN=.*#PRET_TOKEN=$JETON#" "$ENV_FILE"

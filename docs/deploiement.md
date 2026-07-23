@@ -207,22 +207,33 @@ de formation » est reproposée à chaque exécution.
 
 ## 8. Mises à jour ultérieures
 
-Quand du nouveau code est disponible (nouvelle fonctionnalité, correctif) :
+Quand du nouveau code a été **poussé sur GitHub** (nouvelle fonctionnalité,
+correctif), un script s'occupe de tout sur le serveur — sauvegarde préalable
+des trois bases, récupération du code, dépendances, migrations, redémarrage et
+vérification :
 
 ```bash
 cd /opt/ludotex
-sudo git pull
-sudo -u pretjeux .venv/bin/pip install -r requirements.txt
-sudo systemctl restart ludotex
+sudo ./deploy/update.sh
 ```
 
-Le schéma des bases se met à jour tout seul au redémarrage (migrations
-automatiques et sans perte de données). Vérifier ensuite que le service est
-bien reparti :
+Le script fait une **sauvegarde de sécurité avant toute modification** : en cas
+de souci après la mise à jour, on peut restaurer cet état depuis
+`/admin/données`. Le schéma des bases se met à jour tout seul (migrations
+automatiques et sans perte de données).
 
-```bash
-sudo systemctl status ludotex
-```
+> Équivalent manuel, si besoin de dépanner une étape précise (le `git pull` se
+> fait sous l'utilisateur `pretjeux`, propriétaire du dossier — sinon git
+> refuse pour « dubious ownership ») :
+>
+> ```bash
+> cd /opt/ludotex
+> sudo -u pretjeux deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes
+> sudo -u pretjeux git pull --ff-only
+> sudo -u pretjeux .venv/bin/pip install -r requirements.txt
+> sudo systemctl restart ludotex
+> sudo systemctl status ludotex
+> ```
 
 ## 9. En cas de problème
 
