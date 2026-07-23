@@ -68,6 +68,24 @@
       animation: pulse 2s ease-in-out infinite;
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    /* Point F : indicateur de fraîcheur des données. Après plusieurs échecs
+       consécutifs de /live/data, le point cesse de "battre" en vert (ce qui
+       donnerait l'illusion trompeuse d'un écran vivant alors qu'il est figé)
+       et une mention discrète apparaît. */
+    .entete .horloge .point.hors-ligne {
+      background: var(--rouge);
+      animation: none;
+    }
+    .entete .horloge .statut-reseau {
+      display: none;
+      font-size: 0.42em;
+      font-weight: 700;
+      color: var(--rouge);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-left: 0.6em;
+      vertical-align: middle;
+    }
 
     /* --- Bandeau d'annonce libre (idée 5.2), piloté depuis /admin/ecran-salle --- */
     .bandeau-annonce {
@@ -232,7 +250,9 @@
   <div class="ecran">
     <header class="entete">
       <h1 id="titre">{{ data.titre }}</h1>
-      <div class="horloge"><span class="point"></span><span id="horloge">--:--</span></div>
+      <div class="horloge">
+        <span class="point" id="point-battement"></span><span id="horloge">--:--</span><span class="statut-reseau" id="statut-reseau">hors ligne</span>
+      </div>
     </header>
 
     <section class="bandeau-annonce" id="bandeau-annonce">
@@ -290,7 +310,11 @@
   <script>
     // Données initiales rendues côté serveur (évite un écran vide au chargement).
     let DONNEES = {{ data | tojson }};
-    const INTERVALLE_MS = 10000;   // rafraîchissement toutes les 10 s
+    const INTERVALLE_MS = 10000;   // rafraîchissement des données toutes les 10 s
+    // Point F : au-delà de ce nombre d'échecs consécutifs (~30 s), l'écran se
+    // déclare "hors ligne" plutôt que de continuer à paraître vivant figé.
+    const SEUIL_ECHECS_HORS_LIGNE = 3;
+    let echecsConsecutifs = 0;
 
     function echapper(s) {
       const d = document.createElement("div");
@@ -379,23 +403,51 @@
       document.getElementById("c-dispo").textContent = d.jeux.disponibles;
       document.getElementById("c-total").textContent = d.jeux.total;
       document.getElementById("c-tournois").textContent = d.nb_tournois_en_cours;
-      document.getElementById("horloge").textContent = d.horodatage;
+      // L'horloge NE dépend PAS de d.horodatage pour l'affichage (elle tique
+      // localement, voir tiquerHorloge) : ce champ ne sert qu'à garder /live
+      // et /live/data concordants dans les données brutes.
       rendreTournoisEnCours(d.tournois_en_cours);
       rendreTournoisAVenir(d.tournois_a_venir);
       rendreMouvements(d.mouvements);
     }
 
+    function tiquerHorloge() {
+      // Horloge purement locale (point F) : continue de tourner même si le
+      // réseau tombe, pour ne jamais donner l'illusion d'un écran figé.
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      document.getElementById("horloge").textContent = `${hh}:${mm}`;
+    }
+
+    function rendreStatutReseau(horsLigne) {
+      document.getElementById("point-battement").classList.toggle("hors-ligne", horsLigne);
+      document.getElementById("statut-reseau").style.display = horsLigne ? "inline" : "none";
+    }
+
     async function rafraichir() {
       try {
         const r = await fetch("/live/data", { cache: "no-store" });
-        if (r.ok) { DONNEES = await r.json(); rendre(DONNEES); }
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        DONNEES = await r.json();
+        rendre(DONNEES);
+        echecsConsecutifs = 0;
+        rendreStatutReseau(false);
       } catch (e) {
-        // Réseau momentanément indisponible : on garde l'affichage précédent.
+        // Réseau momentanément indisponible : on garde l'affichage précédent
+        // (chiffres/tournois/mouvements), mais on compte les échecs pour
+        // signaler un décrochage prolongé (point F).
+        echecsConsecutifs += 1;
+        if (echecsConsecutifs >= SEUIL_ECHECS_HORS_LIGNE) {
+          rendreStatutReseau(true);
+        }
       }
     }
 
     rendre(DONNEES);                       // affichage immédiat (données serveur)
-    setInterval(rafraichir, INTERVALLE_MS); // puis mise à jour en boucle
+    tiquerHorloge();
+    setInterval(tiquerHorloge, 1000);       // horloge locale, indépendante du réseau
+    setInterval(rafraichir, INTERVALLE_MS); // puis mise à jour des données en boucle
   </script>
 </body>
 </html>
