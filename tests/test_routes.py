@@ -150,6 +150,37 @@ def test_apropos_page(client):
     assert APP_VERSION in r.text
 
 
+def test_apropos_nouveautes_version(client):
+    # La page « À propos » affiche les nouveautés de la version courante,
+    # lues depuis CHANGELOG.md (puces de la première section), + un lien vers
+    # le journal complet.
+    r = client.get("/apropos")
+    assert r.status_code == 200
+    assert "Nouveautés de cette version" in r.text
+    assert "journal des versions" in r.text
+    from app.version import nouveautes_recentes
+    puces = nouveautes_recentes()
+    assert puces, "le changelog devrait fournir au moins une puce"
+    # La première puce de la version courante apparaît bien à l'écran.
+    assert puces[0] in r.text
+
+
+def test_nouveautes_recentes_parsing(tmp_path, monkeypatch):
+    # Ne lit que la PREMIÈRE section de version, sans le tiret, et s'arrête à
+    # la suivante. Fichier absent -> liste vide (jamais d'erreur).
+    from app import version
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Journal\n\n## 2.0.0 — 2026-12-01\n\n- Nouveau A\n- Nouveau B\n\n"
+        "## 1.0.0 — 2026-07-23\n\n- Ancien C\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(version, "_FICHIER_CHANGELOG", changelog)
+    assert version.nouveautes_recentes() == ["Nouveau A", "Nouveau B"]
+    monkeypatch.setattr(version, "_FICHIER_CHANGELOG", tmp_path / "absent.md")
+    assert version.nouveautes_recentes() == []
+
+
 def test_anti_double_soumission_script_present(client):
     # M3 : le script anti double-appui (base.html) est chargé sur TOUTES les
     # pages, pas seulement /pret -- couvre tous les formulaires du site.

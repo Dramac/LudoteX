@@ -96,5 +96,15 @@
 
   <h2>Version</h2>
   <p>Version actuelle de l'application : <strong>{{ version }}</strong>.</p>
+  {% if nouveautes %}
+  <p>Nouveautés de cette version :</p>
+  <ul>
+    {% for item in nouveautes %}
+    <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <p>Historique complet des versions :
+     <a class="lien" href="{{ depot_url }}/blob/main/CHANGELOG.md">journal des versions</a>.</p>
 </section>
 {% endblock %}
