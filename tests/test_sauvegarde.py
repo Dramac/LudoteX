@@ -230,11 +230,73 @@ def test_restaurer_rejoue_les_migrations_sur_une_sauvegarde_ancienne(bases, tmp_
 
     # L'application fonctionne sans redémarrage : une requête métier qui touche
     # les colonnes récentes passe (elle échouerait sur la base non migrée).
-    from app import db, services
+    from app import services
 
-    conn = db.get_connection()
+    conn = sqlite3.connect(bases["pret"])
+    conn.row_factory = sqlite3.Row
     try:
         assert services.lister_prets_en_cours(conn)["pret"]
+    finally:
+        conn.close()
+
+
+def _base_tournoi_schema_ancien(chemin: Path) -> None:
+    """
+    Écrit à `chemin` une base de TOURNOIS au schéma ANTÉRIEUR au module
+    Programme du week-end (docs/conception-programme.md) : seulement
+    `tournois`/`inscriptions`/`rencontres`, sans `types_programme` ni
+    `programme`. Sert à simuler la restauration d'une sauvegarde antérieure à
+    ce jalon.
+    """
+    from app.tournoi import models as tournoi_models
+
+    conn = sqlite3.connect(chemin)
+    try:
+        for statement in (
+            tournoi_models.SCHEMA_TOURNOIS,
+            tournoi_models.SCHEMA_INSCRIPTIONS,
+            tournoi_models.SCHEMA_RENCONTRES,
+        ):
+            conn.executescript(statement)
+        conn.execute(
+            "INSERT INTO tournois (nom, etat, date_creation) VALUES (?, 'brouillon', ?)",
+            ("Tournoi d'avant le module Programme", "2026-06-01T09:00:00+00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_restaurer_migre_tournoi_ancien_sans_module_programme(bases, tmp_path):
+    """
+    Une sauvegarde de `tournoi.db` antérieure au module Programme doit être
+    migrée à la restauration (mêmes raisons que pour la base de prêt, D5) :
+    les tables `types_programme`/`programme` doivent apparaître, avec le seed
+    des 5 types, sans perdre le tournoi déjà présent.
+    """
+    from app import sauvegarde
+
+    ancienne = tmp_path / "ancienne-tournoi.db"
+    _base_tournoi_schema_ancien(ancienne)
+
+    chemin_zip = tmp_path / "sauvegarde-tournoi-ancienne.zip"
+    with zipfile.ZipFile(chemin_zip, "w") as zf:
+        zf.writestr("pret-jeux.db", Path(bases["pret"]).read_bytes())
+        zf.writestr("tournoi.db", ancienne.read_bytes())
+        zf.writestr("planning.db", Path(bases["planning"]).read_bytes())
+
+    sauvegarde.restaurer_zip_sauvegarde(chemin_zip)
+
+    conn = sqlite3.connect(bases["tournoi"])
+    try:
+        tables = {
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert {"types_programme", "programme"} <= tables
+        (nb_types,) = conn.execute("SELECT COUNT(*) FROM types_programme").fetchone()
+        assert nb_types == 5
+        noms = [r[0] for r in conn.execute("SELECT nom FROM tournois")]
+        assert noms == ["Tournoi d'avant le module Programme"]
     finally:
         conn.close()
 
