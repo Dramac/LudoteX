@@ -1258,46 +1258,18 @@ def vainqueur(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
 # ===========================================================================
 # Planning de l'événement (vue 2 jours, tournois en parallèle)
 # ===========================================================================
-# Sert la frise de la page d'accueil. Granularité d'une « ligne » = SLOT_MIN ;
-# un tournoi sans durée renseignée occupe DUREE_DEFAUT_MIN.
-SLOT_MIN = 30
-DUREE_DEFAUT_MIN = 60
-
-_JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-_MOIS_FR = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
-            "août", "septembre", "octobre", "novembre", "décembre"]
-
-
-def label_jour(j: date) -> str:
-    """Libellé lisible d'une date, ex. « samedi 13 juin »."""
-    return f"{_JOURS_FR[j.weekday()]} {j.day} {_MOIS_FR[j.month]}"
-
-
-def _local_naive(iso_utc: str) -> datetime:
-    """Horodatage UTC ISO -> datetime local NAÏF (sans tz, pour l'arithmétique de grille)."""
-    return datetime.fromisoformat(iso_utc).astimezone(FUSEAU_LOCAL).replace(tzinfo=None)
-
-
-def _calculer_couloirs(blocs: list[dict]) -> int:
-    """
-    Affecte un couloir (colonne) à chaque bloc pour gérer les chevauchements, par
-    partition d'intervalles : chaque bloc prend le premier couloir libre (dont le
-    dernier bloc est terminé). `blocs` doit être trié par début. Modifie chaque
-    bloc (clé 'couloir') et renvoie le nombre de couloirs utilisés.
-    """
-    fins_couloirs: list[datetime] = []
-    for b in blocs:
-        place = False
-        for i, fin in enumerate(fins_couloirs):
-            if b["debut_dt"] >= fin:        # ce couloir s'est libéré
-                b["couloir"] = i
-                fins_couloirs[i] = b["fin_dt"]
-                place = True
-                break
-        if not place:
-            b["couloir"] = len(fins_couloirs)
-            fins_couloirs.append(b["fin_dt"])
-    return len(fins_couloirs)
+# SLOT_MIN, DUREE_DEFAUT_MIN, label_jour, _local_naive, _calculer_couloirs sont
+# désormais définis dans app/tournoi/creneau.py (partagés avec le module
+# Programme, voir docs/conception-programme.md §3/§5) et réimportés ici SANS
+# changement de signature : aucun test existant n'a à être modifié, ils
+# continuent d'appeler `services.label_jour`/`services.planning` comme avant.
+from app.tournoi.creneau import (  # noqa: E402
+    DUREE_DEFAUT_MIN,
+    SLOT_MIN,
+    _calculer_couloirs,
+    _local_naive,
+    label_jour,
+)
 
 
 def planning(conn: sqlite3.Connection, jours: list[date]) -> list[dict]:
