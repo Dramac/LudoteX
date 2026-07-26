@@ -203,6 +203,25 @@
     .puce.heure { background: rgba(56,189,248,0.18); color: var(--accent); }
     .puce.bientot { background: rgba(56,189,248,0.28); color: var(--accent); }
 
+    /* Animation annulée : barrée et estompée, mais TOUJOURS affichée pendant
+       son créneau — des gens l'attendent, la faire disparaître sans rien dire
+       serait pire que de l'afficher. */
+    .tournoi.annule .nom { text-decoration: line-through; }
+    .tournoi.annule { opacity: 0.6; }
+    .puce.annule { background: rgba(248,113,113,0.22); color: var(--rouge); }
+
+    /* Trois pistes : chaque panneau perd un tiers de largeur. On resserre la
+       typographie pour que les noms tiennent toujours en 2 lignes (le clamp
+       reste le garde-fou), sans toucher au rendu à 1 ou 2 colonnes. */
+    .colonnes.cols-3 .panneau { padding: 1vw 1.1vw; }
+    .colonnes.cols-3 .panneau h2 { font-size: 1.25em; }
+    .colonnes.cols-3 .tournoi .nom,
+    .colonnes.cols-3 .mouv .nom { font-size: 1.1em; }
+    .colonnes.cols-3 .tournoi .meta,
+    .colonnes.cols-3 .mouv .quand { font-size: 0.9em; }
+    .colonnes.cols-3 .bloc-titre { font-size: 0.9em; }
+    .colonnes.cols-3 .mouv { gap: 0.6em; }
+
     /* Tournoi le plus proche (point E) : mis en avant, sobrement. */
     .tournoi.bientot {
       background: var(--carte-2);
@@ -304,6 +323,14 @@
         </div>
       </div>
 
+      <div class="panneau panneau-programme" id="panneau-programme">
+        <h2>🎲 Animations</h2>
+        <div class="liste">
+          <div class="bloc-titre">Prochaines (2 h)</div>
+          <div id="p-a-venir"></div>
+        </div>
+      </div>
+
       <div class="panneau panneau-mouvements" id="panneau-mouvements">
         <h2>🔄 Derniers prêts &amp; retours</h2>
         <div class="liste" id="mouvements"></div>
@@ -368,6 +395,35 @@
       }).join("");
     }
 
+    function rendreAnimations(liste) {
+      // Troisième colonne : animations, ateliers, initiations, temps forts.
+      // Même traitement visuel que les tournois à venir (BIENTÔT sur le plus
+      // proche, heure + délai) : rien ne doit laisser croire à une hiérarchie
+      // entre les deux sources.
+      const el = document.getElementById("p-a-venir");
+      if (!liste.length) {
+        el.innerHTML = '<div class="vide">Rien dans les 2 prochaines heures.</div>';
+        return;
+      }
+      el.innerHTML = liste.map((a, i) => {
+        let dans = "";
+        if (a.minutes_avant != null) {
+          dans = a.minutes_avant === 0 ? " · maintenant" : ` · dans ${a.minutes_avant} min`;
+        }
+        const bientot = i === 0 && !a.annule;
+        const puce = a.annule
+          ? ' <span class="puce annule">ANNULÉ</span>'
+          : (bientot ? ' <span class="puce bientot">BIENTÔT</span>' : "");
+        const icone = a.icone ? echapper(a.icone) + " " : "";
+        const lieu = a.lieu ? ` · ${echapper(a.lieu)}` : "";
+        return `
+        <div class="tournoi${bientot ? " bientot" : ""}${a.annule ? " annule" : ""}">
+          <span class="nom">${icone}${echapper(a.nom)}${puce}</span>
+          <span class="meta"><span class="puce heure">${echapper(a.heure)}</span>${dans}${lieu}</span>
+        </div>`;
+      }).join("");
+    }
+
     function rendreMouvements(liste) {
       const el = document.getElementById("mouvements");
       if (!liste.length) {
@@ -409,9 +465,10 @@
     function rendre(d) {
       // Panneaux réglés depuis /admin/ecran-salle. Le défaut « tout affiché »
       // couvre aussi une réponse ancienne dépourvue de ce champ.
-      const p = d.panneaux || { chiffres: true, tournois: true, mouvements: true };
+      const p = d.panneaux || { chiffres: true, tournois: true, programme: true, mouvements: true };
       const tournois = d.tournois_en_cours || [];
       const aVenir = d.tournois_a_venir || [];
+      const animations = d.animations || [];
 
       if (d.titre) {
         document.getElementById("titre").textContent = d.titre;
@@ -442,6 +499,7 @@
         rendreTournoisEnCours(tournois);
         rendreTournoisAVenir(aVenir);
       }
+      if (p.programme) rendreAnimations(animations);
       if (p.mouvements) rendreMouvements(d.mouvements || []);
 
       // --- Nombre de pistes ---
@@ -451,11 +509,14 @@
       // Le panneau tournois, lui, ne mérite pas un tiers d'écran pour un
       // simple message (comportement d'origine, point G).
       const montreTournois = !!p.tournois && (tournois.length > 0 || aVenir.length > 0);
+      const montreProgramme = !!p.programme && animations.length > 0;
       const montreMouvements = !!p.mouvements;
       afficher("panneau-tournois", montreTournois, "flex");
+      afficher("panneau-programme", montreProgramme, "flex");
       afficher("panneau-mouvements", montreMouvements, "flex");
 
-      const nbColonnes = [montreTournois, montreMouvements].filter(Boolean).length;
+      const nbColonnes = [montreTournois, montreProgramme, montreMouvements]
+        .filter(Boolean).length;
       const colonnes = document.getElementById("colonnes");
       colonnes.classList.remove("cols-1", "cols-2", "cols-3");
       if (nbColonnes) colonnes.classList.add("cols-" + nbColonnes);

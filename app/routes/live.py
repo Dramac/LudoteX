@@ -26,6 +26,7 @@ from app.db import get_connection
 from app.modules import lire_etat_module
 from app.services import FUSEAU_LOCAL
 from app.templating import templates
+from app.tournoi import programme
 from app.tournoi import services as tournoi_services
 from app.tournoi.db import get_connection as get_tournoi_connection
 
@@ -63,6 +64,7 @@ CLE_ANNONCE_EXPIRE = "live_annonce_expire"
 CLES_PANNEAUX = {
     "chiffres":   "live_panneau_chiffres",
     "tournois":   "live_panneau_tournois",
+    "programme":  "live_panneau_programme",
     "mouvements": "live_panneau_mouvements",
 }
 
@@ -93,6 +95,8 @@ def panneaux_actifs(conn) -> dict[str, bool]:
     actifs = reglages_panneaux(conn)
     if lire_etat_module(conn, "tournois") == "desactive":
         actifs["tournois"] = False
+    if lire_etat_module(conn, "programme") == "desactive":
+        actifs["programme"] = False
     return actifs
 
 
@@ -174,14 +178,39 @@ def _collecter_donnees() -> dict:
     finally:
         conn.close()
 
-    # --- Base des TOURNOIS : en cours + à venir (2 h) ---
+    # --- Base des TOURNOIS : tournois en cours + à venir, et animations ---
+    # Une seule connexion pour les deux panneaux : ils vivent dans la même base.
     en_cours: list[dict] = []
     a_venir: list[dict] = []
-    if panneaux["tournois"] or compteur_tournois:
+    animations: list[dict] = []
+    tournois: list = []
+    imminents: list = []
+    if panneaux["tournois"] or compteur_tournois or panneaux["programme"]:
         conn_t = get_tournoi_connection()
         try:
-            tournois = tournoi_services.lister_tournois(conn_t, inclure_brouillons=False)
-            imminents = tournoi_services.tournois_imminents(conn_t, FENETRE_A_VENIR_MIN)
+            if panneaux["tournois"] or compteur_tournois:
+                tournois = tournoi_services.lister_tournois(conn_t, inclure_brouillons=False)
+                imminents = tournoi_services.tournois_imminents(conn_t, FENETRE_A_VENIR_MIN)
+            if panneaux["programme"]:
+                # `imminents` est LA fusion des deux sources : on ne garde ici
+                # que les éléments de programme, les tournois ayant déjà leur
+                # propre panneau. Les annulés sont demandés pour être affichés
+                # barrés pendant leur créneau (§6.4) plutôt que de disparaître
+                # sans explication devant des gens qui les attendent.
+                animations = [
+                    {
+                        "nom": e["intitule"],
+                        "icone": e["icone"],
+                        "lieu": e["lieu"],
+                        "heure": e["heure_locale"],
+                        "minutes_avant": e["minutes_avant"],
+                        "annule": e.get("etat") == "annule",
+                    }
+                    for e in programme.imminents(
+                        conn_t, FENETRE_A_VENIR_MIN, inclure_annules=True
+                    )
+                    if e["source"] == "programme"
+                ]
         finally:
             conn_t.close()
 
@@ -220,6 +249,8 @@ def _collecter_donnees() -> dict:
     if panneaux["tournois"]:
         resultat["tournois_en_cours"] = en_cours
         resultat["tournois_a_venir"] = a_venir
+    if panneaux["programme"]:
+        resultat["animations"] = animations
     if panneaux["mouvements"]:
         resultat["mouvements"] = [
             {

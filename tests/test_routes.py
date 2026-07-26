@@ -1558,9 +1558,11 @@ def test_live_panneaux_tous_actifs_par_defaut(client):
     # Aucune clé écrite en base : tout est affiché, exactement comme avant
     # l'introduction du réglage (non-régression des installations existantes).
     d = client.get("/live/data").json()
-    assert d["panneaux"] == {"chiffres": True, "tournois": True, "mouvements": True}
+    assert d["panneaux"] == {"chiffres": True, "tournois": True,
+                             "programme": True, "mouvements": True}
     assert "jeux" in d and "mouvements" in d
     assert "tournois_en_cours" in d and "nb_tournois_en_cours" in d
+    assert d["animations"] == []          # panneau actif, rien à annoncer
 
 
 def test_admin_ecran_salle_desactive_un_panneau(client, monkeypatch):
@@ -1592,8 +1594,10 @@ def test_admin_ecran_salle_tous_panneaux_eteints(client, monkeypatch):
     assert "aucun panneau" in r.text.lower()
 
     d = client.get("/live/data").json()
-    assert d["panneaux"] == {"chiffres": False, "tournois": False, "mouvements": False}
-    for absent in ("jeux", "mouvements", "tournois_en_cours", "nb_tournois_en_cours"):
+    assert d["panneaux"] == {"chiffres": False, "tournois": False,
+                             "programme": False, "mouvements": False}
+    for absent in ("jeux", "mouvements", "tournois_en_cours",
+                   "nb_tournois_en_cours", "animations"):
         assert absent not in d
     assert client.get("/live").status_code == 200
 
@@ -1607,6 +1611,66 @@ def test_live_module_tournois_desactive_masque_le_panneau(client, tmp_path):
     assert d["panneaux"]["tournois"] is False
     assert "tournois_en_cours" not in d
     assert "nb_tournois_en_cours" not in d      # pas de compteur trompeur à 0
+    assert client.get("/live").status_code == 200
+
+
+def test_live_panneau_animations(client):
+    # Troisième colonne : les éléments de programme PUBLIÉS à venir y
+    # apparaissent ; les brouillons jamais.
+    from datetime import datetime, timedelta, timezone
+    from app.tournoi.db import get_connection as get_tournoi_connection
+    from app.tournoi import programme
+
+    debut = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+    conn = get_tournoi_connection()
+    try:
+        publie = programme.creer_element(conn, intitule="Initiation Catan",
+                                         date_heure=debut, lieu="Espace famille")
+        programme.changer_etat(conn, publie, "publie")
+        programme.creer_element(conn, intitule="Atelier secret", date_heure=debut)
+    finally:
+        conn.close()
+
+    animations = client.get("/live/data").json()["animations"]
+    assert [a["nom"] for a in animations] == ["Initiation Catan"]
+    assert animations[0]["lieu"] == "Espace famille"
+    assert animations[0]["annule"] is False
+    assert animations[0]["minutes_avant"] <= 30
+    # Aucune donnée personnelle, aucune pochette sur cet écran public.
+    assert "pochette" not in client.get("/live/data").text.lower()
+
+
+def test_live_animation_annulee_reste_affichee_barree(client):
+    # Une animation annulée reste annoncée pendant son créneau (des gens
+    # l'attendent) mais porte un drapeau pour l'afficher barrée.
+    from datetime import datetime, timedelta, timezone
+    from app.tournoi.db import get_connection as get_tournoi_connection
+    from app.tournoi import programme
+
+    debut = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat(timespec="seconds")
+    conn = get_tournoi_connection()
+    try:
+        annule = programme.creer_element(conn, intitule="Atelier annulé", date_heure=debut)
+        programme.changer_etat(conn, annule, "publie")
+        programme.changer_etat(conn, annule, "annule")
+    finally:
+        conn.close()
+
+    animations = client.get("/live/data").json()["animations"]
+    assert len(animations) == 1
+    assert animations[0]["annule"] is True
+    # Le gabarit prévoit bien le rendu barré et la puce correspondante.
+    page = client.get("/live").text
+    assert "puce annule" in page and "ANNULÉ" in page
+
+
+def test_live_module_programme_desactive_masque_les_animations(client, tmp_path):
+    # Même précédence que pour les tournois : le module l'emporte sur le
+    # réglage de l'écran de salle.
+    _set_module(tmp_path, "programme", "desactive")
+    d = client.get("/live/data").json()
+    assert d["panneaux"]["programme"] is False
+    assert "animations" not in d
     assert client.get("/live").status_code == 200
 
 
@@ -1629,7 +1693,8 @@ def test_admin_effacer_annonce_ne_reinitialise_pas_les_panneaux(client, monkeypa
                       "panneau_chiffres": "1", "panneau_mouvements": "1"})
     d = client.get("/live/data").json()
     assert "annonce" not in d
-    assert d["panneaux"] == {"chiffres": True, "tournois": False, "mouvements": True}
+    assert d["panneaux"] == {"chiffres": True, "tournois": False,
+                             "programme": False, "mouvements": True}
 
 
 # ---------------------------------------------------------------------------

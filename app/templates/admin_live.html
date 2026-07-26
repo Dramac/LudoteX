@@ -44,17 +44,24 @@
         Panneau Tournois (en cours et prochains)
       </label>
       <label class="case">
+        <input type="checkbox" name="panneau_programme" value="1"
+               {% if panneaux.programme %}checked{% endif %}>
+        Panneau Animations (programme du week-end)
+      </label>
+      <label class="case">
         <input type="checkbox" name="panneau_mouvements" value="1"
                {% if panneaux.mouvements %}checked{% endif %}>
         Panneau Derniers prêts &amp; retours
       </label>
-      {% if panneaux.tournois and not panneaux_reels.tournois %}
-        <p class="stats-note">Le panneau Tournois est coché, mais le module
-          Tournois est désactivé dans
-          <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a> :
-          il ne s'affichera pas en salle tant que le module reste désactivé.</p>
-      {% endif %}
-      {% if not (panneaux.chiffres or panneaux.tournois or panneaux.mouvements) %}
+      {% for nom, libelle in [("tournois", "Tournois"), ("programme", "Animations")] %}
+        {% if panneaux[nom] and not panneaux_reels[nom] %}
+          <p class="stats-note">Le panneau {{ libelle }} est coché, mais son
+            module est désactivé dans
+            <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a> :
+            il ne s'affichera pas en salle tant que le module reste désactivé.</p>
+        {% endif %}
+      {% endfor %}
+      {% if not (panneaux.chiffres or panneaux.tournois or panneaux.programme or panneaux.mouvements) %}
         <p class="stats-note">Aucun panneau coché : l'écran de salle n'affichera
           que le titre, l'horloge et l'annonce. C'est possible (écran d'annonces
           seules), mais vérifiez que c'est bien ce que vous voulez.</p>
@@ -114,6 +121,7 @@
          jamais éteindre l'affichage de la salle au passage. #}
       {% if panneaux.chiffres %}<input type="hidden" name="panneau_chiffres" value="1">{% endif %}
       {% if panneaux.tournois %}<input type="hidden" name="panneau_tournois" value="1">{% endif %}
+      {% if panneaux.programme %}<input type="hidden" name="panneau_programme" value="1">{% endif %}
       {% if panneaux.mouvements %}<input type="hidden" name="panneau_mouvements" value="1">{% endif %}
       <button type="submit" class="bouton bouton-secondaire">Effacer l'annonce</button>
     </form>

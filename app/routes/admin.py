@@ -857,6 +857,7 @@ def ecran_salle_enregistrer(
     annonce_duree: str = Form(""),
     panneau_chiffres: str = Form(""),
     panneau_tournois: str = Form(""),
+    panneau_programme: str = Form(""),
     panneau_mouvements: str = Form(""),
 ):
     """
@@ -901,6 +902,7 @@ def ecran_salle_enregistrer(
     choix_panneaux = {
         "chiffres": bool(panneau_chiffres),
         "tournois": bool(panneau_tournois),
+        "programme": bool(panneau_programme),
         "mouvements": bool(panneau_mouvements),
     }
 
