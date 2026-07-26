@@ -82,6 +82,18 @@ _MIGRATIONS_COLONNES: list[tuple[str, str, str]] = [
     ("inscriptions", "membres", "TEXT"),
 ]
 
+# Premier remplissage de la liste des types de programme (docs/conception-
+# programme.md §4.1) : les 5 types de la note d'intention, pour que le module
+# soit utilisable sans configuration préalable. Le bureau renomme/archive
+# ensuite depuis l'administration (jalon 2).
+_TYPES_PROGRAMME_SEED = [
+    ("Animation", "🎉"),
+    ("Atelier", "🛠️"),
+    ("Initiation", "🎓"),
+    ("Temps fort", "✨"),
+    ("Intervention partenaire", "🤝"),
+]
+
 
 def _appliquer_migrations(conn: sqlite3.Connection) -> None:
     """Ajoute les colonnes manquantes des bases déjà créées (idempotent)."""
@@ -89,6 +101,23 @@ def _appliquer_migrations(conn: sqlite3.Connection) -> None:
         existantes = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
         if colonne not in existantes:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {type_sql}")
+    conn.commit()
+
+
+def _seed_types_programme(conn: sqlite3.Connection) -> None:
+    """
+    Premier remplissage de `types_programme` (idempotent) : n'insère les types
+    par défaut QUE si la table est vide, pour ne rien dupliquer si `init_db`
+    est rappelé et ne jamais recréer un type que le bureau aurait supprimé
+    depuis (même patron que `_seed_emplacements_rangement` côté prêt).
+    """
+    (nb,) = conn.execute("SELECT COUNT(*) FROM types_programme").fetchone()
+    if nb:
+        return
+    conn.executemany(
+        "INSERT INTO types_programme (nom, icone, actif, ordre) VALUES (?, ?, 1, ?)",
+        [(nom, icone, ordre) for ordre, (nom, icone) in enumerate(_TYPES_PROGRAMME_SEED)],
+    )
     conn.commit()
 
 
@@ -109,6 +138,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
             conn.executescript(statement)
         conn.commit()
         _appliquer_migrations(conn)
+        _seed_types_programme(conn)
     finally:
         if own_connection:
             conn.close()

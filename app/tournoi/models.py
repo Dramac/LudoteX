@@ -17,6 +17,21 @@ MODÈLE DE DONNÉES (docs/conception-tournois.md §4) — trois tables :
 ÉTATS D'UN TOURNOI (machine à états, §5) :
     brouillon -> inscriptions -> lance -> termine
 Le mode de scoring (`mode_scoring`) est choisi AU LANCEMENT, pas à la création.
+
+MODULE « PROGRAMME DU WEEK-END » (docs/conception-programme.md §4) — deux tables
+supplémentaires, DANS CETTE MÊME BASE (`data/tournoi.db`, aucune FK vers la base
+de prêt) : le sous-paquet s'appelle `tournoi` mais héberge aussi ce module,
+documenté ici plutôt que renommé.
+
+    types_programme   liste configurable des types d'éléments (animation,
+                      atelier, initiation…), gérée en admin. Patron identique à
+                      `emplacements_rangement` (app/models.py) : archivage doux,
+                      jamais de suppression sous un élément déjà saisi.
+    programme         les éléments eux-mêmes (animations/ateliers/temps forts),
+                      `id_type` nullable et SANS cascade : un type archivé ou
+                      supprimé n'efface jamais un élément déjà saisi.
+
+ÉTATS D'UN ÉLÉMENT DE PROGRAMME (§4.2) : brouillon | publie | annule.
 """
 
 # Réglages de connexion (identiques à la base de prêt) : intégrité des FK +
@@ -29,6 +44,10 @@ PRAGMAS = (
 # Valeurs autorisées pour `etat` (machine à états). Exposées pour les services
 # et les tests, afin d'éviter les chaînes « magiques » disséminées.
 ETATS = ("brouillon", "inscriptions", "lance", "termine")
+
+# États d'un élément de programme (docs/conception-programme.md §4.2) — machine
+# à états distincte de celle des tournois (pas d'inscriptions à gérer).
+ETATS_PROGRAMME = ("brouillon", "publie", "annule")
 
 # ---------------------------------------------------------------------------
 # tournois — un enregistrement par tournoi.
@@ -96,18 +115,64 @@ CREATE TABLE IF NOT EXISTS rencontres (
 """
 
 # ---------------------------------------------------------------------------
+# types_programme — liste configurable des types d'éléments de programme
+# (docs/conception-programme.md §4.1). Patron identique à
+# `emplacements_rangement` (app/models.py) : archivage doux (`actif`), jamais de
+# suppression sous un élément déjà rattaché. Doit précéder `programme` dans
+# SCHEMA_STATEMENTS : celle-ci la référence en FK (nullable, sans cascade).
+# ---------------------------------------------------------------------------
+SCHEMA_TYPES_PROGRAMME = """
+CREATE TABLE IF NOT EXISTS types_programme (
+    id_type    INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom        TEXT NOT NULL,               -- « Atelier », « Initiation », « Temps fort »…
+    icone      TEXT,                        -- emoji facultatif, affiché sur /live et /programme
+    actif      INTEGER NOT NULL DEFAULT 1,  -- 0 = archivé (retrait doux)
+    ordre      INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+# ---------------------------------------------------------------------------
+# programme — éléments de programme hors tournoi (animation, atelier,
+# initiation, temps fort, intervention partenaire — docs/conception-programme.md
+# §4.2). `id_type` NULLABLE et SANS cascade : un type archivé/supprimé ne doit
+# jamais faire disparaître un élément déjà saisi. Zéro donnée personnelle
+# (`jauge` est un nombre indicatif, pas une liste d'inscrits).
+# ---------------------------------------------------------------------------
+SCHEMA_PROGRAMME = """
+CREATE TABLE IF NOT EXISTS programme (
+    id_element     INTEGER PRIMARY KEY AUTOINCREMENT,
+    intitule       TEXT NOT NULL,              -- ce qui s'affiche en grand
+    description    TEXT,                       -- description courte (facultative)
+    id_type        INTEGER,                    -- FK -> types_programme, nullable
+    date_heure     TEXT,                       -- début, ISO 8601 UTC ; nullable
+    duree_min      INTEGER,                    -- durée en minutes (déduite de l'heure de fin saisie)
+    lieu           TEXT,                       -- zone ou table dans la salle
+    public_vise    TEXT,                       -- indicatif (« tout public », « famille »…)
+    jauge          INTEGER,                    -- purement informative, aucune réservation
+    etat           TEXT NOT NULL DEFAULT 'brouillon',   -- 'brouillon' | 'publie' | 'annule'
+    date_creation  TEXT NOT NULL,              -- horodatage de création (ISO 8601 UTC)
+    FOREIGN KEY (id_type) REFERENCES types_programme (id_type)
+);
+"""
+
+# ---------------------------------------------------------------------------
 # Index — requêtes fréquentes.
 # ---------------------------------------------------------------------------
 SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_inscriptions_tournoi ON inscriptions (id_tournoi);
 CREATE INDEX IF NOT EXISTS idx_inscriptions_code    ON inscriptions (code_desinscription);
 CREATE INDEX IF NOT EXISTS idx_rencontres_tournoi   ON rencontres (id_tournoi);
+CREATE INDEX IF NOT EXISTS idx_programme_date_heure ON programme (date_heure);
+CREATE INDEX IF NOT EXISTS idx_programme_etat       ON programme (etat);
 """
 
-# Ordre imposé par les FK : tournois (référencé) avant inscriptions/rencontres.
+# Ordre imposé par les FK : tournois (référencé) avant inscriptions/rencontres ;
+# types_programme (référencé) avant programme.
 SCHEMA_STATEMENTS = (
     SCHEMA_TOURNOIS,
     SCHEMA_INSCRIPTIONS,
     SCHEMA_RENCONTRES,
+    SCHEMA_TYPES_PROGRAMME,
+    SCHEMA_PROGRAMME,
     SCHEMA_INDEXES,
 )
