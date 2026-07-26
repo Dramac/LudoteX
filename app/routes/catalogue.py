@@ -27,16 +27,24 @@ from app.version import APP_VERSION, nouveautes_recentes
 # `tags` regroupe ces routes dans la doc auto (/docs).
 router = APIRouter(tags=["catalogue"])
 
+# Fenêtre du bloc « ça commence bientôt » de l'accueil (minutes). L'écran de
+# salle utilise la même fusion avec une fenêtre plus large (2 h) : il est lu de
+# loin, de passage, tandis qu'on consulte l'accueil pour savoir quoi faire tout
+# de suite.
+FENETRE_IMMINENTS_MIN = 60
+
 
 @router.get("/")
 def accueil(request: Request):
     """
     Page d'accueil publique du système (remplace le catalogue comme point
-    d'entrée). Donne accès aux outils publics (catalogue, tournois), rappelle le
-    nombre de jeux disponibles au prêt et liste les tournois imminents (qui
-    commencent dans l'heure).
+    d'entrée). Donne accès aux outils publics (catalogue, tournois, programme),
+    rappelle le nombre de jeux disponibles au prêt et annonce **ce qui commence
+    dans l'heure** — tournois ET animations mélangés, triés par heure.
     """
     from datetime import datetime, timedelta
+
+    from app.tournoi import programme
 
     conn = get_connection()
     try:
@@ -45,27 +53,38 @@ def accueil(request: Request):
     finally:
         conn.close()
 
-    # Planning sur 2 jours (jour de l'événement + lendemain), si une date est
-    # réglée en admin. La frise n'apparaît que si elle contient des tournois.
-    # Fiche A3 : si le module tournois est désactivé (ou réservé aux
-    # bénévoles, pour un visiteur non activé), on ne calcule même pas ces
-    # données — sinon l'accueil afficherait un planning cliquable vers un
-    # module que l'administrateur vient de masquer.
+    # Fiche A3 : si un module est désactivé (ou réservé aux bénévoles, pour un
+    # visiteur non activé), on ne calcule même pas ses données — sinon
+    # l'accueil afficherait le contenu d'un module que l'administrateur vient
+    # de masquer. Les deux sources sont indépendantes : l'une peut manquer
+    # sans que l'autre disparaisse.
+    voir_tournois = module_visible(request, "tournois")
+    voir_programme = module_visible(request, "programme")
+
     jours = []
+    if date_evenement:
+        try:
+            jour1 = datetime.strptime(date_evenement, "%Y-%m-%d").date()
+            jours = [jour1, jour1 + timedelta(days=1)]
+        except ValueError:
+            jours = []
+
     imminents = []
     planning = []
-    if module_visible(request, "tournois"):
-        if date_evenement:
-            try:
-                jour1 = datetime.strptime(date_evenement, "%Y-%m-%d").date()
-                jours = [jour1, jour1 + timedelta(days=1)]
-            except ValueError:
-                jours = []
-
+    if voir_tournois or voir_programme:
         conn_t = get_tournoi_connection()
         try:
-            imminents = tournoi_services.tournois_imminents(conn_t)
-            planning = tournoi_services.planning(conn_t, jours) if jours else []
+            # UNE seule fusion, la même que celle de l'écran de salle : deux
+            # implémentations divergeraient le jour de l'événement.
+            imminents = [
+                e for e in programme.imminents(conn_t, FENETRE_IMMINENTS_MIN)
+                if (e["source"] == "tournoi" and voir_tournois)
+                or (e["source"] == "programme" and voir_programme)
+            ]
+            planning = programme.planning_fusionne(
+                conn_t, jours,
+                avec_tournois=voir_tournois, avec_programme=voir_programme,
+            ) if jours else []
         finally:
             conn_t.close()
 

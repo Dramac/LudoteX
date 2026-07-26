@@ -333,7 +333,10 @@ def test_planning_route_accueil(client, monkeypatch):
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
 
     page = client.get("/").text
-    assert "Planning des tournois" in page
+    # Le titre de la frise est passé de « Planning des tournois » à
+    # « Programme du week-end » : elle porte désormais les deux sources
+    # (tournois + animations), voir docs/conception-programme.md §6.5.
+    assert "Programme du week-end" in page
     assert "Grand Tournoi" in page
     assert "samedi 13 juin" in page.lower()
 

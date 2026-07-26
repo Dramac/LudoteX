@@ -30,10 +30,13 @@ from app.tournoi.creneau import (
     SLOT_MIN,
     _calculer_couloirs,
     _local_naive,
+    assembler_jours,
+    bornes_bloc,
     label_jour,
 )
 from app.tournoi.models import ETATS_PROGRAMME
 from app.tournoi.services import _ics_echappe, _ics_horodatage, tournois_imminents
+from app.tournoi.services import planning as services_planning
 
 # Transitions d'état autorisées (machine à états, conception §4.2). Plus
 # permissive que celle des tournois (pas d'inscriptions ni de rencontres à
@@ -495,6 +498,13 @@ def imminents(
             "date_heure": t["date_heure"],
             "heure_locale": _heure_locale(t["date_heure"]),
             "minutes_avant": _minutes_avant(t["date_heure"], maintenant_dt),
+            # Propres au tournoi (l'accueil affiche le remplissage) ; un
+            # élément de programme n'a pas d'inscription, il porte au mieux
+            # une jauge indicative.
+            "jeu": t["jeu"],
+            "nb_inscrits": t["nb_inscrits"],
+            "nb_places": t["nb_places"],
+            "places_restantes": t["places_restantes"],
         }
         fusion.append((dt, t["nom"], entree))
 
@@ -526,6 +536,8 @@ def imminents(
             "date_heure": d["date_heure"],
             "heure_locale": _heure_locale(d["date_heure"]),
             "minutes_avant": _minutes_avant(d["date_heure"], maintenant_dt),
+            "jauge": d["jauge"],
+            "public_vise": d["public_vise"],
         }
         fusion.append((dt, d["intitule"], entree))
 
@@ -567,48 +579,77 @@ def grille(
 
     par_jour: dict[date, list] = {j: [] for j in jours}
     for r in lignes:
-        try:
-            debut = _local_naive(r["date_heure"])
-        except (ValueError, TypeError):
-            continue
-        j = debut.date()
-        if j not in par_jour:
-            continue
-        duree = r["duree_min"] or DUREE_DEFAUT_MIN
-        fin = debut + timedelta(minutes=duree)
-        minuit_suivant = datetime.combine(j, time()) + timedelta(days=1)
-        if fin > minuit_suivant:             # on ne déborde pas sur le lendemain
-            fin = minuit_suivant
-        par_jour[j].append({
-            "id_element": r["id_element"], "intitule": r["intitule"],
-            "lieu": r["lieu"], "type_nom": r["type_nom"], "type_icone": r["type_icone"],
-            "public_vise": r["public_vise"], "jauge": r["jauge"],
-            "debut_dt": debut, "fin_dt": fin,
-            "heure_txt": f'{debut.strftime("%H:%M")}–{fin.strftime("%H:%M")}',
-        })
+        bloc = _bloc_programme(r)
+        if bloc and bloc["debut_dt"].date() in par_jour:
+            par_jour[bloc["debut_dt"].date()].append(bloc)
 
-    resultat = []
-    for j in jours:
-        blocs = sorted(par_jour[j], key=lambda b: (b["debut_dt"], b["intitule"]))
-        jour = {"date": j, "label": label_jour(j), "blocs": blocs, "vide": not blocs}
-        if blocs:
-            jour["nb_couloirs"] = _calculer_couloirs(blocs)
-            h0 = min(b["debut_dt"] for b in blocs).replace(minute=0, second=0, microsecond=0)
-            fin_max = max(b["fin_dt"] for b in blocs)
-            if fin_max.minute or fin_max.second:      # arrondi à l'heure supérieure
-                fin_max = fin_max.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-            jour["nb_slots"] = int((fin_max - h0).total_seconds() // 60 // SLOT_MIN)
-            for b in blocs:
-                debut_min = (b["debut_dt"] - h0).total_seconds() / 60
-                duree_min_bloc = (b["fin_dt"] - b["debut_dt"]).total_seconds() / 60
-                b["row_debut"] = int(debut_min // SLOT_MIN) + 1
-                b["row_span"] = max(1, math.ceil(duree_min_bloc / SLOT_MIN))
-                b["col"] = b["couloir"] + 2            # colonne 1 = gouttière des heures
-            heures, h = [], h0
-            while h < fin_max:
-                heures.append({"row": int((h - h0).total_seconds() // 60 // SLOT_MIN) + 1,
-                               "label": h.strftime("%Hh")})
-                h += timedelta(hours=1)
-            jour["heures"] = heures
-        resultat.append(jour)
-    return resultat
+    return assembler_jours(par_jour, jours, cle_tri="intitule")
+
+
+def _bloc_programme(r) -> dict | None:
+    """
+    Un élément de programme sous forme de bloc de frise (ou None si sa date
+    est absente/invalide). Partagé par `grille` et par la frise fusionnée de
+    l'accueil, pour que les deux affichent exactement la même chose.
+    """
+    bornes = bornes_bloc(r["date_heure"], r["duree_min"])
+    if bornes is None:
+        return None
+    debut, fin = bornes
+    return {
+        "source": "programme",
+        "id_element": r["id_element"], "intitule": r["intitule"],
+        # `nom` double `intitule` : la frise fusionnée trie les deux sources
+        # sur la même clé.
+        "nom": r["intitule"],
+        "lieu": r["lieu"], "type_nom": r["type_nom"], "type_icone": r["type_icone"],
+        "public_vise": r["public_vise"], "jauge": r["jauge"],
+        "debut_dt": debut, "fin_dt": fin,
+        "heure_txt": f'{debut.strftime("%H:%M")}–{fin.strftime("%H:%M")}',
+    }
+
+
+def planning_fusionne(
+    conn: sqlite3.Connection,
+    jours: list[date],
+    *,
+    avec_tournois: bool = True,
+    avec_programme: bool = True,
+) -> list[dict]:
+    """
+    Frise deux jours de la page d'accueil, tournois ET animations mélangés :
+    les couloirs sont calculés SUR L'ENSEMBLE des blocs, sinon deux créneaux
+    simultanés de sources différentes se superposeraient à l'écran.
+
+    Chaque bloc porte `source` ("tournoi" / "programme") : le gabarit sait
+    ainsi lequel est cliquable (un tournoi a une page, un élément de programme
+    n'en a pas) et quelle couleur lui donner.
+
+    Les deux sources sont activables séparément : l'accueil passe ici l'état
+    de visibilité de chaque module (fiche A3 — ne jamais afficher le contenu
+    d'un module masqué).
+    """
+    par_jour: dict[date, list] = {j: [] for j in jours}
+
+    if avec_tournois:
+        for jour in services_planning(conn, jours):
+            for bloc in jour["blocs"]:
+                bloc["source"] = "tournoi"
+                par_jour[jour["date"]].append(bloc)
+
+    if avec_programme:
+        lignes = conn.execute(
+            """
+            SELECT p.*, tp.nom AS type_nom, tp.icone AS type_icone
+            FROM programme p
+            LEFT JOIN types_programme tp ON tp.id_type = p.id_type
+            WHERE p.etat = 'publie' AND p.date_heure IS NOT NULL
+            ORDER BY p.date_heure ASC
+            """
+        ).fetchall()
+        for r in lignes:
+            bloc = _bloc_programme(r)
+            if bloc and bloc["debut_dt"].date() in par_jour:
+                par_jour[bloc["debut_dt"].date()].append(bloc)
+
+    return assembler_jours(par_jour, jours, cle_tri="nom")

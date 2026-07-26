@@ -720,6 +720,11 @@ button.lien {
 .planning-bloc:hover { box-shadow: 0 2px 6px rgba(0,0,0,.16); }
 .planning-bloc--lance   { background: var(--orange-clair); border-left-color: var(--orange); }
 .planning-bloc--termine { background: #f1f3f4; border-left-color: #6b7075; color: var(--gris); }
+/* Élément de PROGRAMME (animation, atelier…) : teinte distincte du bleu des
+   tournois, dans la même famille visuelle. Ce bloc n'est pas cliquable (pas
+   de page de détail) — d'où l'absence de curseur main et de relief au survol. */
+.planning-bloc--programme { background: #f3edfb; border-left-color: #7b1fa2; }
+.planning-bloc--programme:hover { box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .planning-bloc-heure { font-weight: 700; font-size: 0.72rem; color: var(--gris); }
 .planning-bloc-nom { font-weight: 700; }
 .planning-bloc-meta { color: var(--gris); font-size: 0.72rem; }

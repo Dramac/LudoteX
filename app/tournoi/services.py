@@ -1268,6 +1268,8 @@ from app.tournoi.creneau import (  # noqa: E402
     SLOT_MIN,
     _calculer_couloirs,
     _local_naive,
+    assembler_jours,
+    bornes_bloc,
     label_jour,
 )
 
@@ -1296,18 +1298,13 @@ def planning(conn: sqlite3.Connection, jours: list[date]) -> list[dict]:
 
     par_jour: dict[date, list] = {j: [] for j in jours}
     for r in lignes:
-        try:
-            debut = _local_naive(r["date_heure"])
-        except (ValueError, TypeError):
+        bornes = bornes_bloc(r["date_heure"], r["duree_min"])
+        if bornes is None:
             continue
+        debut, fin = bornes
         j = debut.date()
         if j not in par_jour:
             continue
-        duree = r["duree_min"] or DUREE_DEFAUT_MIN
-        fin = debut + timedelta(minutes=duree)
-        minuit_suivant = datetime.combine(j, time()) + timedelta(days=1)
-        if fin > minuit_suivant:             # on ne déborde pas sur le lendemain
-            fin = minuit_suivant
         nb_places = r["nb_places"]
         par_jour[j].append({
             "id_tournoi": r["id_tournoi"], "nom": r["nom"], "jeu": r["jeu"],
@@ -1319,31 +1316,7 @@ def planning(conn: sqlite3.Connection, jours: list[date]) -> list[dict]:
             "heure_txt": f'{debut.strftime("%H:%M")}–{fin.strftime("%H:%M")}',
         })
 
-    resultat = []
-    for j in jours:
-        blocs = sorted(par_jour[j], key=lambda b: (b["debut_dt"], b["nom"]))
-        jour = {"date": j, "label": label_jour(j), "blocs": blocs, "vide": not blocs}
-        if blocs:
-            jour["nb_couloirs"] = _calculer_couloirs(blocs)
-            h0 = min(b["debut_dt"] for b in blocs).replace(minute=0, second=0, microsecond=0)
-            fin_max = max(b["fin_dt"] for b in blocs)
-            if fin_max.minute or fin_max.second:      # arrondi à l'heure supérieure
-                fin_max = fin_max.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-            jour["nb_slots"] = int((fin_max - h0).total_seconds() // 60 // SLOT_MIN)
-            for b in blocs:
-                debut_min = (b["debut_dt"] - h0).total_seconds() / 60
-                duree_min = (b["fin_dt"] - b["debut_dt"]).total_seconds() / 60
-                b["row_debut"] = int(debut_min // SLOT_MIN) + 1
-                b["row_span"] = max(1, math.ceil(duree_min / SLOT_MIN))
-                b["col"] = b["couloir"] + 2            # colonne 1 = gouttière des heures
-            heures, h = [], h0
-            while h < fin_max:
-                heures.append({"row": int((h - h0).total_seconds() // 60 // SLOT_MIN) + 1,
-                               "label": h.strftime("%Hh")})
-                h += timedelta(hours=1)
-            jour["heures"] = heures
-        resultat.append(jour)
-    return resultat
+    return assembler_jours(par_jour, jours, cle_tri="nom")
 
 
 # ===========================================================================

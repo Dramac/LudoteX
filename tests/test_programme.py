@@ -791,3 +791,112 @@ def test_ics_programme_sans_date_404(client):
 
 def test_ics_programme_introuvable_404(client):
     assert client.get("/programme/9999/agenda.ics").status_code == 404
+
+
+# ===========================================================================
+# Jalon 3 — page d'accueil : « ce qui commence » et frise, deux sources
+# ===========================================================================
+def _dans_minutes_local(minutes: int) -> str:
+    """Saisie `datetime-local` (heure locale) dans N minutes."""
+    from app.services import FUSEAU_LOCAL
+    return (datetime.now(FUSEAU_LOCAL) + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M")
+
+
+def _desactiver_module(nom: str) -> None:
+    """Désactive un module (même écriture que l'écran /admin/fonctionnalites)."""
+    from app import db, modules
+    conn = db.get_connection()
+    try:
+        modules.ecrire_etat_module(conn, nom, "desactive")
+    finally:
+        conn.close()
+
+
+def _tournoi_publie(client, nom: str, quand: str) -> str:
+    r = client.post("/tournoi/nouveau", data={"nom": nom, "date_heure": quand},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    return tid
+
+
+def _element_publie(client, intitule: str, quand: str, **extra) -> int:
+    from app.tournoi import db as tdb
+    data = {"intitule": intitule, "date_heure": quand}
+    data.update(extra)
+    client.post("/programme/nouveau", data=data, follow_redirects=False)
+    conn = tdb.get_connection()
+    try:
+        id_element = conn.execute(
+            "SELECT id_element FROM programme WHERE intitule = ?", (intitule,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    client.post(f"/programme/{id_element}/etat", data={"etat": "publie"})
+    return id_element
+
+
+def test_accueil_ce_qui_commence_fusionne_les_deux_sources(client):
+    # Le bloc « Ça commence bientôt » mélange tournois et animations, triés
+    # par heure : le visiteur n'a pas à savoir de quelle rubrique il s'agit.
+    _tournoi_publie(client, "Tournoi de 40 min", _dans_minutes_local(40))
+    _element_publie(client, "Initiation dans 10 min", _dans_minutes_local(10),
+                    lieu="Espace famille")
+
+    page = client.get("/").text
+    assert "Ça commence bientôt" in page
+    assert "Initiation dans 10 min" in page and "Tournoi de 40 min" in page
+    # Ordre chronologique, toutes sources confondues.
+    assert page.index("Initiation dans 10 min") < page.index("Tournoi de 40 min")
+    # Un élément de programme n'a pas de page de détail : aucun lien vers lui.
+    assert 'href="/programme/' not in page
+
+
+def test_accueil_frise_fusionnee(client):
+    # La frise deux jours porte les deux sources, avec des couloirs calculés
+    # sur l'ensemble (deux créneaux simultanés ne se superposent pas).
+    _regler_date_evenement(client, "2026-08-01")
+    _tournoi_publie(client, "Tournoi du samedi", "2026-08-01T14:00")
+    _element_publie(client, "Atelier du samedi", "2026-08-01T14:00", heure_fin="2026-08-01T15:00")
+
+    page = client.get("/").text
+    assert "Programme du week-end" in page
+    assert "Tournoi du samedi" in page and "Atelier du samedi" in page
+    assert "planning-bloc--programme" in page      # teinte propre aux animations
+    # Deux blocs simultanés -> deux couloirs, donc deux colonnes distinctes.
+    assert "grid-column: 2" in page and "grid-column: 3" in page
+
+
+def test_accueil_module_programme_desactive(client):
+    # Fiche A3 : le contenu d'un module masqué ne doit pas apparaître, et la
+    # page ne doit pas casser pour autant.
+    _tournoi_publie(client, "Tournoi visible", _dans_minutes_local(20))
+    _element_publie(client, "Animation masquée", _dans_minutes_local(10))
+
+    _desactiver_module("programme")
+
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Animation masquée" not in r.text
+    assert "Tournoi visible" in r.text
+    assert 'href="/programme"' not in r.text
+
+
+def test_accueil_module_tournois_desactive_garde_le_programme(client):
+    # Non-régression symétrique : chaque source disparaît sans emporter l'autre.
+    _tournoi_publie(client, "Tournoi masqué", _dans_minutes_local(20))
+    _element_publie(client, "Animation visible", _dans_minutes_local(10))
+
+    _desactiver_module("tournois")
+
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Tournoi masqué" not in r.text
+    assert "Animation visible" in r.text
+
+
+def test_accueil_sans_rien_a_annoncer(client):
+    # Rien de prévu : ni bloc « ça commence bientôt », ni frise.
+    page = client.get("/").text
+    assert "Ça commence bientôt" not in page
+    assert "Programme du week-end" not in page
