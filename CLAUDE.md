@@ -1364,6 +1364,79 @@ devenu faux — aucune correction nécessaire (le module Écran de salle du wiki
 ne documente d'ailleurs pas non plus l'annonce elle-même, lacune préexistante
 hors périmètre de cette session). **Suite globale : 410 tests verts.**
 
+**Module PROGRAMME DU WEEK-END — JALON 1 (schéma + services) : FAIT.** Cadré
+dans `docs/conception-programme.md` : un élément de programme hors tournoi
+(animation, atelier, initiation, temps fort, intervention partenaire), pour
+répondre à « qu'est-ce qui commence maintenant ? » sans distinguer tournoi et
+animation aux yeux du public. Ce jalon est **services purs, aucune route,
+aucun gabarit** (jalon 2 à suivre). **Deux tables neuves** dans **la base des
+tournois** (`data/tournoi.db`, toujours aucune FK vers la base de prêt) :
+`types_programme` (liste configurable, patron exact d'`emplacements_rangement` :
+archivage doux, suppression refusée si rattachée, réordonnancement) — seedée au
+démarrage avec les 5 types de la note (animation/atelier/initiation/temps
+fort/intervention partenaire), seed idempotent, jamais ressuscité si le bureau
+en supprime un — et `programme` (les éléments : intitulé, description, type
+nullable **sans cascade**, date/durée, lieu, public visé, jauge purement
+indicative, état `brouillon`/`publie`/`annule`). Aucune migration de colonne
+nécessaire (tables neuves, `CREATE TABLE IF NOT EXISTS` suffit à mettre à
+niveau une base existante).
+
+**Services** dans le nouveau `app/tournoi/programme.py` : CRUD des types
+(`lister_types`, `creer_type`, `renommer_type`, `archiver_type`,
+`reactiver_type`, `reordonner_types`, `supprimer_type`) ; CRUD des éléments
+(`creer_element`, `get_element`, `modifier_element`, `supprimer_element`,
+`lister_elements(jour, id_type, inclure_brouillons)`, `dupliquer_element` —
+patron `dupliquer_tournoi`, repart toujours en brouillon —, `ical_element` —
+patron `ical_tournoi`) ; `changer_etat` avec une machine à états DISTINCTE de
+celle des tournois (`TRANSITIONS_PROGRAMME` : brouillon↔publié, publié→annulé,
+annulé→brouillon **ou** publié directement — plus permissive que les tournois
+qui doivent protéger des inscriptions, un élément de programme n'en a pas) ;
+`duree_depuis_fin(debut_iso, fin_iso)` (même logique que
+`planning.services.modifier_creneau` : refuse fin ≤ début ou bornes absentes,
+jamais bloquant, à la route jalon 2 d'exploiter le refus).
+
+**Extraction demandée par la conception** (§3/§5) : `SLOT_MIN`,
+`DUREE_DEFAUT_MIN`, `label_jour`, `_local_naive`, `_calculer_couloirs`
+déplacés de `tournoi/services.py` vers un nouveau **`app/tournoi/creneau.py`**,
+réimportés à l'identique dans `services.py` — **aucune signature publique
+n'a changé** (`services.label_jour`/`services.planning` s'appellent exactement
+comme avant), confirmé par la suite existante du module Tournois qui passe
+**sans une seule modification**.
+
+**Le cœur du module — `imminents(conn, minutes, inclure_annules=False)`** :
+fusionne les tournois (`tournois_imminents`, réutilisée telle quelle, aucune
+règle dupliquée) et les éléments de programme publiés dont le début tombe
+entre maintenant et +`minutes`, triés par heure croissante. Chaque entrée porte
+`source` (`"tournoi"`/`"programme"`), `id`, `intitule`, `icone` (celle du type
+pour un élément de programme, `None` pour un tournoi qui n'a pas ce champ —
+délibérément **pas** de repli codé en dur côté service, ce sera au gabarit du
+jalon 2 de choisir un glyphe par défaut), `lieu`, `date_heure` (UTC ISO brut,
+pour un futur lien `.ics`), `heure_locale` et `minutes_avant`. Les brouillons
+de programme sont TOUJOURS exclus (jamais publics, comme les tournois) ; les
+éléments annulés sont exclus par défaut et inclus sur demande (l'écran de
+salle, jalon 2, doit pouvoir les afficher barrés pendant leur fenêtre). Cette
+seule implémentation sera consommée par les trois surfaces prévues (accueil,
+écran de salle, page `/programme`) avec des fenêtres différentes.
+
+**Tests** : `tests/test_programme.py` (nouveau, 34 tests — schéma/idempotence/
+seed sur une base réelle temporaire, CRUD types/éléments sur base en mémoire,
+machine à états, `duree_depuis_fin`, `ical_element`, fusion `imminents` :
+ordre, fenêtre, mélange des deux sources, brouillons/annulés) + un test de
+restauration d'une sauvegarde de `tournoi.db` antérieure à ce jalon dans
+`tests/test_sauvegarde.py` (patron D5 : les deux tables apparaissent et sont
+seedées après restauration, sans perte du tournoi déjà présent).
+`tests/test_tournoi.py` **non modifié**. **Suite globale : 450 tests verts**
+(410 + 40 nouveaux).
+
+**Reste (jalon 2 et suivants, non traités ici)** : entrée `MODULES` +
+`garde_module("programme")`, écrans bénévole (liste/création/édition/
+suppression/duplication/état), CRUD admin des types dans le groupe
+« Événement », page publique `/programme` + `.ics` + aide, troisième colonne
+adaptative de l'écran de salle (+ correctif de la garde `tournois` qui manque
+aujourd'hui sur `/live`), bloc « ce qui commence » fusionné sur l'accueil,
+mises à jour du wiki, montée de version mineure (`1.2.0`) proposée en fin de
+chantier — voir `docs/conception-programme.md` §6-§10.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
