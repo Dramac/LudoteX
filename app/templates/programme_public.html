@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block titre %}Programme — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{% block contenu %}
+<section class="carte" id="haut">
+  <h1>Programme du week-end</h1>
+  <p class="stats-note">
+    Animations, ateliers, initiations, temps forts et interventions
+    partenaires — en plus des <a class="lien" href="/tournois">tournois</a>.
+  </p>
+
+  {% if jours_evenement %}
+  <details class="recherche" {% if filtres_actifs %}open{% endif %}>
+    <summary>Filtrer</summary>
+    <form method="get" action="/programme" class="recherche-form">
+      <div class="champ">
+        <label for="jour">Jour</label>
+        <select id="jour" name="jour">
+          <option value="">Les deux jours</option>
+          {% for j in jours_options %}
+            <option value="{{ j.value }}" {% if jour and jour.isoformat() == j.value %}selected{% endif %}>
+              {{ j.label | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="champ">
+        <label for="type">Type</label>
+        <select id="type" name="type">
+          <option value="">Tous</option>
+          {% for t in types %}
+            <option value="{{ t.id_type }}" {% if filtre_type and filtre_type.id_type == t.id_type %}selected{% endif %}>
+              {{ t.icone ~ ' ' if t.icone }}{{ t.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="recherche-actions">
+        <button type="submit" class="bouton-filtrer">Filtrer</button>
+        {% if filtres_actifs %}<a class="lien" href="/programme">Réinitialiser</a>{% endif %}
+      </div>
+    </form>
+  </details>
+
+  {% if chips %}
+  <div class="filtres-actifs">
+    <span class="fa-label">Filtres actifs :</span>
+    {% for c in chips %}
+      <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+    {% endfor %}
+    <a class="lien" href="/programme">Tout effacer</a>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% if est_benevole(request) %}
+    <p><a class="lien" href="/programme/gestion">Gérer le programme</a>
+       &nbsp;·&nbsp; <a class="lien" href="/programme/aide">❓ Aide</a></p>
+  {% endif %}
+</section>
+
+{% if not jours_evenement %}
+<section class="carte">
+  <p><em>Aucune date d'événement n'est configurée pour le moment — revenez
+     plus tard.</em></p>
+</section>
+{% else %}
+  {% for jour in grille %}
+    <section class="carte">
+      <h2 class="dispo-titre">{{ jour.label | capitalize }}</h2>
+      {% if jour.vide %}
+        <p class="stats-note">Rien de publié pour ce jour-là.</p>
+      {% else %}
+        <div class="planning-grille"
+             style="grid-template-columns: var(--gutter-w) repeat({{ jour.nb_couloirs }}, minmax(0, 1fr));
+                    grid-template-rows: repeat({{ jour.nb_slots }}, var(--slot-h));">
+          {% for h in jour.heures %}
+            <div class="planning-ligne" style="grid-row: {{ h.row }};"></div>
+            <div class="planning-heure" style="grid-row: {{ h.row }};">{{ h.label }}</div>
+          {% endfor %}
+          {% for b in jour.blocs %}
+            <div class="planning-bloc"
+                 style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};">
+              <span class="planning-bloc-heure">{{ b.heure_txt }}</span>
+              <span class="planning-bloc-nom">{{ b.type_icone ~ ' ' if b.type_icone }}{{ b.intitule }}</span>
+              {% if b.lieu %}<span class="planning-bloc-meta">📍 {{ b.lieu }}</span>{% endif %}
+              {% if b.public_vise %}<span class="planning-bloc-meta">{{ b.public_vise }}</span>{% endif %}
+              <a class="planning-bloc-meta" href="/programme/{{ b.id_element }}/agenda.ics"
+                 title="Ajouter à mon agenda">📅 Agenda</a>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+  {% endfor %}
+{% endif %}
+
+<a href="#haut" class="bouton-filtrer bouton-haut">↑ Filtres</a>
+{% endblock %}

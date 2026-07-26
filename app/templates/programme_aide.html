@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block titre %}Aide — Programme — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Aide — Programme</h1>
+  <p class="dispo-titre">Mode d'emploi pour saisir et suivre le programme du
+     week-end : animations, ateliers, initiations, temps forts et interventions
+     partenaires — tout ce qui n'est pas un tournoi.</p>
+
+  <h2>Le cycle d'un élément</h2>
+  <p>Un élément passe par trois états : <strong>brouillon</strong> (en
+     préparation, invisible du public) → <strong>publié</strong> (visible sur
+     la page <a class="lien" href="/programme">Programme</a>, l'accueil et
+     l'écran de salle) → éventuellement <strong>annulé</strong> (s'il n'a
+     finalement pas lieu). Un élément annulé peut être réinstauré (brouillon ou
+     publié à nouveau) à tout moment — rien n'est perdu.</p>
+
+  <h2>Créer un élément</h2>
+  <p>Depuis <a class="lien" href="/programme/gestion">la liste de gestion</a>,
+     touchez <strong>+ Nouvel élément</strong>. Seul l'intitulé est obligatoire ;
+     le type, la description, le lieu, le public visé et la jauge (indicative,
+     sans réservation) sont facultatifs. Renseignez un <strong>début</strong>
+     et une <strong>fin</strong> : la durée en est déduite automatiquement.
+     L'élément est créé en <strong>brouillon</strong> — publiez-le quand tout
+     est prêt.</p>
+
+  <h2>Les types</h2>
+  <p>La liste des types (animation, atelier, initiation, temps fort,
+     intervention partenaire…) se configure en administration. Un type
+     archivé disparaît des nouveaux formulaires mais reste affiché sur les
+     éléments qui l'utilisent déjà.</p>
+
+  <h2>Dupliquer</h2>
+  <p>Un atelier se rejoue souvent à un autre horaire : <strong>Dupliquer</strong>
+     crée une copie en brouillon, sans date — l'édition s'ouvre directement pour
+     fixer le nouvel horaire.</p>
+
+  <h2>Supprimer un élément</h2>
+  <p>La suppression demande une <strong>double confirmation</strong> et est
+     définitive.</p>
+
+  <p class="lien-fiche"><a class="lien" href="/programme">← Voir la page publique</a></p>
+</section>
+{% endblock %}

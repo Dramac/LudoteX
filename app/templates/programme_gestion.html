@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block titre %}Gestion — Programme — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Programme du week-end</h1>
+  <p class="stats-note">
+    Animations, ateliers, initiations, temps forts et interventions
+    partenaires — brouillons compris. Un élément n'apparaît publiquement
+    (page <a class="lien" href="/programme">/programme</a>, écran de salle,
+    accueil) qu'une fois <strong>publié</strong>.
+  </p>
+  <p>
+    <a class="bouton bouton-principal" href="/programme/nouveau">+ Nouvel élément</a>
+  </p>
+  <p><a class="lien" href="/programme/aide">❓ Aide</a></p>
+  {% if not elements %}
+    <p><em>Aucun élément de programme pour le moment.</em></p>
+  {% endif %}
+</section>
+
+{% if elements %}
+<section class="carte">
+  <table class="detail">
+    <thead>
+      <tr>
+        <th>Intitulé</th>
+        <th>Type</th>
+        <th>Quand</th>
+        <th>Lieu</th>
+        <th>État</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in elements %}
+        {% set t = types_par_id.get(e.id_type) %}
+        {% set possibles = transitions.get(e.etat, []) %}
+        <tr>
+          <td>{{ e.intitule }}</td>
+          <td>{% if t %}{{ t.icone ~ ' ' if t.icone }}{{ t.nom }}{% endif %}</td>
+          <td>{{ e.date_heure | dt_local if e.date_heure else "—" }}</td>
+          <td>{{ e.lieu if e.lieu else "—" }}</td>
+          <td>
+            <span class="badge {{ 'badge-dispo' if e.etat == 'publie' else 'badge-sorti' }}">
+              {{ e.etat }}</span>
+          </td>
+          <td class="rangement-actions">
+            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/editer">Modifier</a>
+            {% if "publie" in possibles %}
+              <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline">
+                <input type="hidden" name="etat" value="publie">
+                <button type="submit" class="bouton-filtrer">Publier</button>
+              </form>
+            {% endif %}
+            {% if "brouillon" in possibles %}
+              <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline">
+                <input type="hidden" name="etat" value="brouillon">
+                <button type="submit" class="bouton-filtrer">Repasser en brouillon</button>
+              </form>
+            {% endif %}
+            {% if "annule" in possibles %}
+              <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline"
+                    onsubmit="return confirm('Annuler « {{ e.intitule }} » ?');">
+                <input type="hidden" name="etat" value="annule">
+                <button type="submit" class="bouton-filtrer">Annuler</button>
+              </form>
+            {% endif %}
+            <form method="post" action="/programme/{{ e.id_element }}/dupliquer" class="rangement-form-inline">
+              <button type="submit" class="bouton-filtrer">Dupliquer</button>
+            </form>
+            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/supprimer">Supprimer</a>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<p class="lien-fiche"><a class="lien" href="/programme">Voir la page publique</a></p>
+{% endblock %}

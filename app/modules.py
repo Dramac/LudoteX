@@ -44,6 +44,11 @@ MODULES: dict[str, dict] = {
         "description": "Gestion et inscription aux tournois de l'événement",
         "url": "/tournois",
     },
+    "programme": {
+        "label": "Programme",
+        "description": "Animations, ateliers et temps forts hors tournoi",
+        "url": "/programme",
+    },
     "stats": {
         "label": "Statistiques",
         "description": "Statistiques et historique détaillé des prêts",

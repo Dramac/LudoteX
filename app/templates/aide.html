@@ -38,6 +38,10 @@
     <li><a class="lien" href="/tournoi/aide">M'inscrire à un tournoi</a> — comment
         s'inscrire, et à quoi sert le code qui s'affiche ensuite.</li>
     {% endif %}
+    {% if module_visible(request, "programme") %}
+    <li><a class="lien" href="/programme/aide">Voir le programme du week-end</a> —
+        animations, ateliers et temps forts en plus des tournois.</li>
+    {% endif %}
     {% if module_visible(request, "planning") %}
     <li><a class="lien" href="/planning/aide">Déclarer mes disponibilités</a> —
         pour les bénévoles qui remplissent le questionnaire.</li>
@@ -53,6 +57,10 @@
     {% if module_visible(request, "tournois") %}
     <li><a class="lien" href="/tournoi/aide">Organiser un tournoi</a> — créer,
         lancer, saisir les résultats.</li>
+    {% endif %}
+    {% if module_visible(request, "programme") %}
+    <li><a class="lien" href="/programme/aide">Saisir le programme</a> — créer,
+        publier et dupliquer une animation, un atelier ou un temps fort.</li>
     {% endif %}
     {% if module_visible(request, "planning") %}
     <li><a class="lien" href="/planning/aide">Consulter mon planning</a> — savoir
@@ -114,6 +122,11 @@
     <li><a class="lien" href="/tournoi/aide">Tournois</a> — le cycle d'un
         tournoi, les inscriptions et le code de désinscription, les tournois par
         équipes, et les quatre façons de compter les points.</li>
+    {% endif %}
+    {% if module_visible(request, "programme") %}
+    <li><a class="lien" href="/programme/aide">Programme</a> — animations,
+        ateliers, initiations, temps forts et interventions partenaires : les
+        états, la saisie et la duplication.</li>
     {% endif %}
     {% if module_visible(request, "planning") %}
     <li><a class="lien" href="/planning/aide">Planning bénévole</a> — déclarer

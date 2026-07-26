@@ -41,6 +41,7 @@ from app.modules import ModuleDesactive, garde_module
 from app.routes import acces, admin, catalogue, live, pret, scanner, stats
 from app.templating import templates
 from app.tournoi import routes as tournoi_routes
+from app.tournoi import routes_programme
 from app.tournoi.db import init_db as init_tournoi_db
 from app.planning import routes as planning_routes
 from app.planning.db import init_db as init_planning_db
@@ -70,6 +71,7 @@ app.include_router(admin.router)                                               #
 app.include_router(stats.router,            dependencies=[garde_module("stats")])      # /stats
 app.include_router(live.router,             dependencies=[garde_module("live")])       # /live, /live/data
 app.include_router(tournoi_routes.router,   dependencies=[garde_module("tournois")])   # /tournois, /tournoi/*
+app.include_router(routes_programme.router, dependencies=[garde_module("programme")])  # /programme, /programme/*
 app.include_router(planning_routes.router,  dependencies=[garde_module("planning")])   # /planning, /planning/*
 
 

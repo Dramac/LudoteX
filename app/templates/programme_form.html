@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% set edition = e is not none %}
+{% block titre %}{{ "Modifier" if edition else "Nouveau" }} — Programme — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>{{ "Modifier l'élément" if edition else "Nouvel élément de programme" }}</h1>
+
+  {% if erreur %}
+    <div class="resultat resultat-attention"><p>{{ erreur }}</p></div>
+  {% endif %}
+
+  <form method="post"
+        action="{{ '/programme/' ~ e.id_element ~ '/editer' if edition else '/programme/nouveau' }}"
+        class="recherche-form">
+    <div class="champ">
+      <label for="intitule">Intitulé *</label>
+      <input type="text" id="intitule" name="intitule" required
+             value="{{ e.intitule if edition else '' }}"
+             placeholder="ex. Atelier peinture de figurines">
+    </div>
+    <div class="champ">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="3"
+                placeholder="Description courte (facultative)">{{ e.description if edition and e.description else '' }}</textarea>
+    </div>
+    <div class="champ">
+      <label for="id_type">Type</label>
+      <select id="id_type" name="id_type">
+        <option value="">— Aucun —</option>
+        {% for t in types %}
+          <option value="{{ t.id_type }}" {{ 'selected' if edition and e.id_type == t.id_type else '' }}>
+            {{ t.icone ~ ' ' if t.icone }}{{ t.nom }}{% if not t.actif %} (archivé){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="champ">
+      <label for="date_heure">Début</label>
+      <input type="datetime-local" id="date_heure" name="date_heure" value="{{ valeur_date }}">
+    </div>
+    <div class="champ">
+      <label for="heure_fin">Fin <small>(la durée en est déduite)</small></label>
+      <input type="datetime-local" id="heure_fin" name="heure_fin" value="{{ valeur_fin }}">
+    </div>
+    <div class="champ">
+      <label for="lieu">Lieu</label>
+      <input type="text" id="lieu" name="lieu"
+             value="{{ e.lieu if edition and e.lieu else '' }}"
+             placeholder="Zone ou table dans la salle">
+    </div>
+    <div class="champ">
+      <label for="public_vise">Public visé</label>
+      <input type="text" id="public_vise" name="public_vise"
+             value="{{ e.public_vise if edition and e.public_vise else '' }}"
+             placeholder="ex. tout public, famille, 8 ans et +">
+    </div>
+    <div class="champ">
+      <label for="jauge">Jauge indicative</label>
+      <input type="number" id="jauge" name="jauge" min="0"
+             value="{{ e.jauge if edition and e.jauge else '' }}"
+             placeholder="Nombre de places, à titre indicatif (aucune réservation)">
+    </div>
+
+    <button type="submit" class="bouton bouton-principal">
+      {{ "Enregistrer" if edition else "Créer l'élément" }}
+    </button>
+  </form>
+
+  <p class="lien-fiche">
+    <a class="lien" href="/programme/gestion">Annuler</a>
+  </p>
+</section>
+{% endblock %}

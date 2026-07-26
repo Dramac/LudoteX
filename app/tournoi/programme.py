@@ -19,12 +19,19 @@ d'inscrits), comme le veut la conception.
 
 from __future__ import annotations
 
+import math
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from app.config import NOM_ASSOCIATION
 from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant
-from app.tournoi.creneau import DUREE_DEFAUT_MIN, _local_naive
+from app.tournoi.creneau import (
+    DUREE_DEFAUT_MIN,
+    SLOT_MIN,
+    _calculer_couloirs,
+    _local_naive,
+    label_jour,
+)
 from app.tournoi.models import ETATS_PROGRAMME
 from app.tournoi.services import _ics_echappe, _ics_horodatage, tournois_imminents
 
@@ -349,6 +356,23 @@ def duree_depuis_fin(debut_iso: str | None, fin_iso: str | None) -> int | None:
     return int((fin - debut).total_seconds() // 60)
 
 
+def fin_iso(date_heure_iso: str | None, duree_min: int | None) -> str | None:
+    """
+    Horodatage de fin (UTC ISO) déduit d'un début et d'une durée en minutes —
+    l'inverse de `duree_depuis_fin`. Sert (jalon 2, route) à préremplir le champ
+    « heure de fin » du formulaire d'édition à partir des valeurs stockées. None
+    si la date de début ou la durée manquent : jamais de durée inventée pour
+    l'affichage.
+    """
+    if not date_heure_iso or not duree_min:
+        return None
+    try:
+        debut = datetime.fromisoformat(date_heure_iso)
+    except (ValueError, TypeError):
+        return None
+    return (debut + timedelta(minutes=duree_min)).isoformat(timespec="seconds")
+
+
 # ===========================================================================
 # Export iCalendar (.ics) — patron `tournoi.services.ical_tournoi`
 # ===========================================================================
@@ -507,3 +531,84 @@ def imminents(
 
     fusion.sort(key=lambda x: (x[0], x[1]))
     return [entree for _, _, entree in fusion]
+
+
+# ===========================================================================
+# Grille horaire publique (jalon 2, §6.1) — patron `tournoi.services.planning`,
+# mêmes mécaniques de couloirs/slots (creneau.py) donc le MÊME rendu CSS
+# (grille sur grand écran, agenda empilé sous 640 px). Seuls les éléments
+# PUBLIÉS apparaissent : ni les brouillons (jamais publics), ni les annulés
+# (leur affichage barré est un besoin propre à l'écran de salle, hors périmètre
+# de la page /programme).
+# ===========================================================================
+def grille(
+    conn: sqlite3.Connection, jours: list[date], *, id_type: int | None = None
+) -> list[dict]:
+    """
+    Construit la grille horaire des éléments de programme PUBLIÉS pour les
+    `jours` donnés (heure locale), filtrable par type. Renvoie une liste de
+    dicts par jour (même ordre que `jours`), même structure que
+    `tournoi.services.planning` (label, blocs, vide, nb_couloirs, nb_slots,
+    heures) : le gabarit `/programme` réutilise le même rendu que la frise de
+    l'accueil. Les éléments sans durée occupent DUREE_DEFAUT_MIN.
+    """
+    clause_type = "AND p.id_type = ?" if id_type is not None else ""
+    params: tuple = (id_type,) if id_type is not None else ()
+    lignes = conn.execute(
+        f"""
+        SELECT p.*, tp.nom AS type_nom, tp.icone AS type_icone
+        FROM programme p
+        LEFT JOIN types_programme tp ON tp.id_type = p.id_type
+        WHERE p.etat = 'publie' AND p.date_heure IS NOT NULL {clause_type}
+        ORDER BY p.date_heure ASC
+        """,
+        params,
+    ).fetchall()
+
+    par_jour: dict[date, list] = {j: [] for j in jours}
+    for r in lignes:
+        try:
+            debut = _local_naive(r["date_heure"])
+        except (ValueError, TypeError):
+            continue
+        j = debut.date()
+        if j not in par_jour:
+            continue
+        duree = r["duree_min"] or DUREE_DEFAUT_MIN
+        fin = debut + timedelta(minutes=duree)
+        minuit_suivant = datetime.combine(j, time()) + timedelta(days=1)
+        if fin > minuit_suivant:             # on ne déborde pas sur le lendemain
+            fin = minuit_suivant
+        par_jour[j].append({
+            "id_element": r["id_element"], "intitule": r["intitule"],
+            "lieu": r["lieu"], "type_nom": r["type_nom"], "type_icone": r["type_icone"],
+            "public_vise": r["public_vise"], "jauge": r["jauge"],
+            "debut_dt": debut, "fin_dt": fin,
+            "heure_txt": f'{debut.strftime("%H:%M")}–{fin.strftime("%H:%M")}',
+        })
+
+    resultat = []
+    for j in jours:
+        blocs = sorted(par_jour[j], key=lambda b: (b["debut_dt"], b["intitule"]))
+        jour = {"date": j, "label": label_jour(j), "blocs": blocs, "vide": not blocs}
+        if blocs:
+            jour["nb_couloirs"] = _calculer_couloirs(blocs)
+            h0 = min(b["debut_dt"] for b in blocs).replace(minute=0, second=0, microsecond=0)
+            fin_max = max(b["fin_dt"] for b in blocs)
+            if fin_max.minute or fin_max.second:      # arrondi à l'heure supérieure
+                fin_max = fin_max.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            jour["nb_slots"] = int((fin_max - h0).total_seconds() // 60 // SLOT_MIN)
+            for b in blocs:
+                debut_min = (b["debut_dt"] - h0).total_seconds() / 60
+                duree_min_bloc = (b["fin_dt"] - b["debut_dt"]).total_seconds() / 60
+                b["row_debut"] = int(debut_min // SLOT_MIN) + 1
+                b["row_span"] = max(1, math.ceil(duree_min_bloc / SLOT_MIN))
+                b["col"] = b["couloir"] + 2            # colonne 1 = gouttière des heures
+            heures, h = [], h0
+            while h < fin_max:
+                heures.append({"row": int((h - h0).total_seconds() // 60 // SLOT_MIN) + 1,
+                               "label": h.strftime("%Hh")})
+                h += timedelta(hours=1)
+            jour["heures"] = heures
+        resultat.append(jour)
+    return resultat

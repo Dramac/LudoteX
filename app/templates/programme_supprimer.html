@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titre %}Supprimer — {{ e.intitule }} — Programme — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Supprimer l'élément</h1>
+  <div class="resultat resultat-attention">
+    <p>
+      Vous êtes sur le point de supprimer définitivement
+      « <strong>{{ e.intitule }}</strong> ». Cette action est irréversible.
+    </p>
+  </div>
+
+  <form method="post" action="/programme/{{ e.id_element }}/supprimer">
+    <label class="case">
+      <input type="checkbox" name="confirmation" value="oui" required>
+      Je confirme vouloir supprimer cet élément.
+    </label>
+    <button type="submit" class="bouton bouton-principal"
+            onclick="return confirm('Confirmer la suppression définitive ?');">
+      Supprimer définitivement
+    </button>
+  </form>
+
+  <p class="lien-fiche"><a class="lien" href="/programme/gestion">Annuler</a></p>
+</section>
+{% endblock %}

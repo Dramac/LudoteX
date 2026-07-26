@@ -9,6 +9,9 @@
   {% if module_visible(request, "tournois") %}
   <a href="/tournois">Tournois</a>
   {% endif %}
+  {% if module_visible(request, "programme") %}
+  <a href="/programme">Programme</a>
+  {% endif %}
   {% if module_visible(request, "planning") %}
   <a href="/planning">Planning</a>
   {% endif %}
