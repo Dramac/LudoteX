@@ -1428,14 +1428,82 @@ seedées après restauration, sans perte du tournoi déjà présent).
 `tests/test_tournoi.py` **non modifié**. **Suite globale : 450 tests verts**
 (410 + 40 nouveaux).
 
-**Reste (jalon 2 et suivants, non traités ici)** : entrée `MODULES` +
-`garde_module("programme")`, écrans bénévole (liste/création/édition/
-suppression/duplication/état), CRUD admin des types dans le groupe
-« Événement », page publique `/programme` + `.ics` + aide, troisième colonne
-adaptative de l'écran de salle (+ correctif de la garde `tournois` qui manque
-aujourd'hui sur `/live`), bloc « ce qui commence » fusionné sur l'accueil,
-mises à jour du wiki, montée de version mineure (`1.2.0`) proposée en fin de
-chantier — voir `docs/conception-programme.md` §6-§10.
+**Module PROGRAMME DU WEEK-END — JALON 2 (écrans + CRUD admin + page
+publique) : FAIT.** Suite du jalon 1, aucune logique métier réécrite —
+uniquement du câblage routes/gabarits sur `app/tournoi/programme.py`.
+**Routeur distinct** `app/tournoi/routes_programme.py` (la garde de module
+s'applique à `include_router`, comme pour les tournois), entrée
+`MODULES["programme"]` + `garde_module("programme")` dans `app/main.py`,
+lien « Programme » dans `_menu_benevole.html` **et** `_menu_visiteur.html`
+(gardés par `module_visible`). **Pas de route `/programme/{id}/gerer`** :
+contrairement aux tournois (participants, scores, rencontres), un élément de
+programme n'a que des champs simples — toutes les actions (modifier,
+changer d'état, dupliquer, supprimer) vivent directement dans les lignes de
+la liste bénévole `/programme/gestion` (patron dense façon
+`admin_rangement.html`, actions en `.bouton-filtrer`), pas de page de
+détail séparée.
+
+**Écrans bénévole** (jeton) : `/programme/gestion` (liste de travail,
+brouillons compris), `GET|POST /programme/nouveau` et
+`/programme/{id}/editer` (`programme_form.html`, patron `tournoi_form.html` :
+intitulé\* seul obligatoire, type — select des types actifs **+ l'archivé
+courant s'il y en a un**, comme le fait déjà `admin_fiche.html` pour le
+rangement —, **début et fin** en `datetime-local` dont la durée est déduite
+via `programme.duree_depuis_fin` ; nouveau service `programme.fin_iso`,
+l'inverse, pour préremplir la fin à l'édition à partir de la durée stockée),
+`POST /programme/{id}/etat` (transitions `TRANSITIONS_PROGRAMME`),
+`POST /programme/{id}/dupliquer` (**écart volontaire par rapport au patron
+tournoi** : un seul POST sans formulaire de date — la copie repart en
+brouillon **sans date** et redirige directement vers son édition, où le
+nouvel horaire se fixe), `GET|POST /programme/{id}/supprimer` (double
+confirmation, patron exact `tournoi_supprimer.html`).
+
+**CRUD admin des types** : `GET|POST /admin/programme-types`
+(`app/routes/admin.py`, patron exact d'`/admin/rangement` — créer avec
+icône, renommer, archiver/réactiver, réordonner, supprimer si non rattaché),
+lien « Types de programme » dans le groupe **Événement** du tableau de bord,
+entre « Date de l'événement » et « Écran de salle ».
+
+**Page publique `/programme`** : nouveau service `programme.grille(conn,
+jours, id_type=None)` (patron `tournoi.services.planning`, mêmes mécaniques
+de couloirs/slots de `creneau.py`, donc **même rendu CSS** — grille sur
+grand écran, agenda empilé sous 640 px) ; **éléments PUBLIÉS uniquement**
+(brouillons et annulés exclus — l'affichage barré d'un annulé est un besoin
+propre à l'écran de salle, hors périmètre de cette page). Les deux jours
+viennent du même réglage `evenement_date` que la frise des tournois sur
+l'accueil (lu dans la base de PRÊT depuis le routeur programme). Filtres
+**jour** et **type** en `<details class="recherche">` + puces de retrait,
+patron catalogue. Comme il n'existe pas de page de détail publique par
+élément, un bloc de la grille n'est **pas cliquable** (contrairement aux
+blocs tournoi) : il porte un simple lien `.ics` pour l'ajout à l'agenda.
+`GET /programme/{id}/agenda.ics` (patron exact `agenda_ics` des tournois),
+`GET /programme/aide` + lien depuis `/aide` (gardé par `module_visible`,
+visiteur et bénévole).
+
+**57 tests dédiés** (`tests/test_programme.py`, jalon 1 + jalon 2) : services
+`fin_iso`/`grille` (cas limites, filtre type, jour vide, publiés seulement),
+routes bénévole (accès sans jeton refusé, cycle création → édition →
+publication, intitulé vide refusé, duplication, suppression à double
+confirmation), admin (garde, CRUD complet, refus de suppression si
+rattaché), page publique (sans date d'événement, brouillons masqués,
+filtres + puces, module désactivé — page et lien masqués), `.ics` (contenu,
+404 sans date/introuvable, aucune donnée personnelle). **Suite globale :
+473 tests verts** (450 + 23).
+
+**Wiki** : nouvelle page `Module-Programme.md` (cycle de vie, création/
+gestion bénévole, duplication, CRUD admin des types, consultation publique,
+section « Si ça ne marche pas ») ; mises à jour de `Fonctionnalites.md`
+(Programme dans la liste des modules réglables), `Home.md` (lien dans le
+sommaire et le tableau « Je veux… »), `Glossaire.md` (entrée « Programme
+(élément de) »), `Guide-Benevole.md` (mention parmi les modules utiles
+pendant l'événement).
+
+**Reste (jalon 3, non traité ici)** : troisième colonne adaptative de
+l'écran de salle (+ correctif de la garde `tournois` qui manque aujourd'hui
+sur `/live`), bloc « ce qui commence » fusionné sur l'accueil (page
+d'accueil + `routes/catalogue.py`, hors périmètre du jalon 2), montée de
+version mineure (`1.2.0`) proposée en fin de chantier — voir
+`docs/conception-programme.md` §6.4/§6.5/§8/§10.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
