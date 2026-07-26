@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.2.0 — 2026-07-26
+
+- Nouveau module « Programme du week-end » : annoncer tout ce qui se passe en dehors des tournois (animations, ateliers, initiations, temps forts, interventions de partenaires), avec une page publique filtrable par jour et par type, et un ajout à l'agenda personnel (.ics).
+- Types d'éléments de programme configurables en administration (renommer, archiver, réordonner), sans passer par le code.
+- Page d'accueil : le bloc « Ça commence bientôt » et la frise du week-end réunissent désormais les tournois ET les animations, triés par heure — une seule information à consulter pour savoir ce qui commence.
+- Écran de salle : nouvelle colonne « Animations » (un élément annulé reste annoncé, barré, pendant son créneau).
+- Écran de salle : chaque panneau (chiffres, tournois, animations, prêts et retours) s'affiche ou se masque depuis « Écran de salle » en administration ; les colonnes restantes s'élargissent pour occuper la place.
+
 ## 1.1.0 — 2026-07-23
 
 - Planning bénévole : à la création d'un nouveau planning, possibilité de reprendre la structure d'une édition existante (postes, créneaux et besoins), avec recalage automatique des dates sur le 1er jour de la nouvelle édition.
