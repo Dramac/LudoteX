@@ -1498,12 +1498,82 @@ sommaire et le tableau « Je veux… »), `Glossaire.md` (entrée « Programme
 (élément de) »), `Guide-Benevole.md` (mention parmi les modules utiles
 pendant l'événement).
 
-**Reste (jalon 3, non traité ici)** : troisième colonne adaptative de
-l'écran de salle (+ correctif de la garde `tournois` qui manque aujourd'hui
-sur `/live`), bloc « ce qui commence » fusionné sur l'accueil (page
-d'accueil + `routes/catalogue.py`, hors périmètre du jalon 2), montée de
-version mineure (`1.2.0`) proposée en fin de chantier — voir
-`docs/conception-programme.md` §6.4/§6.5/§8/§10.
+**Module PROGRAMME — ÉCRAN DE SALLE (étape 7) : FAIT**, en deux commits.
+**7a — panneaux activables.** Décision Simon (26/07) : les quatre blocs de
+`/live` (barre de chiffres, Tournois, Animations, Derniers prêts & retours)
+s'activent depuis `/admin/ecran-salle` — la page qui porte déjà le titre et
+l'annonce, donc **aucune page ni mécanisme nouveau** : quatre clés dans
+`parametres` (`live_panneau_*`), lues par `live.reglages_panneaux` (réglages
+tels que saisis, pour le formulaire admin) et `live.panneaux_actifs`
+(réglages **+ précédence des modules**, pour la page). Défaut « tout
+affiché » → aucune régression sur une base existante. Réglage **global**
+(surcharge par l'URL écartée : deux sources de vérité à expliquer pour un
+besoin hypothétique). Un panneau éteint **n'est pas collecté** (ni requête,
+ni champ vide dans `/live/data`). L'ancienne bascule binaire
+`.colonnes.sans-tournois` est remplacée par un **nombre de pistes calculé**
+(`cols-1/2/3`, classe posée dans `rendre()`), un panneau gardant sa colonne
+s'il est activé ET a quelque chose à montrer (exception assumée : le flux des
+mouvements affiche « aucun mouvement pour l'instant », information utile en
+salle). **Correctif d'un défaut préexistant** : `routes/live.py` interrogeait
+la base des tournois **sans regarder l'état du module** `tournois`, alors que
+l'accueil sautait ce calcul (fiche A3) — l'écran annonçait donc des tournois
+d'un module masqué. Le compteur « Tournois en cours » vit dans la barre de
+chiffres : il suit le réglage des chiffres, pas celui du panneau, et
+disparaît (champ absent, jamais un « 0 » trompeur) si le module est
+désactivé. Tout éteindre est **légitime** (écran d'annonces seules) : averti
+en admin, jamais bloqué. Piège traité : une case décochée n'étant pas
+transmise, le mini-formulaire « Effacer l'annonce » **rejoue les panneaux en
+champs cachés** — sinon effacer une annonce éteignait l'écran au passage.
+**7b — troisième colonne « Animations »** : consomme
+`programme.imminents(120)` et n'en garde que `source == "programme"` (les
+tournois ont leur propre colonne, aucune règle dupliquée) ; mêmes codes
+visuels que les tournois à venir (puce BIENTÔT sur le plus proche, heure +
+délai) ; un élément **annulé reste affiché barré** pendant son créneau plutôt
+que de disparaître devant des gens qui l'attendent ; typographie resserrée
+**seulement** à trois pistes (`.cols-3`). **9 tests** ajoutés.
+
+**Module PROGRAMME — JALON 3 (accueil) : FAIT.** `routes/catalogue.py`
+consomme la **même** fusion que l'écran de salle (`programme.imminents`), avec
+une fenêtre de 60 min (`FENETRE_IMMINENTS_MIN`) au lieu de 120 : deux
+implémentations divergeraient le jour de l'événement. Le bloc « Ça commence
+bientôt » mélange les deux sources triées par heure — un tournoi reste
+cliquable et garde son remplissage (`imminents` transporte désormais
+`jeu`/`nb_inscrits`/`nb_places`/`places_restantes` côté tournoi, `jauge`/
+`public_vise` côté programme), une animation n'a **pas** de page de détail
+donc pas de lien. La frise deux jours devient « **Programme du week-end** »
+et porte les deux sources via `programme.planning_fusionne`, avec les
+couloirs calculés **sur l'ensemble** des blocs (sinon deux créneaux
+simultanés de sources différentes se superposeraient) ; chaque bloc porte
+`source`, le gabarit en déduit lien ou pas et la teinte
+(`.planning-bloc--programme`, violet, non cliquable). Fiche A3 respectée
+**dans les deux sens** : chaque source disparaît si son module est masqué
+sans emporter l'autre. **Refactorisation au passage** : l'assemblage de
+grille (tri, couloirs, coordonnées, étiquettes d'heures) était **recopié à
+l'identique** dans `services.planning` et `programme.grille` (le jalon 2
+avait suivi le patron par copie) → extrait dans
+`creneau.assembler_jours` + `creneau.bornes_bloc`, dont la frise fusionnée est
+le troisième appelant ; comportement inchangé, aucun test existant modifié de
+ce fait. **1 test adapté en connaissance de cause** (le titre de la frise
+n'est plus « Planning des tournois »), **6 ajoutés**. Wiki :
+`Module-Ecran-Salle.md` (colonne Animations + section « Choisir les panneaux
+affichés », avec la distinction réglage d'écran / état de module),
+`Avant-pendant-apres.md` (saisie du programme avant l'événement),
+`Module-Tournois.md` (nouvelle section « Tournoi ou élément de programme ? » —
+la frontière tient à une seule question : inscriptions et classement, ou
+non). **Suite globale : 486 tests verts.**
+
+**Reste** : montée de version **mineure (`1.2.0`)** à proposer à Simon
+(nouveau module Programme + écran de salle configurable, aucune casse,
+aucune intervention de déploiement au-delà d'`update.sh`) — les trois
+porteurs du numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) puis le tag
+`v1.2.0` après le push.
+
+⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
+listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
+donc PAS être « corrigées dans le même commit que le code », contrairement à
+ce qu'affirme la section « Tenir le wiki à jour » plus bas. Il faut committer
+et pousser `wiki/` séparément. (Autre point périmé de ce fichier :
+`wiki/Module-Rangement.md` existe désormais.)
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
