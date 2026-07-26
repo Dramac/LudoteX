@@ -1562,11 +1562,37 @@ affichés », avec la distinction réglage d'écran / état de module),
 la frontière tient à une seule question : inscriptions et classement, ou
 non). **Suite globale : 486 tests verts.**
 
-**Reste** : montée de version **mineure (`1.2.0`)** à proposer à Simon
-(nouveau module Programme + écran de salle configurable, aucune casse,
-aucune intervention de déploiement au-delà d'`update.sh`) — les trois
-porteurs du numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) puis le tag
-`v1.2.0` après le push.
+**Mode formation — peuplement du programme : FAIT** (question de Simon, 26/07 :
+« est-ce que le mode formation peuple automatiquement le programme ? » — non,
+`app/formation.py` n'était dans le périmètre d'aucun des trois jalons ni de la
+conception). `_vider_base_tournoi` nettoie désormais aussi `programme` (mais
+JAMAIS `types_programme` : configuration amorcée, pas donnée d'exemple), et
+`peupler_programme(conn, noms)` crée **4 éléments** couvrant états et surfaces
+— publié à +20 min (visible sur l'accueil, fenêtre 1 h, ET sur l'écran de
+salle), publié à +4 h (frise), brouillon (invisible du public), annulé dans sa
+fenêtre (barré en salle). Rattachement aux types par nom via `_id_type`
+(`None` si renommé/archivé — jamais bloquant). Appelé par `peupler()` **après**
+`peupler_tournoi` sur la même connexion (l'inverse effacerait les éléments
+juste créés : un test garde-fou couvre ce piège d'ordre). **Manque préexistant
+corrigé au passage** : `evenement_date` n'était jamais réglée par le script,
+donc la frise de l'accueil ET `/programme` restaient vides sur le site de
+formation quoi qu'on y saisisse (la frise des tournois ne s'affichait pas
+davantage) → `peupler_pret` la pose sur **aujourd'hui**. **Pas de montée de
+version** (décision Simon : la production ne change pas d'un pixel, seul le
+script de peuplement du site de formation bouge, et `docs/versioning.md`
+exclut d'incrémenter pour un travail sans effet sur le déploiement — le tag
+`v1.2.0` reste donc juste). **4 tests ajoutés** (contenu + idempotence + piège
+d'ordre + date d'événement), **490 verts**. Vérifié en exécutant réellement
+`python -m app.formation` puis en interrogeant `/live/data`, `/` et
+`/programme` sur les bases peuplées. Docs : `docs/mode-formation.md`, wiki
+`Mode-Formation.md`.
+
+**Version 1.2.0 livrée** (2026-07-26, poussée et taguée `v1.2.0`) : module
+Programme du week-end + écran de salle configurable. Les trois porteurs du
+numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) sont alignés ; vérifié
+que `/apropos` affiche bien le numéro et les puces de la section. Le
+peuplement du mode formation ci-dessus est venu **après** le tag, sans montée
+de numéro (voir sa justification).
 
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent

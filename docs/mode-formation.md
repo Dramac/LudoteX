@@ -73,8 +73,21 @@ entièrement les **trois** bases de l'instance de formation :
   un brouillon, un ouvert aux inscriptions, un par équipes, un high score en
   cours (avec scores), une ronde suisse, une élimination directe, et un tournoi
   terminé avec classement.
+- **Programme du week-end** (même base que les tournois) : quatre éléments
+  couvrant les états ET les surfaces d'affichage — un publié qui commence dans
+  20 min (donc visible tout de suite sur l'accueil et dans la colonne
+  « Animations » de l'écran de salle), un publié plus tard dans la journée
+  (frise), un brouillon (invisible du public) et un annulé dans sa fenêtre
+  d'affichage (rendu barré en salle). Les éléments se rattachent aux cinq types
+  amorcés par défaut ; `types_programme` n'est **jamais vidée** (c'est de la
+  configuration, pas une donnée d'exemple).
 - **Planning bénévole** : un planning prérempli complet (postes, créneaux, ~28
   bénévoles fictifs, préremplissage) plus un jumeau resté « collecte ouverte ».
+- **Date de l'événement** réglée sur **aujourd'hui**. Sans ce réglage, la frise
+  de la page d'accueil et la page `/programme` restent vides quoi qu'on y
+  saisisse — sur un site de formation, ce serait un écran mort à expliquer
+  plutôt qu'un outil à découvrir. (Manque préexistant, découvert en branchant
+  le module Programme : la frise des tournois ne s'affichait pas davantage.)
 
 Il est **idempotent** : le relancer repart d'un état propre (seuls les noms de
 jeux tirés au hasard peuvent varier d'une fois à l'autre).

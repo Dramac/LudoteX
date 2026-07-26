@@ -31,6 +31,12 @@ DONNÉES CRÉÉES (trois bases de l'instance courante)
 - TOURNOIS : plusieurs tournois d'exemple couvrant les états et les modes de
   scoring (brouillon, inscriptions ouvertes, par équipes, high score en cours,
   ronde suisse en cours, élimination directe, tournoi terminé avec classement).
+- PROGRAMME DU WEEK-END (même base que les tournois) : quatre éléments couvrant
+  ce qu'un bénévole doit savoir reconnaître — un publié qui commence dans
+  quelques minutes (il apparaît donc tout de suite sur l'accueil ET dans la
+  colonne « Animations » de l'écran de salle), un publié plus tard dans la
+  journée (frise), un brouillon (invisible du public) et un annulé dans sa
+  fenêtre d'affichage (rendu barré en salle).
 - PLANNING BÉNÉVOLE : un planning prérempli complet (postes, créneaux, ~28
   bénévoles fictifs, préremplissage) réutilisant la démo du planning, plus un
   jumeau resté « collecte ouverte ».
@@ -69,6 +75,7 @@ from app.planning import demo as planning_demo
 from app.planning import services as planning_services
 from app.services import FUSEAU_LOCAL, local_vers_utc_iso, slug_titre
 from app.tournoi import db as tournoi_db
+from app.tournoi import programme
 from app.tournoi import services as tournoi_services
 
 # Catalogue de formation volontairement fourni, pour que les STATISTIQUES
@@ -236,6 +243,16 @@ def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dic
 
     prets_termines = _peupler_prets_dates(conn, ids_exemplaires)
 
+    # Date de l'événement = AUJOURD'HUI. Sans ce réglage, la frise de la page
+    # d'accueil et la page /programme restent VIDES quoi qu'on y saisisse
+    # (c'est l'oubli le plus courant d'une édition à l'autre, cf. le wiki) :
+    # sur un site de formation, ce serait un écran mort à expliquer plutôt
+    # qu'un outil à découvrir. `parametres` n'est pas vidée par
+    # `_vider_base_pret` — elle porte aussi le mot de passe admin.
+    services.ecrire_parametre(
+        conn, "evenement_date", datetime.now(FUSEAU_LOCAL).date().isoformat()
+    )
+
     return {
         "jeux": len(ids_exemplaires),
         "prets_en_cours": NB_PRETS_EN_COURS,
@@ -309,8 +326,17 @@ def _peupler_prets_dates(conn: sqlite3.Connection, ids_exemplaires: list[str]) -
 # Base des TOURNOIS
 # ---------------------------------------------------------------------------
 def _vider_base_tournoi(conn: sqlite3.Connection) -> None:
-    """Supprime toutes les lignes des 3 tables de la base des tournois."""
-    for table in ("rencontres", "inscriptions", "tournois"):
+    """
+    Supprime toutes les lignes des tables de la base des tournois, éléments de
+    programme compris (ils vivent dans la même base).
+
+    `types_programme` n'est PAS vidée : c'est une liste de configuration
+    amorcée au démarrage (les cinq types par défaut), pas une donnée
+    d'exemple. La vider ferait disparaître les types que le bureau aurait
+    renommés pendant sa formation, et le peuplement ci-dessous se rattache de
+    toute façon aux types existants sans en créer.
+    """
+    for table in ("rencontres", "inscriptions", "tournois", "programme"):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
 
@@ -426,6 +452,84 @@ def peupler_tournoi(conn: sqlite3.Connection, noms: list[str] | None = None) -> 
 
 
 # ---------------------------------------------------------------------------
+# PROGRAMME DU WEEK-END (même base que les tournois)
+# ---------------------------------------------------------------------------
+def _id_type(conn: sqlite3.Connection, nom: str) -> int | None:
+    """
+    Id du type de programme portant ce nom (insensible à la casse), ou None.
+
+    Jamais bloquant : si le bureau a renommé ou archivé le type pendant sa
+    formation, l'élément est simplement créé sans type plutôt que de faire
+    échouer la réinitialisation.
+    """
+    for t in programme.lister_types(conn, actifs_seulement=False):
+        if t["nom"].casefold() == nom.casefold():
+            return t["id_type"]
+    return None
+
+
+def peupler_programme(conn: sqlite3.Connection, noms: list[str] | None = None) -> dict:
+    """
+    Crée les éléments de programme d'exemple (la base a déjà été vidée par
+    `peupler_tournoi`, qui tourne sur la même connexion juste avant).
+
+    Les quatre éléments couvrent les états ET les surfaces d'affichage : voir
+    l'en-tête du module. Pas de `_vider_base_tournoi` ici — l'appeler une
+    seconde fois effacerait les tournois qui viennent d'être créés.
+
+    Returns:
+        Résumé {"programme": n} (nombre d'éléments créés, brouillon compris).
+    """
+    noms = noms or noms_jeux_formation(NB_JEUX)
+
+    def jeu(i: int) -> str:
+        return noms[i % len(noms)] if noms else "un jeu"
+
+    # 1. Publié, commence dans 20 min : visible immédiatement sur l'accueil
+    #    (« ça commence bientôt », fenêtre 1 h) et sur l'écran de salle (2 h).
+    id_e = programme.creer_element(
+        conn, f"Initiation à {jeu(0)}",
+        description="Découverte des règles en petit groupe, sans inscription.",
+        id_type=_id_type(conn, "Initiation"),
+        date_heure=_date_locale_dans(20), duree_min=45,
+        lieu="Espace famille", public_vise="tout public", jauge=8,
+    )
+    programme.changer_etat(conn, id_e, "publie")
+
+    # 2. Publié plus tard dans la journée : alimente la frise du week-end.
+    id_e = programme.creer_element(
+        conn, "Atelier création de jeu",
+        description="Fabriquer un petit jeu de société de A à Z.",
+        id_type=_id_type(conn, "Atelier"),
+        date_heure=_date_locale_dans(240), duree_min=90,
+        lieu="Salle du fond", public_vise="8 ans et plus", jauge=12,
+    )
+    programme.changer_etat(conn, id_e, "publie")
+
+    # 3. Brouillon : montre ce que le public NE voit pas.
+    programme.creer_element(
+        conn, "Grand loto de clôture",
+        description="En préparation — horaire à confirmer avec le bureau.",
+        id_type=_id_type(conn, "Temps fort"),
+        date_heure=_date_locale_dans(420), duree_min=60,
+        lieu="Scène centrale",
+    )
+
+    # 4. Annulé dans sa fenêtre d'affichage : reste annoncé, barré, en salle.
+    id_e = programme.creer_element(
+        conn, "Rencontre avec un éditeur",
+        description="Intervention annulée — l'intervenant est empêché.",
+        id_type=_id_type(conn, "Intervention partenaire"),
+        date_heure=_date_locale_dans(60), duree_min=45,
+        lieu="Stand accueil",
+    )
+    programme.changer_etat(conn, id_e, "publie")
+    programme.changer_etat(conn, id_e, "annule")
+
+    return {"programme": 4}
+
+
+# ---------------------------------------------------------------------------
 # Base du PLANNING bénévole
 # ---------------------------------------------------------------------------
 def _vider_base_planning(conn: sqlite3.Connection) -> None:
@@ -474,7 +578,10 @@ def peupler() -> dict:
 
     conn_tournoi = tournoi_db.get_connection()
     try:
+        # Même base, même connexion, dans cet ordre : peupler_tournoi vide la
+        # base (programme compris), peupler_programme la complète ensuite.
         resume.update(peupler_tournoi(conn_tournoi, noms))
+        resume.update(peupler_programme(conn_tournoi, noms))
     finally:
         conn_tournoi.close()
 
@@ -498,6 +605,8 @@ if __name__ == "__main__":
           f"({resume['prets_en_cours']} prêtés, {resume['prets_termines']} rendus)")
     print(f"  - {resume['tournois']} tournois d'exemple "
           f"({resume['inscrits']} inscrits au total)")
+    print(f"  - {resume['programme']} éléments de programme "
+          f"(dont un brouillon et un annulé)")
     print(f"  - planning bénévole prérempli "
           f"({resume['benevoles']} bénévoles fictifs)")
     print()
