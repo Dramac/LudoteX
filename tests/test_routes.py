@@ -1551,6 +1551,88 @@ def test_admin_supervision_rappel_annonce(client, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Panneaux activables de l'écran de salle (réglés depuis /admin/ecran-salle)
+# ---------------------------------------------------------------------------
+
+def test_live_panneaux_tous_actifs_par_defaut(client):
+    # Aucune clé écrite en base : tout est affiché, exactement comme avant
+    # l'introduction du réglage (non-régression des installations existantes).
+    d = client.get("/live/data").json()
+    assert d["panneaux"] == {"chiffres": True, "tournois": True, "mouvements": True}
+    assert "jeux" in d and "mouvements" in d
+    assert "tournois_en_cours" in d and "nb_tournois_en_cours" in d
+
+
+def test_admin_ecran_salle_desactive_un_panneau(client, monkeypatch):
+    # Un panneau décoché n'est plus affiché ET n'est plus collecté : son champ
+    # disparaît des données (jamais de champ vide, cf. rangement/annonce).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    client.post("/admin/ecran-salle",
+                data={"titre": "", "annonce": "", "annonce_duree": "",
+                      "panneau_chiffres": "1", "panneau_mouvements": "1"})
+
+    d = client.get("/live/data").json()
+    assert d["panneaux"]["tournois"] is False
+    assert "tournois_en_cours" not in d and "tournois_a_venir" not in d
+    assert "jeux" in d and "mouvements" in d
+    # Le compteur « Tournois en cours » vit dans la barre de chiffres : il
+    # suit le réglage des chiffres, pas celui du panneau.
+    assert "nb_tournois_en_cours" in d
+    assert client.get("/live").status_code == 200
+
+
+def test_admin_ecran_salle_tous_panneaux_eteints(client, monkeypatch):
+    # Écran d'annonces seules : possible, mais annoncé clairement (jamais
+    # bloquant, jamais silencieux).
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.post("/admin/ecran-salle",
+                    data={"titre": "", "annonce": "", "annonce_duree": ""})
+    assert "aucun panneau" in r.text.lower()
+
+    d = client.get("/live/data").json()
+    assert d["panneaux"] == {"chiffres": False, "tournois": False, "mouvements": False}
+    for absent in ("jeux", "mouvements", "tournois_en_cours", "nb_tournois_en_cours"):
+        assert absent not in d
+    assert client.get("/live").status_code == 200
+
+
+def test_live_module_tournois_desactive_masque_le_panneau(client, tmp_path):
+    # Correctif d'un défaut préexistant : /live interrogeait la base des
+    # tournois sans regarder l'état du module, alors que l'accueil, lui,
+    # saute ce calcul (fiche A3). Le module l'emporte sur le réglage d'écran.
+    _set_module(tmp_path, "tournois", "desactive")
+    d = client.get("/live/data").json()
+    assert d["panneaux"]["tournois"] is False
+    assert "tournois_en_cours" not in d
+    assert "nb_tournois_en_cours" not in d      # pas de compteur trompeur à 0
+    assert client.get("/live").status_code == 200
+
+
+def test_admin_effacer_annonce_ne_reinitialise_pas_les_panneaux(client, monkeypatch):
+    # Piège des cases à cocher : une case décochée n'est pas transmise. Le
+    # mini-formulaire « Effacer l'annonce » doit donc rejouer les panneaux en
+    # champs cachés, sinon effacer une annonce éteindrait tout l'écran.
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    r = client.post("/admin/ecran-salle",
+                    data={"titre": "", "annonce": "Tombola à 15 h", "annonce_duree": "",
+                          "panneau_chiffres": "1", "panneau_mouvements": "1"})
+    assert '<input type="hidden" name="panneau_chiffres" value="1">' in r.text
+    assert '<input type="hidden" name="panneau_mouvements" value="1">' in r.text
+    assert 'name="panneau_tournois"' not in r.text.split("Effacer l'annonce")[0][-800:]
+
+    # On rejoue exactement ce que le formulaire d'effacement envoie.
+    client.post("/admin/ecran-salle",
+                data={"titre": "", "annonce": "", "annonce_duree": "",
+                      "panneau_chiffres": "1", "panneau_mouvements": "1"})
+    d = client.get("/live/data").json()
+    assert "annonce" not in d
+    assert d["panneaux"] == {"chiffres": True, "tournois": False, "mouvements": True}
+
+
+# ---------------------------------------------------------------------------
 # Tests du système de fonctionnalités (activation / désactivation des modules)
 # ---------------------------------------------------------------------------
 

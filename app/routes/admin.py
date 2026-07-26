@@ -817,6 +817,7 @@ def ecran_salle_formulaire(request: Request):
         return garde
     from app.routes.live import (
         CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT, annonce_active,
+        panneaux_actifs, reglages_panneaux,
     )
 
     conn = get_connection()
@@ -824,6 +825,11 @@ def ecran_salle_formulaire(request: Request):
         titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
         annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
         annonce_expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
+        # Réglages tels que saisis (le formulaire réaffiche le choix du
+        # bureau), et panneaux réellement affichés (pour signaler qu'un module
+        # désactivé prend le dessus).
+        panneaux = reglages_panneaux(conn)
+        panneaux_reels = panneaux_actifs(conn)
         # Aperçu (point C) : ce qui est RÉELLEMENT affiché en salle en ce
         # moment, donc calculé avec la même fonction que /live (respecte
         # l'expiration), pas le paramètre brut ci-dessus (qui reste rempli
@@ -838,6 +844,7 @@ def ecran_salle_formulaire(request: Request):
          "annonce_expire_iso": annonce_expire_iso if annonce else None,
          "annonce_affichee": annonce_affichee,
          "annonce_expiree": _annonce_expiree(annonce, annonce_expire_iso),
+         "panneaux": panneaux, "panneaux_reels": panneaux_reels,
          "message": None},
     )
 
@@ -848,6 +855,9 @@ def ecran_salle_enregistrer(
     titre: str = Form(""),
     annonce: str = Form(""),
     annonce_duree: str = Form(""),
+    panneau_chiffres: str = Form(""),
+    panneau_tournois: str = Form(""),
+    panneau_mouvements: str = Form(""),
 ):
     """
     Enregistre le titre et l'annonce de l'écran de salle.
@@ -862,7 +872,8 @@ def ecran_salle_enregistrer(
     if (garde := _garde(request)):
         return garde
     from app.routes.live import (
-        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT, annonce_active,
+        CLES_PANNEAUX, CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT,
+        annonce_active, panneaux_actifs, reglages_panneaux,
     )
 
     saisie_titre = " ".join(titre.split())[:80]
@@ -882,13 +893,28 @@ def ecran_salle_enregistrer(
         if duree_min else None
     )
 
+    # Cases à cocher : une case décochée n'est pas transmise par le navigateur,
+    # d'où la lecture par présence. Les deux formulaires de la page envoient
+    # TOUJOURS les trois champs (le mini-formulaire « Effacer l'annonce » les
+    # rejoue en champs cachés) : effacer une annonce ne doit jamais éteindre
+    # silencieusement les panneaux.
+    choix_panneaux = {
+        "chiffres": bool(panneau_chiffres),
+        "tournois": bool(panneau_tournois),
+        "mouvements": bool(panneau_mouvements),
+    }
+
     conn = get_connection()
     try:
         services.ecrire_parametre(conn, CLE_TITRE, saisie_titre or None)
         services.ecrire_parametre(conn, CLE_ANNONCE, saisie_annonce or None)
         services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
+        for nom, cle in CLES_PANNEAUX.items():
+            services.ecrire_parametre(conn, cle, "1" if choix_panneaux[nom] else "0")
         # Aperçu (point C), calculé sur l'état qu'on vient d'écrire.
         annonce_affichee = annonce_active(conn)
+        panneaux = reglages_panneaux(conn)
+        panneaux_reels = panneaux_actifs(conn)
     finally:
         conn.close()
 
@@ -900,7 +926,15 @@ def ecran_salle_enregistrer(
                            "Annonce enregistrée, affichée en salle sans limite de durée.")
     else:
         partie_annonce = "Annonce effacée."
-    message = ("succes", f"{partie_titre} {partie_annonce}")
+    # Tout éteindre est un choix légitime (écran d'annonces seules), donc on
+    # avertit sans bloquer — comme partout dans le projet.
+    if not any(choix_panneaux.values()):
+        message = ("attention",
+                   f"{partie_titre} {partie_annonce} Attention : aucun panneau "
+                   "n'est affiché — l'écran de salle ne montrera plus que le "
+                   "titre, l'horloge et l'annonce.")
+    else:
+        message = ("succes", f"{partie_titre} {partie_annonce}")
 
     return templates.TemplateResponse(
         request, "admin_live.html",
@@ -909,6 +943,7 @@ def ecran_salle_enregistrer(
          "annonce_expire_iso": expire_iso if saisie_annonce else None,
          "annonce_affichee": annonce_affichee,
          "annonce_expiree": _annonce_expiree(saisie_annonce, expire_iso),
+         "panneaux": panneaux, "panneaux_reels": panneaux_reels,
          "message": message},
     )
 

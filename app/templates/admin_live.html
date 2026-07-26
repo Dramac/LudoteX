@@ -32,6 +32,41 @@
     </div>
 
     <div class="champ">
+      <label>Panneaux affichés en salle</label>
+      <label class="case">
+        <input type="checkbox" name="panneau_chiffres" value="1"
+               {% if panneaux.chiffres %}checked{% endif %}>
+        Barre de chiffres (jeux sortis, disponibles, total)
+      </label>
+      <label class="case">
+        <input type="checkbox" name="panneau_tournois" value="1"
+               {% if panneaux.tournois %}checked{% endif %}>
+        Panneau Tournois (en cours et prochains)
+      </label>
+      <label class="case">
+        <input type="checkbox" name="panneau_mouvements" value="1"
+               {% if panneaux.mouvements %}checked{% endif %}>
+        Panneau Derniers prêts &amp; retours
+      </label>
+      {% if panneaux.tournois and not panneaux_reels.tournois %}
+        <p class="stats-note">Le panneau Tournois est coché, mais le module
+          Tournois est désactivé dans
+          <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a> :
+          il ne s'affichera pas en salle tant que le module reste désactivé.</p>
+      {% endif %}
+      {% if not (panneaux.chiffres or panneaux.tournois or panneaux.mouvements) %}
+        <p class="stats-note">Aucun panneau coché : l'écran de salle n'affichera
+          que le titre, l'horloge et l'annonce. C'est possible (écran d'annonces
+          seules), mais vérifiez que c'est bien ce que vous voulez.</p>
+      {% endif %}
+      <p class="stats-note">Un panneau décoché disparaît de l'écran projeté ;
+        les autres s'élargissent pour occuper la place. Ce réglage ne change
+        rien au reste de l'application — pour désactiver une fonctionnalité
+        partout, passez par
+        <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a>.</p>
+    </div>
+
+    <div class="champ">
       <label for="annonce">Annonce affichée en bandeau sur /live</label>
       <textarea id="annonce" name="annonce" maxlength="200" rows="2"
                 placeholder="Ex. : Tombola à 15 h, stand accueil.">{{ annonce or '' }}</textarea>
@@ -75,6 +110,11 @@
       <input type="hidden" name="titre" value="{{ titre or '' }}">
       <input type="hidden" name="annonce" value="">
       <input type="hidden" name="annonce_duree" value="">
+      {# Les panneaux sont rejoués à l'identique : effacer une annonce ne doit
+         jamais éteindre l'affichage de la salle au passage. #}
+      {% if panneaux.chiffres %}<input type="hidden" name="panneau_chiffres" value="1">{% endif %}
+      {% if panneaux.tournois %}<input type="hidden" name="panneau_tournois" value="1">{% endif %}
+      {% if panneaux.mouvements %}<input type="hidden" name="panneau_mouvements" value="1">{% endif %}
       <button type="submit" class="bouton bouton-secondaire">Effacer l'annonce</button>
     </form>
   {% endif %}

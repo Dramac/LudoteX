@@ -152,12 +152,14 @@
       gap: 1.2vw;
       min-height: 0;            /* autorise le défilement interne */
     }
-    /* Point G : aucun tournoi (ni en cours, ni à venir) -> le panneau
-       tournois ne mérite plus la moitié de l'écran pour un simple message,
-       le flux des mouvements prend toute la largeur. Bascule posée en JS
-       (voir rendre()), au chargement comme au rafraîchissement. */
-    .colonnes.sans-tournois { grid-template-columns: 1fr; }
-    .colonnes.sans-tournois .panneau-tournois { display: none; }
+    /* Nombre de pistes CALCULÉ (classe posée en JS dans rendre(), au
+       chargement comme au rafraîchissement) : un panneau éteint en
+       administration, ou vide de tout contenu, ne garde pas sa colonne.
+       Remplace l'ancienne bascule binaire `sans-tournois`, qui ne savait
+       traiter que le cas « aucun tournoi ». */
+    .colonnes.cols-1 { grid-template-columns: 1fr; }
+    .colonnes.cols-2 { grid-template-columns: 1fr 1fr; }
+    .colonnes.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
     .panneau {
       background: var(--carte);
       border: 1px solid var(--bordure);
@@ -265,7 +267,7 @@
       <span class="puce-annonce">📣</span><span id="annonce-texte"></span>
     </section>
 
-    <section class="barre-chiffres">
+    <section class="barre-chiffres" id="barre-chiffres">
       <div class="item">
         <span class="nombre sortis" id="c-sortis">–</span>
         <span class="detail">
@@ -281,8 +283,8 @@
           <span class="sous">prêts à emprunter</span>
         </span>
       </div>
-      <span class="separateur"></span>
-      <div class="item">
+      <span class="separateur" id="sep-tournois"></span>
+      <div class="item" id="item-tournois">
         <span class="nombre poch" id="c-tournois">–</span>
         <span class="detail">
           <span class="libelle">Tournois en cours</span>
@@ -291,8 +293,8 @@
       </div>
     </section>
 
-    <section class="colonnes">
-      <div class="panneau panneau-tournois">
+    <section class="colonnes" id="colonnes">
+      <div class="panneau panneau-tournois" id="panneau-tournois">
         <h2>🏆 Tournois</h2>
         <div class="liste">
           <div class="bloc-titre">En cours</div>
@@ -302,7 +304,7 @@
         </div>
       </div>
 
-      <div class="panneau">
+      <div class="panneau panneau-mouvements" id="panneau-mouvements">
         <h2>🔄 Derniers prêts &amp; retours</h2>
         <div class="liste" id="mouvements"></div>
       </div>
@@ -399,27 +401,67 @@
       }
     }
 
+    function afficher(id, visible, mode) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = visible ? (mode || "block") : "none";
+    }
+
     function rendre(d) {
+      // Panneaux réglés depuis /admin/ecran-salle. Le défaut « tout affiché »
+      // couvre aussi une réponse ancienne dépourvue de ce champ.
+      const p = d.panneaux || { chiffres: true, tournois: true, mouvements: true };
+      const tournois = d.tournois_en_cours || [];
+      const aVenir = d.tournois_a_venir || [];
+
       if (d.titre) {
         document.getElementById("titre").textContent = d.titre;
         document.title = d.titre + " — Tableau de bord";
       }
       rendreAnnonce(d.annonce);
-      document.getElementById("c-sortis").textContent = d.jeux.sortis;
-      document.getElementById("c-dispo").textContent = d.jeux.disponibles;
-      document.getElementById("c-total").textContent = d.jeux.total;
-      document.getElementById("c-tournois").textContent = d.nb_tournois_en_cours;
+
+      // --- Barre de chiffres ---
+      afficher("barre-chiffres", !!p.chiffres, "flex");
+      if (p.chiffres && d.jeux) {
+        document.getElementById("c-sortis").textContent = d.jeux.sortis;
+        document.getElementById("c-dispo").textContent = d.jeux.disponibles;
+        document.getElementById("c-total").textContent = d.jeux.total;
+      }
+      // Le compteur de tournois disparaît si le module est désactivé : le
+      // serveur omet alors le champ (jamais de « 0 » trompeur).
+      const compteurTournois = d.nb_tournois_en_cours != null;
+      afficher("item-tournois", compteurTournois, "flex");
+      afficher("sep-tournois", compteurTournois);
+      if (compteurTournois) {
+        document.getElementById("c-tournois").textContent = d.nb_tournois_en_cours;
+      }
+
       // L'horloge NE dépend PAS de d.horodatage pour l'affichage (elle tique
       // localement, voir tiquerHorloge) : ce champ ne sert qu'à garder /live
       // et /live/data concordants dans les données brutes.
-      rendreTournoisEnCours(d.tournois_en_cours);
-      rendreTournoisAVenir(d.tournois_a_venir);
-      rendreMouvements(d.mouvements);
-      // Point G : zéro tournoi (en cours ET à venir) -> le flux des
-      // mouvements occupe toute la largeur. Recalculé à chaque rendu (donc
-      // au chargement comme au rafraîchissement).
-      const sansTournois = !d.tournois_en_cours.length && !d.tournois_a_venir.length;
-      document.querySelector(".colonnes").classList.toggle("sans-tournois", sansTournois);
+      if (p.tournois) {
+        rendreTournoisEnCours(tournois);
+        rendreTournoisAVenir(aVenir);
+      }
+      if (p.mouvements) rendreMouvements(d.mouvements || []);
+
+      // --- Nombre de pistes ---
+      // Un panneau garde sa colonne s'il est ACTIVÉ et a quelque chose à
+      // montrer. Le flux des mouvements fait exception : il affiche « aucun
+      // mouvement pour l'instant », qui est une information utile en salle.
+      // Le panneau tournois, lui, ne mérite pas un tiers d'écran pour un
+      // simple message (comportement d'origine, point G).
+      const montreTournois = !!p.tournois && (tournois.length > 0 || aVenir.length > 0);
+      const montreMouvements = !!p.mouvements;
+      afficher("panneau-tournois", montreTournois, "flex");
+      afficher("panneau-mouvements", montreMouvements, "flex");
+
+      const nbColonnes = [montreTournois, montreMouvements].filter(Boolean).length;
+      const colonnes = document.getElementById("colonnes");
+      colonnes.classList.remove("cols-1", "cols-2", "cols-3");
+      if (nbColonnes) colonnes.classList.add("cols-" + nbColonnes);
+      // Tout éteint : l'écran se réduit au titre, à l'horloge et à l'annonce.
+      // C'est un usage assumé (écran d'annonces seules), pas un accident.
+      colonnes.style.display = nbColonnes ? "grid" : "none";
     }
 
     function tiquerHorloge() {

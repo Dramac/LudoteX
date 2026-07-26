@@ -23,6 +23,7 @@ from fastapi import APIRouter, Request
 from app import services
 from app.config import NOM_ASSOCIATION
 from app.db import get_connection
+from app.modules import lire_etat_module
 from app.services import FUSEAU_LOCAL
 from app.templating import templates
 from app.tournoi import services as tournoi_services
@@ -46,6 +47,53 @@ TITRE_DEFAUT = NOM_ASSOCIATION
 # reste affichée indéfiniment jusqu'à effacement manuel en admin.
 CLE_ANNONCE = "live_annonce"
 CLE_ANNONCE_EXPIRE = "live_annonce_expire"
+
+# ---------------------------------------------------------------------------
+# Panneaux affichables, réglables depuis /admin/ecran-salle
+# ---------------------------------------------------------------------------
+# Le bureau peut éteindre chaque bloc de l'écran projeté (un week-end sans
+# tournoi, un écran d'annonces seules, un flux de prêts qu'on ne souhaite pas
+# projeter en continu). Défaut : TOUT est affiché — une base existante, où
+# aucune de ces clés n'a jamais été écrite, se comporte exactement comme avant.
+#
+# ⚠️ Ne pas confondre avec /admin/fonctionnalites : l'état d'un MODULE dit si
+# la fonctionnalité existe pour toute l'application ; ce réglage-ci dit ce que
+# CET écran projeté montre. Le module l'emporte toujours (voir
+# `panneaux_actifs`).
+CLES_PANNEAUX = {
+    "chiffres":   "live_panneau_chiffres",
+    "tournois":   "live_panneau_tournois",
+    "mouvements": "live_panneau_mouvements",
+}
+
+
+def reglages_panneaux(conn) -> dict[str, bool]:
+    """
+    Les réglages TELS QUE SAISIS en administration (sans la précédence des
+    modules) : c'est ce que le formulaire /admin/ecran-salle doit réafficher,
+    pour ne pas donner l'impression d'avoir perdu un choix du bureau quand un
+    module est désactivé par ailleurs.
+    """
+    return {
+        nom: services.lire_parametre(conn, cle, "1") != "0"
+        for nom, cle in CLES_PANNEAUX.items()
+    }
+
+
+def panneaux_actifs(conn) -> dict[str, bool]:
+    """
+    Les panneaux RÉELLEMENT affichés sur /live : les réglages ci-dessus, plus
+    la précédence d'un module désactivé (qui l'emporte toujours).
+
+    Corrige au passage un défaut préexistant : /live interrogeait la base des
+    tournois sans vérifier l'état du module `tournois`, alors que la page
+    d'accueil, elle, saute entièrement ce calcul (fiche A3). L'écran de salle
+    annonçait donc des tournois d'un module masqué.
+    """
+    actifs = reglages_panneaux(conn)
+    if lire_etat_module(conn, "tournois") == "desactive":
+        actifs["tournois"] = False
+    return actifs
 
 
 def annonce_active(conn) -> str | None:
@@ -105,53 +153,75 @@ def _collecter_donnees() -> dict:
     Rassemble toutes les données du tableau de bord (partagé par la page et
     l'endpoint JSON, pour garantir des chiffres identiques).
     """
-    # --- Base de PRÊT : disponibilité + derniers mouvements ---
+    # --- Base de PRÊT : réglages, disponibilité, derniers mouvements ---
+    # Un panneau éteint n'est PAS collecté : ni requête inutile, ni champ vide
+    # dans /live/data (« ne jamais afficher une valeur absente »).
     conn = get_connection()
     try:
-        total, disponibles = services.compter_exemplaires_disponibles(conn)
-        mouvements = services.derniers_mouvements(conn, NB_MOUVEMENTS)
+        panneaux = panneaux_actifs(conn)
         titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
         annonce = annonce_active(conn)
+        # Le compteur « Tournois en cours » vit dans la barre de chiffres, pas
+        # dans le panneau : il suit donc le réglage des chiffres, mais reste
+        # soumis à la même précédence de module.
+        compteur_tournois = (
+            panneaux["chiffres"] and lire_etat_module(conn, "tournois") != "desactive"
+        )
+        jeux = (services.compter_exemplaires_disponibles(conn)
+                if panneaux["chiffres"] else None)
+        mouvements = (services.derniers_mouvements(conn, NB_MOUVEMENTS)
+                      if panneaux["mouvements"] else [])
     finally:
         conn.close()
 
     # --- Base des TOURNOIS : en cours + à venir (2 h) ---
-    conn_t = get_tournoi_connection()
-    try:
-        tournois = tournoi_services.lister_tournois(conn_t, inclure_brouillons=False)
-        imminents = tournoi_services.tournois_imminents(conn_t, FENETRE_A_VENIR_MIN)
-    finally:
-        conn_t.close()
+    en_cours: list[dict] = []
+    a_venir: list[dict] = []
+    if panneaux["tournois"] or compteur_tournois:
+        conn_t = get_tournoi_connection()
+        try:
+            tournois = tournoi_services.lister_tournois(conn_t, inclure_brouillons=False)
+            imminents = tournoi_services.tournois_imminents(conn_t, FENETRE_A_VENIR_MIN)
+        finally:
+            conn_t.close()
 
-    en_cours = [
-        {
-            "nom": t["nom"],
-            "mode": tournoi_services.MODES_SCORING.get(t["mode_scoring"], "—"),
-            "etat": "En cours",
-            "nb_inscrits": t["nb_inscrits"],
-        }
-        for t in tournois
-        if t["etat"] == "lance"
-    ]
+        en_cours = [
+            {
+                "nom": t["nom"],
+                "mode": tournoi_services.MODES_SCORING.get(t["mode_scoring"], "—"),
+                "etat": "En cours",
+                "nb_inscrits": t["nb_inscrits"],
+            }
+            for t in tournois
+            if t["etat"] == "lance"
+        ]
 
-    a_venir = [
-        {
-            "nom": t["nom"],
-            "heure": _heure_locale(t["date_heure"]),
-            "minutes_avant": _minutes_avant(t["date_heure"]),
-            "places_restantes": t["places_restantes"],
-        }
-        for t in imminents
-    ]
+        a_venir = [
+            {
+                "nom": t["nom"],
+                "heure": _heure_locale(t["date_heure"]),
+                "minutes_avant": _minutes_avant(t["date_heure"]),
+                "places_restantes": t["places_restantes"],
+            }
+            for t in imminents
+        ]
 
     resultat = {
         "titre": titre,
-        "jeux": {"total": total, "disponibles": disponibles,
-                 "sortis": total - disponibles},
-        "nb_tournois_en_cours": len(en_cours),
-        "tournois_en_cours": en_cours,
-        "tournois_a_venir": a_venir,
-        "mouvements": [
+        "panneaux": panneaux,
+        "horodatage": datetime.now(FUSEAU_LOCAL).strftime("%H:%M"),
+    }
+    if jeux is not None:
+        total, disponibles = jeux
+        resultat["jeux"] = {"total": total, "disponibles": disponibles,
+                            "sortis": total - disponibles}
+    if compteur_tournois:
+        resultat["nb_tournois_en_cours"] = len(en_cours)
+    if panneaux["tournois"]:
+        resultat["tournois_en_cours"] = en_cours
+        resultat["tournois_a_venir"] = a_venir
+    if panneaux["mouvements"]:
+        resultat["mouvements"] = [
             {
                 "type": m["type"],
                 "nom": m["nom"],
@@ -159,9 +229,7 @@ def _collecter_donnees() -> dict:
                 "heure": m["heure_locale"],
             }
             for m in mouvements
-        ],
-        "horodatage": datetime.now(FUSEAU_LOCAL).strftime("%H:%M"),
-    }
+        ]
     # Jamais de champ "annonce" quand il n'y en a pas (ne jamais afficher une
     # valeur absente, cf. rangement) : le bandeau de /live se fie à sa présence.
     if annonce:
