@@ -183,11 +183,30 @@ passait au vert même correctif neutralisé, puisque SQLite verrouille de
 lui-même dès la première écriture. Chaque test a été vérifié en neutralisant le
 `BEGIN IMMEDIATE` : 4 tombent, dont le déterministe.
 
-**Signalé, non corrigé** (hors périmètre, fiche à part si le besoin se
-confirme) : `app/tournoi/services.py::inscrire` a exactement le même motif —
-`places_restantes()` lu, puis `INSERT`. Deux inscriptions simultanées sur la
-dernière place passent le contrôle toutes les deux. Conséquence : une chaise en
-trop, sans commune mesure avec une pièce d'identité perdue.
+**Le même motif dans les inscriptions de tournoi — corrigé dans la foulée.**
+`app/tournoi/services.py::inscrire` lisait `places_restantes()` puis insérait :
+deux inscriptions simultanées sur la dernière place passaient le contrôle
+toutes les deux. Conséquence sans commune mesure avec une pièce d'identité
+perdue (une chaise en trop), d'où un traitement séparé, après coup. Le remède
+est le même : `services.transaction` est **importée** depuis le module de prêt
+plutôt que dupliquée — `app/tournoi/` et `app/planning/` importent déjà neuf
+helpers de `app/services.py` (`maintenant`, `FUSEAU_LOCAL`,
+`local_vers_utc_iso`…), la duplication d'`_ics_horodatage` était un cas
+particulier et non une règle. `_inserer_inscription` ne committe plus (les deux
+appelants publics délimitent la transaction, comme les helpers de pochette).
+
+Différence notable avec le module de prêt : **aucun index ne peut servir de
+filet ici**. Un plafond de places est un COMPTAGE, pas une unicité — aucune
+contrainte de schéma ne l'exprime. La transaction est le seul garde-fou, d'où
+6 tests dédiés (`tests/test_concurrence_inscriptions.py`). Le test déterministe
+observe `conn.in_transaction` **au moment du comptage** : c'est la seule
+formulation qui discrimine, puisqu'une fois l'écriture commencée SQLite
+verrouille de lui-même. Vérifié en neutralisant le correctif : 2 tests tombent.
+
+Restent non audités, faute de périmètre : le reste du module tournois
+(désinscription, lancement, génération de rondes), le planning et le programme.
+Aucun n'a de contrainte de comptage comparable, mais rien n'a été vérifié
+systématiquement.
 
 **Vérification (critère d'acceptation du § 5), instance locale, bases jetables :**
 

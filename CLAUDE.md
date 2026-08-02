@@ -1641,9 +1641,27 @@ neutralisé, SQLite verrouillant de lui-même dès la première écriture) ; cha
 test vérifié en neutralisant le `BEGIN IMMEDIATE`. **Suite globale : 505 tests
 verts.** Critère d'acceptation tenu sur instance locale (course 8×50 puis
 `coherence.py` 7/7, dans les deux configurations — verdicts consignés au § 2.4
-du protocole). **Signalé sans être corrigé** (fiche à part) :
-`tournoi/services.py::inscrire` a le même motif (`places_restantes` puis
-`INSERT`) — conséquence : une chaise en trop, sans commune mesure.
+du protocole).
+
+**Même motif dans `tournoi/services.py::inscrire` — CORRIGÉ ensuite** (même
+session, commit séparé) : `places_restantes()` lu puis `INSERT`, donc deux
+inscriptions simultanées sur la dernière place passaient toutes les deux.
+Conséquence sans commune mesure (une chaise en trop), d'où le traitement à
+part. `services.transaction` est **importée** du module de prêt, pas dupliquée
+— `tournoi/` et `planning/` importent déjà 9 helpers de `app/services.py`
+(`maintenant`, `FUSEAU_LOCAL`, `local_vers_utc_iso`…) ; la duplication
+d'`_ics_horodatage` était un cas particulier, pas une règle contre l'import.
+`_inserer_inscription` **ne committe plus** (les deux appelants publics,
+`inscrire` et `ajouter_participant`, délimitent la transaction — piège :
+oublier le second aurait fait perdre silencieusement les ajouts manuels des
+bénévoles ; un test le couvre). **Aucun index ne peut servir de filet ici** :
+un plafond de places est un COMPTAGE, pas une unicité, aucune contrainte de
+schéma ne l'exprime. **6 tests** (`tests/test_concurrence_inscriptions.py`) ;
+le déterministe observe `conn.in_transaction` **au moment du comptage** —
+seule formulation discriminante, SQLite verrouillant de lui-même dès la
+première écriture. **Suite globale : 511 tests verts.** Non audités faute de
+périmètre : le reste du module tournois (désinscription, lancement, rondes),
+le planning, le programme.
 
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent

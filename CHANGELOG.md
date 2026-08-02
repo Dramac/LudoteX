@@ -11,6 +11,7 @@ vers l'utilisateur.
 - Deux bénévoles qui appuient sur « Prêter » au même instant obtiennent désormais deux numéros de pochette différents. Ils pouvaient jusqu'ici recevoir le même numéro, sans aucun message : deux pièces d'identité se retrouvaient alors dans la même pochette, et la restitution du soir partait de travers.
 - Une même boîte ne peut plus être prêtée deux fois en même temps, que le double appui vienne d'un seul téléphone ou de deux. Le second bénévole voit le message « déjà sorti » habituel.
 - Plus d'erreur au tout début de la soirée : quand aucune pochette n'était encore attribuée, plusieurs prêts simultanés provoquaient une page d'erreur.
+- Inscriptions aux tournois : deux personnes qui valident le formulaire au même instant sur la dernière place ne peuvent plus s'inscrire toutes les deux. Le tournoi ne part plus avec une chaise de trop.
 - Nouveau message, très rare, si deux enregistrements se croisent malgré tout : « Un autre bénévole enregistrait une opération au même moment. Rien n'a été enregistré. » Il suffit de réappuyer sur le bouton, sans risque de doublon.
 
 ## 1.2.0 — 2026-07-26

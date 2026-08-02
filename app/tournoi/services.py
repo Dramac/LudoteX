@@ -28,7 +28,12 @@ import sqlite3
 from datetime import date, datetime, time, timedelta
 
 from app.config import NOM_ASSOCIATION
-from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant  # fuseau + horodatage UTC ISO partagés
+from app.services import (  # helpers partagés avec le module de prêt
+    FUSEAU_LOCAL,
+    FUSEAU_UTC,
+    maintenant,
+    transaction,
+)
 from app.tournoi.models import ETATS
 
 # Bornes de saisie.
@@ -411,6 +416,11 @@ def _inserer_inscription(conn: sqlite3.Connection, id_tournoi: int,
     """
     Insère une inscription (pseudo/nom d'équipe + code, et membres JSON si équipe)
     et renvoie {id, code, pseudo}.
+
+    NE COMMITTE PAS : ce sont les deux fonctions publiques appelantes
+    (`inscrire`, `ajouter_participant`) qui délimitent la transaction, sur le
+    modèle des helpers de pochette du module de prêt. C'est ce qui permet à
+    `inscrire` de compter les places et d'insérer d'un seul bloc.
     """
     code = _generer_code()
     membres_json = json.dumps(membres, ensure_ascii=False) if membres else None
@@ -421,7 +431,6 @@ def _inserer_inscription(conn: sqlite3.Connection, id_tournoi: int,
         """,
         (id_tournoi, pseudo, membres_json, code, maintenant()),
     )
-    conn.commit()
     return {"id_inscription": int(cur.lastrowid), "code": code, "pseudo": pseudo}
 
 
@@ -434,31 +443,45 @@ def inscrire(conn: sqlite3.Connection, id_tournoi: int, pseudo: str,
     liste des pseudos membres ; si `taille_equipe` est fixée, on exige EXACTEMENT
     ce nombre de membres non vides.
 
+    LE COMPTAGE DES PLACES ET L'INSERTION SONT INDIVISIBLES. Sans cela, deux
+    personnes qui valident le formulaire au même instant comptent toutes les
+    deux « il reste une place » et s'inscrivent toutes les deux — le tournoi
+    part avec une chaise de trop. Même motif que la course d'attribution des
+    numéros de pochette (voir services.transaction et
+    docs/protocole-stress-test.md § 2), avec une conséquence sans commune
+    mesure : ici on ne perd pas une pièce d'identité, on installe une table de
+    plus. Le remède est le même, et il ne coûte rien.
+
+    Un index UNIQUE ne peut PAS servir de filet ici, contrairement au module de
+    prêt : un plafond de places est un COMPTAGE, pas une unicité — aucune
+    contrainte de schéma ne l'exprime. La transaction est donc le seul garde-fou.
+
     Returns:
         {"ok": True, "code": …, "pseudo": …} en cas de succès ; sinon
         {"ok": False, "raison": "introuvable"|"fermee"|"complet"|"pseudo_vide"|
         "equipe_incomplete"}.
     """
-    t = get_tournoi(conn, id_tournoi)
-    if t is None:
-        return {"ok": False, "raison": "introuvable"}
-    pseudo = _nettoyer_pseudo(pseudo)
-    if not pseudo:
-        return {"ok": False, "raison": "pseudo_vide"}
-    if t["etat"] != "inscriptions" or not t["inscription_en_ligne"]:
-        return {"ok": False, "raison": "fermee"}
-    restantes = places_restantes(conn, t)
-    if restantes is not None and restantes <= 0:
-        return {"ok": False, "raison": "complet"}
+    with transaction(conn):
+        t = get_tournoi(conn, id_tournoi)
+        if t is None:
+            return {"ok": False, "raison": "introuvable"}
+        pseudo = _nettoyer_pseudo(pseudo)
+        if not pseudo:
+            return {"ok": False, "raison": "pseudo_vide"}
+        if t["etat"] != "inscriptions" or not t["inscription_en_ligne"]:
+            return {"ok": False, "raison": "fermee"}
+        restantes = places_restantes(conn, t)
+        if restantes is not None and restantes <= 0:
+            return {"ok": False, "raison": "complet"}
 
-    membres_nets = None
-    if t["par_equipes"]:
-        membres_nets = _nettoyer_membres(membres)
-        attendu = t["taille_equipe"]
-        if attendu and len(membres_nets) != attendu:
-            return {"ok": False, "raison": "equipe_incomplete"}
+        membres_nets = None
+        if t["par_equipes"]:
+            membres_nets = _nettoyer_membres(membres)
+            attendu = t["taille_equipe"]
+            if attendu and len(membres_nets) != attendu:
+                return {"ok": False, "raison": "equipe_incomplete"}
 
-    res = _inserer_inscription(conn, id_tournoi, pseudo, membres_nets)
+        res = _inserer_inscription(conn, id_tournoi, pseudo, membres_nets)
     return {"ok": True, **res}
 
 
@@ -470,17 +493,22 @@ def ajouter_participant(conn: sqlite3.Connection, id_tournoi: int,
     places ET la taille d'équipe exacte (le bénévole décide). Refuse seulement un
     tournoi inexistant ou un nom vide.
 
+    La transaction n'a rien à protéger ici (aucun plafond n'est contrôlé) :
+    elle est posée pour que `_inserer_inscription`, qui ne committe plus,
+    ait toujours un bloc qui committe pour elle.
+
     Returns:
         {"ok": True, "code": …, "pseudo": …} ou {"ok": False, "raison": …}.
     """
-    t = get_tournoi(conn, id_tournoi)
-    if t is None:
-        return {"ok": False, "raison": "introuvable"}
-    pseudo = _nettoyer_pseudo(pseudo)
-    if not pseudo:
-        return {"ok": False, "raison": "pseudo_vide"}
-    membres_nets = _nettoyer_membres(membres) if t["par_equipes"] else None
-    res = _inserer_inscription(conn, id_tournoi, pseudo, membres_nets)
+    with transaction(conn):
+        t = get_tournoi(conn, id_tournoi)
+        if t is None:
+            return {"ok": False, "raison": "introuvable"}
+        pseudo = _nettoyer_pseudo(pseudo)
+        if not pseudo:
+            return {"ok": False, "raison": "pseudo_vide"}
+        membres_nets = _nettoyer_membres(membres) if t["par_equipes"] else None
+        res = _inserer_inscription(conn, id_tournoi, pseudo, membres_nets)
     return {"ok": True, **res}
 
 
