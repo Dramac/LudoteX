@@ -17,6 +17,9 @@ CONVENTIONS (valables dans tout le projet)
   et maîtrise de la transaction par l'appelant.
 - Les fonctions de LECTURE ne committent pas ; les fonctions d'ÉCRITURE
   (`preter`, `rendre`, `repreter`) committent elles-mêmes.
+- Les écritures qui touchent aux POCHETTES s'entourent de `transaction(conn)`
+  (voir sa docstring) : le numéro doit être lu et réservé d'un seul bloc, sans
+  quoi deux bénévoles simultanés repartent avec la même pochette.
 - Une « ligne » SQLite est un `sqlite3.Row` (accès par nom de colonne) ; on la
   convertit en `dict` avant de la renvoyer, pour découpler l'appelant de sqlite3.
 - Vocabulaire métier :
@@ -36,6 +39,7 @@ RÈGLES MÉTIER NON NÉGOCIABLES (voir docs/specification.md §3, §5, §6)
 
 from __future__ import annotations
 
+import contextlib
 import re
 import sqlite3
 import unicodedata
@@ -790,6 +794,70 @@ def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int
 
 
 # ===========================================================================
+# TRANSACTIONS — rendre « lire puis écrire » indivisible
+# ===========================================================================
+@contextlib.contextmanager
+def transaction(conn: sqlite3.Connection):
+    """
+    Ouvre une transaction en ÉCRITURE, et la committe à la sortie du bloc.
+
+    POURQUOI (test de charge du 30 juillet 2026, docs/protocole-stress-test.md §2)
+    -----------------------------------------------------------------------------
+    Toutes les écritures de ce module procèdent en deux temps : on lit un état
+    (« quel est le plus petit numéro libre ? », « cette boîte est-elle sortie ? »)
+    puis on agit dessus. Or, en mode « legacy » du module `sqlite3`, un SELECT
+    n'ouvre AUCUNE transaction : le verrou d'écriture n'est pris qu'au premier
+    UPDATE/INSERT. Entre la lecture et l'écriture, n'importe quelle autre
+    requête peut donc lire le même état. Huit prêts simultanés sont ainsi
+    repartis avec la pochette n°12 — soit huit pièces d'identité pour un seul
+    casier, sans le moindre message d'erreur.
+
+    `BEGIN IMMEDIATE` prend le verrou d'écriture DÈS L'OUVERTURE, donc AVANT la
+    lecture : les écritures concurrentes attendent leur tour au lieu de lire un
+    état périmé. En WAL, les LECTURES (catalogue, fiches, écran de salle) ne
+    sont pas gênées : elles continuent de voir l'état d'avant le commit.
+
+    RÉENTRANCE — le point délicat
+    ------------------------------
+    `repreter()` écrit (clôture de l'ancien prêt) PUIS appelle `preter()`. Un
+    `BEGIN IMMEDIATE` posé naïvement dans `preter()` lèverait alors « cannot
+    start a transaction within a transaction ». D'où le test `in_transaction` :
+    si une transaction est déjà ouverte, on s'y greffe sans rien ouvrir ni
+    committer — c'est le bloc extérieur qui décide.
+
+    Se greffer n'est jamais un pari : en mode legacy, une transaction ne
+    s'ouvre implicitement QUE sur une écriture (un SELECT seul laisse
+    `in_transaction` à False). Donc `in_transaction == True` implique qu'une
+    écriture a déjà eu lieu, donc que le verrou d'écriture est DÉJÀ tenu.
+
+    Ce mécanisme est volontairement préféré à `conn.isolation_level = None` :
+    en mode autocommit, tous les `conn.commit()` de ce module deviendraient des
+    non-opérations et le contrat « ne committe pas, c'est l'appelant qui
+    committe » de `plus_petit_numero_libre`/`liberer_numero`/`_effacer_pochette`
+    tomberait silencieusement.
+
+    Raises:
+        sqlite3.OperationalError: « database is locked » si le verrou n'est pas
+            obtenu dans le délai de `db.get_connection()`. Les routes de prêt
+            rattrapent ce cas et affichent un message de reprise en un tap
+            (jamais d'erreur brute — règle « ne jamais bloquer »).
+    """
+    if conn.in_transaction:
+        # Une écriture a déjà eu lieu sur cette connexion : le verrou est tenu,
+        # et c'est l'appelant extérieur qui committera.
+        yield
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except Exception:
+        conn.rollback()
+        raise
+    else:
+        conn.commit()
+
+
+# ===========================================================================
 # POCHETTES — attribution / libération des numéros
 # ===========================================================================
 def plus_petit_numero_libre(conn: sqlite3.Connection) -> int:
@@ -804,6 +872,13 @@ def plus_petit_numero_libre(conn: sqlite3.Connection) -> int:
 
     Effet de bord : modifie la table `pochettes` (mais ne committe pas ; c'est
     `preter()` qui committe l'ensemble de l'opération).
+
+    ⚠️ À N'APPELER QUE SOUS `transaction(conn)`. La lecture du plus petit numéro
+    libre et sa réservation doivent former un bloc indivisible : sans le verrou
+    d'écriture pris au préalable, deux appels concurrents lisent le même numéro
+    et le renvoient tous les deux (cas n°1 du § 2 du protocole de test de
+    charge). La branche « aucune libre » ci-dessous est plus brutale encore :
+    deux INSERT du même `MAX + 1` violent la clé primaire, donc une erreur 500.
 
     Returns:
         Le numéro de pochette attribué (entier ≥ 1).
@@ -842,9 +917,14 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     Attribue le plus petit numéro de pochette libre, enregistre la sortie
     (date_sortie = maintenant, date_retour = NULL) et committe.
 
-    L'appelant (route) garantit que l'exemplaire est bien disponible via un
-    contrôle d'état préalable ; conformément à « ne jamais bloquer », cette
-    fonction elle-même ne refuse jamais.
+    Attribution et écriture se font sous `transaction(conn)` : c'est ce qui
+    empêche deux prêts simultanés de repartir avec la même pochette. Appelée
+    depuis un bloc déjà ouvert (cas de `repreter`), elle s'y greffe et laisse
+    l'appelant committer.
+
+    Cette fonction ne CONTRÔLE PAS que l'exemplaire est disponible et ne refuse
+    jamais rien (« ne jamais bloquer »). Pour un contrôle atomique du type
+    « déjà sortie ? », voir `preter_si_disponible`, que les routes utilisent.
 
     Args:
         conn: connexion SQLite ouverte.
@@ -853,15 +933,15 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     Returns:
         Le numéro de pochette attribué (à afficher au bénévole).
     """
-    numero = plus_petit_numero_libre(conn)
-    conn.execute(
-        """
-        INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
-        VALUES (?, ?, ?, 'pret')
-        """,
-        (id_exemplaire, numero, maintenant()),
-    )
-    conn.commit()
+    with transaction(conn):
+        numero = plus_petit_numero_libre(conn)
+        conn.execute(
+            """
+            INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
+            VALUES (?, ?, ?, 'pret')
+            """,
+            (id_exemplaire, numero, maintenant()),
+        )
     return numero
 
 
@@ -882,14 +962,14 @@ def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
         conn: connexion SQLite ouverte.
         id_exemplaire: identifiant de la boîte prélevée pour le tournoi.
     """
-    conn.execute(
-        """
-        INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
-        VALUES (?, ?, ?, 'tournoi')
-        """,
-        (id_exemplaire, NUMERO_TOURNOI, maintenant()),
-    )
-    conn.commit()
+    with transaction(conn):
+        conn.execute(
+            """
+            INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
+            VALUES (?, ?, ?, 'tournoi')
+            """,
+            (id_exemplaire, NUMERO_TOURNOI, maintenant()),
+        )
 
 
 def _effacer_pochette(conn: sqlite3.Connection, id_pret: int) -> None:
@@ -933,21 +1013,23 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         {"motif": "tournoi"} pour un retour de tournoi (pas d'emplacement), ou
         {"deja_disponible": True} si rien à clore (cas non bloquant).
     """
-    courant = pret_en_cours(conn, id_exemplaire)
-    if courant is None:
-        return {"deja_disponible": True}
-    numero = courant["numero_pochette"]          # lu AVANT effacement
-    conn.execute(
-        "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
-        (maintenant(), courant["id_pret"]),
-    )
-    _effacer_pochette(conn, courant["id_pret"])
-    if courant["motif"] == "tournoi":
-        conn.commit()
-        return {"motif": "tournoi"}
-    # Prêt au public : on libère le numéro d'emplacement.
-    liberer_numero(conn, numero)
-    conn.commit()
+    with transaction(conn):
+        # Lecture SOUS le verrou d'écriture : deux retours simultanés sur la
+        # même boîte libéreraient sinon deux fois la même pochette, qui serait
+        # alors réattribuée alors qu'une pièce d'identité s'y trouve encore.
+        courant = pret_en_cours(conn, id_exemplaire)
+        if courant is None:
+            return {"deja_disponible": True}
+        numero = courant["numero_pochette"]          # lu AVANT effacement
+        conn.execute(
+            "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
+            (maintenant(), courant["id_pret"]),
+        )
+        _effacer_pochette(conn, courant["id_pret"])
+        if courant["motif"] == "tournoi":
+            return {"motif": "tournoi"}
+        # Prêt au public : on libère le numéro d'emplacement.
+        liberer_numero(conn, numero)
     return {"numero_libere": numero, "motif": "pret"}
 
 
@@ -967,14 +1049,14 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
     Returns:
         Le nombre de prêts/sorties clôturés.
     """
-    cur = conn.execute(
-        "UPDATE prets SET date_retour = ?, numero_pochette = NULL "
-        "WHERE date_retour IS NULL",
-        (maintenant(),),
-    )
-    nb = cur.rowcount
-    conn.execute("UPDATE pochettes SET occupe = 0")
-    conn.commit()
+    with transaction(conn):
+        cur = conn.execute(
+            "UPDATE prets SET date_retour = ?, numero_pochette = NULL "
+            "WHERE date_retour IS NULL",
+            (maintenant(),),
+        )
+        nb = cur.rowcount
+        conn.execute("UPDATE pochettes SET occupe = 0")
     return nb
 
 
@@ -996,22 +1078,29 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         {"nouveau_numero": n, "etait_disponible": True} si l'exemplaire était en
         réalité déjà disponible (on se contente alors d'un prêt simple).
     """
-    courant = pret_en_cours(conn, id_exemplaire)
-    if courant is None:
-        # Incohérence bénigne : rien à clore, on ouvre simplement un prêt.
-        return {"nouveau_numero": preter(conn, id_exemplaire), "etait_disponible": True}
-    # Clôture de l'ancien prêt + libération de son numéro...
-    ancien = courant["numero_pochette"]          # lu AVANT effacement
-    conn.execute(
-        "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
-        (maintenant(), courant["id_pret"]),
-    )
-    # ... dont on efface le numéro : il est clos. Le NOUVEAU prêt ouvert
-    # juste après garde le sien, évidemment (c'est lui qui est en cours).
-    _effacer_pochette(conn, courant["id_pret"])
-    liberer_numero(conn, ancien)
-    # ... puis ouverture d'un nouveau prêt (preter() committe l'ensemble).
-    nouveau = preter(conn, id_exemplaire)
+    # Tout le re-prêt tient dans UNE transaction : la clôture de l'ancien prêt
+    # et l'ouverture du nouveau ne doivent jamais être vues séparément, et la
+    # lecture d'état ci-dessous doit se faire sous le verrou d'écriture.
+    # `preter()` appelée plus bas s'y greffe sans rien committer (c'est la
+    # réentrance de `transaction`, voir sa docstring).
+    with transaction(conn):
+        courant = pret_en_cours(conn, id_exemplaire)
+        if courant is None:
+            # Incohérence bénigne : rien à clore, on ouvre simplement un prêt.
+            return {"nouveau_numero": preter(conn, id_exemplaire),
+                    "etait_disponible": True}
+        # Clôture de l'ancien prêt + libération de son numéro...
+        ancien = courant["numero_pochette"]          # lu AVANT effacement
+        conn.execute(
+            "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
+            (maintenant(), courant["id_pret"]),
+        )
+        # ... dont on efface le numéro : il est clos. Le NOUVEAU prêt ouvert
+        # juste après garde le sien, évidemment (c'est lui qui est en cours).
+        _effacer_pochette(conn, courant["id_pret"])
+        liberer_numero(conn, ancien)
+        # ... puis ouverture d'un nouveau prêt.
+        nouveau = preter(conn, id_exemplaire)
     return {"ancien_numero": ancien, "nouveau_numero": nouveau}
 
 
