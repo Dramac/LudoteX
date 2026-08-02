@@ -30,6 +30,7 @@ USAGE
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from pathlib import Path
@@ -240,6 +241,55 @@ def _migrer_pochette_nullable(conn: sqlite3.Connection) -> None:
         )
 
 
+def _creer_index_uniques(conn: sqlite3.Connection) -> list[str]:
+    """
+    Crée les index UNIQUE partiels de `models.SCHEMA_INDEXES_UNIQUES` — le filet
+    de sécurité sur les prêts en cours — SANS JAMAIS FAIRE ÉCHOUER L'APPEL.
+
+    POURQUOI CETTE PRÉCAUTION
+    -------------------------
+    Un `CREATE UNIQUE INDEX` refuse de se créer si la table contient déjà une
+    violation — or c'est précisément l'hypothèse de départ : une base qui a
+    tourné avant le correctif de la course peut contenir deux prêts ouverts
+    partageant un numéro de pochette. Et `init_db()` est appelée à deux moments
+    où lever serait grave :
+      - au DÉMARRAGE de l'application (le site ne se lèverait pas) ;
+      - après une RESTAURATION de sauvegarde (`sauvegarde._migrer_bases_restaurees`),
+        c'est-à-dire potentiellement en pleine soirée, sur la base qu'on vient
+        justement de restaurer parce que quelque chose allait mal.
+    On avertit donc, et on continue : les index NON uniques restent en place,
+    donc les requêtes gardent leurs performances ; seul le filet manque.
+
+    AUCUNE RÉPARATION AUTOMATIQUE. Réattribuer des numéros à des prêts ouverts
+    reviendrait à déplacer des pièces d'identité dans des casiers physiques :
+    la base ne peut pas savoir laquelle se trouve dans quelle pochette. On
+    signale, on n'invente pas. Le diagnostic se fait avec
+    `python -m scripts.stress.coherence <base>`.
+
+    Returns:
+        La liste des index qui N'ONT PAS pu être créés (vide dans le cas
+        nominal). Sert aux tests et à la journalisation.
+    """
+    refuses: list[str] = []
+    for instruction in models.SCHEMA_INDEXES_UNIQUES:
+        try:
+            conn.execute(instruction)
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            nom = instruction.split("IF NOT EXISTS", 1)[-1].strip().split()[0]
+            refuses.append(nom)
+            logging.getLogger("uvicorn.error").warning(
+                "Filet de sécurité « %s » NON POSÉ : la base contient déjà des "
+                "prêts en cours incohérents (deux prêts ouverts sur une même "
+                "boîte, ou une même pochette attribuée deux fois). "
+                "L'application démarre normalement, mais sans ce garde-fou. "
+                "Diagnostic : python -m scripts.stress.coherence %s",
+                nom, get_database_path(),
+            )
+    return refuses
+
+
 def _seed_emplacements_rangement(conn: sqlite3.Connection) -> None:
     """
     Premier remplissage de `emplacements_rangement` (idempotent).
@@ -282,6 +332,11 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         # Après les migrations de colonnes : celle-ci recopie la table `prets`
         # et suppose donc `motif` déjà présent.
         _migrer_pochette_nullable(conn)
+        # APRÈS la reconstruction éventuelle de `prets` (dont le DROP TABLE
+        # emporterait les index) : une base ancienne récupère ainsi son filet
+        # dans la foulée. Et comme cette étape ne lève jamais, une incohérence
+        # préexistante ne peut pas faire échouer la migration ci-dessus.
+        _creer_index_uniques(conn)
         _seed_emplacements_rangement(conn)
     finally:
         # On ne ferme que si on a ouvert : ne pas fermer la connexion du test.

@@ -176,6 +176,11 @@ CREATE TABLE IF NOT EXISTS parametres (
 # ---------------------------------------------------------------------------
 SCHEMA_INDEXES = """
 -- État d'un exemplaire : retrouver vite son éventuel prêt non clos.
+-- idx_prets_retour_null porte la même expression que idx_prets_un_seul_ouvert
+-- (voir SCHEMA_INDEXES_UNIQUES) et lui est donc redondant quand celui-ci
+-- existe. Il est CONSERVÉ à dessein : il reste l'index de requête dans le seul
+-- cas où l'index UNIQUE n'a pas pu être créé (base déjà incohérente). Son coût
+-- sur une table de quelques centaines de lignes par soirée est négligeable.
 CREATE INDEX IF NOT EXISTS idx_prets_exemplaire        ON prets (id_exemplaire);
 CREATE INDEX IF NOT EXISTS idx_prets_retour_null
     ON prets (id_exemplaire) WHERE date_retour IS NULL;
@@ -186,6 +191,47 @@ CREATE INDEX IF NOT EXISTS idx_exemplaires_titre       ON exemplaires (reference
 -- Recherche du plus petit numéro de pochette libre.
 CREATE INDEX IF NOT EXISTS idx_pochettes_occupe        ON pochettes (occupe);
 """
+
+# ---------------------------------------------------------------------------
+# Index UNIQUE partiels — le FILET de sécurité sur les prêts EN COURS.
+# ---------------------------------------------------------------------------
+# Ils ne corrigent rien par eux-mêmes : la correction est dans
+# services.transaction (BEGIN IMMEDIATE), qui rend « lire puis écrire »
+# indivisible. Ces index sont là pour que, si un chemin d'écriture nous
+# échappait un jour, le défaut devienne une ERREUR VISIBLE plutôt qu'un
+# silence — ce qui vaut infiniment mieux qu'une pièce d'identité rendue à la
+# mauvaise personne (voir docs/protocole-stress-test.md § 2 et § 6.1).
+#
+# LES DEUX CLAUSES D'EXCLUSION DU SECOND INDEX, à ne pas retirer :
+#   - `numero_pochette IS NOT NULL` : depuis la décision D5, un prêt CLOS a son
+#     numéro effacé. La clause `date_retour IS NULL` l'écarte déjà, celle-ci
+#     rend l'intention lisible et protège d'une évolution du filtre.
+#   - `numero_pochette <> 0` : 0 est le marqueur des SORTIES TOURNOI
+#     (services.NUMERO_TOURNOI), forcément partagé par plusieurs sorties
+#     simultanées. Sans cette clause, l'index refuserait une situation
+#     parfaitement légitime.
+#
+# ⚠️ Ces index NE SONT PAS dans SCHEMA_STATEMENTS, et volontairement pas non
+# plus dans la liste que db._migrer_pochette_nullable recrée après avoir
+# reconstruit la table. Ils sont créés en UN SEUL endroit,
+# db._creer_index_uniques, parce que leur création peut ÉCHOUER sur une base
+# déjà incohérente : il faut alors avertir sans empêcher l'application de
+# démarrer ni casser une restauration de sauvegarde. Voir cette fonction.
+SCHEMA_INDEXES_UNIQUES = (
+    # Une boîte ne peut avoir qu'un seul prêt ouvert à la fois.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_prets_un_seul_ouvert
+        ON prets (id_exemplaire) WHERE date_retour IS NULL
+    """,
+    # Une pochette ne peut être détenue que par un seul prêt à la fois.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pochettes_un_seul_pret
+        ON prets (numero_pochette)
+     WHERE date_retour IS NULL
+       AND numero_pochette IS NOT NULL
+       AND numero_pochette <> 0
+    """,
+)
 
 # Ordre d'exécution imposé par les clés étrangères : les tables référencées
 # (titres, emplacements_rangement, exemplaires) AVANT celles qui les
