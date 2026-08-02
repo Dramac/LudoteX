@@ -7,8 +7,11 @@ PRINCIPES (voir docs/specification.md §5.1, §6, §8)
   disponible) produit un MESSAGE, jamais une erreur. Le résultat renvoyé au
   gabarit porte un `type` que pret.html sait afficher.
 - Le serveur fait foi sur l'état : avant chaque action, on relit l'état réel
-  (`pret_en_cours`) pour gérer les conflits (deux bénévoles sur le même
-  exemplaire) sans planter.
+  pour gérer les conflits (deux bénévoles sur le même exemplaire) sans planter.
+  Cette relecture et l'action qui suit se font DANS UNE MÊME TRANSACTION, côté
+  services (`preter_si_disponible`, `sortir_tournoi_si_disponible`) : deux
+  appuis simultanés passaient sinon le contrôle tous les deux et ouvraient deux
+  prêts sur une même boîte (voir docs/protocole-stress-test.md § 2).
 - L'écran est déclenché par un scan : le scanner (routes/scanner.py) redirige
   vers GET /pret/<id>.
 
@@ -105,11 +108,14 @@ def action_preter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
             return _rendu(request, id_exemplaire)  # exemplaire inconnu -> 404
-        courant = services.pret_en_cours(conn, id_exemplaire)
-        if courant is not None:  # déjà sorti : on ne ré-attribue pas de pochette
-            resultat = {"type": "deja_sorti", "numero": courant["numero_pochette"]}
+        # Contrôle d'état ET prêt dans une SEULE transaction (voir
+        # services.preter_si_disponible) : sans cela, deux appuis simultanés
+        # ouvrent deux prêts sur la même boîte.
+        res = services.preter_si_disponible(conn, id_exemplaire)
+        if res.get("deja_sorti"):  # on ne ré-attribue pas de pochette
+            resultat = {"type": "deja_sorti", "numero": res["numero"]}
         else:
-            resultat = {"type": "prete", "numero": services.preter(conn, id_exemplaire)}
+            resultat = {"type": "prete", "numero": res["numero"]}
     finally:
         conn.close()
     return _rendu(request, id_exemplaire, resultat)
@@ -147,11 +153,11 @@ def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
             return _rendu(request, id_exemplaire)
-        courant = services.pret_en_cours(conn, id_exemplaire)
-        if courant is not None:
-            resultat = {"type": "deja_sorti", "numero": courant["numero_pochette"]}
+        # Même contrôle atomique que pour le prêt (voir action_preter).
+        res = services.sortir_tournoi_si_disponible(conn, id_exemplaire)
+        if res.get("deja_sorti"):
+            resultat = {"type": "deja_sorti", "numero": res["numero"]}
         else:
-            services.sortir_tournoi(conn, id_exemplaire)
             resultat = {"type": "tournoi_sorti"}
     finally:
         conn.close()

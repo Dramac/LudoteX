@@ -945,6 +945,36 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     return numero
 
 
+def preter_si_disponible(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
+    """
+    Prête un exemplaire APRÈS avoir vérifié, de façon atomique, qu'il est bien
+    disponible. C'est la porte d'entrée des routes.
+
+    POURQUOI CETTE FONCTION EXISTE
+    ------------------------------
+    La route faisait « `pret_en_cours()` puis `preter()` » : deux appuis
+    simultanés sur la même boîte — deux téléphones, ou un double-appui sur un
+    wifi lent — passaient le contrôle tous les deux et ouvraient deux prêts
+    (cas n°3 du § 2 de docs/protocole-stress-test.md ; le test de charge en a
+    ouvert huit d'un coup). Le contrôle et l'action sont ici DANS la même
+    transaction en écriture : le second appui lit forcément l'état déjà à jour
+    et repart avec « déjà sortie ».
+
+    Ce n'est PAS un refus au sens « ne jamais bloquer » : le bénévole obtient un
+    message et l'écran garde ses boutons d'action.
+
+    Returns:
+        {"numero": n} si le prêt vient d'être ouvert, ou
+        {"deja_sorti": True, "numero": n} si la boîte était déjà sortie —
+        `numero` est alors celui du prêt EN COURS (0 pour une sortie tournoi).
+    """
+    with transaction(conn):
+        courant = pret_en_cours(conn, id_exemplaire)
+        if courant is not None:
+            return {"deja_sorti": True, "numero": courant["numero_pochette"]}
+        return {"numero": preter(conn, id_exemplaire)}
+
+
 # Numéro de pochette « factice » pour les sorties tournoi (pas d'emplacement).
 NUMERO_TOURNOI = 0
 
@@ -970,6 +1000,25 @@ def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
             """,
             (id_exemplaire, NUMERO_TOURNOI, maintenant()),
         )
+
+
+def sortir_tournoi_si_disponible(conn: sqlite3.Connection,
+                                 id_exemplaire: str) -> dict:
+    """
+    Sort un exemplaire pour un tournoi APRÈS contrôle atomique de sa
+    disponibilité — pendant de `preter_si_disponible`, même motif et même
+    remède (la route souffrait du même écart entre la vérification et l'action).
+
+    Returns:
+        {"sorti": True} si la sortie vient d'être enregistrée, ou
+        {"deja_sorti": True, "numero": n} si la boîte était déjà sortie.
+    """
+    with transaction(conn):
+        courant = pret_en_cours(conn, id_exemplaire)
+        if courant is not None:
+            return {"deja_sorti": True, "numero": courant["numero_pochette"]}
+        sortir_tournoi(conn, id_exemplaire)
+        return {"sorti": True}
 
 
 def _effacer_pochette(conn: sqlite3.Connection, id_pret: int) -> None:
