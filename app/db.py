@@ -46,6 +46,17 @@ load_dotenv()
 # Chemin par défaut si DATABASE_PATH n'est pas défini. Sous data/ (non versionné).
 DEFAULT_DATABASE_PATH = "data/pret-jeux.db"
 
+# Combien de temps une écriture accepte d'ATTENDRE son tour avant d'abandonner.
+# Depuis que les écritures de prêt s'ouvrent en `BEGIN IMMEDIATE`
+# (services.transaction), deux bénévoles qui appuient en même temps ne se
+# marchent plus dessus : le second attend le premier. Ces transactions durent
+# une fraction de milliseconde, donc l'attente est invisible — mais il faut une
+# borne, et le défaut implicite du module `sqlite3` (5 s) mérite d'être écrit
+# noir sur blanc plutôt que subi. 15 s laisse passer même une salve absurde ;
+# au-delà, les routes de prêt affichent un message de reprise en un tap
+# (voir routes/pret.py) plutôt qu'une erreur brute.
+TIMEOUT_ECRITURE_S = 15.0
+
 
 def get_database_path() -> Path:
     """
@@ -70,6 +81,8 @@ def get_connection() -> sqlite3.Connection:
     - PRAGMA recommandés (voir ``models.PRAGMAS``) : `foreign_keys = ON` pour
       faire respecter les clés étrangères, et `journal_mode = WAL` pour une
       meilleure concurrence en écriture entre bénévoles.
+    - ``timeout`` explicite (``TIMEOUT_ECRITURE_S``) : délai d'attente du verrou
+      d'écriture, désormais que les prêts s'ouvrent en `BEGIN IMMEDIATE`.
     Le dossier parent de la base est créé si nécessaire.
 
     Returns:
@@ -78,7 +91,7 @@ def get_connection() -> sqlite3.Connection:
     db_path = get_database_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=TIMEOUT_ECRITURE_S)
     conn.row_factory = sqlite3.Row
     for pragma in models.PRAGMAS:
         conn.execute(pragma)

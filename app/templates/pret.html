@@ -48,6 +48,15 @@
       <section class="resultat resultat-attention">
         <p>Cet exemplaire était déjà disponible. Rien à rendre.</p>
       </section>
+    {# Conflit d'accès simultané : la transaction a été annulée, donc RIEN n'a
+       été enregistré — le dire explicitement, sinon le bénévole n'ose pas
+       réappuyer de peur de créer un doublon. Les boutons d'action restent
+       juste en dessous : la reprise est à un tap. #}
+    {% elif resultat.type == "occupe" %}
+      <section class="resultat resultat-attention">
+        <p>Un autre bénévole enregistrait une opération au même moment.
+           <strong>Rien n'a été enregistré.</strong> Appuyez à nouveau sur le bouton.</p>
+      </section>
     {% endif %}
     {% if emplacement_rangement %}
       <section class="resultat resultat-info">

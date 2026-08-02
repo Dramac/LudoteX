@@ -28,7 +28,10 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
     {"type": "rendu",            "numero": n}             retour enregistré
     {"type": "deja_sorti",       "numero": n}             déjà sorti (no-op)
     {"type": "deja_disponible"}                           rien à rendre (no-op)
+    {"type": "occupe"}                                    conflit d'accès simultané, rien d'enregistré
 """
+
+import sqlite3
 
 from fastapi import APIRouter, Depends, Request
 
@@ -84,6 +87,44 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
     )
 
 
+def _sans_conflit(conn, id_exemplaire: str, ecrire) -> dict:
+    """
+    Exécute une écriture de prêt en traduisant un conflit d'accès simultané en
+    MESSAGE, jamais en erreur brute (règle « ne jamais bloquer », spec §6).
+
+    Deux échecs sont possibles depuis que les écritures s'ouvrent en
+    `BEGIN IMMEDIATE` (voir services.transaction), et aucun ne doit donner un
+    écran d'erreur à un bénévole en plein coup de feu :
+
+    - `OperationalError: database is locked` — le verrou d'écriture n'a pas été
+      obtenu dans le délai de `db.TIMEOUT_ECRITURE_S`. Les transactions durant
+      une fraction de milliseconde, c'est en pratique inatteignable à huit
+      bénévoles ; le message existe pour que le pire cas reste lisible. La
+      transaction n'a rien écrit : on peut réappuyer sans risque de doublon.
+    - `IntegrityError` — le filet de sécurité du schéma (index UNIQUE partiels,
+      voir models.SCHEMA_INDEXES_UNIQUES) a refusé un doublon qui aurait dû
+      être arrêté plus tôt par la transaction. Inatteignable également, mais si
+      cela arrive, la boîte est de fait déjà sortie : on relit l'état et on
+      affiche le message habituel plutôt qu'un vague « réessayez ».
+
+    Toute autre `OperationalError` (base illisible, disque plein…) est laissée
+    remonter : ce n'est pas un conflit, et la page 500 conviviale de main.py
+    avec sa trace au journal est alors la bonne réponse.
+    """
+    try:
+        return ecrire()
+    except sqlite3.OperationalError as erreur:
+        if "lock" not in str(erreur).lower() and "busy" not in str(erreur).lower():
+            raise
+        return {"type": "occupe"}
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        courant = services.pret_en_cours(conn, id_exemplaire)
+        if courant is not None:
+            return {"type": "deja_sorti", "numero": courant["numero_pochette"]}
+        return {"type": "occupe"}
+
+
 @router.get("/{id_exemplaire}")
 def ecran(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
     """
@@ -111,11 +152,13 @@ def action_preter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
         # Contrôle d'état ET prêt dans une SEULE transaction (voir
         # services.preter_si_disponible) : sans cela, deux appuis simultanés
         # ouvrent deux prêts sur la même boîte.
-        res = services.preter_si_disponible(conn, id_exemplaire)
-        if res.get("deja_sorti"):  # on ne ré-attribue pas de pochette
-            resultat = {"type": "deja_sorti", "numero": res["numero"]}
-        else:
-            resultat = {"type": "prete", "numero": res["numero"]}
+        def ecrire():
+            res = services.preter_si_disponible(conn, id_exemplaire)
+            if res.get("deja_sorti"):  # on ne ré-attribue pas de pochette
+                return {"type": "deja_sorti", "numero": res["numero"]}
+            return {"type": "prete", "numero": res["numero"]}
+
+        resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
     return _rendu(request, id_exemplaire, resultat)
@@ -131,13 +174,15 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
             return _rendu(request, id_exemplaire)
-        res = services.rendre(conn, id_exemplaire)
-        if res.get("deja_disponible"):
-            resultat = {"type": "deja_disponible"}
-        elif res.get("motif") == "tournoi":
-            resultat = {"type": "rendu_tournoi"}
-        else:
-            resultat = {"type": "rendu", "numero": res["numero_libere"]}
+        def ecrire():
+            res = services.rendre(conn, id_exemplaire)
+            if res.get("deja_disponible"):
+                return {"type": "deja_disponible"}
+            if res.get("motif") == "tournoi":
+                return {"type": "rendu_tournoi"}
+            return {"type": "rendu", "numero": res["numero_libere"]}
+
+        resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
     return _rendu(request, id_exemplaire, resultat)
@@ -154,11 +199,13 @@ def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)
         if services.info_exemplaire(conn, id_exemplaire) is None:
             return _rendu(request, id_exemplaire)
         # Même contrôle atomique que pour le prêt (voir action_preter).
-        res = services.sortir_tournoi_si_disponible(conn, id_exemplaire)
-        if res.get("deja_sorti"):
-            resultat = {"type": "deja_sorti", "numero": res["numero"]}
-        else:
-            resultat = {"type": "tournoi_sorti"}
+        def ecrire():
+            res = services.sortir_tournoi_si_disponible(conn, id_exemplaire)
+            if res.get("deja_sorti"):
+                return {"type": "deja_sorti", "numero": res["numero"]}
+            return {"type": "tournoi_sorti"}
+
+        resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
     return _rendu(request, id_exemplaire, resultat)
@@ -174,10 +221,13 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
     try:
         if services.info_exemplaire(conn, id_exemplaire) is None:
             return _rendu(request, id_exemplaire)
-        res = services.repreter(conn, id_exemplaire)
-        # `ancien` peut être None si l'exemplaire était en fait déjà disponible.
-        resultat = {"type": "repret", "nouveau": res["nouveau_numero"],
+        def ecrire():
+            res = services.repreter(conn, id_exemplaire)
+            # `ancien` peut être None si l'exemplaire était déjà disponible.
+            return {"type": "repret", "nouveau": res["nouveau_numero"],
                     "ancien": res.get("ancien_numero")}
+
+        resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
     return _rendu(request, id_exemplaire, resultat)
