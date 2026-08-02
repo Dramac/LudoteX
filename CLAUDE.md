@@ -1594,6 +1594,57 @@ que `/apropos` affiche bien le numéro et les puces de la section. Le
 peuplement du mode formation ci-dessus est venu **après** le tag, sans montée
 de numéro (voir sa justification).
 
+**COURSE D'ATTRIBUTION DES NUMÉROS DE POCHETTE — CORRIGÉE** (2026-08-02).
+Défaut trouvé au test de charge du 30/07 (`docs/protocole-stress-test.md` § 2) :
+huit prêts simultanés repartaient tous avec la **même pochette**, huit prêts
+pouvaient s'ouvrir **sur une seule boîte**, et table `pochettes` vide (ouverture
+de soirée) les `MAX + 1` concurrents violaient la clé primaire → erreurs 500.
+Un même motif partout : on lit un état, puis on agit dessus, sans que rien
+n'empêche un autre bénévole de lire le même état entre les deux — en mode
+legacy du module `sqlite3`, un `SELECT` n'ouvre AUCUNE transaction en écriture.
+**Défaut reproduit avant correction**, dans les deux configurations, puis les
+**trois** pistes du § 6.1 mises en œuvre. (1) `services.transaction(conn)`,
+gestionnaire de contexte **réentrant** posant `BEGIN IMMEDIATE` — le verrou est
+pris AVANT la lecture ; appliqué à `preter`, `rendre`, `sortir_tournoi`,
+`repreter`, `cloturer_tous_les_prets`. La réentrance (`if conn.in_transaction:
+yield`) est ce qui permet à `repreter()` — qui écrit AVANT d'appeler `preter()`
+— de continuer à fonctionner, et elle est sûre parce qu'une transaction ne
+s'ouvre implicitement que sur une écriture (un SELECT seul laisse
+`in_transaction` à False), donc « déjà en transaction » ⇒ « verrou déjà tenu ».
+`conn.isolation_level = None` **écarté** (rendrait non-opérants les ~20
+`conn.commit()` de `services.py`). (2) Deux **index UNIQUE partiels**
+(`models.SCHEMA_INDEXES_UNIQUES`, filet et non correctif) : un prêt ouvert par
+boîte, une pochette par prêt — le second excluant `numero_pochette IS NULL`
+(prêts clos, D5) et `<> 0` (marqueur des sorties tournoi, forcément partagé).
+Ils sont créés **en un seul endroit**, `db._creer_index_uniques`, qui rattrape
+l'`IntegrityError` d'une base déjà incohérente, **avertit et continue**
+(`init_db()` tourne au démarrage ET après restauration de sauvegarde : lever
+mettrait le site par terre) — **aucune réparation automatique**, la base ne peut
+pas savoir quelle PI est dans quel casier. Volontairement PAS dans
+`SCHEMA_STATEMENTS` ni dans la liste que `_migrer_pochette_nullable` recrée : le
+piège du double domicile disparaît au lieu d'être entretenu.
+`idx_prets_retour_null` **conservé** (redevient l'index de requête si l'UNIQUE
+échoue). (3) Contrôle « déjà sortie ? » entré **dans** la transaction
+(`preter_si_disponible`, `sortir_tournoi_si_disponible` ; `preter`/
+`sortir_tournoi` gardent signature et contrat « ne refuse jamais »). Plus :
+`db.TIMEOUT_ECRITURE_S` = 15 s explicite (le défaut implicite de 5 s était subi),
+et résultat **`occupe`** dans `pret.html` (« Rien n'a été enregistré », boutons
+toujours en place) rattrapant `OperationalError`/`IntegrityError` — jamais un
+500. Migration **index seulement**, réversible par 2 `DROP INDEX` (⚠️ rétrograder
+le code sans les exécuter laisserait la contrainte face à un code qui produit
+des doublons). **15 tests** (`tests/test_concurrence_pochettes.py`, sur base
+FICHIER — deux connexions `:memory:` ne se disputent aucun verrou) : le test
+déterministe porte sur la seule propriété discriminante — entrer dans le bloc,
+avant toute lecture, doit DÉJÀ bloquer un autre écrivain (une première
+rédaction observait le moment de l'écriture et passait au vert correctif
+neutralisé, SQLite verrouillant de lui-même dès la première écriture) ; chaque
+test vérifié en neutralisant le `BEGIN IMMEDIATE`. **Suite globale : 505 tests
+verts.** Critère d'acceptation tenu sur instance locale (course 8×50 puis
+`coherence.py` 7/7, dans les deux configurations — verdicts consignés au § 2.4
+du protocole). **Signalé sans être corrigé** (fiche à part) :
+`tournoi/services.py::inscrire` a le même motif (`places_restantes` puis
+`INSERT`) — conséquence : une chaise en trop, sans commune mesure.
+
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
 donc PAS être « corrigées dans le même commit que le code », contrairement à
