@@ -63,10 +63,24 @@ def _retour_interne(chemin: str) -> bool:
     return chemin.startswith("/") and not chemin.startswith("//")
 
 
-def _contexte_scanner(conn, etat: dict, **extra) -> dict:
-    """Contexte commun de rendu de scanner.html (état du mode rangement + menu local)."""
+def _contexte_scanner(conn, request: Request, etat: dict, **extra) -> dict:
+    """
+    Contexte commun de rendu de scanner.html (état du mode rangement + menu
+    local + identifiant d'appareil).
+
+    L'identifiant est affiché ici, et seulement ici, parce que c'est la page
+    que le bénévole a sous les yeux quand quelque chose cloche : il permet de
+    dire « moi c'est 3F1A9C » au téléphone (docs/conception-journal.md §4.3).
+    C'est la SEULE voie de rapprochement, et elle est déclarative — jamais
+    l'application ne déduit qui est derrière un identifiant. Absent (mode
+    ouvert, aucun cookie) : rien ne s'affiche, plutôt qu'un « non renseigné ».
+    """
     emplacements = services.emplacements_actifs(conn) if etat["contexte"] == "local" else []
-    ctx = {"rangement": etat, "emplacements_locaux": emplacements}
+    ctx = {
+        "rangement": etat,
+        "emplacements_locaux": emplacements,
+        "appareil": services.appareil_de(request),
+    }
     ctx.update(extra)
     return ctx
 
@@ -76,7 +90,7 @@ def scanner(request: Request, _=Depends(exiger_jeton)):
     conn = get_connection()
     try:
         etat = _etat_rangement(conn, request)
-        ctx = _contexte_scanner(conn, etat)
+        ctx = _contexte_scanner(conn, request, etat)
     finally:
         conn.close()
     return templates.TemplateResponse(request, "scanner.html", ctx)
@@ -98,7 +112,7 @@ def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
         if not id_exemplaire:
             return templates.TemplateResponse(
                 request, "scanner.html",
-                _contexte_scanner(conn, etat, erreur="Veuillez saisir un code.", code_saisi=""),
+                _contexte_scanner(conn, request, etat, erreur="Veuillez saisir un code.", code_saisi=""),
             )
 
         if etat["actif"]:
@@ -109,7 +123,7 @@ def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
                 return templates.TemplateResponse(
                     request, "scanner.html",
                     _contexte_scanner(
-                        conn, etat,
+                        conn, request, etat,
                         erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
                                "Vérifiez et réessayez.",
                         code_saisi=id_exemplaire,
@@ -118,7 +132,7 @@ def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
             return templates.TemplateResponse(
                 request, "scanner.html",
                 _contexte_scanner(
-                    conn, etat,
+                    conn, request, etat,
                     confirmation_rangement=f"{resultat['nom']} rangé en {etat['label']}.",
                 ),
             )
@@ -129,7 +143,7 @@ def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
             return templates.TemplateResponse(
                 request, "scanner.html",
                 _contexte_scanner(
-                    conn, etat,
+                    conn, request, etat,
                     erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
                            "Vérifiez et réessayez.",
                     code_saisi=id_exemplaire,
@@ -155,12 +169,12 @@ def ranger(request: Request, code: str = "", _=Depends(exiger_jeton)):
     try:
         etat = _etat_rangement(conn, request)
         if not etat["actif"]:
-            return templates.TemplateResponse(request, "scanner.html", _contexte_scanner(conn, etat))
+            return templates.TemplateResponse(request, "scanner.html", _contexte_scanner(conn, request, etat))
 
         if not id_exemplaire:
             return templates.TemplateResponse(
                 request, "scanner.html",
-                _contexte_scanner(conn, etat, erreur="Code manquant.", code_saisi=""),
+                _contexte_scanner(conn, request, etat, erreur="Code manquant.", code_saisi=""),
             )
 
         resultat = services.affecter_emplacement(conn, id_exemplaire, etat["contexte"], etat["valeur"])
@@ -168,7 +182,7 @@ def ranger(request: Request, code: str = "", _=Depends(exiger_jeton)):
             return templates.TemplateResponse(
                 request, "scanner.html",
                 _contexte_scanner(
-                    conn, etat,
+                    conn, request, etat,
                     erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
                            "Vérifiez et réessayez.",
                     code_saisi=id_exemplaire,
@@ -177,7 +191,7 @@ def ranger(request: Request, code: str = "", _=Depends(exiger_jeton)):
         return templates.TemplateResponse(
             request, "scanner.html",
             _contexte_scanner(
-                conn, etat,
+                conn, request, etat,
                 confirmation_rangement=f"{resultat['nom']} rangé en {etat['label']}.",
             ),
         )

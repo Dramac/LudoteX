@@ -277,6 +277,37 @@ def test_un_appareil_promu_admin_change_de_role_sans_seconde_ligne(conn):
 
 
 # ---------------------------------------------------------------------------
+# Étape 3 — l'identifiant sur /scanner
+# ---------------------------------------------------------------------------
+def test_scanner_affiche_lidentifiant_de_lappareil(client, conn):
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+    appareil = client.cookies.get(services.COOKIE_APPAREIL)
+
+    r = client.get("/scanner")
+    assert r.status_code == 200
+    assert appareil in r.text
+    assert "Identifiant de cet appareil" in r.text
+
+
+def test_scanner_reste_refuse_sans_jeton(client, conn):
+    _poser_jeton(conn)
+    r = client.get("/scanner")
+    assert r.status_code == 403
+    assert "Identifiant de cet appareil" not in r.text
+
+
+def test_scanner_naffiche_rien_quand_aucun_cookie_dappareil(client, conn):
+    """Mode ouvert (aucun jeton configuré) : pas de cookie, donc pas de ligne
+    « identifiant » vide — on n'affiche jamais une valeur absente."""
+    r = client.get("/scanner")
+    assert r.status_code == 200
+    assert "Identifiant de cet appareil" not in r.text
+
+
+# ---------------------------------------------------------------------------
 # Étape 2 — pose du cookie
 # ---------------------------------------------------------------------------
 def test_activation_benevole_pose_le_cookie_et_cree_une_ligne(client, conn):

@@ -55,6 +55,17 @@
     {% include "_rangement_formulaire.html" %}
   </details>
   {% endif %}
+
+  {# Identifiant d'appareil (docs/conception-journal.md §4.3). Volontairement
+     DISCRET — une ligne en pied de carte, pas un bandeau : il ne sert que si
+     quelqu'un le demande au téléphone (« moi c'est 3F1A9C »). Absent tant
+     qu'aucun cookie n'a été posé (mode ouvert) : on n'affiche alors rien
+     plutôt qu'une valeur vide. #}
+  {% if appareil %}
+    <p class="scanner-aide">Identifiant de cet appareil :
+       <strong>{{ appareil }}</strong> — à donner si on vous le demande en
+       cas de dépannage.</p>
+  {% endif %}
 </section>
 
 <section class="carte">
