@@ -1725,8 +1725,83 @@ NULL) ne partiraient jamais. **31 tests dédiés** (`tests/test_appareils.py`).
 **Suite globale : 542 tests verts.** Wiki : `Acces-et-Token.md` (section « La
 liste des appareils », dont « pourquoi on ne peut pas couper un seul
 appareil »), `Guide-Benevole.md`, `Rgpd.md`. **Pas de montée de version**
-(proposée au lot C). RESTE : lots B et suivants — `app/journal.py`,
-`/admin/journal`, `scripts/journal.py`, les points d'appel.
+(proposée au lot C).
+
+**SOCLE DU JOURNAL, ÉCRAN ET OUTIL TERMINAL (lot B du chantier « journal
+d'activité ») : FAIT.** Suite du lot A (identifiants d'appareil, ci-dessus).
+**Aucun point d'appel métier n'est encore posé** (lot C) : le journal existe,
+s'écrit, se lit et se filtre, mais reste vide en usage réel tant que les
+routes n'appellent pas `journaliser()`. Quatre commits.
+
+**Socle d'écriture** — nouveau `app/journal.py` : vocabulaire **fermé**
+(`MODULES`, `ACTIONS`, construit dès maintenant à partir des tables §2.1/
+§2.2/§2.3 de `docs/conception-journal.md`, alors même qu'aucun appel n'existe
+encore — sinon le test de vocabulaire fermé ne porterait que sur un
+sous-ensemble provisoire) ; `journaliser(request, module, action, objet=,
+ref=, ok=, detail=)`, **qui ne lève jamais** (tout est dans un `try/except
+Exception`, un module/action hors vocabulaire n'écrit rien et avertit sur
+`uvicorn.error` plutôt que de lever) ; assainissement obligatoire (retours à
+la ligne → espaces, troncature 120/60 caractères) ; horodatage local avec
+décalage explicite (`FUSEAU_LOCAL`, pas UTC — c'est un fichier qu'on lit au
+`tail`, pas de la donnée métier). `_qui(request)` : **admin testé avant
+bénévole** (un administrateur a aussi `acces_valide` vrai) et **mode ouvert
+détecté explicitement** (aucun jeton configuré → `indetermine`, jamais
+« bénévole » par défaut — même piège que la mesure d'audience). Logger dédié
+`ludotex.journal` (`propagate=False`), `RotatingFileHandler` (5 Mo × 5) +
+`StreamHandler` conditionnel (`JOURNAL_CONSOLE`) dont le formatage humain
+(`formater_console`) est **partagé** avec `scripts/journal.py`, un seul
+endroit qui décide de la mise en forme lisible. `lire_dernieres_lignes` :
+lecture par blocs en remontant depuis la fin, **jamais tout le fichier**,
+réutilisée par l'écran admin et le script. `JOURNAL_PATH`/`JOURNAL_CONSOLE`
+dans `app/config.py` + `.env.example`, branchement dans `app/main.py` à côté
+des `init_db()`, fixture autouse `_journal_isole` dans `tests/conftest.py`
+(sans elle, toute la suite écrirait dans le vrai `data/journal.log` du
+dépôt), `data/journal.log*` ajouté au `.gitignore` (le seul cas non couvert
+par les règles existantes, `.db`/`.sqlite*`).
+
+**Écran `/admin/journal`** (`routes/admin.py`) : garde admin (`_garde`), lit
+la fenêtre des **200 dernières lignes** puis filtre **dans cette fenêtre**
+(module, qui, action, appareil, recherche dans `objet`, période) — décision
+assumée et documentée à l'écran, pas une recherche plein fichier (chargerait
+potentiellement 5 Mo). Menus déroulants limités aux valeurs **réellement
+présentes** dans la fenêtre courante (motif `services.lister_categories`),
+pas le vocabulaire fermé entier. Puces de retrait (patron exact
+`catalogue._puces_filtres`). Ligne en échec marquée `.badge-attention` ;
+ligne JSON illisible (rotation en cours d'écriture) **ignorée en silence** ;
+fichier absent **ou vide** (le `RotatingFileHandler` crée un fichier de 0
+octet dès la configuration, avant toute ligne écrite) → message clair,
+jamais une erreur. Bouton de téléchargement du fichier brut (même repli
+« vide → redirection » que l'écran). Lien au tableau de bord (groupe
+« Données & accès »), `.aide-inline` renvoyant vers une nouvelle section
+`#probleme-journal` de `/admin/aide`.
+
+**Outil terminal `scripts/journal.py`** : stdlib uniquement, patron
+`scripts/import_csv.py`, réutilise `lire_dernieres_lignes`/`formater_console`.
+Options `-n/--nombre`, `-f/--suivre` (équivalent `tail -f`, **survit à une
+rotation** en surveillant l'inode du fichier et en rouvrant s'il change),
+`--module`, `--qui`, `--depuis HH:MM`, `--brut` (JSON, pour `| jq`). Le suivi
+`-f` **n'est pas couvert par la suite automatisée** (process persistant, pas
+simple sous pytest) : vérification manuelle documentée en tête de fichier.
+
+**Déploiement** : `JOURNAL_PATH`/`JOURNAL_CONSOLE` posés dans le `.env` de
+production généré par `deploy/install.sh` (sous les chemins de bases), et
+`JOURNAL_PATH` avec un chemin **distinct** dans `/etc/ludotex-formation.env`
+(sinon les deux instances écriraient dans le même fichier) + dans
+`run_python_formation()`. Commentaire étendu sur `deploy/ludotex.service` et
+`deploy/ludotex-formation.service` : la contrainte du worker unique couvre
+maintenant aussi le `RotatingFileHandler` (sûr uniquement avec un seul
+processus écrivain).
+
+**35 tests dédiés** (`tests/test_journal.py` : socle, écran admin, script
+terminal). **Suite globale : 578 tests verts.** Wiki (dépôt séparé) :
+nouvelle page `Journal-Activite.md` (à quoi ça sert, ce qu'on y trouve, ce
+qu'il ne contient jamais, section « Si ça ne marche pas ») + entrées dans
+`Home.md`, `Fonctionnalites.md` (précision : pas un module réglable),
+`Guide-Admin.md`, `Glossaire.md`. **Pas de montée de version** (proposée au
+lot C, comme prévu). RESTE : **lot C** — les points d'appel métier (~40
+routes POST), la colonne « dernière activité » de `/admin/jeton` (se déduit
+du journal, attend qu'il y ait quelque chose à déduire) ; **lot D** —
+mention `/apropos`, ligne de supervision, purge des rotations anciennes.
 
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
