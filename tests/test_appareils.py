@@ -494,6 +494,101 @@ def test_le_poste_dadministration_apparait_comme_session_en_cours(client, conn):
 
 
 # ---------------------------------------------------------------------------
+# Colonne « Dernière activité » (lot C) — DÉDUITE DU JOURNAL, jamais d'une
+# colonne de base : aucune écriture n'est ajoutée au chemin des requêtes.
+# ---------------------------------------------------------------------------
+def test_derniere_activite_retient_la_ligne_la_plus_recente_par_appareil(tmp_path):
+    from app import journal
+
+    chemin = tmp_path / "j.log"
+    chemin.write_text(
+        '{"t":"2026-08-04T09:00:00+02:00","appareil":"AAAAAA","module":"pret","action":"pret","ok":true}\n'
+        '{"t":"2026-08-04T10:00:00+02:00","appareil":"BBBBBB","module":"pret","action":"pret","ok":true}\n'
+        '{"t":"2026-08-04T12:37:02+02:00","appareil":"AAAAAA","module":"pret","action":"retour","ok":true}\n'
+        # Une ligne sans appareil (visiteur) et une ligne illisible : ni l'une
+        # ni l'autre ne doit perturber le résultat.
+        '{"t":"2026-08-04T13:00:00+02:00","qui":"visiteur","module":"tournois","action":"inscription","ok":true}\n'
+        "ceci n'est pas du JSON\n",
+        encoding="utf-8",
+    )
+
+    assert journal.derniere_activite_par_appareil(chemin) == {
+        "AAAAAA": "2026-08-04T12:37:02+02:00",
+        "BBBBBB": "2026-08-04T10:00:00+02:00",
+    }
+
+
+def test_derniere_activite_fichier_absent_ne_leve_pas(tmp_path):
+    from app import journal
+
+    assert journal.derniere_activite_par_appareil(tmp_path / "jamais-ecrit.log") == {}
+
+
+def test_derniere_activite_hors_fenetre_absente_du_resultat(tmp_path):
+    """
+    Un appareil silencieux depuis assez longtemps pour être sorti de la
+    fenêtre lue n'a PAS de dernière activité — le gabarit affichera « — »,
+    jamais « jamais » (§6.2 : « absent » veut dire « on ne sait pas »).
+    """
+    from app import journal
+
+    chemin = tmp_path / "j.log"
+    lignes = ['{"t":"2026-08-04T08:00:00+02:00","appareil":"ANCIEN","module":"pret","action":"pret","ok":true}']
+    lignes += [
+        f'{{"t":"2026-08-04T09:{i:02d}:00+02:00","appareil":"RECENT","module":"pret","action":"pret","ok":true}}'
+        for i in range(30)
+    ]
+    chemin.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+
+    activite = journal.derniere_activite_par_appareil(chemin, limite=10)
+    assert "ANCIEN" not in activite
+    assert activite["RECENT"] == "2026-08-04T09:29:00+02:00"
+
+
+def test_page_jeton_affiche_la_derniere_activite(client, conn, _journal_isole):
+    """Bout en bout : une action réelle du poste d'administration se retrouve
+    dans sa ligne de la liste des appareils."""
+    _poser_jeton(conn)
+    _connecter_admin(client)                     # écrit « connexion_reussie »
+    appareil = client.cookies.get("appareil")
+
+    r = client.get("/admin/jeton")
+    assert r.status_code == 200
+    assert appareil in r.text
+    assert "Dernière activité" in r.text
+
+    from app import journal
+
+    activite = journal.derniere_activite_par_appareil(_journal_isole)
+    assert appareil in activite
+    # La date est rendue en heure locale par le filtre existant.
+    from app import services
+
+    assert services.format_local(activite[appareil]) in r.text
+
+
+def test_page_jeton_affiche_un_tiret_quand_aucune_activite_connue(client, conn, _journal_isole):
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    # Cet appareil est bien enregistré, mais n'a écrit aucune ligne de journal
+    # (ou l'a écrite hors de la fenêtre lue).
+    services.enregistrer_appareil(conn, "AAAAAA", "benevole", _dans(3),
+                                  services.empreinte_jeton(jeton))
+    _connecter_admin(client)
+
+    r = client.get("/admin/jeton")
+    # On isole la LIGNE du tableau : « jamais » apparaît légitimement ailleurs
+    # dans la page (la consigne du libellé, la note sous le tableau), ce n'est
+    # que dans cette cellule qu'il serait une affirmation fausse.
+    rangee = re.search(r"<tr>(?:(?!</tr>).)*AAAAAA.*?</tr>", r.text, re.S)
+    assert rangee, "l'appareil devrait être listé"
+    cellules = rangee.group(0)
+    assert "—" in cellules
+    assert "jamais" not in cellules.lower()
+
+
+# ---------------------------------------------------------------------------
 # Étape 3 — l'identifiant sur /scanner
 # ---------------------------------------------------------------------------
 def test_scanner_affiche_lidentifiant_de_lappareil(client, conn):

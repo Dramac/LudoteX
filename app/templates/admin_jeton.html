@@ -108,7 +108,7 @@
     <table class="admin-table">
       <tr>
         <th>Appareil</th><th>Rôle</th><th>Activé le</th>
-        <th>Valable jusqu'au</th><th>Libellé</th>
+        <th>Valable jusqu'au</th><th>Dernière activité</th><th>Libellé</th>
       </tr>
       {% for a in registre.actifs %}
       <tr>
@@ -118,6 +118,13 @@
         <td>
           {% if a.expire_le %}{{ a.expire_le | dt_local }}
           {% else %}session en cours{% endif %}
+        </td>
+        {# Déduite du journal, jamais d'une colonne de base. Un appareil sorti
+           de la fenêtre lue affiche « — » : c'est « on ne sait pas », pas
+           « il n'a rien fait ». #}
+        <td>
+          {% if a.derniere_activite %}{{ a.derniere_activite | dt_local }}
+          {% else %}—{% endif %}
         </td>
         <td>
           <form method="post" action="/admin/jeton/appareil/{{ a.appareil }}/libelle">
@@ -135,6 +142,10 @@
     <p class="stats-note">Le libellé désigne un <strong>poste</strong>
        (« comptoir 2 », « accueil »), jamais une personne : ces appareils sont
        partagés, et l'application n'a pas besoin de savoir qui les tient.</p>
+    <p class="stats-note">« Dernière activité » se lit dans le
+       <a class="lien" href="/admin/journal">journal d'activité</a>, qui ne
+       garde que les lignes récentes : un « — » signifie « rien de récent »,
+       pas « cet appareil n'a jamais servi ».</p>
   {% endif %}
 
   {% if registre.perimes %}

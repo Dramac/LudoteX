@@ -386,3 +386,49 @@ def lire_dernieres_lignes(
     texte = [m.decode("utf-8", errors="ignore") for m in morceaux]
     texte = [l for l in texte if l.strip()]
     return texte[-limite:]
+
+
+def derniere_activite_par_appareil(
+    chemin: str | Path, limite: int = 500
+) -> dict[str, str]:
+    """
+    Horodatage de la DERNIÈRE ligne écrite par chaque appareil, dans la
+    fenêtre des `limite` dernières lignes du journal.
+
+    Sert la colonne « Dernière activité » de la liste des appareils
+    (docs/conception-journal.md §6.2). Trois propriétés voulues :
+
+    - **aucune écriture, aucune colonne de base.** L'information se déduit du
+      journal, qui était de toute façon déjà lu par `/admin/journal` ; ajouter
+      un `UPDATE` sur le chemin des requêtes est précisément ce que §4.4
+      interdit (le projet vient de payer cher les écrivains SQLite sur les
+      chemins chauds).
+    - **une fenêtre, pas tout l'historique.** On ne remonte que la fin du
+      fichier : un appareil silencieux depuis assez longtemps pour en être
+      sorti n'apparaît simplement pas dans le résultat.
+    - **absent ≠ jamais.** Cette fonction ne renvoie RIEN pour un tel
+      appareil ; c'est au gabarit d'afficher « — », surtout pas « jamais »,
+      qui serait une affirmation fausse.
+
+    Une ligne illisible (rotation en cours d'écriture) est ignorée en
+    silence, comme partout ailleurs à la lecture du journal.
+
+    Returns:
+        {identifiant d'appareil: horodatage ISO local}, les lignes sans
+        appareil étant ignorées.
+    """
+    dernieres: dict[str, str] = {}
+    for texte in lire_dernieres_lignes(chemin, limite):
+        try:
+            ligne = json.loads(texte)
+        except ValueError:
+            continue
+        appareil, instant = ligne.get("appareil"), ligne.get("t")
+        if not appareil or not instant:
+            continue
+        # Le fichier est chronologique : la dernière vue gagne. On compare
+        # quand même les valeurs plutôt que d'écraser aveuglément, pour rester
+        # juste si un jour des lignes arrivaient dans le désordre.
+        if instant >= dernieres.get(appareil, ""):
+            dernieres[appareil] = instant
+    return dernieres

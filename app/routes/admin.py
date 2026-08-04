@@ -783,6 +783,10 @@ def jeton_page(request: Request):
     périme d'un coup tous les appareils bénévoles) et le dictionnaire des
     sessions admin EN MÉMOIRE (un redémarrage ferme tous les postes
     d'administration). Voir `services.lister_appareils`.
+
+    La colonne « Dernière activité » vient d'une TROISIÈME source, le fichier
+    journal — pas d'une colonne de base (§6.2) : aucune écriture n'est ajoutée
+    au chemin des requêtes pour la produire.
     """
     if (garde := _garde(request)):
         return garde
@@ -798,6 +802,15 @@ def jeton_page(request: Request):
         )
     finally:
         conn.close()
+
+    # Fenêtre PLUS LARGE que celle de l'écran /admin/journal (200) : ici on ne
+    # lit pas une page, on cherche la récence de chaque appareil, et une
+    # journée d'événement produit beaucoup de lignes sur peu d'appareils.
+    activite = journal.derniere_activite_par_appareil(
+        journal.chemin_journal(), LIGNES_DERNIERE_ACTIVITE
+    )
+    for appareil in registre["actifs"] + registre["perimes"]:
+        appareil["derniere_activite"] = activite.get(appareil["appareil"])
 
     expire_local = services.format_local(expire_iso) if expire_iso else None
     lien, partage = None, {}
@@ -896,6 +909,14 @@ def aide_admin(request: Request):
 # un `grep`/`jq` direct sur le fichier, documenté à l'écran.
 # ---------------------------------------------------------------------------
 LIMITE_JOURNAL = 200
+
+# Fenêtre lue pour la colonne « Dernière activité » de /admin/jeton (§6.2).
+# Volontairement plus large que l'écran ci-dessus : on n'y lit pas une page,
+# on y cherche la dernière trace de chaque appareil, et une journée
+# d'événement produit beaucoup de lignes pour une poignée de téléphones. Un
+# appareil silencieux depuis plus longtemps que cette fenêtre affiche « — »
+# (et surtout pas « jamais », qui serait faux).
+LIGNES_DERNIERE_ACTIVITE = 500
 
 
 def _lignes_journal(chemin: Path) -> list[dict]:
