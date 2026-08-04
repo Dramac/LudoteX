@@ -1663,6 +1663,71 @@ première écriture. **Suite globale : 511 tests verts.** Non audités faute de
 périmètre : le reste du module tournois (désinscription, lancement, rondes),
 le planning, le programme.
 
+**IDENTIFIANTS D'APPAREIL ET REGISTRE (lot A du chantier « journal
+d'activité ») : FAIT.** Cadré dans `docs/conception-journal.md` §4/§6.2/§8,
+étapes 1 et 2 du §11 ; **aucune ligne de journal n'est encore écrite** — ce lot
+se tient tout seul et livre déjà de la valeur (savoir combien de téléphones ont
+activé l'accès). Cinq commits, un par étape. **Table `appareils`**
+(`models.py`, ajoutée à `SCHEMA_STATEMENTS`) dans la base de PRÊT, donc
+**incluse dans les sauvegardes** et recréée après restauration d'une archive
+antérieure (`_migrer_bases_restaurees`, volet 3 de D5) : `appareil` (PK, 6
+caractères hexadécimaux de `secrets.token_hex(3)`), `role`, `active_le`,
+`expire_le`, `generation`, `libelle`. Table neuve → `CREATE TABLE IF NOT
+EXISTS` suffit, **aucune migration de colonne**. `libelle` est créée **dès
+l'étape 1** bien que le DDL du §4.4 ne la montre pas (décision Simon) : elle
+n'est exploitée qu'à l'étape 4, mais l'ajouter plus tard aurait imposé un
+`ALTER TABLE` sur une table créée deux commits plus tôt. **Services**
+(`services.py`) : `COOKIE_APPAREIL`, `nouvel_appareil`, `appareil_de`,
+`empreinte_jeton` (8 caractères de `sha256(jeton)` — **jamais le jeton**, §8),
+`enregistrer_appareil`, `renommer_appareil`, `lister_appareils`,
+`purger_appareils_anciens`. **`admin_auth`** : `_appareils` (dict SÉPARÉ de
+`_sessions`, dont la valeur est un instant lu tel quel par `session_valide` —
+la mêler à autre chose aurait obligé à toucher la seule fonction qui garde la
+porte de l'admin), `ouvrir_session(appareil)`, `appareils_admin_ouverts()`.
+**« Actif » a trois sens** (§4.5) et se calcule **à la lecture, sans jamais
+écrire ni purger** (même principe que `live.annonce_active`) : échéance
+dépassée / jeton renouvelé (l'empreinte ne correspond plus au jeton courant) /
+session admin fermée (lue en mémoire — un redémarrage les ferme toutes, et
+c'est la vérité). **Cookie posé aux DEUX SEULS endroits qui ouvrent une
+écriture** (`/acces?jeton=`, `POST /admin/login`) — donc **rien pour le
+public**, la question du bandeau de consentement ne se pose jamais — et
+**seulement s'il est absent** (un bénévole rouvre son lien plus souvent qu'on
+ne croit ; le réécrire lui donnerait une nouvelle identité à chaque fois).
+`expire_le` calculé à partir de `_duree_cookie()` **elle-même** (nouveau
+`acces._echeance`), jamais d'une règle parallèle ; laissé **NULL pour un
+appareil admin** (décision Simon : la session en mémoire fait foi, une date en
+base serait une seconde vérité qui divergerait au premier redémarrage). Le
+REGISTRE, lui, est mis à jour à chaque activation réussie (upsert, décision
+Simon) : sans cela, après une rotation, le compteur annoncerait 0 pendant que
+douze téléphones fonctionnent. **Un appareil n'a qu'un rôle**, celui de la
+dernière activation (décision Simon) : le téléphone du bureau passe de
+`benevole` à `admin` sans créer de seconde ligne. **`/scanner`** affiche
+l'identifiant en pied de carte, **discrètement** (une ligne, pas un bandeau) :
+c'est la seule voie de rapprochement, et elle est **déclarative** (« moi c'est
+3F1A9C ») — rien ne s'affiche sans cookie. `_contexte_scanner` gagne la
+requête en paramètre, les six points de rendu en héritent. **`/admin/jeton`**
+porte la liste (§6.2, pas de page nouvelle) : compteur d'abord, tableau
+`.admin-table` des actifs, repli `<details>` des périmés **avec la raison**,
+libellé libre modifiable par ligne (`POST /admin/jeton/appareil/{id}/libelle`).
+**Pas de colonne « dernière activité »** (elle se déduira du journal, lot C —
+mieux vaut pas de colonne qu'une colonne vide). ⚠️ **Aucun bouton
+« révoquer »**, ni par ligne ni ailleurs : l'authentification compare le cookie
+au jeton courant, il n'existe aucun moyen de couper un appareil seul ; la page
+dit le seul geste réel (réinitialiser le jeton, qui déconnecte **tous** les
+téléphones) — **test garde-fou** vérifiant que la seule action portant sur un
+appareil est son libellé. **Consigne du libellé sous les champs eux-mêmes**
+(« un poste, jamais une personne ») et pas seulement dans le wiki : c'est le
+seul endroit du dispositif où une donnée personnelle peut entrer. **Purge**
+des lignes de plus d'un an dans `cloturer_tous_les_prets` (§8.1), même
+transaction, silencieuse (signature inchangée), mesurée sur
+`COALESCE(expire_le, active_le)` — sans quoi les lignes admin (`expire_le`
+NULL) ne partiraient jamais. **31 tests dédiés** (`tests/test_appareils.py`).
+**Suite globale : 542 tests verts.** Wiki : `Acces-et-Token.md` (section « La
+liste des appareils », dont « pourquoi on ne peut pas couper un seul
+appareil »), `Guide-Benevole.md`, `Rgpd.md`. **Pas de montée de version**
+(proposée au lot C). RESTE : lots B et suivants — `app/journal.py`,
+`/admin/journal`, `scripts/journal.py`, les points d'appel.
+
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
 donc PAS être « corrigées dans le même commit que le code », contrairement à
