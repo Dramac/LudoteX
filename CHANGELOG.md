@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.3.0 — 2026-08-04
+
+- Nouveau **journal d'activité** en administration : un historique en lecture seule de qui a fait quoi et quand, à ouvrir quand quelque chose paraît anormal. Il enregistre les gestes d'administration et de configuration, ceux dont rien ne gardait trace jusqu'ici — connexions, réinitialisation de l'accès bénévole, imports de catalogue, sauvegardes restaurées, modules activés ou désactivés, annonces de l'écran de salle, clôture de fin d'événement. Filtrable par module, type de visiteur, action, appareil ou période, avec téléchargement du fichier complet.
+- Les **tentatives de connexion ratées** à l'administration y apparaissent en orange. C'est le seul endroit où une tentative d'intrusion se voit : jusqu'ici, elle ne laissait aucune trace.
+- Nouvelle **liste des appareils** sur la page « Accès bénévole » : combien de téléphones ont réellement activé l'accès, depuis quand, jusqu'à quand, et à quand remonte leur dernière action. Chaque appareil peut recevoir un libellé libre pour s'y retrouver (« comptoir 2 », « accueil »).
+- Chaque bénévole peut lire l'identifiant de son propre appareil en bas de son écran « Scanner un jeu », pour pouvoir le dire au bureau en cas de dépannage.
+- Le journal n'enregistre **jamais** de numéro de pochette, de pseudo de tournoi, de nom de bénévole, de code personnel, de mot de passe ni d'adresse internet. Les consultations (catalogue, fiches, tournois) n'y figurent pas non plus : ce n'est pas un compteur de visites.
+
 ## 1.2.1 — 2026-08-02
 
 - Deux bénévoles qui appuient sur « Prêter » au même instant obtiennent désormais deux numéros de pochette différents. Ils pouvaient jusqu'ici recevoir le même numéro, sans aucun message : deux pièces d'identité se retrouvaient alors dans la même pochette, et la restitution du soir partait de travers.
