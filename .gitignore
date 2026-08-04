@@ -23,6 +23,9 @@ lancer-ludotex-*.html
 # --- Sauvegardes de la base (générées sur le serveur) ---
 sauvegardes/
 
+# --- Journal d'activité (généré, jamais versionné) ---
+data/journal.log*
+
 # --- Python ---
 __pycache__/
 *.py[cod]

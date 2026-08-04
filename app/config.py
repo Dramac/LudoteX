@@ -32,6 +32,19 @@ ni fonctionnel** — c'est le comportement historique de l'application.
 ``FORMATION_URL`` (optionnelle) n'a de sens QUE sur l'instance de PRODUCTION :
 elle affiche un simple lien « Site de formation » au tableau de bord admin,
 pointant vers l'instance de formation (sous-domaine séparé). Masqué si absente.
+
+JOURNAL D'ACTIVITÉ
+-------------------
+``JOURNAL_PATH`` (défaut ``data/journal.log``) : fichier JSON Lines du journal
+d'activité (voir `app/journal.py` et `docs/conception-journal.md`). Sur une
+instance de formation, à régler sur un chemin DISTINCT de la production (même
+principe que les bases jetables) — sinon les deux instances écrivent dans le
+même fichier.
+
+``JOURNAL_CONSOLE`` (0/1, défaut 0) : recopie chaque ligne, formatée pour
+l'œil, sur la console du process (utile en phase de test, à côté des logs
+uvicorn). Explicitement désactivé par défaut pour qu'une production n'hérite
+pas par inadvertance d'un comportement pensé pour le développement.
 """
 
 from __future__ import annotations
@@ -53,3 +66,7 @@ MODE_FORMATION = os.getenv("MODE_FORMATION", "").strip().lower() in ("1", "true"
 # URL de l'instance de formation, affichée en lien depuis l'admin de PRODUCTION
 # uniquement (None -> lien masqué). Sans effet si MODE_FORMATION est actif.
 FORMATION_URL = os.getenv("FORMATION_URL", "").strip() or None
+
+# Fichier du journal d'activité (JSON Lines) et bascule de la recopie console.
+JOURNAL_PATH = os.getenv("JOURNAL_PATH", "data/journal.log")
+JOURNAL_CONSOLE = os.getenv("JOURNAL_CONSOLE", "").strip().lower() in ("1", "true", "on")

@@ -35,7 +35,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import auth
+from app import auth, journal
 from app.db import get_connection, init_db
 from app.modules import ModuleDesactive, garde_module
 from app.routes import acces, admin, catalogue, live, pret, scanner, stats
@@ -140,6 +140,11 @@ init_db()
 init_tournoi_db()
 # Base SÉPARÉE du module planning bénévole (data/planning.db), idempotente elle aussi.
 init_planning_db()
+
+# Journal d'activité (JSON Lines) : logger dédié, fichier tournant + console
+# optionnelle (JOURNAL_CONSOLE). Aucun point d'appel métier n'est encore posé
+# (lot C de docs/conception-journal.md) ; le socle est prêt à les recevoir.
+journal.configurer()
 
 # Garde-fou de déploiement : si aucun jeton n'est en vigueur, les écrans
 # bénévole sont ouverts à tous. On le signale fort dans les logs au démarrage.
