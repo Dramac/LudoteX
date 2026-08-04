@@ -1798,10 +1798,96 @@ nouvelle page `Journal-Activite.md` (à quoi ça sert, ce qu'on y trouve, ce
 qu'il ne contient jamais, section « Si ça ne marche pas ») + entrées dans
 `Home.md`, `Fonctionnalites.md` (précision : pas un module réglable),
 `Guide-Admin.md`, `Glossaire.md`. **Pas de montée de version** (proposée au
-lot C, comme prévu). RESTE : **lot C** — les points d'appel métier (~40
-routes POST), la colonne « dernière activité » de `/admin/jeton` (se déduit
-du journal, attend qu'il y ait quelque chose à déduire) ; **lot D** —
-mention `/apropos`, ligne de supervision, purge des rotations anciennes.
+lot C, comme prévu).
+
+**POINTS D'APPEL PRIORITÉ 1, GARDE-FOU D'INTERDICTION ET « DERNIÈRE
+ACTIVITÉ » (lot C du chantier « journal d'activité ») : FAIT.** Le journal
+cesse d'être un dispositif vide : les ~15 routes du tableau §2.1 de
+`docs/conception-journal.md` (administration et configuration — celles dont
+RIEN dans les trois bases ne gardait trace) écrivent désormais une ligne.
+Trois commits.
+
+**Points d'appel** (`app/routes/admin.py`, `app/planning/routes.py`) : jeton
+réinitialisé (l'échéance, jamais le jeton), mot de passe changé (le fait
+seul, ni l'ancien ni le nouveau ni une empreinte), connexion admin réussie
+ET échouée, import CSV (nom du fichier), restauration de sauvegarde, clôture
+des prêts (le nombre), module activé/désactivé, contexte et visibilité de
+rangement, affectation d'emplacement en lot, annonce d'écran de salle
+posée/effacée, date d'événement, purge RGPD du planning (nom de l'ÉDITION),
+réinitialisation des données de formation, création de fiche et ajout
+d'exemplaire. Tous **depuis les routes** (§5.2) : deux tests vérifient que
+`scripts/import_csv.py` et `app/formation.py`, lancés en ligne de commande,
+n'écrivent rien.
+
+Trois décisions non évidentes. (1) **`journaliser()` gagne deux paramètres
+`qui`/`appareil`**, réservés au SEUL `POST /admin/login` (docstring
+explicite, un seul appelant) : la session et le cookie d'appareil naissent
+dans la RÉPONSE, donc sur la requête entrante `admin_connecte()` est encore
+faux et le cookie absent lors d'une première connexion — sans eux, une
+connexion administrateur réussie porterait `qui: visiteur` sans appareil, et
+un filtre « qui = admin » raterait précisément les connexions. Option
+retenue avec Simon parmi trois. (2) **La restauration valide, JOURNALISE,
+puis remplace** (`valider_zip_sauvegarde` appelé explicitement dans la route,
+coût nul) : après le basculement des fichiers, `_qui()` lirait le jeton
+d'une AUTRE base que celle sur laquelle la requête a été authentifiée. Le
+fichier journal n'étant pas dans l'archive (§9), la ligne survit à la
+restauration. (3) **`/admin/fonctionnalites` compare à l'état précédent** et
+n'écrit qu'une ligne par module RÉELLEMENT changé : le formulaire renvoie
+tous les modules à chaque enregistrement, sans quoi chaque passage sur la
+page en produirait six, toutes fausses. Même précaution pour l'écran de
+salle, qui n'écrit « annonce effacée » que s'il y avait bien une annonce
+(sinon enregistrer le titre seul produirait un effacement imaginaire).
+
+**Garde-fou d'interdiction** (`tests/test_journal_interdits.py`, le test le
+plus important du chantier) : un scénario complet — activation du jeton,
+prêt, retour, tournoi PAR ÉQUIPES avec inscription publique, édition de
+planning avec un bénévole nommé, connexion admin, purge RGPD, restauration —
+joué avec des valeurs volontairement distinctives, puis le fichier produit
+passé au crible sur deux plans. **Littéral** : ni jeton, ni mot de passe, ni
+son empreinte sha256, ni pseudo, nom d'équipe, membre, nom de bénévole, code
+de désinscription ou de modification, ni IP, ni query string brute.
+**Structurel** : les clés de chaque ligne appartiennent au format fermé du
+§3 — c'est cette moitié qui protège l'AVENIR, un champ ajouté par
+inadvertance tombe même si sa valeur paraît anodine, là où une liste de mots
+interdits ne connaît que les fuites qu'on a su imaginer. Les deux ont été
+vérifiés en injectant de vraies fuites (un nom de bénévole en `objet`, puis
+un champ `ip`) : le test échoue bien dans les deux cas. Deux points assumés :
+le lot C ne journalisant pas encore les prêts ni les tournois, ces parties du
+scénario ne produisent aucune ligne — d'où un test de **non-vacuité** qui
+exige la présence des lignes du lot C, sans quoi tout passerait au vert sur
+un fichier vide ; et le numéro de pochette étant un petit entier, le
+chercher dans tout le fichier donne des faux positifs (l'id d'une édition de
+planning vaut « 1 » lui aussi — la première rédaction s'y est cassé le nez),
+donc on vérifie l'absence du MOT partout et celle de la VALEUR dans les
+lignes du module `pret`.
+
+**Colonne « dernière activité »** : `journal.derniere_activite_par_appareil`
+retient l'horodatage le plus récent par appareil dans la fin du fichier
+(réutilise `lire_dernieres_lignes`), consommée au rendu de `/admin/jeton`
+avec une fenêtre de **500 lignes** (`LIGNES_DERNIERE_ACTIVITE`, plus large
+que les 200 de l'écran journal : on y cherche une récence par appareil, pas
+une page à lire). **Aucune écriture, aucune colonne de base** — ajouter un
+UPDATE sur le chemin des requêtes est ce que §4.4 interdit. Un appareil hors
+fenêtre affiche **« — »**, jamais « jamais » : c'est « on ne sait pas », et
+une note sous le tableau le dit.
+
+Deux tests existants de `test_journal.py` **adaptés en connaissance de
+cause** : le cas « fichier journal vide » n'est plus atteignable en se
+connectant (la connexion écrit elle-même une ligne), il est désormais
+reconstitué explicitement. **36 tests ajoutés** (23 points d'appel + 8
+garde-fou + 5 dernière activité). **Suite globale : 614 tests verts.**
+Wiki : `Journal-Activite.md` (la page annonçait « prêts et retours, actions
+sur les tournois et le planning » — écrit au moment du socle en anticipant
+des points d'appel qui n'existaient pas ; remplacé par le tableau de ce qui
+est réellement enregistré, plus un paragraphe disant franchement ce qui n'y
+figure pas encore et où le trouver en attendant), `Guide-Admin.md` (même
+correction + quoi faire devant des connexions ratées), `Acces-et-Token.md`
+(la nouvelle colonne et le sens de son tiret).
+
+RESTE : **lot D** — les points d'appel des priorités 2 et 3 (tournois,
+programme, planning, puis prêts : ~25 routes, dont les échecs `deja_sorti` /
+`occupe` qui sont l'intérêt principal du lot) ; **finitions** — mention
+`/apropos`, ligne de supervision, purge des rotations de plus d'un an.
 
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
