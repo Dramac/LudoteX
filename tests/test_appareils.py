@@ -278,6 +278,71 @@ def test_un_appareil_promu_admin_change_de_role_sans_seconde_ligne(conn):
 
 
 # ---------------------------------------------------------------------------
+# Étape 5 — purge à la clôture de fin d'événement
+# ---------------------------------------------------------------------------
+def _vieillir(conn, appareil, jours):
+    """Recule artificiellement la dernière activation d'un appareil."""
+    vieux = (datetime.now(timezone.utc) - timedelta(days=jours)).isoformat(timespec="seconds")
+    conn.execute(
+        "UPDATE appareils SET active_le = ?, "
+        "expire_le = CASE WHEN expire_le IS NULL THEN NULL ELSE ? END "
+        "WHERE appareil = ?",
+        (vieux, vieux, appareil),
+    )
+    conn.commit()
+
+
+def test_la_cloture_purge_les_appareils_de_plus_dun_an(conn):
+    from app import services
+
+    generation = services.empreinte_jeton("jeton-de-test")
+    services.enregistrer_appareil(conn, "VIEUX1", "benevole", _dans(3), generation)
+    services.enregistrer_appareil(conn, "RECENT", "benevole", _dans(3), generation)
+    services.enregistrer_appareil(conn, "ADMIN1", "admin")      # expire_le NULL
+    _vieillir(conn, "VIEUX1", 400)
+    _vieillir(conn, "ADMIN1", 400)
+    _vieillir(conn, "RECENT", 30)
+
+    services.cloturer_tous_les_prets(conn)
+
+    restants = {r[0] for r in conn.execute("SELECT appareil FROM appareils")}
+    # L'appareil d'administration n'a pas d'échéance : c'est sa date
+    # d'activation qui sert de repère (COALESCE), sinon il ne partirait jamais.
+    assert restants == {"RECENT"}
+
+
+def test_la_cloture_ne_touche_pas_un_appareil_de_lannee(conn):
+    """
+    Un bénévole qui revient d'une édition sur l'autre garde son appareil ET
+    son libellé : la purge ne vise que ce qui date de plus d'un an.
+    """
+    from app import services
+
+    services.enregistrer_appareil(conn, "AAAAAA", "benevole", _dans(3), "gen00001")
+    services.renommer_appareil(conn, "AAAAAA", "comptoir 2")
+    _vieillir(conn, "AAAAAA", 300)
+
+    services.cloturer_tous_les_prets(conn)
+
+    ligne = conn.execute("SELECT * FROM appareils").fetchone()
+    assert ligne["appareil"] == "AAAAAA"
+    assert ligne["libelle"] == "comptoir 2"
+
+
+def test_la_cloture_rend_toujours_le_nombre_de_prets_clotures(conn):
+    """Non-régression : la purge est silencieuse, elle ne change pas le
+    compte affiché à l'écran de fin d'événement."""
+    from app import services
+
+    services.enregistrer_appareil(conn, "VIEUX1", "benevole", _dans(3), "gen00001")
+    _vieillir(conn, "VIEUX1", 400)
+    services.preter(conn, "001")
+
+    assert services.cloturer_tous_les_prets(conn) == 1
+    assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 0
+
+
+# ---------------------------------------------------------------------------
 # Étape 4 — la liste sur /admin/jeton
 # ---------------------------------------------------------------------------
 def _connecter_admin(client):

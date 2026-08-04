@@ -1097,8 +1097,16 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
     requête (voir `_effacer_pochette` pour le pourquoi) : à la fin d'un
     événement, plus aucun numéro ne subsiste en base.
 
+    C'est aussi le moment naturel pour purger les vieilles lignes du REGISTRE
+    DES APPAREILS (docs/conception-journal.md §8.1) : ce registre est
+    persistant ET sauvegardé, donc il ne se vide jamais de lui-même,
+    contrairement au journal dont les rotations disparaissent. La purge est
+    silencieuse et ne touche que ce qui date de plus d'un an — l'appareil d'un
+    bénévole qui revient d'une édition sur l'autre garde donc son libellé.
+
     Returns:
-        Le nombre de prêts/sorties clôturés.
+        Le nombre de prêts/sorties clôturés (le registre, lui, n'intéresse pas
+        l'écran de fin d'événement : il n'a rien à voir avec les prêts).
     """
     with transaction(conn):
         cur = conn.execute(
@@ -1108,6 +1116,7 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
         )
         nb = cur.rowcount
         conn.execute("UPDATE pochettes SET occupe = 0")
+        purger_appareils_anciens(conn)
     return nb
 
 
