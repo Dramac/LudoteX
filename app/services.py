@@ -40,10 +40,12 @@ RÈGLES MÉTIER NON NÉGOCIABLES (voir docs/specification.md §3, §5, §6)
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import re
+import secrets
 import sqlite3
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 # Fuseau de l'événement (saisies « 20h », « 2h du matin » = heure locale FR).
@@ -1991,3 +1993,230 @@ def affecter_emplacement_lot(
     )
     conn.commit()
     return {"titres": len(titres_touches), "boites": len(ids)}
+
+
+# ===========================================================================
+# REGISTRE DES APPAREILS (docs/conception-journal.md §4)
+# ===========================================================================
+# Un identifiant tiré au hasard, posé dans un cookie aux deux seuls endroits
+# qui ouvrent un accès en ÉCRITURE (activation bénévole, connexion admin), et
+# consigné dans la table `appareils`. Il répond à une question simple qu'aucun
+# écran ne savait poser jusqu'ici : combien de téléphones ont réellement activé
+# l'accès, et depuis quand ?
+#
+# CE QU'IL DIT ET NE DIT PAS — voir le commentaire de models.SCHEMA_APPAREILS.
+# En résumé : « c'est le même téléphone », jamais « c'est le téléphone de
+# Marie ». Aucun cookie n'est posé pour le PUBLIC : un visiteur qui consulte le
+# catalogue ou s'inscrit à un tournoi ne reçoit rien.
+
+# Nom du cookie d'appareil. Même famille que COOKIE_RANGEMENT (cookie
+# d'appareil, résolu ici et pas dans une route) : un seul domicile pour le nom
+# et pour sa lecture, car plusieurs surfaces en ont besoin.
+COOKIE_APPAREIL = "appareil"
+
+# Longueur de l'empreinte de génération conservée (caractères de sha256).
+# Assez pour distinguer deux générations de jeton, trop peu pour reconstituer
+# quoi que ce soit — et de toute façon un hash n'est pas réversible.
+_LONGUEUR_EMPREINTE = 8
+
+# Au-delà de ce délai, une ligne d'appareil périmée est supprimée à la clôture
+# de fin d'événement (§8.1 : le registre est persistant ET sauvegardé, donc il
+# survit à la rotation du journal — il lui faut sa propre purge).
+RETENTION_APPAREILS_JOURS = 365
+
+
+def nouvel_appareil() -> str:
+    """
+    Tire un identifiant d'appareil : 6 caractères hexadécimaux majuscules.
+
+    Six et non quatre : avec quatre (65 536 valeurs) et une trentaine
+    d'appareils, la probabilité qu'au moins deux se retrouvent avec le même
+    identifiant avoisine 0,7 % — assez rare pour ne jamais être testée, assez
+    fréquente pour induire en erreur le jour où elle survient. Six rendent la
+    collision négligeable et restent lisibles à voix haute au téléphone
+    (« moi c'est 3F1A9C »).
+    """
+    return secrets.token_hex(3).upper()
+
+
+def appareil_de(request) -> str | None:
+    """Identifiant d'appareil porté par la requête, ou None si le cookie est absent."""
+    return request.cookies.get(COOKIE_APPAREIL) or None
+
+
+def empreinte_jeton(jeton: str | None) -> str | None:
+    """
+    Empreinte TRONQUÉE du jeton bénévole, pour reconnaître sa génération.
+
+    JAMAIS le jeton lui-même (docs/conception-journal.md §8) : on n'en garde
+    que les 8 premiers caractères de son sha256. Cette valeur sert uniquement à
+    comparer deux générations entre elles — « ce téléphone a-t-il été activé
+    avec le jeton en vigueur, ou avec le précédent ? ».
+
+    Returns:
+        L'empreinte, ou None si aucun jeton n'est configuré (mode ouvert).
+    """
+    if not jeton:
+        return None
+    return hashlib.sha256(jeton.encode()).hexdigest()[:_LONGUEUR_EMPREINTE]
+
+
+def enregistrer_appareil(
+    conn: sqlite3.Connection,
+    appareil: str,
+    role: str,
+    expire_le: str | None = None,
+    generation: str | None = None,
+) -> None:
+    """
+    Consigne une activation dans le registre (une écriture, à l'activation).
+
+    Un appareil DÉJÀ connu voit sa ligne mise à jour plutôt que dupliquée : le
+    cas est réel et sans lui la liste mentirait. Deux situations :
+
+    - **Rotation du jeton.** Après une réinitialisation, tous les bénévoles
+      rouvrent le lien d'activation sur le même téléphone. Le cookie
+      d'appareil, lui, n'est pas réécrit (il n'est posé que s'il est absent) :
+      sans mise à jour de `generation`, l'appareil resterait affiché « périmé »
+      alors qu'il vient de se réactiver, et le compteur annoncerait 0 appareil
+      pendant que douze téléphones fonctionnent.
+    - **Changement de rôle.** Le téléphone d'un membre du bureau active
+      d'abord le jeton bénévole, puis se connecte en administration. La clé
+      primaire étant l'identifiant, un appareil n'a qu'un rôle : c'est celui de
+      la DERNIÈRE activation, décision prise avec Simon (le suivi par rôle
+      importe moins que le fait de ne pas inventer deux lignes pour un seul
+      téléphone).
+
+    `active_le` n'est PAS réécrit : la date qu'on veut lire est celle de la
+    première activation de cet appareil, pas celle de sa dernière rotation.
+
+    Cette fonction n'est appelée QUE depuis /acces et POST /admin/login, jamais
+    depuis un chemin chaud (voir le commentaire de models.SCHEMA_APPAREILS).
+    """
+    conn.execute(
+        "INSERT INTO appareils (appareil, role, active_le, expire_le, generation) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(appareil) DO UPDATE SET "
+        "    role = excluded.role, "
+        "    expire_le = excluded.expire_le, "
+        "    generation = excluded.generation",
+        (appareil, role, maintenant(), expire_le, generation),
+    )
+    conn.commit()
+
+
+def renommer_appareil(conn: sqlite3.Connection, appareil: str, libelle: str) -> None:
+    """
+    Pose (ou efface) le libellé libre d'un appareil.
+
+    Le libellé désigne un POSTE (« comptoir 2 », « accueil »), jamais une
+    personne — c'est le seul endroit du dispositif où une donnée personnelle
+    pourrait entrer, la consigne est donc affichée sous le champ lui-même
+    (docs/conception-journal.md, arbitrage 7). L'application ne déduit jamais
+    rien de cette valeur : elle l'affiche, et c'est tout.
+
+    Une saisie vide efface le libellé (NULL) — jamais une chaîne vide, pour que
+    le gabarit n'ait qu'un seul cas d'absence à traiter.
+    """
+    propre = " ".join((libelle or "").split())[:40] or None
+    conn.execute(
+        "UPDATE appareils SET libelle = ? WHERE appareil = ?", (propre, appareil)
+    )
+    conn.commit()
+
+
+def _appareil_actif(ligne: dict, generation_courante: str | None,
+                    admins_ouverts: set[str], instant: str) -> str | None:
+    """
+    Motif pour lequel cet appareil N'EST PLUS actif, ou None s'il l'est encore.
+
+    « Actif » n'a pas le même sens pour les deux rôles (§4.5) :
+
+    - **Bénévole** — le cookie de jeton cesse d'être valide soit parce que son
+      échéance est passée, soit parce que le jeton a été réinitialisé depuis.
+      D'où deux motifs distincts, et pas un seul « expiré » qui laisserait
+      croire à une question de date.
+    - **Administration** — les sessions vivent dans un dictionnaire EN MÉMOIRE
+      du process : un redémarrage les ferme toutes, et aucune colonne de base
+      ne peut le savoir. La vérité est donc lue en mémoire (`admins_ouverts`),
+      pas dans `expire_le` — qui reste NULL pour ce rôle, précisément pour
+      qu'il n'y ait pas deux sources de vérité qui divergent.
+
+    AUCUNE ÉCRITURE : tout se calcule à la lecture, comme l'expiration de
+    l'annonce d'écran de salle (routes/live.py::annonce_active). Rien n'est
+    jamais purgé ici — la purge a lieu à la clôture de fin d'événement, et
+    seulement au-delà d'un an.
+    """
+    if ligne["role"] == "admin":
+        return None if ligne["appareil"] in admins_ouverts else "session_fermee"
+    if ligne["generation"] != generation_courante:
+        return "jeton_renouvele"
+    if ligne["expire_le"] and ligne["expire_le"] < instant:
+        return "echeance"
+    return None
+
+
+def lister_appareils(
+    conn: sqlite3.Connection,
+    generation_courante: str | None,
+    admins_ouverts: set[str] | None = None,
+) -> dict:
+    """
+    Registre des appareils, trié par activation décroissante, séparé en deux.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        generation_courante: empreinte du jeton EN VIGUEUR (`empreinte_jeton`).
+        admins_ouverts: identifiants des appareils dont une session admin est
+            encore ouverte (`admin_auth.appareils_admin_ouverts()`).
+
+    Returns:
+        {"actifs": [...], "perimes": [...], "nb_benevoles_actifs": int}. Chaque
+        entrée est un dict portant en plus `motif` (None si actif, sinon
+        "echeance" / "jeton_renouvele" / "session_fermee") — au gabarit de le
+        traduire, le service ne fabrique pas de phrase.
+    """
+    admins_ouverts = admins_ouverts or set()
+    instant = maintenant()
+    actifs, perimes = [], []
+    lignes = conn.execute(
+        "SELECT appareil, role, active_le, expire_le, generation, libelle "
+        "FROM appareils ORDER BY active_le DESC"
+    ).fetchall()
+    for row in lignes:
+        ligne = dict(row)
+        ligne["motif"] = _appareil_actif(
+            ligne, generation_courante, admins_ouverts, instant
+        )
+        (actifs if ligne["motif"] is None else perimes).append(ligne)
+    return {
+        "actifs": actifs,
+        "perimes": perimes,
+        "nb_benevoles_actifs": sum(1 for a in actifs if a["role"] == "benevole"),
+    }
+
+
+def purger_appareils_anciens(conn: sqlite3.Connection,
+                             jours: int = RETENTION_APPAREILS_JOURS) -> int:
+    """
+    Supprime les lignes d'appareils dont la dernière activation remonte à plus
+    de `jours` (§8.1 : garde-fou RGPD du registre, qui est persistant ET
+    sauvegardé, donc il ne disparaît pas de lui-même comme les rotations du
+    journal).
+
+    On mesure sur `COALESCE(expire_le, active_le)` : `expire_le` est NULL pour
+    un appareil d'administration, où la session en mémoire fait foi — c'est
+    alors la date d'activation qui sert de repère.
+
+    Ne committe pas : appelée depuis `cloturer_tous_les_prets`, à l'intérieur
+    de sa transaction.
+
+    Returns:
+        Le nombre de lignes supprimées.
+    """
+    limite = (datetime.now(timezone.utc)
+              - timedelta(days=jours)).isoformat(timespec="seconds")
+    cur = conn.execute(
+        "DELETE FROM appareils WHERE COALESCE(expire_le, active_le) < ?", (limite,)
+    )
+    return cur.rowcount

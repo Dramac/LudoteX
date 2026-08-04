@@ -137,12 +137,49 @@ def changer_mot_de_passe(conn: sqlite3.Connection, ancien: str, nouveau: str) ->
 # ---------------------------------------------------------------------------
 _sessions: dict[str, float] = {}
 
+# Identifiant d'APPAREIL associé à chaque session ({ id_session: appareil }),
+# voir docs/conception-journal.md §4.5. Dictionnaire SÉPARÉ plutôt qu'une
+# valeur composite dans `_sessions` : la valeur de `_sessions` est un instant
+# d'expiration lu tel quel par `session_valide`, et la mêler à autre chose
+# obligerait à toucher à la seule fonction qui garde la porte de l'admin.
+#
+# POURQUOI EN MÉMOIRE. Une session admin ne peut pas être suivie en base : elle
+# vit dans ce process et un redémarrage les ferme TOUTES. Plutôt que d'afficher
+# un statut faux avec une note d'excuse, la liste des postes d'administration
+# encore ouverts se lit ici — et elle est exacte, y compris après un
+# redémarrage, où elle est vide, ce qui est la vérité.
+_appareils: dict[str, str] = {}
 
-def ouvrir_session() -> str:
-    """Crée une session et renvoie son identifiant (à poser en cookie)."""
+
+def ouvrir_session(appareil: str | None = None) -> str:
+    """
+    Crée une session et renvoie son identifiant (à poser en cookie).
+
+    Args:
+        appareil: identifiant d'appareil de la personne qui se connecte, s'il
+            est connu (voir `services.COOKIE_APPAREIL`). Mémorisé À CÔTÉ de la
+            session pour que `/admin/jeton` puisse dire quels postes
+            d'administration sont encore ouverts.
+    """
     sid = secrets.token_urlsafe(32)
     _sessions[sid] = time.time() + DUREE_SESSION
+    if appareil:
+        _appareils[sid] = appareil
     return sid
+
+
+def appareils_admin_ouverts() -> set[str]:
+    """
+    Identifiants des appareils dont une session admin est ENCORE ouverte.
+
+    Les sessions expirées sont ignorées (et nettoyées au passage par
+    `session_valide`). Ensemble vide après un redémarrage du service : c'est le
+    comportement voulu, pas une lacune.
+    """
+    return {
+        appareil for sid, appareil in list(_appareils.items())
+        if session_valide(sid)
+    }
 
 
 def session_valide(sid: str | None) -> bool:
@@ -154,6 +191,7 @@ def session_valide(sid: str | None) -> bool:
         return False
     if time.time() > expire:           # expirée : on nettoie
         _sessions.pop(sid, None)
+        _appareils.pop(sid, None)
         return False
     return True
 
@@ -162,6 +200,7 @@ def fermer_session(sid: str | None) -> None:
     """Invalide une session (déconnexion)."""
     if sid:
         _sessions.pop(sid, None)
+        _appareils.pop(sid, None)
 
 
 def admin_connecte(request: Request) -> bool:

@@ -14,6 +14,8 @@ MODÈLE DE DONNÉES (voir docs/specification.md §3) — quatre tables de cœur,
     exemplaires             boîtes physiques, niveau « unité prêtable » : un par QR.
     prets                   historique complet de tous les prêts (jamais purgé).
     pochettes               occupation du moment des numéros de pochette (recyclés).
+    parametres              réglages persistants (clé/valeur).
+    appareils               registre des appareils ayant activé un accès en écriture.
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -172,6 +174,57 @@ CREATE TABLE IF NOT EXISTS parametres (
 """
 
 # ---------------------------------------------------------------------------
+# appareils — registre des téléphones/ordinateurs qui ont activé un accès
+# d'ÉCRITURE (voir docs/conception-journal.md §4).
+# ---------------------------------------------------------------------------
+# POURQUOI CETTE TABLE
+# L'identifiant d'appareil ne vit que dans un cookie : le serveur ignore quels
+# appareils existent tant qu'il ne les enregistre pas. Cette table est ce
+# registre — elle répond à « combien de téléphones ont réellement activé
+# l'accès ? », question posée le jour de l'événement.
+#
+# CE QU'ELLE N'EST PAS : un moyen d'identifier une personne. L'identifiant est
+# tiré au hasard (secrets.token_hex(3)) et n'est rattaché à rien. Il dit « c'est
+# le même téléphone », jamais « c'est le téléphone de Marie » — c'est ce qui
+# permet à la brique de prêt de conserver sa propriété « zéro donnée
+# personnelle » (§8.1). Le seul endroit où une donnée personnelle pourrait
+# entrer est `libelle`, saisi à la main en administration : la consigne
+# « désigner un POSTE, jamais une personne » est affichée sous le champ.
+#
+# ÉCRITURE : une seule fois par activation, aux deux endroits qui posent le
+# cookie (/acces et POST /admin/login). AUCUN UPDATE sur le chemin des
+# requêtes : cette table ne participe pas au trafic et n'ajoute aucun écrivain
+# SQLite aux chemins chauds — point sur lequel le projet a déjà payé cher (voir
+# les courses de pochettes, services.transaction).
+#
+# `generation` — la colonne qui rend la liste HONNÊTE. Un cookie de jeton cesse
+# d'être valide pour DEUX raisons : son échéance passe, ou le jeton est
+# réinitialisé (ce qui invalide instantanément TOUS les cookies). Une liste qui
+# ne regarderait que `expire_le` afficherait comme actifs des appareils morts
+# depuis la dernière rotation. On stocke donc une EMPREINTE TRONQUÉE du jeton en
+# vigueur au moment de l'activation — 8 caractères de sha256, JAMAIS le jeton
+# lui-même (§8) : elle sert uniquement à comparer deux générations entre elles
+# et ne permet pas de reconstituer la valeur d'origine. Après une rotation, tous
+# les anciens appareils basculent seuls en « périmé », SANS AUCUNE ÉCRITURE :
+# le calcul se fait à la lecture (services.lister_appareils).
+#
+# Table neuve, donc `CREATE TABLE IF NOT EXISTS` suffit à mettre à niveau une
+# base existante — aucune migration de colonne. Elle vit dans la base de PRÊT,
+# comme `parametres` et le jeton, donc elle est INCLUSE DANS LES SAUVEGARDES
+# (contrairement au journal d'activité) et recréée après restauration d'une
+# archive antérieure par sauvegarde._migrer_bases_restaurees.
+SCHEMA_APPAREILS = """
+CREATE TABLE IF NOT EXISTS appareils (
+    appareil    TEXT PRIMARY KEY,   -- les 6 caractères hexadécimaux du cookie
+    role        TEXT NOT NULL,      -- 'benevole' | 'admin' (dernière activation)
+    active_le   TEXT NOT NULL,      -- UTC ISO, instant de la pose du cookie
+    expire_le   TEXT,               -- UTC ISO, même échéance que le cookie ; NULL pour un admin (la session en mémoire fait foi)
+    generation  TEXT,               -- empreinte tronquée du jeton en vigueur ; NULL en mode ouvert et pour un admin
+    libelle     TEXT                -- libellé libre saisi en admin : un POSTE (« comptoir 2 »), jamais une personne
+);
+"""
+
+# ---------------------------------------------------------------------------
 # Index — accélèrent les requêtes les plus fréquentes.
 # ---------------------------------------------------------------------------
 SCHEMA_INDEXES = """
@@ -243,5 +296,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_PRETS,
     SCHEMA_POCHETTES,
     SCHEMA_PARAMETRES,
+    SCHEMA_APPAREILS,
     SCHEMA_INDEXES,
 )
