@@ -367,8 +367,22 @@ def test_admin_journal_garde_non_authentifie(client):
     assert r.headers["location"] == "/admin"
 
 
-def test_admin_journal_fichier_absent_message_clair(client):
+def _vider_journal(chemin):
+    """
+    Remet le fichier journal à zéro APRÈS la connexion admin.
+
+    Depuis le lot C, `POST /admin/login` écrit lui-même une ligne
+    (« connexion réussie ») : le cas « fichier vide » n'est donc plus
+    atteignable en se connectant, alors que c'est bien un cas réel (première
+    installation, rotation qui vient de créer un fichier de 0 octet). On le
+    reconstitue explicitement plutôt que de renoncer à le couvrir.
+    """
+    chemin.write_text("", encoding="utf-8")
+
+
+def test_admin_journal_fichier_absent_message_clair(client, _journal_isole):
     _connexion_admin(client)
+    _vider_journal(_journal_isole)
     r = client.get("/admin/journal")
     assert r.status_code == 200
     assert "Aucune activité enregistrée pour l'instant." in r.text
@@ -471,8 +485,9 @@ def test_admin_journal_telecharger(client, conn, _journal_isole):
     assert "Catan" in r.text
 
 
-def test_admin_journal_telecharger_fichier_absent_ne_leve_pas(client):
+def test_admin_journal_telecharger_fichier_absent_ne_leve_pas(client, _journal_isole):
     _connexion_admin(client)
+    _vider_journal(_journal_isole)
     r = client.get("/admin/journal/telecharger", follow_redirects=False)
     assert r.status_code == 303  # redirection vers l'écran, jamais une erreur brute
 

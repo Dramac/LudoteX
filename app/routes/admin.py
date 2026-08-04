@@ -95,6 +95,13 @@ def login(request: Request, mot_de_passe: str = Form("")):
     ip = request.client.host if request.client else "inconnu"
     limite = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
     if trop_de_tentatives(ip, limite):
+        # Journalisé au même titre qu'un mot de passe faux : c'est le motif
+        # qui distingue les deux, pas la présence de la ligne. Une rafale de
+        # « trop_de_tentatives » est justement le signal qu'on vient chercher.
+        journal.journaliser(
+            request, "admin", "connexion_echouee",
+            ok=False, detail="trop_de_tentatives",
+        )
         return templates.TemplateResponse(
             request, "admin_login.html",
             {"configure": True, "erreur": "trop"}, status_code=429,
@@ -108,6 +115,14 @@ def login(request: Request, mot_de_passe: str = Form("")):
         conn.close()
 
     if not ok:
+        # Le SEUL signal aujourd'hui d'une tentative d'intrusion : le compteur
+        # de limitation de débit est en mémoire et repart à zéro à chaque
+        # redémarrage (SEC-03 de docs/audit-securite-2026-07-24.md), donc rien
+        # n'en garde trace. Le mot de passe saisi n'est évidemment JAMAIS écrit.
+        journal.journaliser(
+            request, "admin", "connexion_echouee",
+            ok=False, detail="mot_de_passe",
+        )
         return templates.TemplateResponse(
             request, "admin_login.html",
             {"configure": configure, "erreur": True}, status_code=403,
@@ -133,6 +148,15 @@ def login(request: Request, mot_de_passe: str = Form("")):
         services.enregistrer_appareil(conn, appareil, "admin")
     finally:
         conn.close()
+
+    # `qui`/`appareil` passés EXPLICITEMENT (seul appelant autorisé à le faire,
+    # voir la docstring de journal.journaliser) : la session et le cookie
+    # d'appareil naissent dans la réponse ci-dessous, ils n'existent donc pas
+    # encore sur la requête entrante, et la déduction automatique donnerait
+    # « visiteur » sans appareil pour une connexion administrateur réussie.
+    journal.journaliser(
+        request, "admin", "connexion_reussie", qui="admin", appareil=appareil,
+    )
 
     reponse = RedirectResponse("/admin", status_code=303)
     reponse.set_cookie(
@@ -205,9 +229,14 @@ def ajouter_exemplaire(request: Request, reference_titre: str):
         return garde
     conn = get_connection()
     try:
-        services.ajouter_exemplaire(conn, reference_titre)
+        id_exemplaire = services.ajouter_exemplaire(conn, reference_titre)
+        titre = services.get_titre(conn, reference_titre)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "catalogue", "exemplaire_ajoute",
+        objet=titre["nom"] if titre else reference_titre, ref=id_exemplaire,
+    )
     return RedirectResponse(f"/admin/jeu/{reference_titre}", status_code=303)
 
 
@@ -453,6 +482,10 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
 
     contenu = fichier.file.read()
     if not contenu:
+        journal.journaliser(
+            request, "admin", "import_csv",
+            objet=fichier.filename or None, ok=False, detail="fichier_vide",
+        )
         return _page_donnees(request, ("erreur", "Fichier vide ou absent."))
 
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
@@ -487,6 +520,17 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
             chemin.unlink()
         except OSError:
             pass
+    # Journalisé DEPUIS LA ROUTE, jamais depuis `scripts.import_csv.importer`
+    # (§5.2) : le même import lancé en ligne de commande n'a aucune raison
+    # d'écrire ici, et n'a d'ailleurs pas de requête à interroger. `objet` =
+    # le nom du fichier tel que téléversé, seul repère dont dispose le bureau
+    # (« c'est le bon fichier qui est passé ? »).
+    journal.journaliser(
+        request, "admin", "import_csv",
+        objet=fichier.filename or None,
+        ok=(message[0] == "succes"),
+        detail=None if message[0] == "succes" else message[1],
+    )
     return _page_donnees(request, message, manques=manques)
 
 
@@ -561,12 +605,34 @@ def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
 
     contenu = fichier.file.read()
     if not contenu:
+        journal.journaliser(
+            request, "admin", "sauvegarde_restauree",
+            objet=fichier.filename or None, ok=False, detail="fichier_vide",
+        )
         return _page_donnees(request, ("erreur", "Fichier vide ou absent."), status_code=400)
 
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
         tmp.write(contenu)
         chemin = Path(tmp.name)
     try:
+        # ⚠️ ORDRE VOULU : valider, JOURNALISER, puis seulement remplacer.
+        #
+        # `restaurer_zip_sauvegarde` valide déjà de son côté ; l'appel explicite
+        # ici sert uniquement à séparer les deux moments, pour un coût nul en
+        # pratique (un integrity_check sur des fichiers temporaires). Il permet
+        # d'écrire la ligne AVANT que les fichiers de base ne soient remplacés :
+        # après le remplacement, `journal._qui()` lirait le jeton d'une AUTRE
+        # base que celle sur laquelle la requête a été authentifiée, et la
+        # ligne dirait donc n'importe quoi. Le fichier journal, lui, n'est pas
+        # dans l'archive (docs/conception-journal.md §9) : la ligne survit à la
+        # restauration.
+        #
+        # `ok=True` ici veut dire « archive acceptée », pas « copie terminée » —
+        # ce qui suit ne fait plus que copier des fichiers déjà validés.
+        sauvegarde.valider_zip_sauvegarde(chemin)
+        journal.journaliser(
+            request, "admin", "sauvegarde_restauree", objet=fichier.filename or None,
+        )
         sauvegarde.restaurer_zip_sauvegarde(chemin)
         message = (
             "succes",
@@ -576,6 +642,12 @@ def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
         )
         status_code = 200
     except sauvegarde.ZipInvalide as exc:
+        # Refus à la validation : rien n'a été remplacé, la ligne est écrite
+        # dans le contexte d'origine, intact.
+        journal.journaliser(
+            request, "admin", "sauvegarde_restauree",
+            objet=fichier.filename or None, ok=False, detail=str(exc),
+        )
         message = ("erreur", str(exc))
         status_code = 400
     finally:
@@ -643,6 +715,10 @@ def nouveau_creer(
         )
     finally:
         conn.close()
+    journal.journaliser(
+        request, "catalogue", "jeu_cree",
+        objet=nom.strip(), ref=res["reference_titre"],
+    )
     return RedirectResponse(f"/admin/jeu/{res['reference_titre']}", status_code=303)
 
 
@@ -669,6 +745,7 @@ def motdepasse_changer(
         return garde
     if nouveau != confirmation:
         message = ("erreur", "La confirmation ne correspond pas au nouveau mot de passe.")
+        detail = "confirmation"
     else:
         conn = get_connection()
         try:
@@ -677,6 +754,14 @@ def motdepasse_changer(
             conn.close()
         message = (("succes", "Mot de passe modifié.") if ok else
                    ("erreur", "Ancien mot de passe incorrect ou nouveau invalide."))
+        detail = None if ok else "ancien_incorrect"
+    # Aucun `objet` : il n'y a rien à dire de plus que « le mot de passe a
+    # changé ». Ni l'ancien, ni le nouveau, ni leur empreinte n'ont à figurer
+    # ici (§8) — seul le fait, et son horodatage, sont l'information.
+    journal.journaliser(
+        request, "admin", "motdepasse_change",
+        ok=(detail is None), detail=detail,
+    )
     return templates.TemplateResponse(request, "admin_motdepasse.html", {"message": message})
 
 
@@ -973,6 +1058,10 @@ def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
         try:
             _dt.strptime(saisie, "%Y-%m-%d")
         except ValueError:
+            journal.journaliser(
+                request, "admin", "evenement_date_modifiee",
+                objet=saisie, ok=False, detail="date_invalide",
+            )
             return templates.TemplateResponse(
                 request, "admin_evenement.html",
                 {"date_evenement": saisie,
@@ -984,6 +1073,9 @@ def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
         services.ecrire_parametre(conn, "evenement_date", saisie or None)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "admin", "evenement_date_modifiee", objet=saisie or "effacée",
+    )
     message = (("succes", "Date enregistrée.") if saisie
                else ("succes", "Date effacée — le planning est masqué."))
     return templates.TemplateResponse(
@@ -1123,6 +1215,11 @@ def ecran_salle_enregistrer(
 
     conn = get_connection()
     try:
+        # Lu AVANT écriture : sert uniquement à savoir s'il y avait une annonce
+        # à effacer. Enregistrer le titre seul, sans annonce ni avant ni après,
+        # ne doit rien écrire au journal — sinon chaque passage sur cette page
+        # produirait une ligne « annonce effacée » qui ne s'est jamais produite.
+        annonce_precedente = services.lire_parametre(conn, CLE_ANNONCE, None)
         services.ecrire_parametre(conn, CLE_TITRE, saisie_titre or None)
         services.ecrire_parametre(conn, CLE_ANNONCE, saisie_annonce or None)
         services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
@@ -1134,6 +1231,16 @@ def ecran_salle_enregistrer(
         panneaux_reels = panneaux_actifs(conn)
     finally:
         conn.close()
+
+    # L'annonce est une SAISIE LIBRE : c'est le seul `objet` du lot dont le
+    # texte n'est pas fabriqué par l'application. Il est déjà borné à 200
+    # caractères en amont (`saisie_annonce`), et `journaliser` le tronque à
+    # 120 — la troncature du journal joue donc réellement ici, ce qui est le
+    # comportement voulu (une ligne de journal reste une ligne).
+    if saisie_annonce:
+        journal.journaliser(request, "live", "annonce_posee", objet=saisie_annonce)
+    elif annonce_precedente:
+        journal.journaliser(request, "live", "annonce_effacee", objet=annonce_precedente)
 
     partie_titre = ("Titre enregistré." if saisie_titre
                      else "Titre effacé — le titre par défaut est utilisé.")
@@ -1175,6 +1282,14 @@ def cloturer_prets(request: Request):
         nb = services.cloturer_tous_les_prets(conn)
     finally:
         conn.close()
+    # Le NOMBRE est l'information : c'est ce qu'on cherche après coup (« combien
+    # de boîtes étaient encore ouvertes dimanche soir ? »). Aucun détail de prêt,
+    # et surtout aucun numéro de pochette — que cette action vient justement
+    # d'effacer partout (D5).
+    journal.journaliser(
+        request, "pret", "cloture_prets",
+        objet=f"{nb} {services.pluriel(nb, 'prêt ou sortie', 'prêts ou sorties')}",
+    )
     message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau disponible.")
     return _rendre_dashboard(request, message)
 
@@ -1199,6 +1314,10 @@ def formation_reinitialiser(request: Request):
     if not MODE_FORMATION:
         return Response(status_code=404)
     resume = formation.peupler()
+    # Depuis la route, pas depuis `app.formation` : le même `peupler()` lancé
+    # en ligne de commande (`python -m app.formation`, au déploiement) n'a pas
+    # de requête et n'a aucune raison d'écrire ici.
+    journal.journaliser(request, "admin", "formation_reinitialisee")
     message = (
         "succes",
         f"Données de formation réinitialisées : {resume['jeux']} jeux, "
@@ -1222,8 +1341,17 @@ def jeton_reinitialiser(request: Request, expire: str = Form("")):
     conn = get_connection()
     try:
         auth.reinitialiser_jeton(conn, expire_utc)
+        # L'ÉCHÉANCE seulement — jamais le jeton lui-même, ni son empreinte
+        # (§8). C'est pourtant l'information utile : après coup, « tous les
+        # téléphones se sont déconnectés » s'explique par cette ligne et par
+        # la date de validité qu'elle porte.
+        expire_lisible = services.format_local(auth.expiration_jeton(conn))
     finally:
         conn.close()
+    journal.journaliser(
+        request, "admin", "jeton_reinitialise",
+        objet=f"valable jusqu'au {expire_lisible}" if expire_lisible else None,
+    )
     return RedirectResponse("/admin/jeton", status_code=303)
 
 
@@ -1274,17 +1402,35 @@ async def fonctionnalites_enregistrer(request: Request):
     """
     if (garde := _garde(request)):
         return garde
-    from app.modules import ETATS_VALIDES, MODULES, ecrire_etat_module
+    from app.modules import (
+        ETATS_VALIDES, LABELS_ETATS, MODULES, ecrire_etat_module,
+        lire_etats_modules,
+    )
 
     form = await request.form()
     conn = get_connection()
     try:
+        # État lu AVANT écriture : le formulaire renvoie TOUS les modules à
+        # chaque enregistrement, y compris ceux auxquels on n'a pas touché.
+        # Journaliser la soumission entière produirait six lignes identiques
+        # à chaque passage sur la page ; on ne garde que les changements réels
+        # — une ligne par module, lisible telle quelle dans le journal.
+        avant = lire_etats_modules(conn)
+        changements = []
         for nom in MODULES:
             etat = str(form.get(f"module_{nom}", ""))
             if etat in ETATS_VALIDES:
+                if etat != avant.get(nom):
+                    changements.append((nom, etat))
                 ecrire_etat_module(conn, nom, etat)
     finally:
         conn.close()
+    for nom, etat in changements:
+        journal.journaliser(
+            request, "admin", "module_modifie",
+            objet=f"{MODULES[nom]['label']} → {LABELS_ETATS.get(etat, etat)}",
+            ref=nom,
+        )
     return RedirectResponse("/admin/fonctionnalites?ok=1", status_code=303)
 
 
@@ -1336,10 +1482,20 @@ def rangement_contexte_enregistrer(request: Request, contexte: str = Form("")):
         return garde
     conn = get_connection()
     try:
-        if contexte in services.RANGEMENT_CONTEXTES:
+        valide = contexte in services.RANGEMENT_CONTEXTES
+        if valide:
             services.ecrire_rangement_contexte(conn, contexte)
     finally:
         conn.close()
+    # Ce réglage change la SIGNIFICATION du geste de rangement pour tout le
+    # monde (texte libre par boîte / emplacement de la liste du local) : savoir
+    # quand il a basculé est exactement le genre de question qu'on se pose
+    # après coup en constatant des emplacements « disparus ».
+    journal.journaliser(
+        request, "rangement", "rangement_contexte_modifie",
+        objet=contexte or None, ok=valide,
+        detail=None if valide else "contexte_inconnu",
+    )
     return RedirectResponse(
         "/admin/rangement?msg=" + quote("Contexte de rangement enregistré."), status_code=303
     )
@@ -1351,10 +1507,16 @@ def rangement_visibilite_enregistrer(request: Request, visibilite: str = Form(""
         return garde
     conn = get_connection()
     try:
-        if visibilite in services.RANGEMENT_VISIBILITES:
+        valide = visibilite in services.RANGEMENT_VISIBILITES
+        if valide:
             services.ecrire_rangement_visibilite(conn, visibilite)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "rangement", "rangement_visibilite_modifiee",
+        objet=visibilite or None, ok=valide,
+        detail=None if valide else "visibilite_inconnue",
+    )
     return RedirectResponse(
         "/admin/rangement?msg=" + quote("Visibilité publique enregistrée."), status_code=303
     )
@@ -1728,14 +1890,24 @@ def rangement_ranger_appliquer(
         if contexte == "local":
             id_emp = _entier_ou_none(emplacement_id)
             valeur = id_emp
-            valide = id_emp is not None and services.get_emplacement_rangement(conn, id_emp) is not None
+            emplacement = (services.get_emplacement_rangement(conn, id_emp)
+                           if id_emp is not None else None)
+            valide = emplacement is not None
+            # Le NOM de l'emplacement, pas son id : une ligne de journal doit
+            # se lire sans avoir à ouvrir la base pour traduire un nombre.
+            libelle = emplacement["nom"] if emplacement else None
         else:
             texte = " ".join(emplacement_texte.split())
             valeur = texte
             valide = bool(texte)
+            libelle = texte or None
 
         if not valide:
             msg = "Emplacement requis : rien n'a été modifié."
+            journal.journaliser(
+                request, "rangement", "rangement_lot_applique",
+                objet=libelle, ok=False, detail="emplacement_requis",
+            )
         else:
             if portee == "coches":
                 reference_titres = [t for t in titres_coches if t]
@@ -1756,6 +1928,16 @@ def rangement_ranger_appliquer(
                     f"{'jeu' if resultat['titres'] == 1 else 'jeux'} "
                     f"({resultat['boites']} {'boîte' if resultat['boites'] == 1 else 'boîtes'})."
                 )
+            # Une seule ligne pour tout le lot, avec les nombres : c'est
+            # l'action massive qui compte (« qui a réaffecté 300 boîtes ? »),
+            # pas chacune des boîtes touchées.
+            journal.journaliser(
+                request, "rangement", "rangement_lot_applique",
+                objet=(f"{libelle} — {resultat['titres']} "
+                       f"{services.pluriel(resultat['titres'], 'jeu', 'jeux')}, "
+                       f"{resultat['boites']} "
+                       f"{services.pluriel(resultat['boites'], 'boîte', 'boîtes')}"),
+            )
     finally:
         conn.close()
 

@@ -166,6 +166,8 @@ def journaliser(
     ref: str | None = None,
     ok: bool = True,
     detail: str | None = None,
+    qui: str | None = None,
+    appareil: str | None = None,
 ) -> None:
     """
     Construit une ligne JSON et l'émet sur le logger `ludotex.journal`.
@@ -180,9 +182,26 @@ def journaliser(
         ref: clé technique stable (reference_titre, id_tournoi…).
         ok: True si l'action a abouti.
         detail: texte court, utile seulement quand ok est False.
+        qui, appareil: ÉCHAPPATOIRE, réservée à `POST /admin/login`.
 
     Ne lève JAMAIS : toute exception est avalée, au pire un avertissement est
     émis sur `uvicorn.error`.
+
+    À PROPOS DE `qui` ET `appareil`
+    -------------------------------
+    Ces deux paramètres sont là pour UN SEUL appelant, la route de connexion
+    administrateur (`app/routes/admin.py::login`), et ne doivent pas être
+    réutilisés ailleurs : partout ailleurs, laisser cette fonction déduire
+    seule est ce qui garantit qu'aucune route ne puisse s'auto-déclarer
+    autre chose que ce qu'elle est.
+
+    La connexion admin est le seul cas où la déduction ne PEUT pas être
+    juste : la session et le cookie d'appareil sont créés dans la RÉPONSE,
+    donc sur la requête entrante `admin_connecte()` est encore faux et, lors
+    d'une première connexion, le cookie d'appareil n'existe pas encore. Sans
+    ces paramètres, la ligne « connexion réussie » porterait `qui: visiteur`
+    et aucun appareil — un filtre « qui = admin » raterait précisément les
+    connexions, et le premier accès d'un poste ne serait rattachable à rien.
     """
     try:
         if module not in MODULES:
@@ -200,8 +219,9 @@ def journaliser(
             )
             return
 
-        qui = _qui(request)
-        appareil = services.appareil_de(request) if qui != "visiteur" else None
+        qui = qui or _qui(request)
+        if appareil is None:
+            appareil = services.appareil_de(request) if qui != "visiteur" else None
 
         ligne: dict = {
             "t": datetime.now(FUSEAU_LOCAL).isoformat(timespec="seconds"),

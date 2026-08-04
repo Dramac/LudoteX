@@ -32,7 +32,7 @@ from io import BytesIO
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth
+from app import admin_auth, journal
 from app.planning import demo, exports, services
 from app.planning.db import get_connection
 from app.services import FUSEAU_LOCAL
@@ -593,9 +593,18 @@ def admin_purger(request: Request, ev: int):
         return r
     conn = get_connection()
     try:
+        # Le nom de l'ÉDITION (« Week-end jeux 2026 »), lu avant la purge —
+        # après, il n'existe plus. Jamais un nom de bénévole : cette base est
+        # précisément celle qui en contient, et une trace ailleurs
+        # contournerait la purge RGPD qu'on est en train d'exécuter (§8).
+        evenement = services.get_evenement(conn, ev)
+        nom = evenement["nom"] if evenement else None
         services.purger_evenement(conn, ev)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "planning", "planning_purge", objet=nom, ref=str(ev),
+    )
     return RedirectResponse("/planning/admin?msg=Événement+purgé.", status_code=303)
 
 
