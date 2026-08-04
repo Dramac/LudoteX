@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app import admin_auth, auth, services
-from app.config import JOURNAL_CONSOLE, JOURNAL_PATH
+from app.config import JOURNAL_CONSOLE
 from app.db import get_connection
 from app.services import FUSEAU_LOCAL
 
@@ -266,6 +266,17 @@ class _FormateurConsole(logging.Formatter):
         return formater_console(ligne)
 
 
+def chemin_journal() -> Path:
+    """
+    Chemin du fichier journal, LU EN DIRECT dans l'environnement (comme
+    `_base_url` dans routes/admin.py lit `BASE_URL`) plutôt que via la
+    constante `JOURNAL_PATH` importée de `app.config` (figée à l'import du
+    process) — c'est ce qui permet à la fixture de test de rediriger le
+    fichier sans avoir à recharger le module.
+    """
+    return Path(os.getenv("JOURNAL_PATH", "data/journal.log"))
+
+
 # ---------------------------------------------------------------------------
 # Configuration du logger (§5.4/§5.5)
 # ---------------------------------------------------------------------------
@@ -280,7 +291,7 @@ def configurer(journal_path: str | Path | None = None, console: bool | None = No
     invalide…) est avalé : le logger reste alors sans handler de fichier, donc
     silencieux, mais `journaliser()` continue de ne jamais lever pour autant.
     """
-    chemin = Path(journal_path if journal_path is not None else JOURNAL_PATH)
+    chemin = Path(journal_path) if journal_path is not None else chemin_journal()
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.INFO)
     logger.propagate = False  # sans quoi chaque ligne serait recopiée dans les logs uvicorn

@@ -25,14 +25,25 @@ class _FauxRequest:
 
 
 # ---------------------------------------------------------------------------
-# Fixtures — bases temporaires (patron de tests/test_appareils.py).
+# Fixtures — bases temporaires (patron de tests/test_appareils.py : les TROIS
+# bases sont redirigées même si la plupart de ces tests ne touchent que celle
+# de prêt, pour éviter tout écrit accidentel dans data/ du dépôt réel si
+# app.main est importé pour la première fois depuis ce fichier).
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def bases(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("TOURNOI_DATABASE_PATH", str(tmp_path / "tournoi.db"))
+    monkeypatch.setenv("PLANNING_DATABASE_PATH", str(tmp_path / "planning.db"))
     from app import db
+    from app.planning import db as pdb
+    from app.tournoi import db as tdb
 
     monkeypatch.setattr(db, "get_database_path", lambda: tmp_path / "test.db")
+    monkeypatch.setattr(tdb, "get_database_path", lambda: tmp_path / "tournoi.db")
+    monkeypatch.setattr(pdb, "get_database_path", lambda: tmp_path / "planning.db")
+    tdb.init_db()
+    pdb.init_db()
     conn = db.get_connection()
     db.init_db(conn)
     conn.close()
@@ -46,6 +57,21 @@ def conn(bases):
     c = db.get_connection()
     yield c
     c.close()
+
+
+@pytest.fixture
+def client(bases, monkeypatch):
+    from app import admin_auth
+
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-journal")
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    return TestClient(app)
 
 
 def _poser_jeton(conn, jeton="jeton-de-test"):
@@ -314,3 +340,152 @@ def test_lire_dernieres_lignes_traverse_plusieurs_blocs(tmp_path):
     lignes = journal.lire_dernieres_lignes(chemin, limite=30, taille_bloc=200)
     valeurs = [json.loads(l)["n"] for l in lignes]
     assert valeurs == list(range(270, 300))
+
+
+# ---------------------------------------------------------------------------
+# Écran /admin/journal (étape 5 de docs/conception-journal.md)
+# ---------------------------------------------------------------------------
+def _connexion_admin(client):
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-journal"})
+
+
+def _ecrire_lignes(conn, cookies, n=1, module="pret", action="pret", objet="Catan"):
+    """Écrit `n` lignes réelles via journaliser() (pipeline complet)."""
+    from app import journal
+
+    _poser_jeton(conn)
+    requete = _FauxRequest(cookies)
+    for i in range(n):
+        journal.journaliser(requete, module, action, objet=f"{objet} {i}")
+
+
+def test_admin_journal_garde_non_authentifie(client):
+    r = client.get("/admin/journal", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/admin"
+
+
+def test_admin_journal_fichier_absent_message_clair(client):
+    _connexion_admin(client)
+    r = client.get("/admin/journal")
+    assert r.status_code == 200
+    assert "Aucune activité enregistrée pour l'instant." in r.text
+
+
+def test_admin_journal_affiche_les_lignes_ecrites(client, conn, _journal_isole):
+    _ecrire_lignes(conn, {"jeton_pret": "jeton-de-test"}, n=3, objet="7 Wonders Duel")
+    _connexion_admin(client)
+    r = client.get("/admin/journal")
+    assert r.status_code == 200
+    assert r.text.count("7 Wonders Duel") == 3
+    assert "benevole" in r.text
+
+
+def test_admin_journal_filtre_module_et_action(client, conn, _journal_isole):
+    from app import journal
+
+    _poser_jeton(conn)
+    requete = _FauxRequest({"jeton_pret": "jeton-de-test"})
+    journal.journaliser(requete, "pret", "pret", objet="Catan")
+    journal.journaliser(requete, "live", "annonce_posee", objet="Tombola")
+    _connexion_admin(client)
+
+    r = client.get("/admin/journal", params={"module": "live"})
+    assert "Tombola" in r.text
+    assert "Catan" not in r.text
+
+    r2 = client.get("/admin/journal", params={"action": "pret"})
+    assert "Catan" in r2.text
+    assert "Tombola" not in r2.text
+
+
+def test_admin_journal_recherche_texte_dans_objet(client, conn, _journal_isole):
+    from app import journal
+
+    _poser_jeton(conn)
+    requete = _FauxRequest({"jeton_pret": "jeton-de-test"})
+    journal.journaliser(requete, "pret", "pret", objet="7 Wonders Duel")
+    journal.journaliser(requete, "pret", "pret", objet="Catan")
+    _connexion_admin(client)
+
+    r = client.get("/admin/journal", params={"q": "wonders"})  # insensible à la casse
+    assert "7 Wonders Duel" in r.text
+    assert "Catan" not in r.text
+
+
+def test_admin_journal_echec_marque_par_un_badge(client, conn, _journal_isole):
+    from app import journal
+
+    _poser_jeton(conn)
+    requete = _FauxRequest({"jeton_pret": "jeton-de-test"})
+    journal.journaliser(requete, "pret", "pret", objet="Catan", ok=False, detail="occupe")
+    _connexion_admin(client)
+
+    r = client.get("/admin/journal")
+    assert "badge-attention" in r.text
+    assert "Échec" in r.text
+
+
+def test_admin_journal_ligne_corrompue_ignoree_en_silence(client, conn, _journal_isole):
+    """Une ligne illisible (rotation en cours d'écriture) n'est ni affichée
+    comme erreur, ni ne fait planter la page — les lignes valides autour
+    d'elle restent visibles."""
+    from app import journal
+
+    _poser_jeton(conn)
+    requete = _FauxRequest({"jeton_pret": "jeton-de-test"})
+    journal.journaliser(requete, "pret", "pret", objet="Catan")
+    with open(_journal_isole, "a", encoding="utf-8") as fh:
+        fh.write("ceci n'est pas du JSON\n")
+    journal.journaliser(requete, "pret", "retour", objet="Dobble")
+
+    _connexion_admin(client)
+    r = client.get("/admin/journal")
+    assert r.status_code == 200
+    assert "Catan" in r.text
+    assert "Dobble" in r.text
+
+
+def test_admin_journal_200_dernieres_lignes_seulement(client, conn, _journal_isole):
+    _ecrire_lignes(conn, {"jeton_pret": "jeton-de-test"}, n=250, objet="Jeu")
+    _connexion_admin(client)
+    r = client.get("/admin/journal")
+    assert r.status_code == 200
+    assert "sur 200 au maximum" in r.text
+    # Les 50 lignes les plus anciennes (250 écrites, fenêtre de 200) ne
+    # doivent plus apparaître ; "Jeu 0" n'est jamais un sous-texte d'un autre
+    # objet de ce jeu de données ("Jeu 1", "Jeu 10"… ne le contiennent pas).
+    assert ">Jeu 0<" not in r.text
+    assert ">Jeu 249<" in r.text
+
+
+def test_admin_journal_telecharger(client, conn, _journal_isole):
+    _ecrire_lignes(conn, {"jeton_pret": "jeton-de-test"}, n=1, objet="Catan")
+    _connexion_admin(client)
+
+    r = client.get("/admin/journal/telecharger")
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert "Catan" in r.text
+
+
+def test_admin_journal_telecharger_fichier_absent_ne_leve_pas(client):
+    _connexion_admin(client)
+    r = client.get("/admin/journal/telecharger", follow_redirects=False)
+    assert r.status_code == 303  # redirection vers l'écran, jamais une erreur brute
+
+
+def test_admin_journal_lien_depuis_tableau_de_bord(client):
+    _connexion_admin(client)
+    r = client.get("/admin")
+    assert 'href="/admin/journal"' in r.text
+
+
+def test_admin_journal_aide_inline_et_section_admin_aide(client):
+    _connexion_admin(client)
+    r = client.get("/admin/journal")
+    assert "aide-inline" in r.text
+    assert "/admin/aide#probleme-journal" in r.text
+
+    aide = client.get("/admin/aide")
+    assert 'id="probleme-journal"' in aide.text

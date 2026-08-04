@@ -15,15 +15,17 @@ Toutes les routes (sauf la connexion) commencent par vérifier la session via
 `_garde(request)`.
 """
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, auth, exports, formation, sauvegarde, services, supervision
+from app import admin_auth, auth, exports, formation, journal, sauvegarde, services, supervision
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.config import MODE_FORMATION, NOM_ASSOCIATION
 from app.db import get_connection
@@ -795,6 +797,150 @@ def aide_admin(request: Request):
     if (garde := _garde(request)):
         return garde
     return templates.TemplateResponse(request, "admin_aide.html", {})
+
+
+# ---------------------------------------------------------------------------
+# Journal d'activité (lecture seule) — docs/conception-journal.md §6.1.
+#
+# Lit UNIQUEMENT la fenêtre des LIMITE_JOURNAL dernières lignes (jamais tout
+# le fichier), puis filtre EN PYTHON dans cette fenêtre : les menus déroulants
+# ne proposent que les valeurs RÉELLEMENT présentes dans la fenêtre courante
+# (motif de `services.lister_categories`), pas le vocabulaire fermé entier —
+# un menu « action » à 40 entrées serait plus gênant qu'utile. Une recherche
+# plus profonde dans l'historique reste possible via `scripts/journal.py` ou
+# un `grep`/`jq` direct sur le fichier, documenté à l'écran.
+# ---------------------------------------------------------------------------
+LIMITE_JOURNAL = 200
+
+
+def _lignes_journal(chemin: Path) -> list[dict]:
+    """
+    Lit la fenêtre courante du journal. Une ligne illisible (rotation en
+    cours d'écriture, fichier tronqué) est ignorée EN SILENCE, jamais
+    affichée comme une erreur.
+    """
+    lignes = []
+    for texte in journal.lire_dernieres_lignes(chemin, LIMITE_JOURNAL):
+        try:
+            lignes.append(json.loads(texte))
+        except ValueError:
+            continue
+    return lignes
+
+
+def _puces_filtres_journal(module, qui, action, appareil, q, debut, fin):
+    """Puces de filtres actifs, patron exact de `routes/catalogue.py::_puces_filtres`."""
+    from urllib.parse import urlencode
+
+    tous = {"module": module, "qui": qui, "action": action, "appareil": appareil,
+            "q": q, "debut": debut, "fin": fin}
+
+    def _url_sans(cle):
+        params = {k: v for k, v in tous.items() if v not in (None, "") and k != cle}
+        requete = urlencode(params)
+        return "/admin/journal?" + requete if requete else "/admin/journal"
+
+    libelles = {
+        "module": lambda v: f"module : {v}",
+        "qui": lambda v: f"qui : {v}",
+        "action": lambda v: f"action : {v}",
+        "appareil": lambda v: f"appareil : {v}",
+        "q": lambda v: f"« {v} »",
+        "debut": lambda v: f"depuis {v}",
+        "fin": lambda v: f"jusqu'à {v}",
+    }
+    return [
+        {"label": libelles[cle](valeur), "url": _url_sans(cle)}
+        for cle, valeur in tous.items() if valeur
+    ]
+
+
+@router.get("/journal")
+def journal_page(
+    request: Request,
+    module: str | None = None, qui: str | None = None, action: str | None = None,
+    appareil: str | None = None, q: str | None = None,
+    debut: str | None = None, fin: str | None = None,
+):
+    """
+    Écran de lecture du journal d'activité. Fichier absent ou vide -> message
+    clair (« Aucune activité enregistrée pour l'instant. »), jamais une erreur
+    — au lot B, c'est d'ailleurs le cas courant tant que le lot C (points
+    d'appel métier) n'est pas livré.
+    """
+    if (garde := _garde(request)):
+        return garde
+
+    chemin = journal.chemin_journal()
+    fichier_absent = not chemin.exists() or chemin.stat().st_size == 0
+    toutes = _lignes_journal(chemin)
+
+    q_n = (q or "").strip() or None
+    module_n = (module or "").strip() or None
+    qui_n = (qui or "").strip() or None
+    action_n = (action or "").strip() or None
+    appareil_n = (appareil or "").strip() or None
+    debut_n = (debut or "").strip() or None
+    fin_n = (fin or "").strip() or None
+
+    def _correspond(ligne: dict) -> bool:
+        if module_n and ligne.get("module") != module_n:
+            return False
+        if qui_n and ligne.get("qui") != qui_n:
+            return False
+        if action_n and ligne.get("action") != action_n:
+            return False
+        if appareil_n and ligne.get("appareil") != appareil_n:
+            return False
+        if q_n and q_n.lower() not in (ligne.get("objet") or "").lower():
+            return False
+        t = ligne.get("t") or ""
+        # Comparaison sur le préfixe 'AAAA-MM-JJTHH:MM' (§3.1 : le décalage
+        # local reste triable lexicalement tant qu'il ne change pas au fil du
+        # filtre — sans conséquence pour la fenêtre d'un week-end).
+        if debut_n and t[:16] < debut_n:
+            return False
+        if fin_n and t[:16] > fin_n:
+            return False
+        return True
+
+    # Plus récent d'abord à l'écran.
+    lignes = [l for l in reversed(toutes) if _correspond(l)]
+
+    modules_presents = sorted({l.get("module") for l in toutes if l.get("module")})
+    quis_presents = sorted({l.get("qui") for l in toutes if l.get("qui")})
+    actions_presentes = sorted({l.get("action") for l in toutes if l.get("action")})
+    appareils_presents = sorted({l.get("appareil") for l in toutes if l.get("appareil")})
+
+    chips = _puces_filtres_journal(module_n, qui_n, action_n, appareil_n, q_n, debut_n, fin_n)
+
+    return templates.TemplateResponse(
+        request, "admin_journal.html",
+        {
+            "lignes": lignes, "fichier_absent": fichier_absent,
+            "nb_lues": len(toutes), "limite": LIMITE_JOURNAL,
+            "modules": modules_presents, "quis": quis_presents,
+            "actions": actions_presentes, "appareils": appareils_presents,
+            "module": module_n, "qui": qui_n, "action": action_n, "appareil": appareil_n,
+            "q": q_n, "debut": debut_n, "fin": fin_n,
+            "chips": chips, "filtres_actifs": bool(chips),
+        },
+    )
+
+
+@router.get("/journal/telecharger")
+def journal_telecharger(request: Request):
+    """Télécharge le fichier journal brut (JSON Lines), tel quel."""
+    if (garde := _garde(request)):
+        return garde
+    chemin = journal.chemin_journal()
+    if not chemin.exists() or chemin.stat().st_size == 0:
+        return RedirectResponse("/admin/journal", status_code=303)
+    return Response(
+        content=chemin.read_bytes(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="journal.log"'},
+    )
 
 
 @router.get("/evenement")

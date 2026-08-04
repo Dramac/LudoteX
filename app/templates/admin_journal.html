@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block titre %}Journal d'activité — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{#
+  Écran de lecture du journal d'activité (docs/conception-journal.md §6.1).
+  Lecture seule, garde admin (motif _garde). Ne montre QUE la fenêtre des
+  {{ limite }} dernières lignes du fichier -- jamais tout le fichier -- les
+  filtres ci-dessous s'appliquent DANS cette fenêtre, pas sur tout
+  l'historique (voir la note sous le panneau de filtres).
+#}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Journal d'activité</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+  <p class="stats-note">Qui a fait quoi, et quand — pour comprendre ce qui
+     s'est passé quand quelque chose paraît anormal. Ce journal ne compte pas
+     les consultations (catalogue, fiches…) : seulement les actions.</p>
+
+  <details class="aide-inline">
+    <summary>❓ Ce que ce journal contient — et ne contient jamais</summary>
+    <p>Chaque ligne porte l'heure, le type de visiteur (visiteur, bénévole ou
+       administrateur), l'appareil s'il est connu, le module concerné,
+       l'action et un libellé lisible de ce sur quoi on a agi.</p>
+    <p>Il ne contient <strong>jamais</strong> de numéro de pochette, de
+       pseudo ou de code personnel, ni le jeton bénévole ou le mot de passe
+       administrateur, ni aucune adresse internet.</p>
+    <p><a class="lien" href="/admin/aide#probleme-journal">Voir l'aide complète — journal d'activité</a></p>
+  </details>
+
+  {% if fichier_absent %}
+    <p class="resultat resultat-info">Aucune activité enregistrée pour l'instant.</p>
+  {% else %}
+    <details class="recherche" {% if filtres_actifs %}open{% endif %}>
+      <summary>Filtrer</summary>
+      <form method="get" action="/admin/journal" class="recherche-form">
+        <div class="champ">
+          <label for="module">Module</label>
+          <select id="module" name="module">
+            <option value="">Tous</option>
+            {% for m in modules %}
+              <option value="{{ m }}" {% if m == module %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="champ">
+          <label for="qui">Type de visiteur</label>
+          <select id="qui" name="qui">
+            <option value="">Tous</option>
+            {% for v in quis %}
+              <option value="{{ v }}" {% if v == qui %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="champ">
+          <label for="action">Action</label>
+          <select id="action" name="action">
+            <option value="">Toutes</option>
+            {% for a in actions %}
+              <option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="champ">
+          <label for="appareil">Appareil</label>
+          <select id="appareil" name="appareil">
+            <option value="">Tous</option>
+            {% for a in appareils %}
+              <option value="{{ a }}" {% if a == appareil %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="champ">
+          <label for="q">Recherche dans l'objet</label>
+          <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu, du tournoi…">
+        </div>
+
+        <div class="champ">
+          <label for="debut">Depuis</label>
+          <input type="datetime-local" id="debut" name="debut" value="{{ debut or '' }}">
+        </div>
+
+        <div class="champ">
+          <label for="fin">Jusqu'à</label>
+          <input type="datetime-local" id="fin" name="fin" value="{{ fin or '' }}">
+        </div>
+
+        <div class="recherche-actions">
+          <button type="submit" class="bouton-filtrer">Filtrer</button>
+          {% if filtres_actifs %}<a class="lien" href="/admin/journal">Réinitialiser</a>{% endif %}
+        </div>
+      </form>
+    </details>
+
+    {% if chips %}
+    <div class="filtres-actifs">
+      <span class="fa-label">Filtres actifs :</span>
+      {% for c in chips %}
+        <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+      {% endfor %}
+      <a class="lien" href="/admin/journal">Tout effacer</a>
+    </div>
+    {% endif %}
+
+    <p class="stats-note">Fenêtre des {{ nb_lues }} dernière(s) ligne(s) du
+       fichier (sur {{ limite }} au maximum) — les filtres s'appliquent dans
+       cette fenêtre, pas sur tout l'historique. Pour chercher plus loin dans
+       le temps, téléchargez le fichier brut ci-dessous.</p>
+
+    <p><a class="bouton-filtrer" href="/admin/journal/telecharger">Télécharger le fichier brut</a></p>
+
+    {% if lignes %}
+    <table class="admin-table">
+      <tr>
+        <th>Heure</th><th>Qui</th><th>Appareil</th><th>Module</th>
+        <th>Action</th><th>Objet</th><th>Résultat</th>
+      </tr>
+      {% for l in lignes %}
+      <tr>
+        <td>{{ l.t[:16].replace('T', ' ') if l.t else '' }}</td>
+        <td>{{ l.qui or '' }}</td>
+        <td>{{ l.appareil or '' }}</td>
+        <td>{{ l.module or '' }}</td>
+        <td>{{ l.action or '' }}</td>
+        <td>{{ l.objet or '' }}</td>
+        <td>
+          {% if l.ok == false %}
+            <span class="badge badge-attention" title="{{ l.detail or '' }}">Échec</span>
+          {% else %}
+            <span class="badge badge-ok">Ok</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+      <p>Aucune ligne ne correspond à ces filtres, dans la fenêtre lue.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}
