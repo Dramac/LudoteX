@@ -276,6 +276,118 @@ def test_un_appareil_promu_admin_change_de_role_sans_seconde_ligne(conn):
     assert lignes[0]["role"] == "admin"
 
 
+# ---------------------------------------------------------------------------
+# Étape 2 — pose du cookie
+# ---------------------------------------------------------------------------
+def test_activation_benevole_pose_le_cookie_et_cree_une_ligne(client, conn):
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    r = client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+    assert r.status_code == 303
+
+    appareil = client.cookies.get(services.COOKIE_APPAREIL)
+    assert appareil and len(appareil) == 6
+
+    ligne = conn.execute("SELECT * FROM appareils").fetchone()
+    assert ligne["appareil"] == appareil
+    assert ligne["role"] == "benevole"
+    assert ligne["generation"] == services.empreinte_jeton(jeton)
+    assert ligne["expire_le"] > ligne["active_le"]
+
+
+def test_le_cookie_nest_pas_reecrit_sil_existe_deja(client, conn):
+    """
+    Le piège annoncé : un bénévole qui rouvre son lien d'activation ne doit pas
+    recevoir une nouvelle identité, sans quoi la liste montrerait cinq
+    appareils là où il n'y en a qu'un.
+    """
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+    premier = client.cookies.get(services.COOKIE_APPAREIL)
+
+    r = client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+    # Aucun nouvel identifiant n'est envoyé au navigateur...
+    assert services.COOKIE_APPAREIL not in r.headers.get("set-cookie", "")
+    # ... l'appareil ne change pas, et le registre n'a pas gagné de ligne.
+    assert client.cookies.get(services.COOKIE_APPAREIL) == premier
+    assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 1
+
+
+def test_deux_clients_obtiennent_deux_identifiants_differents(client, bases, conn):
+    from fastapi.testclient import TestClient
+
+    from app import services
+    from app.main import app
+
+    jeton = _poser_jeton(conn)
+    client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+
+    autre = TestClient(app)
+    autre.get(f"/acces?jeton={jeton}", follow_redirects=False)
+
+    a = client.cookies.get(services.COOKIE_APPAREIL)
+    b = autre.cookies.get(services.COOKIE_APPAREIL)
+    assert a and b and a != b
+    assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 2
+
+
+def test_activation_refusee_ne_pose_ni_cookie_ni_ligne(client, conn):
+    from app import services
+
+    _poser_jeton(conn)
+    r = client.get("/acces?jeton=mauvais-jeton", follow_redirects=False)
+    assert r.status_code == 403
+    assert client.cookies.get(services.COOKIE_APPAREIL) is None
+    assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 0
+
+
+def test_connexion_admin_cree_une_ligne_et_ouvre_un_poste(client, conn):
+    from app import admin_auth, services
+
+    r = client.post("/admin/login", data={"mot_de_passe": "secret-admin"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+
+    appareil = client.cookies.get(services.COOKIE_APPAREIL)
+    assert appareil and len(appareil) == 6
+
+    ligne = conn.execute("SELECT * FROM appareils").fetchone()
+    assert ligne["appareil"] == appareil
+    assert ligne["role"] == "admin"
+    # Pas d'échéance en base pour un admin : la session en mémoire fait foi.
+    assert ligne["expire_le"] is None
+    assert admin_auth.appareils_admin_ouverts() == {appareil}
+
+
+def test_connexion_admin_refusee_ne_pose_rien(client, conn):
+    from app import services
+
+    r = client.post("/admin/login", data={"mot_de_passe": "faux"},
+                    follow_redirects=False)
+    assert r.status_code == 403
+    assert client.cookies.get(services.COOKIE_APPAREIL) is None
+    assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 0
+
+
+def test_un_meme_appareil_benevole_puis_admin_reste_une_seule_ligne(client, conn):
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+    appareil = client.cookies.get(services.COOKIE_APPAREIL)
+
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin"},
+                follow_redirects=False)
+    assert client.cookies.get(services.COOKIE_APPAREIL) == appareil
+
+    lignes = conn.execute("SELECT * FROM appareils").fetchall()
+    assert len(lignes) == 1
+    assert lignes[0]["role"] == "admin"
+
+
 def test_libelle_normalise_borne_et_effacable(conn):
     from app import services
 

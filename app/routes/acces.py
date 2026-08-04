@@ -10,16 +10,24 @@ valides).
 Sécurité : limitation de débit par IP (anti-force brute) et comparaison du jeton
 en temps constant. Le cookie est HttpOnly (inaccessible au JS), SameSite=Lax, et
 Secure dès que la connexion est en HTTPS.
+
+IDENTIFIANT D'APPAREIL (docs/conception-journal.md §4)
+-----------------------------------------------------
+L'activation pose un SECOND cookie, `appareil` : six caractères tirés au hasard
+qui disent « c'est le même téléphone », jamais « c'est le téléphone de Marie ».
+C'est l'un des deux seuls endroits où il est posé (l'autre est la connexion
+admin) — autrement dit, uniquement pour les personnes qui écrivent. Un visiteur
+qui consulte le catalogue ne reçoit rien.
 """
 
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-from app import auth
+from app import auth, services
 from app.db import get_connection
 from app.templating import templates
 
@@ -37,6 +45,18 @@ def _duree_cookie(expire_iso: str | None) -> int:
     except ValueError:
         return defaut
     return max(60, restant)   # au moins 1 minute
+
+
+def _echeance(duree_s: int) -> str:
+    """
+    Instant (UTC ISO) où le cookie posé maintenant cessera d'être valide.
+
+    Calculé À PARTIR de `_duree_cookie`, et non par une règle parallèle : la
+    ligne du registre doit dire exactement la même chose que le cookie, pas une
+    approximation qui divergerait au premier changement de durée.
+    """
+    return (datetime.now(timezone.utc)
+            + timedelta(seconds=duree_s)).isoformat(timespec="seconds")
 
 
 @router.get("/acces")
@@ -73,18 +93,44 @@ def acces(request: Request, jeton: str = ""):
         attendu = auth.jeton_actuel(conn)
         expire_iso = auth.expiration_jeton(conn)
         expire = auth.jeton_expire(conn)
+
+        if attendu and not expire and secrets.compare_digest(jeton, attendu):
+            # 303 force le navigateur à faire un GET sur /scanner après l'activation.
+            # Le cookie expire en même temps que le jeton (ou défaut 1 semaine).
+            duree = _duree_cookie(expire_iso)
+            reponse = RedirectResponse("/scanner", status_code=303)
+            reponse.set_cookie(
+                auth.COOKIE_NAME, jeton,
+                max_age=duree, httponly=True, samesite="lax",
+                secure=(request.url.scheme == "https"),
+            )
+
+            # Identifiant d'appareil : POSÉ SEULEMENT S'IL EST ABSENT. Un
+            # bénévole rouvre son lien d'activation plus souvent qu'on ne le
+            # croit (cookie expiré, lien repartagé) ; le réécrire lui donnerait
+            # une nouvelle identité à chaque fois, et la liste montrerait cinq
+            # appareils là où il n'y en a qu'un.
+            appareil = services.appareil_de(request)
+            if appareil is None:
+                appareil = services.nouvel_appareil()
+                reponse.set_cookie(
+                    services.COOKIE_APPAREIL, appareil,
+                    max_age=duree, httponly=True, samesite="lax",
+                    secure=(request.url.scheme == "https"),
+                )
+            # Le registre, lui, est mis à jour à CHAQUE activation réussie :
+            # après une rotation du jeton, c'est ce qui fait repasser en actif
+            # l'appareil qui vient de rouvrir le lien (voir
+            # `services.enregistrer_appareil`). Une écriture par activation,
+            # jamais sur un chemin chaud.
+            services.enregistrer_appareil(
+                conn, appareil, "benevole",
+                expire_le=_echeance(duree),
+                generation=services.empreinte_jeton(attendu),
+            )
+            return reponse
     finally:
         conn.close()
-    if attendu and not expire and secrets.compare_digest(jeton, attendu):
-        # 303 force le navigateur à faire un GET sur /scanner après l'activation.
-        # Le cookie expire en même temps que le jeton (ou défaut 1 semaine).
-        reponse = RedirectResponse("/scanner", status_code=303)
-        reponse.set_cookie(
-            auth.COOKIE_NAME, jeton,
-            max_age=_duree_cookie(expire_iso), httponly=True, samesite="lax",
-            secure=(request.url.scheme == "https"),
-        )
-        return reponse
 
     # Échec : mode ouvert (aucun jeton), jeton expiré, ou jeton erroné.
     motif = "ouvert" if attendu is None else "invalide"

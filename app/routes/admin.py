@@ -111,13 +111,39 @@ def login(request: Request, mot_de_passe: str = Form("")):
             {"configure": configure, "erreur": True}, status_code=403,
         )
 
-    sid = admin_auth.ouvrir_session()
+    # Identifiant d'appareil (docs/conception-journal.md §4) : second des deux
+    # seuls endroits où le cookie est posé, et SEULEMENT s'il est absent — un
+    # administrateur qui se reconnecte chaque matin doit rester le même
+    # appareil dans la liste.
+    appareil = services.appareil_de(request)
+    nouveau = appareil is None
+    if nouveau:
+        appareil = services.nouvel_appareil()
+
+    # L'identifiant est mémorisé À CÔTÉ de la session, en mémoire : c'est la
+    # seule source capable de dire si ce poste d'administration est encore
+    # ouvert (§4.5). D'où aussi `expire_le` laissé à NULL dans le registre —
+    # une date en base serait une seconde vérité, qui divergerait au premier
+    # redémarrage du service.
+    sid = admin_auth.ouvrir_session(appareil)
+    conn = get_connection()
+    try:
+        services.enregistrer_appareil(conn, appareil, "admin")
+    finally:
+        conn.close()
+
     reponse = RedirectResponse("/admin", status_code=303)
     reponse.set_cookie(
         admin_auth.COOKIE_ADMIN, sid,
         max_age=admin_auth.DUREE_SESSION, httponly=True, samesite="lax",
         secure=(request.url.scheme == "https"),
     )
+    if nouveau:
+        reponse.set_cookie(
+            services.COOKIE_APPAREIL, appareil,
+            max_age=admin_auth.DUREE_SESSION, httponly=True, samesite="lax",
+            secure=(request.url.scheme == "https"),
+        )
     return reponse
 
 
