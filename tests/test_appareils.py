@@ -15,6 +15,7 @@ Ce que ces tests protègent, dans l'ordre où les pièges se sont présentés :
   serait exactement l'erreur que /admin/aide a déjà eu à corriger.
 """
 
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -274,6 +275,137 @@ def test_un_appareil_promu_admin_change_de_role_sans_seconde_ligne(conn):
     lignes = conn.execute("SELECT * FROM appareils").fetchall()
     assert len(lignes) == 1
     assert lignes[0]["role"] == "admin"
+
+
+# ---------------------------------------------------------------------------
+# Étape 4 — la liste sur /admin/jeton
+# ---------------------------------------------------------------------------
+def _connecter_admin(client):
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin"},
+                follow_redirects=False)
+
+
+def test_liste_des_appareils_protegee_par_la_garde_admin(client, conn):
+    # Sans session : redirection vers la connexion (motif `_garde`), jamais 403.
+    r = client.get("/admin/jeton", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/admin"
+
+    r = client.post("/admin/jeton/appareil/AAAAAA/libelle",
+                    data={"libelle": "comptoir 2"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/admin"
+    # Rien n'a été écrit.
+    assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 0
+
+
+def test_seuls_les_appareils_actifs_sont_listes_et_le_compteur_est_juste(client, conn):
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    generation = services.empreinte_jeton(jeton)
+    services.enregistrer_appareil(conn, "AAAAAA", "benevole", _dans(3), generation)
+    services.enregistrer_appareil(conn, "BBBBBB", "benevole", _dans(3), generation)
+    # Périmés, pour deux raisons différentes.
+    services.enregistrer_appareil(conn, "CCCCCC", "benevole", _dans(-1), generation)
+    services.enregistrer_appareil(conn, "DDDDDD", "benevole", _dans(3), "vieille01")
+
+    _connecter_admin(client)
+    r = client.get("/admin/jeton")
+    assert r.status_code == 200
+
+    principal, replies = r.text.split("appareils périmés", 1)
+    # Les actifs sont dans le corps de la liste, les périmés dans le repli.
+    assert "AAAAAA" in principal and "BBBBBB" in principal
+    assert "CCCCCC" not in principal and "DDDDDD" not in principal
+    assert "CCCCCC" in replies and "DDDDDD" in replies
+    assert "Validité dépassée" in replies and "Jeton renouvelé depuis" in replies
+
+    # Compteur : les deux bénévoles actifs, pas l'appareil admin qui consulte
+    # (il est pourtant bien présent dans la liste, en rôle Administration).
+    assert "<strong>2</strong>" in r.text
+    assert "appareils bénévoles actifs" in r.text
+    assert "Administration" in principal
+
+
+def test_libelle_enregistre_et_reaffiche(client, conn):
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    services.enregistrer_appareil(conn, "AAAAAA", "benevole", _dans(3),
+                                  services.empreinte_jeton(jeton))
+    _connecter_admin(client)
+
+    r = client.post("/admin/jeton/appareil/AAAAAA/libelle",
+                    data={"libelle": "comptoir 2"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/admin/jeton"
+
+    r = client.get("/admin/jeton")
+    assert 'value="comptoir 2"' in r.text
+    # La consigne accompagne le champ, pas seulement le wiki.
+    assert "jamais une personne" in r.text
+
+
+def test_libelle_dun_appareil_inconnu_ne_provoque_rien(client, conn):
+    _poser_jeton(conn)
+    _connecter_admin(client)
+    r = client.post("/admin/jeton/appareil/ZZZZZZ/libelle",
+                    data={"libelle": "accueil"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert conn.execute(
+        "SELECT COUNT(*) FROM appareils WHERE appareil = 'ZZZZZZ'"
+    ).fetchone()[0] == 0
+
+
+def test_aucun_controle_de_revocation_dans_le_rendu(client, conn):
+    """
+    Garde-fou explicite (§6.2). L'authentification bénévole compare le cookie
+    au jeton COURANT : il n'existe aucun moyen de couper un appareil seul.
+    Un bouton par ligne promettrait un recours que le code n'offre pas — le
+    projet a déjà eu à corriger ce type d'erreur en écrivant /admin/aide.
+    """
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    services.enregistrer_appareil(conn, "AAAAAA", "benevole", _dans(3),
+                                  services.empreinte_jeton(jeton))
+    _connecter_admin(client)
+    page = client.get("/admin/jeton").text.lower()
+
+    for interdit in ("révoqu", "revoqu", "bloquer cet appareil",
+                     "déconnecter cet appareil", "supprimer cet appareil"):
+        assert interdit not in page, interdit
+    # La seule action possible SUR UN APPAREIL est de le nommer.
+    par_appareil = re.findall(r'action="(/admin/jeton/appareil/[^"]*)"', page)
+    assert par_appareil and all(a.endswith("/libelle") for a in par_appareil), par_appareil
+    # Et la seule autre action de la page est la réinitialisation du jeton,
+    # qui déconnecte tout le monde — jamais un appareil en particulier.
+    autres = [a for a in re.findall(r'action="(/admin/jeton[^"]*)"', page)
+              if a not in par_appareil]
+    assert autres == ["/admin/jeton/reinitialiser"], autres
+    # ... et la page dit explicitement quel est le seul geste possible.
+    assert "déconnecte" in page and "tous" in page
+
+
+def test_liste_vide_dit_quoi_faire_plutot_quun_tableau_vide(client, conn):
+    _poser_jeton(conn)
+    _connecter_admin(client)
+    # L'appareil qui vient de se connecter est un appareil ADMIN : il apparaît,
+    # mais le compteur bénévole reste à zéro et le message doit rester utile.
+    conn.execute("DELETE FROM appareils")
+    conn.commit()
+    r = client.get("/admin/jeton")
+    assert "Aucun appareil n'a activé l'accès" in r.text
+    assert "<th>Appareil</th>" not in r.text
+
+
+def test_le_poste_dadministration_apparait_comme_session_en_cours(client, conn):
+    _poser_jeton(conn)
+    _connecter_admin(client)
+    r = client.get("/admin/jeton")
+    assert "Administration" in r.text
+    assert "session en cours" in r.text
 
 
 # ---------------------------------------------------------------------------

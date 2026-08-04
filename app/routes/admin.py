@@ -683,7 +683,20 @@ def motdepasse_changer(
 # ---------------------------------------------------------------------------
 @router.get("/jeton")
 def jeton_page(request: Request):
-    """Affiche le lien d'activation bénévole et les options de partage."""
+    """
+    Affiche le lien d'activation bénévole, les options de partage et la LISTE
+    DES APPAREILS qui ont utilisé ce lien (docs/conception-journal.md §6.2).
+
+    La liste vit ici plutôt que sur une page à elle : cette page porte déjà le
+    lien, son échéance et le bouton de réinitialisation — la liste de ceux qui
+    s'en sont servis y est à sa place.
+
+    « Actif » se calcule à la lecture, à partir de deux sources qui n'ont rien
+    à voir l'une avec l'autre : l'empreinte du jeton EN VIGUEUR (une rotation
+    périme d'un coup tous les appareils bénévoles) et le dictionnaire des
+    sessions admin EN MÉMOIRE (un redémarrage ferme tous les postes
+    d'administration). Voir `services.lister_appareils`.
+    """
     if (garde := _garde(request)):
         return garde
     conn = get_connection()
@@ -691,6 +704,11 @@ def jeton_page(request: Request):
         jeton = auth.jeton_actuel(conn)
         expire_iso = auth.expiration_jeton(conn)
         expire_depasse = auth.jeton_expire(conn)
+        registre = services.lister_appareils(
+            conn,
+            services.empreinte_jeton(jeton),
+            admin_auth.appareils_admin_ouverts(),
+        )
     finally:
         conn.close()
 
@@ -712,8 +730,33 @@ def jeton_page(request: Request):
         request, "admin_jeton.html",
         {"jeton": jeton, "lien": lien, "partage": partage,
          "expire_local": expire_local, "expire_depasse": expire_depasse,
-         "defaut_jours": auth.DUREE_DEFAUT_JOURS},
+         "defaut_jours": auth.DUREE_DEFAUT_JOURS, "registre": registre},
     )
+
+
+@router.post("/jeton/appareil/{appareil}/libelle")
+def jeton_appareil_libelle(request: Request, appareil: str, libelle: str = Form("")):
+    """
+    Pose (ou efface) le libellé libre d'un appareil — arbitrage 7 de
+    docs/conception-journal.md.
+
+    C'est ce qui transforme `3F1A9C` en information exploitable, sans que
+    l'application ne déduise jamais rien elle-même. C'est aussi le SEUL endroit
+    du dispositif où une donnée personnelle pourrait entrer : la consigne
+    « désigner un poste, jamais une personne » est affichée sous les champs,
+    pas seulement dans le wiki.
+
+    Un identifiant inconnu ne provoque rien (l'UPDATE ne touche aucune ligne)
+    et ramène à la page — jamais d'erreur brute.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.renommer_appareil(conn, appareil, libelle)
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/jeton", status_code=303)
 
 
 # ---------------------------------------------------------------------------

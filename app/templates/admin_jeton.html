@@ -74,6 +74,101 @@
   </form>
 </section>
 
+{# ---------------------------------------------------------------------------
+   Liste des appareils (docs/conception-journal.md §6.2).
+
+   ⚠️ AUCUN BOUTON « RÉVOQUER », ni ici ni ailleurs. L'authentification
+   bénévole compare le cookie de l'appareil au jeton COURANT : il n'existe
+   aucun moyen technique de couper un appareil seul. Le seul levier est la
+   réinitialisation du jeton, qui déconnecte TOUS les téléphones. Offrir un
+   contrôle par ligne laisserait croire le contraire — exactement le type
+   d'erreur que /admin/aide a déjà eu à corriger (deux recours annoncés qui
+   n'existaient pas dans le code). Cette liste CONSTATE, elle n'agit pas.
+   Un test garde-fou vérifie qu'aucun contrôle de ce genre n'apparaît.
+--------------------------------------------------------------------------- #}
+<section class="carte">
+  <h2>Appareils</h2>
+
+  {% if registre.actifs or registre.perimes %}
+    {% set n = registre.nb_benevoles_actifs %}
+    <p class="dispo-titre"><strong>{{ n }}</strong>
+       {{ pluriel(n, 'appareil bénévole actif', 'appareils bénévoles actifs') }}</p>
+  {% endif %}
+
+  {% if registre.actifs %}
+    <table class="admin-table">
+      <tr>
+        <th>Appareil</th><th>Rôle</th><th>Activé le</th>
+        <th>Valable jusqu'au</th><th>Libellé</th>
+      </tr>
+      {% for a in registre.actifs %}
+      <tr>
+        <td><strong>{{ a.appareil }}</strong></td>
+        <td>{{ 'Administration' if a.role == 'admin' else 'Bénévole' }}</td>
+        <td>{{ a.active_le | dt_local }}</td>
+        <td>
+          {% if a.expire_le %}{{ a.expire_le | dt_local }}
+          {% else %}session en cours{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/admin/jeton/appareil/{{ a.appareil }}/libelle">
+            <input type="text" name="libelle" value="{{ a.libelle or '' }}"
+                   maxlength="40" placeholder="ex. comptoir 2">
+            <button type="submit" class="bouton-filtrer">Enregistrer</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {# La consigne est ICI, sous les champs eux-mêmes : c'est le seul endroit
+       du dispositif où une donnée personnelle peut entrer, et le wiki n'est
+       pas sous les yeux de qui tape. #}
+    <p class="stats-note">Le libellé désigne un <strong>poste</strong>
+       (« comptoir 2 », « accueil »), jamais une personne : ces appareils sont
+       partagés, et l'application n'a pas besoin de savoir qui les tient.</p>
+  {% else %}
+    <p>Aucun appareil n'a activé l'accès pour l'instant. Diffusez le lien
+       d'activation ci-dessus : chaque téléphone qui l'ouvrira apparaîtra ici.</p>
+  {% endif %}
+
+  {% if registre.perimes %}
+    <details class="recherche">
+      <summary>{{ registre.perimes | length }}
+        {{ pluriel(registre.perimes | length, 'appareil périmé', 'appareils périmés') }}</summary>
+      <table class="admin-table">
+        <tr><th>Appareil</th><th>Rôle</th><th>Activé le</th><th>Pourquoi</th><th>Libellé</th></tr>
+        {% for a in registre.perimes %}
+        <tr>
+          <td>{{ a.appareil }}</td>
+          <td>{{ 'Administration' if a.role == 'admin' else 'Bénévole' }}</td>
+          <td>{{ a.active_le | dt_local }}</td>
+          <td>
+            <span class="badge badge-attention">
+              {% if a.motif == 'echeance' %}Validité dépassée
+              {% elif a.motif == 'jeton_renouvele' %}Jeton renouvelé depuis
+              {% else %}Session fermée{% endif %}
+            </span>
+          </td>
+          <td>{% if a.libelle %}{{ a.libelle }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <p class="stats-note">Un appareil périmé ne peut plus rien enregistrer.
+         Il redevient actif dès que la personne rouvre le lien d'activation
+         ci-dessus — rien à faire de votre côté.</p>
+    </details>
+  {% endif %}
+
+  <p class="stats-note">Pour retirer l'accès à un appareil, il n'existe qu'un
+     seul geste : <strong>réinitialiser le jeton</strong> ci-dessus. Il
+     déconnecte <strong>tous</strong> les téléphones à la fois, qui devront
+     tous rouvrir le nouveau lien.</p>
+
+  <p class="stats-note">Un identifiant dit « c'est le même appareil », jamais
+     de qui il s'agit. Un bénévole peut lire le sien en bas de son écran
+     « Scanner un jeu ».</p>
+</section>
+
 <script>
   function copierLien() {
     var champ = document.getElementById("lien");
