@@ -13,6 +13,8 @@ JOURNAL_PATH vers un fichier temporaire propre à chaque test.
 """
 
 import json
+import sys
+from datetime import datetime
 
 import pytest
 
@@ -489,3 +491,134 @@ def test_admin_journal_aide_inline_et_section_admin_aide(client):
 
     aide = client.get("/admin/aide")
     assert 'id="probleme-journal"' in aide.text
+
+
+# ---------------------------------------------------------------------------
+# scripts/journal.py (étape 6) — parsing, filtres, --brut. Le suivi -f n'est
+# pas testé ici (process persistant, non simple sous pytest — voir la
+# docstring du script pour la vérification manuelle).
+# ---------------------------------------------------------------------------
+def _ecrire_fichier_exemple(chemin, lignes):
+    chemin.write_text(
+        "\n".join(json.dumps(l, ensure_ascii=False) for l in lignes) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_script_charger_lignes_ignore_les_lignes_corrompues(tmp_path):
+    from scripts import journal as script
+
+    chemin = tmp_path / "j.log"
+    chemin.write_text(
+        '{"t":"2026-08-04T10:00:00+02:00","qui":"admin","module":"pret","action":"pret","ok":true}\n'
+        "pas du json\n"
+        '{"t":"2026-08-04T10:01:00+02:00","qui":"benevole","module":"pret","action":"retour","ok":true}\n',
+        encoding="utf-8",
+    )
+
+    lignes = script.charger_lignes(chemin)
+    assert len(lignes) == 2
+    assert lignes[0]["action"] == "pret" and lignes[1]["action"] == "retour"
+
+
+def test_script_filtrer_module_et_qui(tmp_path):
+    from scripts import journal as script
+
+    lignes = [
+        {"t": "2026-08-04T10:00:00+02:00", "qui": "admin", "module": "live", "action": "annonce_posee"},
+        {"t": "2026-08-04T10:01:00+02:00", "qui": "benevole", "module": "pret", "action": "pret"},
+    ]
+    assert [l["module"] for l in script.filtrer(lignes, module="pret")] == ["pret"]
+    assert [l["qui"] for l in script.filtrer(lignes, qui="admin")] == ["admin"]
+
+
+def test_script_filtrer_depuis(tmp_path):
+    from scripts import journal as script
+    from app.services import FUSEAU_LOCAL
+
+    lignes = [
+        {"t": "2026-08-04T09:00:00+02:00", "qui": "admin", "module": "pret", "action": "pret"},
+        {"t": "2026-08-04T14:00:00+02:00", "qui": "admin", "module": "pret", "action": "pret"},
+    ]
+    seuil = datetime(2026, 8, 4, 12, 0, tzinfo=FUSEAU_LOCAL)
+    restant = script.filtrer(lignes, depuis=seuil)
+    assert len(restant) == 1
+    assert restant[0]["t"].startswith("2026-08-04T14")
+
+
+def test_script_parser_depuis_forme_valide_et_invalide():
+    from scripts import journal as script
+
+    dt = script.parser_depuis("12:00")
+    assert dt.hour == 12 and dt.minute == 0
+    with pytest.raises(ValueError):
+        script.parser_depuis("pas une heure")
+
+
+def test_script_main_brut_restitue_le_json_a_lidentique(tmp_path, monkeypatch, capsys):
+    from scripts import journal as script
+
+    chemin = tmp_path / "j.log"
+    ligne = {
+        "t": "2026-08-04T10:00:00+02:00", "qui": "benevole", "appareil": "3F1A9C",
+        "module": "pret", "action": "retour", "objet": "Catan", "ok": True,
+    }
+    _ecrire_fichier_exemple(chemin, [ligne])
+
+    monkeypatch.setenv("JOURNAL_PATH", str(chemin))
+    monkeypatch.setattr(sys, "argv", ["journal.py", "--brut"])
+    script.main()
+
+    sortie = capsys.readouterr().out.strip()
+    assert json.loads(sortie) == ligne
+
+
+def test_script_main_format_par_defaut_lisible(tmp_path, monkeypatch, capsys):
+    from scripts import journal as script
+
+    chemin = tmp_path / "j.log"
+    _ecrire_fichier_exemple(chemin, [{
+        "t": "2026-08-04T10:00:00+02:00", "qui": "benevole", "appareil": "3F1A9C",
+        "module": "pret", "action": "retour", "objet": "Catan", "ok": True,
+    }])
+    monkeypatch.setenv("JOURNAL_PATH", str(chemin))
+    monkeypatch.setattr(sys, "argv", ["journal.py"])
+    script.main()
+
+    sortie = capsys.readouterr().out
+    assert "10:00:00" in sortie
+    assert "benevole" in sortie
+    assert "Catan" in sortie
+    # Sortie pour l'œil, PAS du JSON.
+    assert not sortie.strip().startswith("{")
+
+
+def test_script_main_filtre_module_via_cli(tmp_path, monkeypatch, capsys):
+    from scripts import journal as script
+
+    chemin = tmp_path / "j.log"
+    _ecrire_fichier_exemple(chemin, [
+        {"t": "2026-08-04T10:00:00+02:00", "qui": "admin", "module": "live",
+         "action": "annonce_posee", "objet": "Tombola", "ok": True},
+        {"t": "2026-08-04T10:01:00+02:00", "qui": "benevole", "module": "pret",
+         "action": "pret", "objet": "Catan", "ok": True},
+    ])
+    monkeypatch.setenv("JOURNAL_PATH", str(chemin))
+    monkeypatch.setattr(sys, "argv", ["journal.py", "--module", "pret", "--brut"])
+    script.main()
+
+    sortie = capsys.readouterr().out.strip().splitlines()
+    assert len(sortie) == 1
+    assert json.loads(sortie[0])["module"] == "pret"
+
+
+def test_script_main_aucune_ligne_message_sur_stderr(tmp_path, monkeypatch, capsys):
+    from scripts import journal as script
+
+    monkeypatch.setenv("JOURNAL_PATH", str(tmp_path / "absent.log"))
+    monkeypatch.setattr(sys, "argv", ["journal.py"])
+    script.main()
+
+    capture = capsys.readouterr()
+    assert capture.out == ""
+    assert "Aucune activité enregistrée" in capture.err
