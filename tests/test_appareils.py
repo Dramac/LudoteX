@@ -453,16 +453,36 @@ def test_aucun_controle_de_revocation_dans_le_rendu(client, conn):
     assert "déconnecte" in page and "tous" in page
 
 
-def test_liste_vide_dit_quoi_faire_plutot_quun_tableau_vide(client, conn):
+def test_aucun_benevole_actif_dit_quoi_faire(client, conn):
+    """
+    L'appareil qui consulte la page est FORCÉMENT actif (c'est un poste
+    d'administration connecté) : le message d'invite ne peut donc pas
+    dépendre du tableau, il dépend du compteur BÉNÉVOLE, seul chiffre utile.
+    """
     _poser_jeton(conn)
     _connecter_admin(client)
-    # L'appareil qui vient de se connecter est un appareil ADMIN : il apparaît,
-    # mais le compteur bénévole reste à zéro et le message doit rester utile.
-    conn.execute("DELETE FROM appareils")
-    conn.commit()
     r = client.get("/admin/jeton")
-    assert "Aucun appareil n'a activé l'accès" in r.text
-    assert "<th>Appareil</th>" not in r.text
+    assert "<strong>0</strong>" in r.text
+    assert "appareil bénévole actif" in r.text     # singulier pour 0, grammaire FR
+    assert "Diffusez le lien d'activation" in r.text
+
+
+def test_apres_une_rotation_la_page_ne_dit_pas_quaucun_appareil_na_active(client, conn):
+    """
+    Cas très courant : juste après une réinitialisation, tout le monde est
+    périmé tant que personne n'a rouvert le lien. Dire « aucun appareil n'a
+    activé l'accès » serait faux — le repli en montre plusieurs juste dessous.
+    """
+    from app import services
+
+    _poser_jeton(conn, "tout-nouveau-jeton")
+    services.enregistrer_appareil(conn, "AAAAAA", "benevole", _dans(3), "vieille01")
+    _connecter_admin(client)
+
+    r = client.get("/admin/jeton")
+    assert "Rediffusez le lien d'activation" in r.text
+    assert "Diffusez le lien d'activation ci-dessus : chaque" not in r.text
+    assert "AAAAAA" in r.text          # bien listé dans le repli des périmés
 
 
 def test_le_poste_dadministration_apparait_comme_session_en_cours(client, conn):

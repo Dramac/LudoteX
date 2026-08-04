@@ -89,10 +89,19 @@
 <section class="carte">
   <h2>Appareils</h2>
 
-  {% if registre.actifs or registre.perimes %}
-    {% set n = registre.nb_benevoles_actifs %}
-    <p class="dispo-titre"><strong>{{ n }}</strong>
-       {{ pluriel(n, 'appareil bénévole actif', 'appareils bénévoles actifs') }}</p>
+  {# Le compteur porte sur les appareils BÉNÉVOLES : c'est la question du jour
+     de l'événement (« combien de téléphones ont ouvert le lien ? »). Le poste
+     d'administration qui consulte cette page est forcément actif, lui — le
+     compter brouillerait le seul chiffre utile. #}
+  {% set n = registre.nb_benevoles_actifs %}
+  <p class="dispo-titre"><strong>{{ n }}</strong>
+     {{ pluriel(n, 'appareil bénévole actif', 'appareils bénévoles actifs') }}</p>
+
+  {% if n == 0 %}
+    <p>{% if registre.perimes %}Rediffusez le lien d'activation ci-dessus :
+         chaque téléphone qui l'ouvrira réapparaîtra ici.
+       {% else %}Diffusez le lien d'activation ci-dessus : chaque téléphone
+         qui l'ouvrira apparaîtra ici.{% endif %}</p>
   {% endif %}
 
   {% if registre.actifs %}
@@ -126,9 +135,6 @@
     <p class="stats-note">Le libellé désigne un <strong>poste</strong>
        (« comptoir 2 », « accueil »), jamais une personne : ces appareils sont
        partagés, et l'application n'a pas besoin de savoir qui les tient.</p>
-  {% else %}
-    <p>Aucun appareil n'a activé l'accès pour l'instant. Diffusez le lien
-       d'activation ci-dessus : chaque téléphone qui l'ouvrira apparaîtra ici.</p>
   {% endif %}
 
   {% if registre.perimes %}
