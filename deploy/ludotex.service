@@ -11,6 +11,9 @@
 # IMPORTANT : un SEUL worker uvicorn (valeur par défaut). La limitation de débit
 # et les sessions admin sont en mémoire du process ; plusieurs workers les
 # casseraient. La charge réelle (quelques écritures/minute) ne justifie pas plus.
+# Le journal d'activité (app/journal.py) s'ajoute à cette liste : son
+# RotatingFileHandler n'est sûr qu'avec un seul processus écrivain — plusieurs
+# workers pourraient entrelacer leurs écritures dans le même fichier.
 
 [Unit]
 Description=Application de prêt de jeux (FastAPI/uvicorn)

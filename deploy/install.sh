@@ -291,6 +291,10 @@ DATABASE_PATH=$DATA_DIR/pret-jeux.db
 TOURNOI_DATABASE_PATH=$DATA_DIR/tournoi.db
 PLANNING_DATABASE_PATH=$DATA_DIR/planning.db
 
+# --- Journal d'activité -------------------------------------------------
+JOURNAL_PATH=$DATA_DIR/journal.log
+JOURNAL_CONSOLE=0
+
 # --- Domaine / URL publique ------------------------------------------
 BASE_URL=https://$DOMAINE
 
@@ -460,6 +464,7 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
             DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db" \
             TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db" \
             PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db" \
+            JOURNAL_PATH="$DATA_DIR_FORMATION/journal.log" \
             BASE_URL="https://$DOMAINE_FORMATION" \
             NOM_ASSOCIATION="$NOM_ASSOCIATION" \
             APP_ENV=production \
@@ -491,6 +496,10 @@ ADMIN_PASSWORD="$ADMIN_PASSWORD"
 DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db"
 TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db"
 PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db"
+# Chemin DISTINCT de celui de la production (voir plus haut) : sans quoi les
+# deux instances écriraient dans le même fichier journal.
+JOURNAL_PATH="$DATA_DIR_FORMATION/journal.log"
+JOURNAL_CONSOLE=0
 BASE_URL="https://$DOMAINE_FORMATION"
 NOM_ASSOCIATION="$NOM_ASSOCIATION"
 APP_ENV=production

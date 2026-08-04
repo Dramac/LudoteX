@@ -10,8 +10,9 @@
 # deploy/install.sh (ou la section correspondante de docs/deploiement.md pour
 # l'installation manuelle).
 #
-# IMPORTANT : un SEUL worker uvicorn, comme ludotex.service (sessions admin et
-# limitation de débit en mémoire du process).
+# IMPORTANT : un SEUL worker uvicorn, comme ludotex.service (sessions admin,
+# limitation de débit et RotatingFileHandler du journal d'activité en mémoire
+# ou en écriture depuis un seul process).
 
 [Unit]
 Description=LudoteX — instance de FORMATION (FastAPI/uvicorn)
