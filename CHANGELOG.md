@@ -6,6 +6,13 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.3.1 — 2026-08-05
+
+- Le **journal d'activité** couvre désormais aussi les tournois, le programme du week-end, le planning bénévole et les prêts — pas seulement l'administration. Création, modification, suppression, changements d'état, lancement d'un tournoi, saisie de résultats, ajout/retrait d'un participant, modification manuelle d'une case du planning, chaque prêt et chaque retour : tout y laisse une ligne, avec le nom du jeu ou du tournoi concerné.
+- Les **échecs de prêt** y apparaissent aussi (« déjà sorti », « déjà disponible », conflit d'accès simultané) : c'est un bénévole qui a vu un message inattendu, exactement ce qu'on cherche à comprendre après coup.
+- Comme toujours : jamais un pseudo, un nom d'équipe, un nom de bénévole ou un numéro de pochette dans ces lignes.
+- La supervision (`/admin/supervision` et le tableau de bord) affiche maintenant l'état du journal (taille, dernière écriture).
+
 ## 1.3.0 — 2026-08-04
 
 - Nouveau **journal d'activité** en administration : un historique en lecture seule de qui a fait quoi et quand, à ouvrir quand quelque chose paraît anormal. Il enregistre les gestes d'administration et de configuration, ceux dont rien ne gardait trace jusqu'ici — connexions, réinitialisation de l'accès bénévole, imports de catalogue, sauvegardes restaurées, modules activés ou désactivés, annonces de l'écran de salle, clôture de fin d'événement. Filtrable par module, type de visiteur, action, appareil ou période, avec téléchargement du fichier complet.

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 # Racine du dépôt (deux niveaux au-dessus de ce fichier : app/version.py -> /).
 _RACINE = Path(__file__).resolve().parent.parent

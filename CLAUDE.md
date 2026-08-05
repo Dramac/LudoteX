@@ -1884,10 +1884,86 @@ figure pas encore et où le trouver en attendant), `Guide-Admin.md` (même
 correction + quoi faire devant des connexions ratées), `Acces-et-Token.md`
 (la nouvelle colonne et le sens de son tiret).
 
-RESTE : **lot D** — les points d'appel des priorités 2 et 3 (tournois,
-programme, planning, puis prêts : ~25 routes, dont les échecs `deja_sorti` /
-`occupe` qui sont l'intérêt principal du lot) ; **finitions** — mention
-`/apropos`, ligne de supervision, purge des rotations de plus d'un an.
+**LOT D — POINTS D'APPEL PRIORITÉS 2/3 ET FINITIONS DU CHANTIER JOURNAL :
+FAIT.** Dernier lot : le journal cesse d'être limité à l'administration et
+couvre désormais tournois, programme, planning et prêts. Cinq commits.
+
+**Tournois** (`app/tournoi/routes.py`) : `tournoi_cree` (création **et**
+duplication — une copie est une création), `tournoi_modifie`,
+`tournoi_supprime`, `tournoi_etat_change` (objet = `"<nom> → <état>"`, échec
+avec `detail: transition_refusee`), `tournoi_lance` (objet = `"<nom> —
+<mode>"`, **échec journalisé** si 0 participant ou mode inconnu — un
+lancement raté est aussi une information utile après coup, décision Simon),
+`tournoi_resultats_saisis` (scores, rondes, arbre), nouvelle action
+**`tournoi_ronde_generee`** (ajoutée au vocabulaire : générer la ronde/le
+tour suivant n'est pas une saisie de résultat, échec journalisé si ronde
+incomplète/terminée), `participant_ajoute`/`participant_supprime` (objet =
+le tournoi, **jamais le pseudo** — la base tournoi.db garde qui, et elle
+seule), `tournois_jour_ouverts`.
+
+**Programme** (`app/tournoi/routes_programme.py` + section admin des types
+dans `routes/admin.py`) : `programme_cree` (création et duplication),
+`programme_modifie`, `programme_supprime`, `programme_etat_change`,
+`programme_type_cree`/`_modifie`/`_supprime`. **Hors périmètre par
+décision** (non couverts, le tableau §2.2 de la conception ne les cite
+pas) : archivage/réactivation et réordonnancement (haut/bas) d'un type —
+ajustements de présentation, pas des faits qu'on cherche après coup.
+
+**Planning** (`app/planning/routes.py`) : `planning_questionnaire_ferme`
+(transition collecte→brouillon) et `planning_publie` (→publié) sur la même
+route `POST .../etat`, distingués par l'état de départ/d'arrivée ;
+`planning_genere` (préremplissage, objet = nom + bilan chiffré — le bilan
+va dans `objet` et non `detail`, car `detail` n'est conservé que si `ok` est
+faux) ; `planning_case_modifiee` sur les quatre routes d'édition d'une case
+(affecter/retirer/verrouiller/remplacer), via un nouveau helper
+`_objet_case(conn, ev, id_creneau, id_poste)` qui construit un libellé
+« poste — jour » **sans jamais lire un nom de bénévole**. **Hors périmètre**
+(non cité par la conception) : réouverture de la collecte (brouillon→
+collecte) et dépublication (publié→brouillon), ajout/suppression de poste
+ou de créneau, matrice des besoins.
+
+**Prêts** (`app/routes/pret.py`) : les quatre actions `pret`/`retour`/
+`re_pret`/`sortie_tournoi`, **réussite ET échec au même titre** — c'est
+l'apport réel de cette priorité (§2.3). Nouveau helper `_journaliser_pret`
+partagé par les quatre routes : `objet` = nom du jeu (que la table `prets`
+ne porte pas), `ref` = `reference_titre`, `ok=False` + `detail` = le type
+d'échec (`deja_sorti`, `deja_disponible`, `occupe`) dès que le résultat en
+est un — jamais le numéro de pochette, qui n'apparaît nulle part dans ces
+lignes.
+
+**Finitions** : `supervision.etat_journal()` (taille + date de dernière
+écriture du fichier courant, **lecture seule**, jamais le contenu) +
+nouvelle section dans `_supervision_contenu.html` (visible sur
+`/admin/supervision` et le tableau de bord) ; `journal.
+purger_rotations_anciennes(jours=365)` (purge par mtime des fichiers de
+rotation `journal.log.N`, jamais le fichier courant), appelée depuis
+`POST /admin/cloturer-prets` — même moment que la purge du registre des
+appareils (§8.1), pour la même raison (un geste qui existe déjà) ; une
+phrase sur `/apropos` (fin de la section « Administrateur », décision
+Simon : ajout court plutôt qu'une sous-section dédiée).
+
+**Garde-fou d'interdiction étendu** (`tests/test_journal_interdits.py`) :
+le scénario joue désormais aussi le lancement d'un tournoi (avec ses deux
+participants créés plus haut) et deux échecs de prêt (`deja_sorti` via un
+double « Prêter », `deja_disponible` via un double « Rendre ») ; nouveau
+test `test_les_echecs_de_pret_sont_journalises` (les deux `detail` sont
+bien présents, `ok: false`) ; la non-vacuité couvre désormais aussi
+`pret`/`retour`/`tournoi_lance`. **35 tests dédiés** dans
+`tests/test_journal_appels.py` (étendu du lot C : tournois, programme,
+planning, prêts — réussite et échec, et l'absence systématique de tout
+pseudo/nom dans les lignes concernées), + tests `app/formation.py`/
+`scripts/import_csv.py` toujours silencieux, + tests supervision/apropos.
+**Suite globale : 632 tests verts.**
+
+Wiki (dépôt séparé, poussé à part) : `Journal-Activite.md` (tableau des
+actions enregistrées étendu aux trois nouveaux modules, section « Si ça ne
+marche pas » corrigée — les prêts NE sont PLUS absents du journal),
+`Module-Pret.md`, `Module-Tournois.md`, `Module-Planning.md`,
+`Module-Programme.md` (nouvelle section « Suivi dans le journal
+d'activité » sur chacun), `Rgpd.md` (nouvelle section dédiée + ligne dans
+le tableau récapitulatif).
+
+**Chantier « journal d'activité » COMPLET** (lots A→D, du 4 août 2026).
 
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
