@@ -55,6 +55,26 @@ def _int(v, defaut=0) -> int:
         return defaut
 
 
+def _objet_case(conn, ev: int, id_creneau: int, id_poste: int | None) -> str | None:
+    """
+    Libellé lisible d'une case (poste × créneau) pour le journal — JAMAIS un
+    nom de bénévole (§8, base séparée avec purge RGPD propre au planning).
+    """
+    creneau = services.get_creneau(conn, id_creneau)
+    if creneau is None:
+        return None
+    poste_nom = None
+    if id_poste is not None:
+        poste = next(
+            (p for p in services.lister_postes(conn, ev) if p["id_poste"] == id_poste),
+            None,
+        )
+        poste_nom = poste["nom"] if poste else None
+    label = poste_nom or creneau.get("libelle") or "créneau"
+    jour = creneau.get("libelle_jour") or ""
+    return f"{label} — {jour}" if jour else label
+
+
 # ===========================================================================
 # PUBLIC — entrée, collecte, vue publiée, mon planning
 # ===========================================================================
@@ -414,11 +434,21 @@ def admin_prefiller(request: Request, ev: int):
         return r
     conn = get_connection()
     try:
+        evenement = services.get_evenement(conn, ev)
         bilan = services.prefiller(conn, ev)
     finally:
         conn.close()
     msg = (f"Préremplissage : {bilan['places']} affectation(s), "
            f"{bilan['cases_completes']}/{bilan['cases_total']} cases complètes.")
+    # `detail` n'est conservé que si `ok` est faux (§3) : le bilan chiffré,
+    # utile même en succès, va donc dans `objet`.
+    nom = evenement["nom"] if evenement else "Planning"
+    journal.journaliser(
+        request, "planning", "planning_genere",
+        objet=(f"{nom} — {bilan['places']} affectations, "
+               f"{bilan['cases_completes']}/{bilan['cases_total']} cases"),
+        ref=str(ev),
+    )
     return _retour(ev, msg)
 
 
@@ -431,11 +461,16 @@ def admin_affecter(request: Request, ev: int, id_creneau: int = Form(...),
     poste = _int(id_poste) if id_poste.strip() else None
     conn = get_connection()
     try:
+        objet = _objet_case(conn, ev, id_creneau, poste)
         res = services.affecter(conn, id_creneau, poste, id_benevole,
                                 origine="manuel", verrouille=True)
     finally:
         conn.close()
     msg = None if res else "Ce bénévole est déjà affecté sur ce créneau."
+    journal.journaliser(
+        request, "planning", "planning_case_modifiee", objet=objet, ref=str(ev),
+        ok=res is not None, detail=None if res else "deja_affecte",
+    )
     return _retour(ev, msg, retour)
 
 
@@ -445,9 +480,15 @@ def admin_aff_retirer(request: Request, ev: int, id_aff: int, retour: str = Form
         return r
     conn = get_connection()
     try:
+        aff = services.get_affectation(conn, id_aff)
+        objet = (_objet_case(conn, ev, aff["id_creneau"], aff["id_poste"])
+                 if aff else None)
         services.retirer_affectation(conn, id_aff)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "planning", "planning_case_modifiee", objet=objet, ref=str(ev),
+    )
     return _retour(ev, retour=retour)
 
 
@@ -457,9 +498,15 @@ def admin_aff_verrou(request: Request, ev: int, id_aff: int, retour: str = Form(
         return r
     conn = get_connection()
     try:
+        aff = services.get_affectation(conn, id_aff)
+        objet = (_objet_case(conn, ev, aff["id_creneau"], aff["id_poste"])
+                 if aff else None)
         services.basculer_verrou(conn, id_aff)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "planning", "planning_case_modifiee", objet=objet, ref=str(ev),
+    )
     return _retour(ev, retour=retour)
 
 
@@ -471,10 +518,17 @@ def admin_aff_remplacer(request: Request, ev: int, id_aff: int,
         return r
     conn = get_connection()
     try:
+        aff = services.get_affectation(conn, id_aff)
+        objet = (_objet_case(conn, ev, aff["id_creneau"], aff["id_poste"])
+                 if aff else None)
         res = services.remplacer_affectation(conn, id_aff, nouveau)
     finally:
         conn.close()
     msg = None if res else "Ce bénévole est déjà affecté sur ce créneau."
+    journal.journaliser(
+        request, "planning", "planning_case_modifiee", objet=objet, ref=str(ev),
+        ok=res is not None, detail=None if res else "deja_affecte",
+    )
     return _retour(ev, msg, retour)
 
 
@@ -581,9 +635,22 @@ def admin_etat(request: Request, ev: int, etat: str = Form("")):
         return r
     conn = get_connection()
     try:
+        evenement = services.get_evenement(conn, ev)
+        etat_avant = evenement["etat"] if evenement else None
         ok = services.changer_etat(conn, ev, etat)
     finally:
         conn.close()
+    # Deux des trois transitions ont un nom métier propre (§2.2) ; la
+    # réouverture de la collecte (brouillon -> collecte) et la dépublication
+    # (publié -> brouillon) restent hors du vocabulaire fermé pour l'instant,
+    # comme le tableau de la conception ne les cite pas.
+    nom = evenement["nom"] if evenement else None
+    if ok and etat == "publie":
+        journal.journaliser(request, "planning", "planning_publie", objet=nom, ref=str(ev))
+    elif ok and etat == "brouillon" and etat_avant == "collecte":
+        journal.journaliser(
+            request, "planning", "planning_questionnaire_ferme", objet=nom, ref=str(ev),
+        )
     return _retour(ev, "État mis à jour." if ok else "Transition d'état refusée.")
 
 
