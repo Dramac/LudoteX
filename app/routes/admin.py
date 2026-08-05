@@ -1311,6 +1311,11 @@ def cloturer_prets(request: Request):
         request, "pret", "cloture_prets",
         objet=f"{nb} {services.pluriel(nb, 'prêt ou sortie', 'prêts ou sorties')}",
     )
+    # Même moment naturel que la purge du registre des appareils (services.
+    # cloturer_tous_les_prets, §8.1) : les rotations du journal de plus d'un an
+    # disparaissent ici plutôt que d'attendre indéfiniment un trafic suffisant
+    # pour les faire tourner d'elles-mêmes.
+    journal.purger_rotations_anciennes()
     message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau disponible.")
     return _rendre_dashboard(request, message)
 
@@ -1679,6 +1684,11 @@ def programme_types_creer(request: Request, nom: str = Form(""), icone: str = Fo
     finally:
         conn.close()
     msg = "Type ajouté." if cree is not None else "Nom manquant : rien n'a été ajouté."
+    journal.journaliser(
+        request, "programme", "programme_type_cree",
+        objet=nom.strip() or None, ref=str(cree) if cree is not None else None,
+        ok=cree is not None, detail=None if cree is not None else "nom_manquant",
+    )
     return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
 
 
@@ -1693,6 +1703,11 @@ def programme_types_renommer(request: Request, id_type: int,
     finally:
         conn.close()
     msg = "Type renommé." if ok else "Nom manquant : rien n'a été modifié."
+    journal.journaliser(
+        request, "programme", "programme_type_modifie",
+        objet=nom.strip() or None, ref=str(id_type), ok=ok,
+        detail=None if ok else "nom_manquant",
+    )
     return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
 
 
@@ -1729,12 +1744,18 @@ def programme_types_supprimer(request: Request, id_type: int):
         return garde
     conn = get_tournoi_connection()
     try:
+        type_avant = programme_services.get_type(conn, id_type)
         ok = programme_services.supprimer_type(conn, id_type)
     finally:
         conn.close()
     msg = (
         "Type supprimé définitivement." if ok else
         "Suppression refusée : des éléments de programme y sont encore rattachés."
+    )
+    journal.journaliser(
+        request, "programme", "programme_type_supprime",
+        objet=type_avant["nom"] if type_avant else None, ref=str(id_type),
+        ok=ok, detail=None if ok else "rattache",
     )
     return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
 

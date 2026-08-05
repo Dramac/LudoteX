@@ -44,6 +44,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
 
+from app import journal
 from app.auth import exiger_jeton
 from app.db import get_connection as get_pret_connection
 from app.services import local_vers_utc_iso, lire_parametre
@@ -264,6 +265,10 @@ def nouveau_creer(
         )
     finally:
         conn.close()
+    journal.journaliser(
+        request, "programme", "programme_cree",
+        objet=intitule.strip(), ref=str(id_element),
+    )
     return RedirectResponse("/programme/gestion", status_code=303)
 
 
@@ -332,6 +337,10 @@ def editer_action(
         )
     finally:
         conn.close()
+    journal.journaliser(
+        request, "programme", "programme_modifie",
+        objet=intitule.strip(), ref=str(id_element),
+    )
     return RedirectResponse("/programme/gestion", status_code=303)
 
 
@@ -341,9 +350,15 @@ def changer_etat_action(request: Request, id_element: int,
     """Effectue une transition d'état (publier / dépublier / annuler / réinstaurer)."""
     conn = get_connection()
     try:
-        programme.changer_etat(conn, id_element, etat.strip())
+        e = programme.get_element(conn, id_element)
+        res = programme.changer_etat(conn, id_element, etat.strip())
     finally:
         conn.close()
+    journal.journaliser(
+        request, "programme", "programme_etat_change",
+        objet=f"{e['intitule']} → {etat.strip()}" if e else etat.strip(),
+        ref=str(id_element), ok=bool(res), detail=None if res else "transition_refusee",
+    )
     return RedirectResponse("/programme/gestion", status_code=303)
 
 
@@ -358,11 +373,16 @@ def dupliquer_action(request: Request, id_element: int, _=Depends(exiger_jeton))
     """
     conn = get_connection()
     try:
+        e = programme.get_element(conn, id_element)
         nouveau = programme.dupliquer_element(conn, id_element, date_heure=None)
     finally:
         conn.close()
     if nouveau is None:
         return RedirectResponse("/programme/gestion", status_code=303)
+    journal.journaliser(
+        request, "programme", "programme_cree",
+        objet=e["intitule"] if e else None, ref=str(nouveau),
+    )
     return RedirectResponse(f"/programme/{nouveau}/editer", status_code=303)
 
 
@@ -387,7 +407,12 @@ def supprimer_action(request: Request, id_element: int,
         return RedirectResponse(f"/programme/{id_element}/supprimer", status_code=303)
     conn = get_connection()
     try:
+        e = programme.get_element(conn, id_element)
         programme.supprimer_element(conn, id_element)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "programme", "programme_supprime",
+        objet=e["intitule"] if e else None, ref=str(id_element),
+    )
     return RedirectResponse("/programme/gestion", status_code=303)
