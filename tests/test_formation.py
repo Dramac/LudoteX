@@ -321,3 +321,18 @@ def test_peupler_pret_regle_la_date_evenement(bases):
         assert services.lire_parametre(conn, "evenement_date") == attendu
     finally:
         conn.close()
+
+
+def test_peupler_necrit_rien_dans_le_journal(bases, _journal_isole):
+    """
+    docs/conception-journal.md §5.2 : `journaliser()` est appelée depuis les
+    ROUTES, jamais depuis les services. `app.formation` appelle des services
+    (peupler_pret/peupler_tournoi/peupler_programme), pas des routes : le
+    peuplement du site de formation ne doit produire AUCUNE ligne, même s'il
+    crée des prêts, un tournoi et des éléments de programme.
+    """
+    from app import formation
+
+    formation.peupler()
+
+    assert not _journal_isole.exists() or _journal_isole.read_text(encoding="utf-8") == ""

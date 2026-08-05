@@ -1,21 +1,25 @@
 """
 Journal d'activité — POINTS D'APPEL de priorité 1 (lot C, étape 4 de
-docs/conception-journal.md § 2.1).
+docs/conception-journal.md § 2.1) ET de priorités 2/3 (lot D, § 2.2/§2.3).
 
-Ce fichier vérifie, pour chaque action d'administration et de configuration
-du tableau § 2.1, qu'elle produit UNE ligne, avec le bon `module`, la bonne
-`action` et le bon `qui`. Il ne teste pas le socle d'écriture (voir
-`tests/test_journal.py`) ni les interdits (voir
-`tests/test_journal_interdits.py`, qui est le garde-fou du chantier).
+Ce fichier vérifie, pour chaque action d'administration/configuration (§2.1),
+de tournois/programme/planning (§2.2) et de prêt (§2.3), qu'elle produit UNE
+ligne, avec le bon `module`, la bonne `action` et le bon `qui`. Il ne teste
+pas le socle d'écriture (voir `tests/test_journal.py`) ni les interdits (voir
+`tests/test_journal_interdits.py`, qui est le garde-fou du chantier — étendu
+au lot D pour couvrir ces nouvelles routes).
 
 Deux propriétés structurantes s'y vérifient au passage :
 
 - **appelé depuis les routes, jamais depuis les services** (§5.2) : le même
-  import CSV lancé par `scripts.import_csv.importer()` n'écrit rien ;
+  import CSV lancé par `scripts.import_csv.importer()` n'écrit rien, pas plus
+  que `app.formation.peupler()` en ligne de commande (lot D) ;
 - **l'ordre de détermination de `qui`** (§5.3) : les actions d'administration
   portent `qui: "admin"`, jamais `"benevole"` — `auth.peut_ecrire` renvoie
   vrai pour un administrateur aussi, et tester le jeton d'abord étiquetterait
-  toute l'administration comme bénévole.
+  toute l'administration comme bénévole. `Depends(exiger_jeton)` accepte donc
+  une session admin (voir `_connexion`) pour toutes les routes ci-dessous,
+  y compris celles des tournois/programme/planning normalement bénévole.
 """
 
 import json
@@ -471,3 +475,225 @@ def test_peuplement_formation_en_ligne_de_commande_n_ecrit_rien(bases, _journal_
 
     formation.peupler()
     assert _lignes(_journal_isole) == []
+
+
+# ===========================================================================
+# LOT D — Priorité 2 : Tournois (§2.2)
+# ===========================================================================
+def test_tournoi_cree_modifie_supprime(client, _journal_isole):
+    _connexion(client)
+    client.post("/tournoi/nouveau", data={"nom": "Tournoi de test"})
+    cree = _derniere(_journal_isole, "tournoi_cree")
+    assert cree["module"] == "tournois" and cree["objet"] == "Tournoi de test"
+    id_tournoi = cree["ref"]
+
+    client.post(f"/tournoi/{id_tournoi}/editer", data={"nom": "Tournoi modifié"})
+    modifie = _derniere(_journal_isole, "tournoi_modifie")
+    assert modifie["objet"] == "Tournoi modifié" and modifie["ref"] == id_tournoi
+
+    client.post(f"/tournoi/{id_tournoi}/dupliquer", data={"date_heure": ""})
+    duplique = _derniere(_journal_isole, "tournoi_cree")
+    assert duplique["objet"] == "Tournoi modifié" and duplique["ref"] != id_tournoi
+
+    client.post(f"/tournoi/{id_tournoi}/supprimer", data={"confirmation": "oui"})
+    supprime = _derniere(_journal_isole, "tournoi_supprime")
+    assert supprime["objet"] == "Tournoi modifié" and supprime["ref"] == id_tournoi
+
+
+def test_tournoi_etat_change_succes_et_refus(client, _journal_isole):
+    _connexion(client)
+    client.post("/tournoi/nouveau", data={"nom": "Chaussette"})
+    id_tournoi = _derniere(_journal_isole, "tournoi_cree")["ref"]
+
+    client.post(f"/tournoi/{id_tournoi}/etat", data={"etat": "inscriptions"})
+    ok = _derniere(_journal_isole, "tournoi_etat_change")
+    assert ok["ok"] is True and "inscriptions" in ok["objet"]
+
+    client.post(f"/tournoi/{id_tournoi}/etat", data={"etat": "brouillon_inexistant"})
+    ko = _derniere(_journal_isole, "tournoi_etat_change")
+    assert ko["ok"] is False and ko["detail"] == "transition_refusee"
+
+
+def test_tournoi_lance_echec_puis_succes_sans_fuite_de_pseudo(client, _journal_isole):
+    _connexion(client)
+    client.post("/tournoi/nouveau", data={"nom": "Catan"})
+    id_tournoi = _derniere(_journal_isole, "tournoi_cree")["ref"]
+    client.post(f"/tournoi/{id_tournoi}/etat", data={"etat": "inscriptions"})
+
+    # 0 participant : le lancement est refusé, et c'est journalisé (§2.3
+    # côté prêt, même principe côté tournois : un échec est une info utile).
+    client.post(f"/tournoi/{id_tournoi}/lancer", data={"mode_scoring": "high_score"})
+    echec = _derniere(_journal_isole, "tournoi_lance")
+    assert echec["ok"] is False
+
+    client.post(f"/tournoi/{id_tournoi}/participant", data={"pseudo": "Zorglub"})
+    client.post(f"/tournoi/{id_tournoi}/participant", data={"pseudo": "Gudule"})
+    ajout = _derniere(_journal_isole, "participant_ajoute")
+    # JAMAIS le pseudo (§8) : objet = le tournoi, pas qui y a été ajouté.
+    assert ajout["objet"] == "Catan"
+    assert "Zorglub" not in json.dumps(ajout) and "Gudule" not in json.dumps(ajout)
+
+    client.post(f"/tournoi/{id_tournoi}/lancer", data={"mode_scoring": "high_score"})
+    succes = _derniere(_journal_isole, "tournoi_lance")
+    assert succes["ok"] is True and "high_score" in succes["objet"]
+
+    # Suppression manuelle d'un participant : même règle, aucun pseudo.
+    conn = None
+    from app.tournoi.db import get_connection as get_tournoi_connection
+    conn = get_tournoi_connection()
+    try:
+        insc = conn.execute(
+            "SELECT id_inscription FROM inscriptions WHERE id_tournoi = ?", (id_tournoi,)
+        ).fetchone()
+    finally:
+        conn.close()
+    client.post(f"/tournoi/{id_tournoi}/participant/{insc[0]}/supprimer")
+    retrait = _derniere(_journal_isole, "participant_supprime")
+    assert retrait["objet"] == "Catan"
+
+
+def test_tournois_jour_ouverts(client, _journal_isole):
+    _connexion(client)
+    client.post("/tournoi/ouvrir-aujourdhui")
+    ligne = _derniere(_journal_isole, "tournois_jour_ouverts")
+    assert ligne["module"] == "tournois"
+
+
+# ===========================================================================
+# LOT D — Priorité 2 : Programme du week-end (§2.2)
+# ===========================================================================
+def test_programme_cree_modifie_etat_supprime(client, _journal_isole):
+    _connexion(client)
+    client.post("/programme/nouveau", data={"intitule": "Atelier peinture"})
+    cree = _derniere(_journal_isole, "programme_cree")
+    assert cree["module"] == "programme" and cree["objet"] == "Atelier peinture"
+    id_element = cree["ref"]
+
+    client.post(f"/programme/{id_element}/editer", data={"intitule": "Atelier figurines"})
+    modifie = _derniere(_journal_isole, "programme_modifie")
+    assert modifie["objet"] == "Atelier figurines"
+
+    client.post(f"/programme/{id_element}/etat", data={"etat": "publie"})
+    etat = _derniere(_journal_isole, "programme_etat_change")
+    assert etat["ok"] is True and "publie" in etat["objet"]
+
+    client.post(f"/programme/{id_element}/supprimer", data={"confirmation": "oui"})
+    supprime = _derniere(_journal_isole, "programme_supprime")
+    assert supprime["objet"] == "Atelier figurines"
+
+
+def test_programme_type_cree_modifie_supprime(client, _journal_isole):
+    _connexion(client)
+    client.post("/admin/programme-types", data={"nom": "Animation", "icone": "🎲"})
+    cree = _derniere(_journal_isole, "programme_type_cree")
+    assert cree["module"] == "programme" and cree["objet"] == "Animation"
+    id_type = cree["ref"]
+
+    client.post(f"/admin/programme-types/{id_type}/renommer",
+                data={"nom": "Animation jeune public", "icone": "🎲"})
+    modifie = _derniere(_journal_isole, "programme_type_modifie")
+    assert modifie["objet"] == "Animation jeune public"
+
+    client.post(f"/admin/programme-types/{id_type}/supprimer")
+    supprime = _derniere(_journal_isole, "programme_type_supprime")
+    assert supprime["ok"] is True and supprime["objet"] == "Animation jeune public"
+
+
+# ===========================================================================
+# LOT D — Priorité 2 : Planning (§2.2)
+# ===========================================================================
+def test_planning_fermeture_questionnaire_et_publication(client, _journal_isole):
+    from app.planning import services as planning_services
+    from app.planning.db import get_connection as get_planning_connection
+
+    conn = get_planning_connection()
+    try:
+        ev = planning_services.creer_evenement(conn, "Week-end jeux 2026")
+    finally:
+        conn.close()
+
+    _connexion(client)
+    client.post(f"/planning/admin/{ev}/etat", data={"etat": "brouillon"})
+    ferme = _derniere(_journal_isole, "planning_questionnaire_ferme")
+    assert ferme["module"] == "planning" and ferme["objet"] == "Week-end jeux 2026"
+
+    client.post(f"/planning/admin/{ev}/etat", data={"etat": "publie"})
+    publie = _derniere(_journal_isole, "planning_publie")
+    assert publie["objet"] == "Week-end jeux 2026"
+
+
+def test_planning_genere_et_case_modifiee_sans_nom_de_benevole(client, _journal_isole):
+    from app.planning import services as planning_services
+    from app.planning.db import get_connection as get_planning_connection
+
+    conn = get_planning_connection()
+    try:
+        ev = planning_services.creer_evenement(conn, "Édition de test")
+        id_poste = planning_services.ajouter_poste(conn, ev, "Accueil")
+        id_creneau = planning_services.ajouter_creneau(
+            conn, ev, "samedi", "2026-08-08T10:00", "2026-08-08T12:00",
+            type_creneau="poste",
+        )
+        souhaits = planning_services.enregistrer_souhaits(
+            conn, ev, "BenevoleDeTest", dispos={id_creneau},
+        )
+        id_benevole = souhaits["id"]
+    finally:
+        conn.close()
+
+    _connexion(client)
+    client.post(f"/planning/admin/{ev}/prefiller")
+    genere = _derniere(_journal_isole, "planning_genere")
+    assert genere["module"] == "planning" and "Édition de test" in genere["objet"]
+    assert "BenevoleDeTest" not in json.dumps(genere)
+
+    client.post(
+        f"/planning/admin/{ev}/affecter",
+        data={"id_creneau": id_creneau, "id_poste": id_poste, "id_benevole": id_benevole},
+    )
+    case = _derniere(_journal_isole, "planning_case_modifiee")
+    # JAMAIS de nom de bénévole (§8) : objet = la case (poste × créneau).
+    assert "BenevoleDeTest" not in json.dumps(case)
+    assert "Accueil" in case["objet"]
+
+
+# ===========================================================================
+# LOT D — Priorité 3 : Prêts, RÉUSSITE ET ÉCHECS (§2.3)
+# ===========================================================================
+def test_pret_retour_journalises_avec_le_nom_du_jeu(client, _journal_isole):
+    _connexion(client)
+    client.post("/pret/001/preter")
+    prete = _derniere(_journal_isole, "pret")
+    assert prete["module"] == "pret" and prete["ok"] is True
+    assert prete["objet"] == "Catan" and prete["ref"] == "CATAN"
+    # Jamais le numéro de pochette.
+    assert "numero" not in json.dumps(prete).lower() or "numero_pochette" not in json.dumps(prete)
+
+    client.post("/pret/001/rendre")
+    rendu = _derniere(_journal_isole, "retour")
+    assert rendu["ok"] is True and rendu["objet"] == "Catan"
+
+
+def test_pret_deja_sorti_et_retour_deja_disponible_journalises_en_echec(client, _journal_isole):
+    _connexion(client)
+    client.post("/pret/001/preter")
+    client.post("/pret/001/preter")  # déjà sorti
+    echec_pret = _derniere(_journal_isole, "pret")
+    assert echec_pret["ok"] is False and echec_pret["detail"] == "deja_sorti"
+
+    client.post("/pret/001/rendre")
+    client.post("/pret/001/rendre")  # déjà disponible
+    echec_retour = _derniere(_journal_isole, "retour")
+    assert echec_retour["ok"] is False and echec_retour["detail"] == "deja_disponible"
+
+
+def test_re_pret_et_sortie_tournoi_journalises(client, _journal_isole):
+    _connexion(client)
+    client.post("/pret/001/repreter")
+    repret = _derniere(_journal_isole, "re_pret")
+    assert repret["ok"] is True and repret["objet"] == "Catan"
+
+    client.post("/pret/001/rendre")
+    client.post("/pret/001/tournoi")
+    tournoi = _derniere(_journal_isole, "sortie_tournoi")
+    assert tournoi["ok"] is True and tournoi["objet"] == "Catan"

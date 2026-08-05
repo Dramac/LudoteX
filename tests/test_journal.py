@@ -345,6 +345,41 @@ def test_lire_dernieres_lignes_traverse_plusieurs_blocs(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Purge des rotations anciennes (§8.1, étape 8 du lot D)
+# ---------------------------------------------------------------------------
+def test_purger_rotations_anciennes_supprime_les_vieux_fichiers(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from app import journal
+
+    chemin = tmp_path / "journal.log"
+    chemin.write_text('{"t":"x"}\n', encoding="utf-8")
+    vieux = tmp_path / "journal.log.3"
+    vieux.write_text('{"t":"vieux"}\n', encoding="utf-8")
+    recent = tmp_path / "journal.log.1"
+    recent.write_text('{"t":"recent"}\n', encoding="utf-8")
+
+    il_y_a_2_ans = time.time() - 2 * 365 * 86400
+    os.utime(vieux, (il_y_a_2_ans, il_y_a_2_ans))
+
+    monkeypatch.setenv("JOURNAL_PATH", str(chemin))
+    n = journal.purger_rotations_anciennes(jours=365)
+
+    assert n == 1
+    assert not vieux.exists()
+    assert recent.exists()
+    assert chemin.exists()  # le fichier COURANT n'est jamais touché
+
+
+def test_purger_rotations_anciennes_sans_fichier_ne_leve_pas(tmp_path, monkeypatch):
+    from app import journal
+
+    monkeypatch.setenv("JOURNAL_PATH", str(tmp_path / "absent" / "journal.log"))
+    assert journal.purger_rotations_anciennes() == 0
+
+
+# ---------------------------------------------------------------------------
 # Écran /admin/journal (étape 5 de docs/conception-journal.md)
 # ---------------------------------------------------------------------------
 def _connexion_admin(client):

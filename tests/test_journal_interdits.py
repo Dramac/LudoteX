@@ -133,7 +133,11 @@ def scenario(client, bases, _journal_isole):
         secrets["pochette"] = str(pret["numero_pochette"])
     finally:
         conn.close()
+    # Échecs (lot D) : DOIVENT être journalisés, jamais silencieux (§2.3) —
+    # c'est précisément l'apport de cette priorité.
+    client.post("/pret/001/preter")  # déjà sorti
     client.post("/pret/001/rendre")
+    client.post("/pret/001/rendre")  # déjà disponible
 
     # --- Public : inscription à un tournoi PAR ÉQUIPES ----------------------
     # Par équipes exprès : c'est le cas qui porte le plus de données
@@ -151,6 +155,9 @@ def scenario(client, bases, _journal_isole):
         tournoi_services.ajouter_participant(conn, id_tournoi, PSEUDO)
     finally:
         conn.close()
+
+    # --- Bénévole : lancement du tournoi (lot D) ----------------------------
+    client.post(f"/tournoi/{id_tournoi}/lancer", data={"mode_scoring": "high_score"})
 
     # --- Planning : une édition avec un bénévole nommé, puis purge RGPD ----
     conn = get_planning_connection()
@@ -188,9 +195,24 @@ def _lignes(texte):
 def test_le_scenario_produit_des_lignes(scenario):
     texte, _ = scenario
     actions = {l["action"] for l in _lignes(texte)}
-    # Les trois actions du lot C que ce scénario traverse. Si elles
+    # Les actions du lot C ET du lot D que ce scénario traverse. Si elles
     # disparaissent, ce fichier ne teste plus rien et doit échouer.
-    assert {"connexion_reussie", "planning_purge", "sauvegarde_restauree"} <= actions
+    assert {
+        "connexion_reussie", "planning_purge", "sauvegarde_restauree",
+        "pret", "retour", "tournoi_lance",
+    } <= actions
+
+
+# ---------------------------------------------------------------------------
+# Les échecs sont le vrai apport de la priorité 3 (§2.3) : un « déjà sorti »
+# ou un « déjà disponible » DOIT être journalisé, avec ok=False.
+# ---------------------------------------------------------------------------
+def test_les_echecs_de_pret_sont_journalises(scenario):
+    texte, _ = scenario
+    lignes = [l for l in _lignes(texte) if l.get("module") == "pret"]
+    details = {l.get("detail") for l in lignes if l.get("ok") is False}
+    assert "deja_sorti" in details
+    assert "deja_disponible" in details
 
 
 # ---------------------------------------------------------------------------

@@ -144,5 +144,31 @@ def test_etat_supervision_rassemble_tout(bases):
         etat = supervision.etat_supervision(conn)
     finally:
         conn.close()
-    assert set(etat) == {"bases", "disque", "sauvegarde", "jeton", "annonce", "version"}
+    assert set(etat) == {
+        "bases", "disque", "sauvegarde", "jeton", "annonce", "journal", "version",
+    }
     assert len(etat["bases"]) == 3
+
+
+def test_etat_journal_vide_par_defaut(_journal_isole):
+    """Le fichier est créé (vide) dès la configuration du logger (fixture
+    autouse) : « vide » doit rester vrai tant qu'aucune ligne n'est écrite."""
+    from app import supervision
+
+    etat = supervision.etat_journal()
+    assert etat["vide"] is True
+
+
+def test_etat_journal_affiche_taille_et_date(bases, _journal_isole):
+    from app import journal, supervision
+
+    class _Faux:
+        cookies: dict = {}
+
+    journal.journaliser(_Faux(), "pret", "pret", objet="Catan")
+
+    etat = supervision.etat_journal()
+    assert etat["existe"] is True
+    assert etat["vide"] is False
+    assert etat["taille"]
+    assert etat["modifie"]

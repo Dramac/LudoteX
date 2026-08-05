@@ -150,6 +150,15 @@ def test_apropos_page(client):
     assert APP_VERSION in r.text
 
 
+def test_apropos_mentionne_le_journal_dactivite(client):
+    # docs/conception-journal.md §10 arbitrage 6 : une phrase disant qu'un
+    # journal technique existe, sans donnée personnelle.
+    r = client.get("/apropos")
+    assert r.status_code == 200
+    assert "journal d'activité" in r.text
+    assert "identifiants d'appareil anonymes" in r.text
+
+
 def test_apropos_nouveautes_version(client):
     # La page « À propos » affiche les nouveautés de la version courante,
     # lues depuis CHANGELOG.md (puces de la première section), + un lien vers
