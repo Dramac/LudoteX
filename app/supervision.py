@@ -23,7 +23,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app import auth
+from app import auth, journal
 from app import db as pret_db
 from app.planning import db as planning_db
 from app.tournoi import db as tournoi_db
@@ -119,6 +119,25 @@ def annonce_ecran_salle(conn: sqlite3.Connection) -> str | None:
     return annonce_active(conn)
 
 
+def etat_journal() -> dict:
+    """
+    État du journal d'activité (docs/conception-journal.md §9) : taille du
+    fichier courant et date de sa dernière écriture — LECTURE SEULE, on ne lit
+    jamais son contenu ici (pas de fuite possible, et pas de coût même si le
+    fichier est volumineux).
+    """
+    chemin = journal.chemin_journal()
+    if not chemin.exists():
+        return {"existe": False, "vide": True}
+    taille = chemin.stat().st_size
+    return {
+        "existe": True,
+        "vide": taille == 0,
+        "taille": _formater_taille(taille),
+        "modifie": _iso(chemin.stat().st_mtime),
+    }
+
+
 def etat_jeton(conn: sqlite3.Connection) -> dict:
     """Jeton bénévole : défini ou non, date d'expiration, expiré ou valide."""
     jeton = auth.jeton_actuel(conn)
@@ -148,5 +167,6 @@ def etat_supervision(conn: sqlite3.Connection) -> dict:
         "sauvegarde": derniere_sauvegarde(),
         "jeton": etat_jeton(conn),
         "annonce": annonce_ecran_salle(conn),
+        "journal": etat_journal(),
         "version": version_deployee(),
     }

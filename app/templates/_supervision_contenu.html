@@ -81,5 +81,17 @@
    voir <a class="lien" href="/admin/ecran-salle">Écran de salle</a>.</p>
 {% endif %}
 
+<h3>Journal d'activité</h3>
+{% if etat.journal.existe and not etat.journal.vide %}
+  <p class="resultat resultat-ok">
+    Fichier courant : <strong>{{ etat.journal.taille }}</strong>,
+    dernière écriture le {{ etat.journal.modifie | dt_local }}.
+  </p>
+{% else %}
+  <p class="resultat resultat-attention">Aucune activité enregistrée pour l'instant.</p>
+{% endif %}
+<p class="stats-note">Pour consulter le détail,
+   voir <a class="lien" href="/admin/journal">Journal d'activité</a>.</p>
+
 <h3>Version déployée</h3>
 <p>{{ etat.version }}</p>
