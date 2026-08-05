@@ -589,6 +589,28 @@ def test_seuls_les_appareils_actifs_sont_listes_et_le_compteur_est_juste(client,
     assert "Administration" in principal
 
 
+def test_appareil_actif_sur_les_deux_facettes_affiche_les_deux_badges(client, conn):
+    """
+    Lot E : le téléphone du bureau, actif sur ses deux facettes à la fois,
+    affiche les DEUX badges dans la colonne « Rôle » — pas un seul mot qui
+    n'en dirait qu'une (composant réutilisé : .badge/.badge-ok).
+    """
+    from app import services
+
+    jeton = _poser_jeton(conn)
+    client.get(f"/acces?jeton={jeton}", follow_redirects=False)
+
+    _connecter_admin(client)          # même client : même cookie d'appareil
+    r = client.get("/admin/jeton")
+    assert r.status_code == 200
+
+    # Une seule ligne dans ce test : les deux badges y figurent tous les deux.
+    assert r.text.count('badge badge-ok">Bénévole') == 1
+    assert r.text.count('badge badge-ok">Administration') == 1
+    assert "appareil bénévole actif" in r.text   # singulier : n == 1
+    assert "<strong>1</strong>" in r.text        # le compteur compte cette facette
+
+
 def test_libelle_enregistre_et_reaffiche(client, conn):
     from app import services
 

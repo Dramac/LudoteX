@@ -113,7 +113,15 @@
       {% for a in registre.actifs %}
       <tr>
         <td><strong>{{ a.appareil }}</strong></td>
-        <td>{{ 'Administration' if a.role == 'admin' else 'Bénévole' }}</td>
+        {# Lot E : un appareil peut porter les DEUX facettes à la fois (le
+           téléphone du bureau, bénévole ET admin) — un badge par facette
+           ACTIVE, plutôt qu'un seul mot qui n'en dirait qu'une. Composant
+           réutilisé tel quel (.badge/.badge-ok, déjà utilisé en supervision),
+           aucune nouvelle classe. #}
+        <td>
+          {% if a.benevole_actif %}<span class="badge badge-ok">Bénévole</span>{% endif %}
+          {% if a.admin_actif %}<span class="badge badge-ok">Administration</span>{% endif %}
+        </td>
         <td>{{ a.active_le | dt_local }}</td>
         <td>
           {% if a.expire_le %}{{ a.expire_le | dt_local }}
