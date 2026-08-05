@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.3.2 — 2026-08-05
+
+- Correctif : le téléphone d'un membre du bureau qui active l'accès bénévole puis se connecte en administration reste désormais compté et affiché comme actif sur les deux, y compris après un redémarrage du service. Jusqu'ici, la connexion administration effaçait par erreur son accès bénévole dans la liste des appareils (sans toucher à son fonctionnement réel), ce qui faussait le compteur d'« appareils bénévoles actifs ».
+
 ## 1.3.1 — 2026-08-05
 
 - Le **journal d'activité** couvre désormais aussi les tournois, le programme du week-end, le planning bénévole et les prêts — pas seulement l'administration. Création, modification, suppression, changements d'état, lancement d'un tournoi, saisie de résultats, ajout/retrait d'un participant, modification manuelle d'une case du planning, chaque prêt et chaque retour : tout y laisse une ligne, avec le nom du jeu ou du tournoi concerné.
