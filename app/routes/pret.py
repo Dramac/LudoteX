@@ -35,13 +35,35 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, Request
 
-from app import services
+from app import journal, services
 from app.auth import exiger_jeton
 from app.db import get_connection
 from app.templating import templates
 
 # prefix="/pret" : toutes les routes ci-dessous commencent par /pret.
 router = APIRouter(prefix="/pret", tags=["pret"])
+
+
+_ECHECS = {"deja_sorti", "deja_disponible", "occupe"}
+
+
+def _journaliser_pret(request: Request, action: str, info: dict, resultat: dict) -> None:
+    """
+    Une ligne de journal par action de prêt (docs/conception-journal.md §2.3),
+    RÉUSSIE COMME ÉCHOUÉE — un `occupe` ou un `deja_sorti` est un bénévole qui
+    a vu un message inattendu, c'est exactement ce qu'on cherche après coup.
+
+    `objet` porte le NOM du jeu (ce que la table `prets` ne porte pas) ; `ref`
+    le `reference_titre`. JAMAIS le numéro de pochette (§8, D5 vient de le
+    purger à la clôture — un journal le ferait revivre indéfiniment).
+    """
+    type_ = resultat.get("type")
+    echec = type_ in _ECHECS
+    journal.journaliser(
+        request, "pret", action,
+        objet=info.get("nom"), ref=info.get("reference_titre"),
+        ok=not echec, detail=type_ if echec else None,
+    )
 
 
 def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
@@ -147,7 +169,8 @@ def action_preter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
     """
     conn = get_connection()
     try:
-        if services.info_exemplaire(conn, id_exemplaire) is None:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
             return _rendu(request, id_exemplaire)  # exemplaire inconnu -> 404
         # Contrôle d'état ET prêt dans une SEULE transaction (voir
         # services.preter_si_disponible) : sans cela, deux appuis simultanés
@@ -161,6 +184,11 @@ def action_preter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
+    # Le NOM du jeu (jamais le numéro de pochette, jamais ailleurs que dans
+    # `pret.html` — §8) ; les échecs (`deja_sorti`, `occupe`) sont journalisés
+    # au même titre que le succès : c'est précisément ce qu'on cherche après
+    # coup (docs/conception-journal.md §2.3).
+    _journaliser_pret(request, "pret", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
 
 
@@ -172,7 +200,8 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
     """
     conn = get_connection()
     try:
-        if services.info_exemplaire(conn, id_exemplaire) is None:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
             return _rendu(request, id_exemplaire)
         def ecrire():
             res = services.rendre(conn, id_exemplaire)
@@ -185,6 +214,7 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
+    _journaliser_pret(request, "retour", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
 
 
@@ -196,7 +226,8 @@ def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)
     """
     conn = get_connection()
     try:
-        if services.info_exemplaire(conn, id_exemplaire) is None:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
             return _rendu(request, id_exemplaire)
         # Même contrôle atomique que pour le prêt (voir action_preter).
         def ecrire():
@@ -208,6 +239,7 @@ def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
+    _journaliser_pret(request, "sortie_tournoi", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
 
 
@@ -219,7 +251,8 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
     """
     conn = get_connection()
     try:
-        if services.info_exemplaire(conn, id_exemplaire) is None:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
             return _rendu(request, id_exemplaire)
         def ecrire():
             res = services.repreter(conn, id_exemplaire)
@@ -230,4 +263,5 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
+    _journaliser_pret(request, "re_pret", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
