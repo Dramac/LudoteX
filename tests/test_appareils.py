@@ -265,7 +265,13 @@ def test_reactivation_met_a_jour_la_generation_sans_dupliquer_ni_perdre_la_date(
 
 
 def test_un_appareil_promu_admin_change_de_role_sans_seconde_ligne(conn):
-    """Le téléphone du bureau : d'abord bénévole, puis connexion admin."""
+    """
+    Le téléphone du bureau : d'abord bénévole, puis connexion admin. Le RÔLE
+    AFFICHÉ (dernière activation) passe bien à « admin », mais — correctif
+    lot E — la FACETTE bénévole posée par la première activation ne doit pas
+    disparaître : elle continue d'exister à côté, portée par les mêmes
+    colonnes `expire_le`/`generation`.
+    """
     from app import services
 
     generation = services.empreinte_jeton("jeton-de-test")
@@ -275,6 +281,165 @@ def test_un_appareil_promu_admin_change_de_role_sans_seconde_ligne(conn):
     lignes = conn.execute("SELECT * FROM appareils").fetchall()
     assert len(lignes) == 1
     assert lignes[0]["role"] == "admin"
+    # Lot E : la connexion admin n'apporte ni expire_le ni generation (elle
+    # passe None) — elle ne doit donc pas effacer ceux posés par l'activation
+    # bénévole précédente.
+    assert lignes[0]["generation"] == generation
+    assert lignes[0]["expire_le"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Lot E — un appareil peut porter les deux rôles (facettes) à la fois
+# ---------------------------------------------------------------------------
+def test_un_appareil_du_bureau_reste_actif_apres_redemarrage_du_service(conn, monkeypatch):
+    """
+    Scénario reproduit au contrôle post-livraison : le téléphone d'un membre
+    du bureau active le jeton bénévole, PUIS se connecte en administration.
+    `enregistrer_appareil("admin")` ne doit PAS écraser `expire_le`/
+    `generation` avec des NULL — sinon l'appareil ment dès le redémarrage
+    suivant du service (facette bénévole pourtant toujours vivante, affichée
+    « périmée »), et le compteur de bénévoles actifs sous-compte.
+    """
+    from app import admin_auth, services
+
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+
+    generation = services.empreinte_jeton("jeton-de-test")
+    services.enregistrer_appareil(conn, "AAA111", "benevole", _dans(3), generation)
+    admin_auth.ouvrir_session("AAA111")
+    services.enregistrer_appareil(conn, "AAA111", "admin")
+
+    ligne = conn.execute("SELECT * FROM appareils WHERE appareil = 'AAA111'").fetchone()
+    assert ligne["generation"] == generation
+    assert ligne["expire_le"] is not None
+
+    registre = services.lister_appareils(
+        conn, generation, admin_auth.appareils_admin_ouverts()
+    )
+    assert [a["appareil"] for a in registre["actifs"]] == ["AAA111"]
+    assert registre["nb_benevoles_actifs"] == 1
+
+    # Redémarrage du service : la session admin en mémoire disparaît, mais le
+    # cookie de jeton du téléphone, lui, est toujours valide.
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+    registre = services.lister_appareils(
+        conn, generation, admin_auth.appareils_admin_ouverts()
+    )
+    assert [a["appareil"] for a in registre["actifs"]] == ["AAA111"]
+    assert registre["nb_benevoles_actifs"] == 1
+
+
+def test_poste_dadministration_pur_nest_ni_benevole_ni_jeton_renouvele(conn, monkeypatch):
+    """
+    Un appareil qui n'a JAMAIS activé le jeton bénévole (`generation = NULL`)
+    est le piège central du correctif : une comparaison naïve à la génération
+    courante le déclarerait à tort « jeton renouvelé ».
+    """
+    from app import admin_auth, services
+
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+
+    generation = services.empreinte_jeton("jeton-de-test")
+    admin_auth.ouvrir_session("BUREAU")
+    services.enregistrer_appareil(conn, "BUREAU", "admin")
+
+    registre = services.lister_appareils(
+        conn, generation, admin_auth.appareils_admin_ouverts()
+    )
+    assert [a["appareil"] for a in registre["actifs"]] == ["BUREAU"]
+    assert registre["nb_benevoles_actifs"] == 0
+
+    # Session fermée (redémarrage) : périmé, mais pour la bonne raison.
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+    registre = services.lister_appareils(
+        conn, generation, admin_auth.appareils_admin_ouverts()
+    )
+    assert [(p["appareil"], p["motif"]) for p in registre["perimes"]] == [
+        ("BUREAU", "session_fermee")
+    ]
+    assert registre["nb_benevoles_actifs"] == 0
+
+
+def test_facette_benevole_morte_mais_session_admin_ouverte_reste_actif(conn, monkeypatch):
+    """Jeton renouvelé depuis (facette bénévole morte), mais le poste est
+    toujours connecté en administration : l'appareil reste actif dans son
+    ensemble — seule sa facette bénévole a disparu."""
+    from app import admin_auth, services
+
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+
+    ancienne = services.empreinte_jeton("ancien-jeton")
+    services.enregistrer_appareil(conn, "AAA111", "benevole", _dans(3), ancienne)
+    admin_auth.ouvrir_session("AAA111")
+    services.enregistrer_appareil(conn, "AAA111", "admin")
+
+    nouvelle = services.empreinte_jeton("nouveau-jeton")     # rotation depuis
+    registre = services.lister_appareils(
+        conn, nouvelle, admin_auth.appareils_admin_ouverts()
+    )
+    assert [a["appareil"] for a in registre["actifs"]] == ["AAA111"]
+    assert registre["actifs"][0]["benevole_actif"] is False
+    assert registre["actifs"][0]["admin_actif"] is True
+    assert registre["nb_benevoles_actifs"] == 0    # la facette morte ne compte pas
+
+
+def test_facette_benevole_vivante_mais_session_admin_fermee_reste_actif(conn, monkeypatch):
+    """Symétrique : le cookie de jeton est toujours valide, mais la session
+    admin de ce poste s'est fermée (déconnexion, ou redémarrage). L'appareil
+    reste actif — c'est sa facette bénévole qui porte l'activité."""
+    from app import admin_auth, services
+
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+
+    generation = services.empreinte_jeton("jeton-de-test")
+    services.enregistrer_appareil(conn, "AAA111", "benevole", _dans(3), generation)
+    admin_auth.ouvrir_session("AAA111")
+    services.enregistrer_appareil(conn, "AAA111", "admin")
+    admin_auth.fermer_session(list(admin_auth._sessions.keys())[0])
+
+    registre = services.lister_appareils(
+        conn, generation, admin_auth.appareils_admin_ouverts()
+    )
+    assert [a["appareil"] for a in registre["actifs"]] == ["AAA111"]
+    assert registre["actifs"][0]["benevole_actif"] is True
+    assert registre["actifs"][0]["admin_actif"] is False
+    assert registre["nb_benevoles_actifs"] == 1
+
+
+def test_les_deux_facettes_mortes_perime_avec_le_motif_benevole(conn, monkeypatch):
+    """
+    Les deux facettes mortes à la fois : jeton renouvelé depuis (bénévole) ET
+    session fermée (admin). Motif affiché : celui de la facette bénévole
+    (« jeton renouvelé ») plutôt que « session fermée » — c'est l'info la plus
+    parlante, une session fermée étant l'état par défaut au repos (décision
+    Simon, lot E).
+    """
+    from app import admin_auth, services
+
+    monkeypatch.setattr(admin_auth, "_sessions", {})
+    monkeypatch.setattr(admin_auth, "_appareils", {})
+
+    ancienne = services.empreinte_jeton("ancien-jeton")
+    services.enregistrer_appareil(conn, "AAA111", "benevole", _dans(3), ancienne)
+    admin_auth.ouvrir_session("AAA111")
+    services.enregistrer_appareil(conn, "AAA111", "admin")
+    admin_auth.fermer_session(list(admin_auth._sessions.keys())[0])
+
+    nouvelle = services.empreinte_jeton("nouveau-jeton")
+    registre = services.lister_appareils(
+        conn, nouvelle, admin_auth.appareils_admin_ouverts()
+    )
+    assert registre["actifs"] == []
+    assert [(p["appareil"], p["motif"]) for p in registre["perimes"]] == [
+        ("AAA111", "jeton_renouvele")
+    ]
+    assert registre["nb_benevoles_actifs"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +505,37 @@ def test_la_cloture_rend_toujours_le_nombre_de_prets_clotures(conn):
 
     assert services.cloturer_tous_les_prets(conn) == 1
     assert conn.execute("SELECT COUNT(*) FROM appareils").fetchone()[0] == 0
+
+
+def test_la_purge_dun_appareil_mixte_se_repere_toujours_sur_expire_le(conn):
+    """
+    Lot E : avant le correctif, une connexion admin effaçait `expire_le` d'un
+    appareil déjà bénévole, et la purge retombait alors sur `active_le`
+    (COALESCE) — une date différente. Avec `expire_le` désormais préservé, un
+    appareil mixte (bénévole PUIS admin) continue de se purger sur sa vraie
+    échéance bénévole, pas sur sa date de première activation.
+    """
+    from app import services
+
+    generation = services.empreinte_jeton("jeton-de-test")
+    # Activé il y a longtemps (active_le vieux), mais avec une échéance
+    # bénévole encore loin devant (expire_le récent + long) : ne doit PAS être
+    # purgé si expire_le est bien pris en compte plutôt qu'active_le.
+    services.enregistrer_appareil(conn, "MIXTE1", "benevole", _dans(400), generation)
+    services.enregistrer_appareil(conn, "MIXTE1", "admin")
+    _vieillir(conn, "MIXTE1", 400)
+    # _vieillir recule active_le ET expire_le d'un même delta (voir son
+    # commentaire) : on repousse ici l'échéance loin devant pour isoler ce
+    # que le test vérifie (la colonne lue, pas son calendrier).
+    conn.execute(
+        "UPDATE appareils SET expire_le = ? WHERE appareil = 'MIXTE1'", (_dans(400),)
+    )
+    conn.commit()
+
+    services.cloturer_tous_les_prets(conn)
+
+    restants = {r[0] for r in conn.execute("SELECT appareil FROM appareils")}
+    assert restants == {"MIXTE1"}     # pas purgé : son expire_le est loin devant
 
 
 # ---------------------------------------------------------------------------

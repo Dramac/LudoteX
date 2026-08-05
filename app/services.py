@@ -2091,10 +2091,25 @@ def enregistrer_appareil(
       pendant que douze téléphones fonctionnent.
     - **Changement de rôle.** Le téléphone d'un membre du bureau active
       d'abord le jeton bénévole, puis se connecte en administration. La clé
-      primaire étant l'identifiant, un appareil n'a qu'un rôle : c'est celui de
-      la DERNIÈRE activation, décision prise avec Simon (le suivi par rôle
-      importe moins que le fait de ne pas inventer deux lignes pour un seul
-      téléphone).
+      primaire étant l'identifiant, un appareil n'a qu'un rôle AFFICHÉ : c'est
+      celui de la DERNIÈRE activation, décision prise avec Simon (le suivi par
+      rôle importe moins que le fait de ne pas inventer deux lignes pour un
+      seul téléphone). En revanche l'appareil peut porter les DEUX FACETTES à
+      la fois (bénévole ET administration) — voir `_appareil_actif` — donc
+      cette activation ne doit JAMAIS effacer ce qu'une activation précédente,
+      d'un autre rôle, avait posé sur cette même ligne (correctif lot E,
+      défaut constaté au contrôle post-livraison : une connexion admin
+      écrasait `expire_le`/`generation` avec NULL, faisant mentir la liste dès
+      le redémarrage suivant du service, alors que le cookie de jeton du
+      téléphone restait valide).
+
+    D'où `COALESCE(excluded.x, appareils.x)` sur `expire_le` et `generation` —
+    **exactement le motif déjà employé par l'import CSV du catalogue** (« une
+    case laissée vide n'efface jamais une valeur déjà en base ») : une
+    connexion admin n'apporte ni l'un ni l'autre (elle passe `None`), elle ne
+    doit donc pas effacer ceux d'une facette bénévole déjà enregistrée. Une
+    RÉACTIVATION bénévole, elle, apporte toujours de vraies valeurs (jamais
+    `None`) et les remplace normalement.
 
     `active_le` n'est PAS réécrit : la date qu'on veut lire est celle de la
     première activation de cet appareil, pas celle de sa dernière rotation.
@@ -2107,8 +2122,8 @@ def enregistrer_appareil(
         "VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(appareil) DO UPDATE SET "
         "    role = excluded.role, "
-        "    expire_le = excluded.expire_le, "
-        "    generation = excluded.generation",
+        "    expire_le = COALESCE(excluded.expire_le, appareils.expire_le), "
+        "    generation = COALESCE(excluded.generation, appareils.generation)",
         (appareil, role, maintenant(), expire_le, generation),
     )
     conn.commit()
@@ -2134,35 +2149,64 @@ def renommer_appareil(conn: sqlite3.Connection, appareil: str, libelle: str) -> 
     conn.commit()
 
 
+def _motif_facette_benevole(ligne: dict, generation_courante: str | None,
+                            instant: str) -> str | None:
+    """
+    Motif pour lequel la FACETTE BÉNÉVOLE de cet appareil n'est plus active,
+    ou None si elle l'est encore.
+
+    Ne s'applique que si l'appareil a UN JOUR activé le jeton bénévole
+    (`generation` renseignée) — piège central du correctif lot E : un poste
+    d'administration pur (jamais de facette bénévole) a `generation = NULL`,
+    et une comparaison naïve à `generation_courante` le déclarerait à tort
+    « jeton renouvelé ». Un appareil non concerné par cette facette n'est ni
+    actif ni périmé de ce côté : la question ne se pose pas pour lui.
+    """
+    if ligne["generation"] is None:
+        return None
+    if ligne["generation"] != generation_courante:
+        return "jeton_renouvele"
+    if ligne["expire_le"] and ligne["expire_le"] < instant:
+        return "echeance"
+    return None
+
+
 def _appareil_actif(ligne: dict, generation_courante: str | None,
                     admins_ouverts: set[str], instant: str) -> str | None:
     """
     Motif pour lequel cet appareil N'EST PLUS actif, ou None s'il l'est encore.
 
-    « Actif » n'a pas le même sens pour les deux rôles (§4.5) :
+    « Actif » n'a pas le même sens pour les deux rôles (§4.5), et depuis le
+    correctif du lot E, **un même appareil peut porter les deux facettes à la
+    fois** (le téléphone du bureau : bénévole ET administration) — la décision
+    « un appareil n'a qu'un rôle » ne portait que sur le nombre de LIGNES en
+    base, jamais sur le nombre de facettes qu'une ligne peut représenter.
+    L'appareil est actif si **l'une des deux** facettes l'est :
 
-    - **Bénévole** — le cookie de jeton cesse d'être valide soit parce que son
-      échéance est passée, soit parce que le jeton a été réinitialisé depuis.
-      D'où deux motifs distincts, et pas un seul « expiré » qui laisserait
-      croire à une question de date.
+    - **Bénévole** — voir `_motif_facette_benevole`. Ne s'applique que si
+      l'appareil a un jour activé le jeton (`generation` renseignée).
     - **Administration** — les sessions vivent dans un dictionnaire EN MÉMOIRE
       du process : un redémarrage les ferme toutes, et aucune colonne de base
-      ne peut le savoir. La vérité est donc lue en mémoire (`admins_ouverts`),
-      pas dans `expire_le` — qui reste NULL pour ce rôle, précisément pour
-      qu'il n'y ait pas deux sources de vérité qui divergent.
+      ne peut le savoir. La vérité est donc lue en mémoire (`admins_ouverts`).
+
+    Quand aucune des deux facettes n'est active, le motif renvoyé est le plus
+    parlant pour cette ligne : celui de la facette bénévole si elle est
+    concernée (« jeton renouvelé » / « validité dépassée » — l'info la plus
+    utile, une session fermée étant l'état par défaut au repos), sinon
+    « session fermée » (poste d'administration pur, ou appareil jamais activé
+    en bénévole).
 
     AUCUNE ÉCRITURE : tout se calcule à la lecture, comme l'expiration de
     l'annonce d'écran de salle (routes/live.py::annonce_active). Rien n'est
     jamais purgé ici — la purge a lieu à la clôture de fin d'événement, et
     seulement au-delà d'un an.
     """
-    if ligne["role"] == "admin":
-        return None if ligne["appareil"] in admins_ouverts else "session_fermee"
-    if ligne["generation"] != generation_courante:
-        return "jeton_renouvele"
-    if ligne["expire_le"] and ligne["expire_le"] < instant:
-        return "echeance"
-    return None
+    admin_actif = ligne["appareil"] in admins_ouverts
+    motif_benevole = _motif_facette_benevole(ligne, generation_courante, instant)
+    benevole_actif = ligne["generation"] is not None and motif_benevole is None
+    if admin_actif or benevole_actif:
+        return None
+    return motif_benevole if ligne["generation"] is not None else "session_fermee"
 
 
 def lister_appareils(
@@ -2182,8 +2226,10 @@ def lister_appareils(
     Returns:
         {"actifs": [...], "perimes": [...], "nb_benevoles_actifs": int}. Chaque
         entrée est un dict portant en plus `motif` (None si actif, sinon
-        "echeance" / "jeton_renouvele" / "session_fermee") — au gabarit de le
-        traduire, le service ne fabrique pas de phrase.
+        "echeance" / "jeton_renouvele" / "session_fermee"), ainsi que
+        `benevole_actif`/`admin_actif` (bool, une facette chacun — au gabarit
+        de les afficher, ex. deux badges pour un appareil qui porte les deux)
+        — le service ne fabrique pas de phrase.
     """
     admins_ouverts = admins_ouverts or set()
     instant = maintenant()
@@ -2194,6 +2240,11 @@ def lister_appareils(
     ).fetchall()
     for row in lignes:
         ligne = dict(row)
+        ligne["admin_actif"] = ligne["appareil"] in admins_ouverts
+        ligne["benevole_actif"] = (
+            ligne["generation"] is not None
+            and _motif_facette_benevole(ligne, generation_courante, instant) is None
+        )
         ligne["motif"] = _appareil_actif(
             ligne, generation_courante, admins_ouverts, instant
         )
@@ -2201,7 +2252,10 @@ def lister_appareils(
     return {
         "actifs": actifs,
         "perimes": perimes,
-        "nb_benevoles_actifs": sum(1 for a in actifs if a["role"] == "benevole"),
+        # Compte la FACETTE bénévole active, pas le `role` affiché (dernière
+        # activation) : un appareil du bureau, admin en dernier, dont le
+        # cookie de jeton est toujours valide, doit rester compté.
+        "nb_benevoles_actifs": sum(1 for a in actifs if a["benevole_actif"]),
     }
 
 
