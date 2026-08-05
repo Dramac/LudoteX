@@ -1965,6 +1965,42 @@ le tableau récapitulatif).
 
 **Chantier « journal d'activité » COMPLET** (lots A→D, du 4 août 2026).
 
+**Lot E — un appareil peut porter les deux rôles à la fois : CORRIGÉ**
+(2026-08-05, contrôle post-livraison du chantier ci-dessus). Défaut : le
+téléphone d'un membre du bureau qui active le jeton bénévole PUIS se
+connecte en administration voyait sa facette bénévole **écrasée** —
+`services.enregistrer_appareil` faisait un UPSERT qui remplaçait
+`expire_le`/`generation` par les `NULL` de l'inscription admin. Conséquence :
+le compteur de `/admin/jeton` sous-comptait, et après un redémarrage du
+service l'appareil s'affichait « session fermée » alors que son cookie de
+jeton bénévole restait valide — la liste mentait, ce que le §4.5 de
+`docs/conception-journal.md` cherchait justement à éviter. **La décision
+« un appareil n'a qu'un rôle » reste inchangée au sens des LIGNES en base**
+(toujours une seule ligne par appareil, aucune migration) : ce qui change,
+c'est qu'une ligne peut désormais représenter **deux facettes actives à la
+fois**. Correctif : `enregistrer_appareil` utilise
+`COALESCE(excluded.x, appareils.x)` sur `expire_le`/`generation` — même
+motif que l'import CSV du catalogue (« une case laissée vide n'efface jamais
+une valeur déjà en base ») — `role` continue de porter la dernière
+activation ; `_appareil_actif` évalue désormais les deux facettes
+séparément (bénévole — seulement si `generation` est renseignée, piège
+central : un poste d'administration pur ne doit jamais être déclaré
+« jeton renouvelé » — et admin, lue en mémoire) et l'appareil est actif si
+l'une des deux l'est, avec le motif bénévole prioritaire si les deux sont
+mortes (décision Simon : plus parlant qu'une « session fermée » qui est
+l'état par défaut au repos) ; `lister_appareils` compte désormais la
+**facette** bénévole active dans `nb_benevoles_actifs`, pas le `role`
+affiché, et chaque ligne porte `benevole_actif`/`admin_actif` pour
+l'affichage. `admin_jeton.html` : la colonne « Rôle » d'un appareil actif
+affiche un badge `.badge.badge-ok` par facette active (composant réutilisé,
+aucun nouveau). Aucune migration, aucune écriture ajoutée, aucun bouton de
+révocation (garde-fou existant toujours vert). **12 tests ajoutés/étendus**
+dans `tests/test_appareils.py` (scénario de non-régression, poste admin pur,
+chaque facette morte isolément, les deux mortes, purge d'un appareil mixte
+sur sa vraie échéance, affichage des deux badges). **Suite globale : 639
+tests verts.** Wiki : `Acces-et-Token.md` (nouvelle section sur le double
+badge et son effet sur le compteur).
+
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
 donc PAS être « corrigées dans le même commit que le code », contrairement à
