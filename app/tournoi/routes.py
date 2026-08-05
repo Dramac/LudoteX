@@ -33,9 +33,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import auth
+from app import auth, journal
 from app.auth import exiger_jeton
-from app.services import local_vers_utc_iso
+from app.services import local_vers_utc_iso, pluriel
 from app.templating import templates
 from app.tournoi import services
 from app.tournoi.db import get_connection
@@ -123,6 +123,10 @@ def ouvrir_aujourdhui(request: Request, _=Depends(exiger_jeton)):
         conn.close()
     message = (("succes", f"{n} tournoi(s) ouvert(s) aux inscriptions.") if n
                else ("attention", "Aucun tournoi en brouillon programmé aujourd'hui."))
+    journal.journaliser(
+        request, "tournois", "tournois_jour_ouverts",
+        objet=f"{n} {pluriel(n, 'tournoi ouvert', 'tournois ouverts')}",
+    )
     return templates.TemplateResponse(
         request, "tournoi_liste.html", {"tournois": tournois, "message": message}
     )
@@ -338,6 +342,9 @@ def nouveau_creer(
         )
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_cree", objet=nom.strip(), ref=str(id_tournoi),
+    )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -422,6 +429,9 @@ def editer_action(
         )
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_modifie", objet=nom.strip(), ref=str(id_tournoi),
+    )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -447,6 +457,7 @@ def dupliquer_action(request: Request, id_tournoi: int,
     """Crée la copie au nouvel horaire (état brouillon) puis ouvre sa gestion."""
     conn = get_connection()
     try:
+        t = services.get_tournoi(conn, id_tournoi)
         nouveau = services.dupliquer_tournoi(
             conn, id_tournoi, local_vers_utc_iso(date_heure.strip() or None)
         )
@@ -454,6 +465,10 @@ def dupliquer_action(request: Request, id_tournoi: int,
         conn.close()
     if nouveau is None:
         return RedirectResponse("/tournois", status_code=303)
+    journal.journaliser(
+        request, "tournois", "tournoi_cree",
+        objet=t["nom"] if t else None, ref=str(nouveau),
+    )
     return RedirectResponse(f"/tournoi/{nouveau}/gerer", status_code=303)
 
 
@@ -463,9 +478,15 @@ def changer_etat_action(request: Request, id_tournoi: int,
     """Effectue une transition d'état (ouvrir/fermer les inscriptions, terminer)."""
     conn = get_connection()
     try:
-        services.changer_etat(conn, id_tournoi, etat.strip())
+        t = services.get_tournoi(conn, id_tournoi)
+        res = services.changer_etat(conn, id_tournoi, etat.strip())
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_etat_change",
+        objet=f"{t['nom']} → {etat.strip()}" if t else etat.strip(),
+        ref=str(id_tournoi), ok=bool(res), detail=None if res else "transition_refusee",
+    )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -477,9 +498,16 @@ async def ajouter_participant_action(request: Request, id_tournoi: int,
     membres = _membres_du_formulaire(form)
     conn = get_connection()
     try:
+        t = services.get_tournoi(conn, id_tournoi)
         services.ajouter_participant(conn, id_tournoi, pseudo, membres)
     finally:
         conn.close()
+    # JAMAIS le pseudo/nom d'équipe (§8) : objet = le tournoi concerné, pas qui
+    # y a été ajouté — la base tournoi.db garde qui, et elle seule.
+    journal.journaliser(
+        request, "tournois", "participant_ajoute",
+        objet=t["nom"] if t else None, ref=str(id_tournoi),
+    )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -489,9 +517,14 @@ def supprimer_participant_action(request: Request, id_tournoi: int,
     """Retire un participant d'un tournoi (bénévole)."""
     conn = get_connection()
     try:
+        t = services.get_tournoi(conn, id_tournoi)
         services.supprimer_participant(conn, id_inscription)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "participant_supprime",
+        objet=t["nom"] if t else None, ref=str(id_tournoi),
+    )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
 
@@ -523,9 +556,14 @@ def supprimer_action(request: Request, id_tournoi: int,
         return RedirectResponse(f"/tournoi/{id_tournoi}/supprimer", status_code=303)
     conn = get_connection()
     try:
+        t = services.get_tournoi(conn, id_tournoi)
         services.supprimer_tournoi(conn, id_tournoi)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_supprime",
+        objet=t["nom"] if t else None, ref=str(id_tournoi),
+    )
     return RedirectResponse("/tournois", status_code=303)
 
 
@@ -544,10 +582,17 @@ def lancer_action(request: Request, id_tournoi: int,
     mode = mode_scoring.strip()
     conn = get_connection()
     try:
+        t = services.get_tournoi(conn, id_tournoi)
         res = services.lancer_tournoi(conn, id_tournoi, mode,
                                       _int_ou_none(nb_rondes), bo3=bool(bo3))
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_lance",
+        objet=f"{t['nom']} — {mode}" if t else mode, ref=str(id_tournoi),
+        ok=bool(res.get("ok")),
+        detail=None if res.get("ok") else res.get("raison"),
+    )
     if res.get("ok") and mode == "high_score":
         return RedirectResponse(f"/tournoi/{id_tournoi}/scores", status_code=303)
     if res.get("ok") and mode in ("ronde_suisse", "round_robin"):
@@ -603,6 +648,10 @@ async def scores_action(request: Request, id_tournoi: int, _=Depends(exiger_jeto
         conn.close()
     if t is None:
         return RedirectResponse("/tournois", status_code=303)
+    journal.journaliser(
+        request, "tournois", "tournoi_resultats_saisis",
+        objet=t["nom"], ref=str(id_tournoi),
+    )
     return templates.TemplateResponse(
         request, "tournoi_scores.html", {"t": t, "lignes": lignes, "enregistre": True}
     )
@@ -665,6 +714,10 @@ async def rondes_resultats(request: Request, id_tournoi: int, ronde: int,
         contexte = _contexte_rondes(conn, t, message=("succes", "Résultats enregistrés."))
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_resultats_saisis",
+        objet=f"{t['nom']} — ronde {ronde}", ref=str(id_tournoi),
+    )
     return templates.TemplateResponse(request, "tournoi_rondes.html", contexte)
 
 
@@ -687,6 +740,11 @@ def rondes_suivante(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
         contexte = _contexte_rondes(conn, t, message=message)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_ronde_generee",
+        objet=t["nom"], ref=str(id_tournoi),
+        ok=bool(res.get("ok")), detail=None if res.get("ok") else res.get("raison"),
+    )
     return templates.TemplateResponse(request, "tournoi_rondes.html", contexte)
 
 
@@ -748,6 +806,10 @@ async def arbre_resultats(request: Request, id_tournoi: int, tour: int,
         contexte = _contexte_arbre(conn, t, message=("succes", "Résultats enregistrés."))
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_resultats_saisis",
+        objet=f"{t['nom']} — tour {tour}", ref=str(id_tournoi),
+    )
     return templates.TemplateResponse(request, "tournoi_arbre.html", contexte)
 
 
@@ -770,4 +832,9 @@ def arbre_suivant(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
         contexte = _contexte_arbre(conn, t, message=message)
     finally:
         conn.close()
+    journal.journaliser(
+        request, "tournois", "tournoi_ronde_generee",
+        objet=t["nom"], ref=str(id_tournoi),
+        ok=bool(res.get("ok")), detail=None if res.get("ok") else res.get("raison"),
+    )
     return templates.TemplateResponse(request, "tournoi_arbre.html", contexte)

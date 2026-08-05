@@ -82,6 +82,7 @@ ACTIONS = {
     "tournoi_etat_change",
     "tournoi_lance",
     "tournoi_resultats_saisis",
+    "tournoi_ronde_generee",
     "participant_ajoute",
     "participant_supprime",
     "tournois_jour_ouverts",
@@ -432,3 +433,39 @@ def derniere_activite_par_appareil(
         if instant >= dernieres.get(appareil, ""):
             dernieres[appareil] = instant
     return dernieres
+
+
+# ---------------------------------------------------------------------------
+# Purge des rotations anciennes (§8.1, étape 8 du §11)
+# ---------------------------------------------------------------------------
+def purger_rotations_anciennes(jours: int = 365) -> int:
+    """
+    Supprime les fichiers de rotation (`journal.log.1` … `journal.log.5`) dont
+    la dernière modification date de plus de `jours` jours.
+
+    Les rotations au-delà de `backupCount=5` disparaissent déjà d'elles-mêmes
+    (RotatingFileHandler) : ceci couvre le cas résiduel où une rotation reste
+    en place plus d'un an faute de trafic suffisant pour la faire tourner
+    (§8.1). Ne touche jamais le fichier COURANT (`journal.log`), seulement ses
+    rotations numérotées. Ne lève jamais — même impératif que `journaliser()` :
+    une purge qui échoue ne doit rien bloquer.
+
+    Returns:
+        Le nombre de fichiers supprimés (0 si rien à purger ou en cas de souci).
+    """
+    import time
+
+    chemin = chemin_journal()
+    limite = time.time() - jours * 86400
+    supprimes = 0
+    try:
+        for rotation in chemin.parent.glob(f"{chemin.name}.*"):
+            try:
+                if rotation.is_file() and rotation.stat().st_mtime < limite:
+                    rotation.unlink()
+                    supprimes += 1
+            except OSError:
+                continue
+    except OSError as exc:
+        _avertir("Journal d'activité : purge des rotations impossible (%s)", exc)
+    return supprimes
