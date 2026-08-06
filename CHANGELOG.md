@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.5.0 — 2026-08-06
+
+- **Créer un tournoi** commence maintenant par le **nom du jeu**, seul champ obligatoire : c'est le cas de très loin le plus fréquent. Le titre du tournoi n'est plus à saisir séparément — il vaut le nom du jeu.
+- Un champ facultatif **« Titre spécifique du tournoi »** reste disponible quand le tournoi porte un autre nom (« Coupe des familles », « Grand défi du dimanche ») ou mêle plusieurs jeux. Inutile d'y écrire « Tournoi » ou le mode de jeu : les écrans l'indiquent déjà.
+- Le nom du jeu n'apparaît plus **deux fois** sur les pages d'un tournoi quand il sert aussi de titre — dans la liste, sur la page publique, sur l'écran de gestion, sur l'accueil et dans le fichier ajouté à l'agenda.
+- Les tournois créés avant cette version s'ouvrent et se modifient sans rien ressaisir, et gardent leur titre tel quel.
+- Sur le **site de formation**, les tournois d'exemple s'appellent désormais simplement « Catan » ou « Wingspan », au lieu de « Tournoi Catan — ronde suisse ».
+
 ## 1.4.0 — 2026-08-06
 
 - L'**écran de salle** (`/live`) a été repensé pour un téléviseur : les tournois et les animations occupent désormais les deux tiers du bas de l'écran, tandis que les chiffres et le flux des prêts se partagent une bande en haut. Le flux des prêts prenait jusqu'ici un tiers de l'écran sur toute la hauteur, au détriment de ce qu'un visiteur vient chercher.
