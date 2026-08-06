@@ -2001,6 +2001,48 @@ sur sa vraie échéance, affichage des deux badges). **Suite globale : 639
 tests verts.** Wiki : `Acces-et-Token.md` (nouvelle section sur le double
 badge et son effet sur le compteur).
 
+**Écran de salle — refonte de la mise en page pour téléviseur (2026-08-06) :
+FAIT.** Demande de Simon : `/live` empilait titre, annonce, chiffres puis
+trois colonnes égales (tournois / animations / prêts), si bien que le flux
+des prêts — l'information la moins utile à un visiteur — occupait un tiers
+de l'écran sur toute la hauteur. **Deux zones de deux blocs** désormais :
+en haut annonce + chiffres | derniers mouvements, en bas tournois |
+animations, dans un rapport de hauteur 1/3 – 2/3. Les proportions sont
+exprimées en `flex: N 1 0` et non en pourcentages : masquer un bloc suffit,
+son voisin s'étend seul et une zone entièrement éteinte rend sa hauteur à
+l'autre — **ce qui supprime toute la mécanique `cols-1/2/3`** écrite à
+l'étape 7a et ses cas particuliers. Contenu : le **mode de scoring
+disparaît** (« Ronde suisse » n'aide aucun visiteur et concurrençait le
+titre), remplacé par le nombre de joueurs ; les tournois à venir et les
+animations partagent un **gabarit d'agenda** (heure en colonne de gauche,
+grande et tabulaire, puis titre, lieu, places) ; la jauge dit **« 4 places
+libres / 12 »**, « complet » à zéro et « inscriptions ouvertes » sans
+plafond (jamais de chiffre inventé) ; le délai « dans N min » n'est plus
+porté que par la première ligne, la plus proche. Le flux des prêts passe
+d'un badge plein à une **pastille de couleur + libellé minuscule** (le nom
+du jeu reprend le premier rôle) et « SORTIE TOURNOI » devient « tournoi ».
+Nouveaux champs `/live/data` (additifs) : `nb_places` et `lieu` sur les
+tournois — ce dernier n'avait jamais été transmis alors que les animations
+l'affichaient déjà. **Défaut préexistant corrigé** : `overflow: hidden`
+faisait disparaître en silence tout ce qui dépassait ; une fonction
+`tronquer()` masque désormais explicitement les lignes qui ne tiennent pas
+et annonce « et N autres… » (rejouée à chaque rendu et au
+redimensionnement). Aussi : marges portées à 2,4 % (overscan des
+téléviseurs), taille de police bornée par la **hauteur** autant que par la
+largeur (`min(1.6vw, 2.9vh)` — le 16/10 profite enfin de sa hauteur, et une
+fenêtre large et basse ne déborde plus), et **suppression du bouton « Menu
+de l'application »** (personne ne clique sur un téléviseur ; il coûtait une
+bande sur toute la largeur — un test l'assertait, adapté en connaissance de
+cause). `NB_MOUVEMENTS` 10 → 8 : à 1080p le bloc en affiche environ 6 et
+annonce le reste, décision assumée (le flux est secondaire, les tournois et
+animations passent avant). **La logique JS n'est pas exécutable sous
+pytest** : vérifiée par `node --check` et relecture ; les tests portent sur
+les nouveaux champs et sur la présence des formulations dans le gabarit.
+**3 tests ajoutés, 2 adaptés. Suite globale : 642 tests verts.** Wiki :
+`Module-Ecran-Salle.md` (nouvelle description de la mise en page, jauge de
+places, troncature, absence volontaire de bouton, section « Si ça ne marche
+pas » ajoutée).
+
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
 donc PAS être « corrigées dans le même commit que le code », contrairement à
