@@ -34,8 +34,11 @@ router = APIRouter(tags=["live"])
 
 # Fenêtre « prochains tournois » : 2 heures (en minutes).
 FENETRE_A_VENIR_MIN = 120
-# Nombre de lignes du flux des derniers mouvements.
-NB_MOUVEMENTS = 10
+# Nombre de lignes du flux des derniers mouvements. Le flux occupe désormais un
+# demi-bloc de la zone haute (et non plus une colonne pleine hauteur) : au-delà,
+# les lignes en trop ne tiendraient de toute façon pas à l'écran — la page les
+# tronque avec un « et N autres… », mais autant ne pas les transporter.
+NB_MOUVEMENTS = 8
 # Clé du paramètre « titre de l'écran salle » (réglable en admin) + valeur par
 # défaut si rien n'est encore renseigné.
 CLE_TITRE = "live_titre"
@@ -214,23 +217,32 @@ def _collecter_donnees() -> dict:
         finally:
             conn_t.close()
 
+        # Le MODE DE SCORING n'est volontairement plus transmis : sur un écran lu
+        # de loin, « Ronde suisse » n'aide aucun visiteur à décider quoi que ce
+        # soit et concurrençait le titre. Le nombre de joueurs le remplace — il
+        # dit l'ampleur de ce qui se joue, ce qui est l'information attendue.
         en_cours = [
             {
                 "nom": t["nom"],
-                "mode": tournoi_services.MODES_SCORING.get(t["mode_scoring"], "—"),
-                "etat": "En cours",
                 "nb_inscrits": t["nb_inscrits"],
+                "lieu": t["emplacement"],
             }
             for t in tournois
             if t["etat"] == "lance"
         ]
 
+        # `nb_places` accompagne `places_restantes` : l'écran affiche une jauge
+        # (« 4 places libres / 12 »), qui n'a de sens qu'avec son total. Reste
+        # None quand le tournoi n'a pas de plafond — la page dit alors
+        # « inscriptions ouvertes » plutôt que d'inventer un chiffre.
         a_venir = [
             {
                 "nom": t["nom"],
                 "heure": _heure_locale(t["date_heure"]),
                 "minutes_avant": _minutes_avant(t["date_heure"]),
                 "places_restantes": t["places_restantes"],
+                "nb_places": t["nb_places"],
+                "lieu": t["emplacement"],
             }
             for t in imminents
         ]
