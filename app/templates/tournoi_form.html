@@ -13,14 +13,19 @@
   <form method="post"
         action="{{ '/tournoi/' ~ t.id_tournoi ~ '/editer' if edition else '/tournoi/nouveau' }}"
         class="recherche-form">
+    {# Un tournoi porte presque toujours le nom du jeu : c'est donc lui le champ
+       principal. Le titre spécifique reste disponible pour les cas particuliers
+       (« Coupe des familles », tournoi multi-jeux) — sans lui, l'intitulé
+       affiché partout est simplement le nom du jeu. #}
     <div class="champ">
-      <label for="nom">Nom du tournoi *</label>
-      <input type="text" id="nom" name="nom" required value="{{ t.nom if edition else '' }}">
+      <label for="jeu">Nom du jeu *</label>
+      <input type="text" id="jeu" name="jeu" value="{{ valeur_jeu }}"
+             placeholder="ex. Carcassonne">
     </div>
     <div class="champ">
-      <label for="jeu">Jeu</label>
-      <input type="text" id="jeu" name="jeu" value="{{ t.jeu if edition and t.jeu else '' }}"
-             placeholder="Nom du jeu (texte libre)">
+      <label for="titre">Titre spécifique du tournoi <small>(facultatif)</small></label>
+      <input type="text" id="titre" name="titre" value="{{ valeur_titre }}"
+             placeholder="ex. Coupe des familles — vide : le nom du jeu sert de titre">
     </div>
     <div class="champ">
       <label for="age">Âge</label>

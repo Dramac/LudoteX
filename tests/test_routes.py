@@ -2024,7 +2024,7 @@ def test_d1_titre_onglet_se_termine_par_nom_association(client, url):
 def test_d1_titre_onglet_tournoi_et_planning_avec_objet(client):
     # Familles nécessitant un objet existant (tournoi, planning) : couvertes
     # séparément, la fixture de base n'en crée aucun.
-    r = client.post("/tournoi/nouveau", data={"nom": "T-D1"}, follow_redirects=False)
+    r = client.post("/tournoi/nouveau", data={"jeu": "T-D1"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     for url in (f"/tournoi/{tid}", f"/tournoi/{tid}/gerer"):
         page = client.get(url)

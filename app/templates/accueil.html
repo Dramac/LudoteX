@@ -57,7 +57,8 @@
                href="/tournoi/{{ b.id_tournoi }}">
               <span class="planning-bloc-heure">{{ b.heure_txt }}</span>
               <span class="planning-bloc-nom">🏆 {{ b.nom }}</span>
-              {% if b.jeu %}<span class="planning-bloc-meta">{{ b.jeu }}</span>{% endif %}
+              {# Sans titre spécifique, l'intitulé EST le nom du jeu : pas de répétition. #}
+              {% if b.jeu and b.jeu != b.nom %}<span class="planning-bloc-meta">{{ b.jeu }}</span>{% endif %}
               {% if b.emplacement %}<span class="planning-bloc-meta">📍 {{ b.emplacement }}</span>{% endif %}
               <span class="planning-bloc-meta">{{ b.nb_inscrits }}{% if b.nb_places %}/{{ b.nb_places }}{% endif %} {{ pluriel(b.nb_inscrits, 'inscrit', 'inscrits') }}</span>
             </a>
@@ -81,7 +82,7 @@
           <a class="jeu-lien" href="/tournoi/{{ e.id }}">
             <span class="jeu-nom">🏆 {{ e.intitule }}</span>
             <span class="jeu-categorie">
-              {% if e.jeu %}{{ e.jeu }} · {% endif %}{{ e.date_heure | dt_local }}
+              {% if e.jeu and e.jeu != e.intitule %}{{ e.jeu }} · {% endif %}{{ e.date_heure | dt_local }}
               {% if e.lieu %} · {{ e.lieu }}{% endif %}
             </span>
           </a>

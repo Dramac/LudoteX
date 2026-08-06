@@ -813,7 +813,7 @@ def _desactiver_module(nom: str) -> None:
 
 
 def _tournoi_publie(client, nom: str, quand: str) -> str:
-    r = client.post("/tournoi/nouveau", data={"nom": nom, "date_heure": quand},
+    r = client.post("/tournoi/nouveau", data={"jeu": nom, "date_heure": quand},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})

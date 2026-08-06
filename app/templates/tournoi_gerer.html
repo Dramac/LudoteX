@@ -14,7 +14,8 @@
       État : {{ t.etat }}</p>
 
     <dl class="caracteristiques">
-      {% if t.jeu %}<dt>Jeu</dt><dd>{{ t.jeu }}</dd>{% endif %}
+      {# Sans titre spécifique, l'intitulé EST le nom du jeu : ne pas le répéter. #}
+      {% if t.jeu and t.jeu != t.nom %}<dt>Jeu</dt><dd>{{ t.jeu }}</dd>{% endif %}
       {% if t.age %}<dt>Âge</dt><dd>{{ t.age }}</dd>{% endif %}
       {% if t.date_heure %}<dt>Début</dt><dd>{{ t.date_heure | dt_local }}</dd>{% endif %}
       {% if t.duree_min %}<dt>Durée</dt><dd>{{ t.duree_min }} min</dd>{% endif %}

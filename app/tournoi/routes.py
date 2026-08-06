@@ -52,6 +52,37 @@ def _int_ou_none(v: str) -> int | None:
     return int(v) if v.isdigit() else None
 
 
+def _intitule(jeu: str, titre: str) -> str:
+    """
+    Intitulé à stocker en base (colonne `nom`) à partir des deux champs du
+    formulaire : le titre spécifique s'il est renseigné, sinon le nom du jeu.
+
+    Un tournoi porte presque toujours le nom du jeu ; le titre spécifique ne
+    sert qu'aux cas particuliers (« Coupe des familles », tournoi multi-jeux).
+    Stocker le résultat dans `nom` évite de toucher aux dizaines d'écrans,
+    exports, `.ics` et lignes de journal qui affichent déjà cette colonne.
+    """
+    return (titre or "").strip() or (jeu or "").strip()
+
+
+def _champs_nom(t: dict | None) -> tuple[str, str]:
+    """
+    Décompose un tournoi stocké en (nom du jeu, titre spécifique) pour
+    pré-remplir le formulaire d'édition.
+
+    Cas d'un tournoi créé AVANT ce formulaire (intitulé saisi, champ `jeu`
+    laissé vide) : son intitulé tient lieu de nom de jeu, pour que l'édition
+    n'exige pas une ressaisie et que l'affichage reste inchangé.
+    """
+    if t is None:
+        return "", ""
+    jeu = (t["jeu"] or "").strip()
+    nom = (t["nom"] or "").strip()
+    if not jeu:
+        return nom, ""
+    return jeu, ("" if nom == jeu else nom)
+
+
 def _membres_du_formulaire(form) -> list[str]:
     """
     Extrait les pseudos membres d'une équipe depuis les champs `membre_<n>`
@@ -296,7 +327,9 @@ async def inscription_action(request: Request, id_tournoi: int,
 def nouveau_formulaire(request: Request, _=Depends(exiger_jeton)):
     """Formulaire de création d'un tournoi."""
     return templates.TemplateResponse(
-        request, "tournoi_form.html", {"t": None, "valeur_date": "", "erreur": None}
+        request, "tournoi_form.html",
+        {"t": None, "valeur_date": "", "valeur_jeu": "", "valeur_titre": "",
+         "erreur": None},
     )
 
 
@@ -304,8 +337,8 @@ def nouveau_formulaire(request: Request, _=Depends(exiger_jeton)):
 def nouveau_creer(
     request: Request,
     _=Depends(exiger_jeton),
-    nom: str = Form(""),
     jeu: str = Form(""),
+    titre: str = Form(""),
     age: str = Form(""),
     date_heure: str = Form(""),
     duree_min: str = Form(""),
@@ -320,10 +353,13 @@ def nouveau_creer(
     Le format BO3 n'est PAS choisi ici : il se décide au lancement (voir
     lancer_action), car il ne concerne que les modes à base de matchs.
     """
-    if not nom.strip():
+    nom = _intitule(jeu, titre)
+    if not nom:
         return templates.TemplateResponse(
             request, "tournoi_form.html",
-            {"t": None, "valeur_date": date_heure, "erreur": "Le nom est obligatoire."},
+            {"t": None, "valeur_date": date_heure,
+             "valeur_jeu": jeu, "valeur_titre": titre,
+             "erreur": "Indiquez au moins le nom du jeu."},
             status_code=400,
         )
     conn = get_connection()
@@ -343,7 +379,7 @@ def nouveau_creer(
     finally:
         conn.close()
     journal.journaliser(
-        request, "tournois", "tournoi_cree", objet=nom.strip(), ref=str(id_tournoi),
+        request, "tournois", "tournoi_cree", objet=nom, ref=str(id_tournoi),
     )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 
@@ -377,9 +413,11 @@ def editer_formulaire(request: Request, id_tournoi: int, _=Depends(exiger_jeton)
         conn.close()
     if t is None:
         return RedirectResponse("/tournois", status_code=303)
+    valeur_jeu, valeur_titre = _champs_nom(t)
     return templates.TemplateResponse(
         request, "tournoi_form.html",
         {"t": t, "valeur_date": services.iso_utc_vers_datetime_local(t["date_heure"]),
+         "valeur_jeu": valeur_jeu, "valeur_titre": valeur_titre,
          "erreur": None},
     )
 
@@ -389,8 +427,8 @@ def editer_action(
     request: Request,
     id_tournoi: int,
     _=Depends(exiger_jeton),
-    nom: str = Form(""),
     jeu: str = Form(""),
+    titre: str = Form(""),
     age: str = Form(""),
     date_heure: str = Form(""),
     duree_min: str = Form(""),
@@ -401,7 +439,8 @@ def editer_action(
     taille_equipe: str = Form(""),
 ):
     """Applique les modifications d'un tournoi puis revient à la gestion."""
-    if not nom.strip():
+    nom = _intitule(jeu, titre)
+    if not nom:
         conn = get_connection()
         try:
             t = services.get_tournoi(conn, id_tournoi)
@@ -409,14 +448,16 @@ def editer_action(
             conn.close()
         return templates.TemplateResponse(
             request, "tournoi_form.html",
-            {"t": t, "valeur_date": date_heure, "erreur": "Le nom est obligatoire."},
+            {"t": t, "valeur_date": date_heure,
+             "valeur_jeu": jeu, "valeur_titre": titre,
+             "erreur": "Indiquez au moins le nom du jeu."},
             status_code=400,
         )
     conn = get_connection()
     try:
         services.modifier_tournoi(
             conn, id_tournoi,
-            nom=nom.strip(),
+            nom=nom,
             jeu=(jeu or "").strip() or None,
             age=(age or "").strip() or None,
             date_heure=local_vers_utc_iso(date_heure.strip() or None),
@@ -430,7 +471,7 @@ def editer_action(
     finally:
         conn.close()
     journal.journaliser(
-        request, "tournois", "tournoi_modifie", objet=nom.strip(), ref=str(id_tournoi),
+        request, "tournois", "tournoi_modifie", objet=nom, ref=str(id_tournoi),
     )
     return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
 

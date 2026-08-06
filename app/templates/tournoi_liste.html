@@ -5,11 +5,14 @@
   <li class="jeu">
     <a class="jeu-lien" href="/tournoi/{{ t.id_tournoi }}">
       <span class="jeu-nom">{{ t.nom }}</span>
-      <span class="jeu-categorie">
-        {% if t.jeu %}{{ t.jeu }}{% endif %}
-        {% if t.date_heure %} · {{ t.date_heure | dt_local }}{% endif %}
-        {% if t.emplacement %} · {{ t.emplacement }}{% endif %}
-      </span>
+      {# Sans titre spécifique, l'intitulé EST le nom du jeu : ne pas le répéter.
+         Les morceaux sont assemblés puis joints, pour ne jamais laisser un
+         séparateur orphelin quand le premier d'entre eux manque. #}
+      {% set meta = [] %}
+      {% if t.jeu and t.jeu != t.nom %}{% set _ = meta.append(t.jeu) %}{% endif %}
+      {% if t.date_heure %}{% set _ = meta.append(t.date_heure | dt_local) %}{% endif %}
+      {% if t.emplacement %}{% set _ = meta.append(t.emplacement) %}{% endif %}
+      <span class="jeu-categorie">{{ meta | join(' · ') }}</span>
     </a>
     {% if t.etat == "brouillon" %}
       <span class="badge badge-sorti">brouillon</span>

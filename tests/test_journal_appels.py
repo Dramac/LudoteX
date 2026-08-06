@@ -482,12 +482,12 @@ def test_peuplement_formation_en_ligne_de_commande_n_ecrit_rien(bases, _journal_
 # ===========================================================================
 def test_tournoi_cree_modifie_supprime(client, _journal_isole):
     _connexion(client)
-    client.post("/tournoi/nouveau", data={"nom": "Tournoi de test"})
+    client.post("/tournoi/nouveau", data={"jeu": "Tournoi de test"})
     cree = _derniere(_journal_isole, "tournoi_cree")
     assert cree["module"] == "tournois" and cree["objet"] == "Tournoi de test"
     id_tournoi = cree["ref"]
 
-    client.post(f"/tournoi/{id_tournoi}/editer", data={"nom": "Tournoi modifié"})
+    client.post(f"/tournoi/{id_tournoi}/editer", data={"jeu": "Tournoi modifié"})
     modifie = _derniere(_journal_isole, "tournoi_modifie")
     assert modifie["objet"] == "Tournoi modifié" and modifie["ref"] == id_tournoi
 
@@ -502,7 +502,7 @@ def test_tournoi_cree_modifie_supprime(client, _journal_isole):
 
 def test_tournoi_etat_change_succes_et_refus(client, _journal_isole):
     _connexion(client)
-    client.post("/tournoi/nouveau", data={"nom": "Chaussette"})
+    client.post("/tournoi/nouveau", data={"jeu": "Chaussette"})
     id_tournoi = _derniere(_journal_isole, "tournoi_cree")["ref"]
 
     client.post(f"/tournoi/{id_tournoi}/etat", data={"etat": "inscriptions"})
@@ -516,7 +516,7 @@ def test_tournoi_etat_change_succes_et_refus(client, _journal_isole):
 
 def test_tournoi_lance_echec_puis_succes_sans_fuite_de_pseudo(client, _journal_isole):
     _connexion(client)
-    client.post("/tournoi/nouveau", data={"nom": "Catan"})
+    client.post("/tournoi/nouveau", data={"jeu": "Catan"})
     id_tournoi = _derniere(_journal_isole, "tournoi_cree")["ref"]
     client.post(f"/tournoi/{id_tournoi}/etat", data={"etat": "inscriptions"})
 

@@ -1380,7 +1380,8 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
     fin = debut + timedelta(minutes=t["duree_min"] or DUREE_DEFAUT_MIN)
 
     description = []
-    if t["jeu"]:
+    # Sans titre spécifique, l'intitulé EST le nom du jeu (déjà en SUMMARY).
+    if t["jeu"] and t["jeu"] != t["nom"]:
         description.append(f"Jeu : {t['jeu']}")
     description.append(f"Tournoi — {NOM_ASSOCIATION}")
 

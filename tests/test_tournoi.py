@@ -327,7 +327,7 @@ def test_planning_route_accueil(client, monkeypatch):
     c.close()
     # Crée un tournoi ce jour-là (non brouillon).
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Grand Tournoi", "date_heure": f"{JOUR1.isoformat()}T14:00",
+                    data={"jeu": "Grand Tournoi", "date_heure": f"{JOUR1.isoformat()}T14:00",
                           "duree_min": "90"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -379,7 +379,7 @@ def test_ouvrir_aujourdhui_route(client):
     from app.services import FUSEAU_LOCAL
     today = _dt.now(FUSEAU_LOCAL).date().isoformat()
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Du jour", "date_heure": f"{today}T11:00"},
+                    data={"jeu": "Du jour", "date_heure": f"{today}T11:00"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     res = client.post("/tournoi/ouvrir-aujourdhui")
@@ -421,7 +421,7 @@ def test_dupliquer_source_absente(conn):
 
 def test_dupliquer_route(client):
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Modèle", "jeu": "Carcassonne",
+                    data={"titre": "Modèle", "jeu": "Carcassonne",
                           "date_heure": "2026-06-13T14:00", "duree_min": "60",
                           "nb_places": "6"}, follow_redirects=False)
     src = r.headers["location"].split("/")[2]
@@ -467,7 +467,7 @@ def test_ical_duree_par_defaut(conn):
 
 def test_agenda_route_et_bouton(client):
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Avec date", "date_heure": "2026-06-13T14:00",
+                    data={"jeu": "Avec date", "date_heure": "2026-06-13T14:00",
                           "duree_min": "60"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -481,7 +481,7 @@ def test_agenda_route_et_bouton(client):
 
 
 def test_agenda_route_404_sans_date(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "Sans date"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "Sans date"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     assert client.get(f"/tournoi/{tid}/agenda.ics").status_code == 404
@@ -544,7 +544,7 @@ def test_equipe_compatible_round_robin(conn):
 
 def test_equipe_route_inscription(client):
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Coupe Duo", "par_equipes": "on", "taille_equipe": "2",
+                    data={"jeu": "Coupe Duo", "par_equipes": "on", "taille_equipe": "2",
                           "inscription_en_ligne": "on"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
@@ -563,7 +563,7 @@ def test_equipe_route_inscription(client):
 
 def test_equipe_inscription_incomplete_route(client):
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Trio", "par_equipes": "on", "taille_equipe": "3",
+                    data={"jeu": "Trio", "par_equipes": "on", "taille_equipe": "3",
                           "inscription_en_ligne": "on"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
@@ -636,7 +636,7 @@ def test_round_robin_classement_bo3_et_confrontations(conn):
 
 
 def test_round_robin_route_complet(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "RR Route"}, follow_redirects=False)
+    r = client.post("/tournoi/nouveau", data={"jeu": "RR Route"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
     for p in ("A", "B", "C", "D"):
@@ -736,7 +736,7 @@ def test_elim_bye_qualifie_automatiquement(conn):
 
 
 def test_elim_route_complet(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "Elim Route"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "Elim Route"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -809,7 +809,7 @@ def test_bo3_egalite_nul_autorise_ou_non(conn):
 
 
 def test_bo3_route_elimination_saisie_manches(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "Elim BO3"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "Elim BO3"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -833,7 +833,7 @@ def test_bo3_route_elimination_saisie_manches(client):
 
 
 def test_suisse_route_complet(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "Suisse Route"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "Suisse Route"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -896,7 +896,7 @@ def test_liste_publique(client):
 
 def test_age_route_creation_et_affichage(client):
     r = client.post("/tournoi/nouveau",
-                    data={"nom": "Famille", "age": "8+",
+                    data={"jeu": "Famille", "age": "8+",
                           "date_heure": "2026-06-13T14:00"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     # L'âge apparaît sur la gestion et la page publique.
@@ -914,7 +914,7 @@ def test_aide_tournois(client):
 
 def test_cycle_complet_route(client):
     # Création (mode ouvert : pas de PRET_TOKEN -> accès bénévole autorisé).
-    r = client.post("/tournoi/nouveau", data={"nom": "Tournoi Test",
+    r = client.post("/tournoi/nouveau", data={"titre": "Tournoi Test",
                     "jeu": "Catan", "nb_places": "4",
                     "inscription_en_ligne": "on"}, follow_redirects=False)
     assert r.status_code == 303
@@ -945,7 +945,7 @@ def test_cycle_complet_route(client):
 
 
 def test_inscription_complet_route(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "T", "nb_places": "1",
+    r = client.post("/tournoi/nouveau", data={"jeu": "T", "nb_places": "1",
                     "inscription_en_ligne": "on"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -957,7 +957,7 @@ def test_inscription_complet_route(client):
 def test_inscription_bouton_copier_code(client):
     # M4 (docs/idees-ux.md) : bouton « Copier le code » sur la confirmation
     # d'inscription (motif réutilisé de /admin/jeton).
-    r = client.post("/tournoi/nouveau", data={"nom": "T2", "inscription_en_ligne": "on"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "T2", "inscription_en_ligne": "on"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -987,7 +987,7 @@ def test_d4_code_desinscription_utilise_code_personnel(client):
     services.supprimer_participant est exposé sur l'écran de gestion
     bénévole, tournoi_gerer.html).
     """
-    r = client.post("/tournoi/nouveau", data={"nom": "T4", "inscription_en_ligne": "on"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "T4", "inscription_en_ligne": "on"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -1002,7 +1002,7 @@ def test_gerer_lancement_grise_champs_inapplicables(client):
     # M5 (docs/idees-ux.md) : le formulaire de lancement grise (disabled +
     # opacity) le nombre de rondes et le BO3 selon le mode choisi, en plus de
     # la notice déjà présente (le serveur revalide tout de toute façon).
-    r = client.post("/tournoi/nouveau", data={"nom": "T3"}, follow_redirects=False)
+    r = client.post("/tournoi/nouveau", data={"jeu": "T3"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
     client.post(f"/tournoi/{tid}/participant", data={"pseudo": "Alice"})
@@ -1025,7 +1025,7 @@ def test_ecrans_publics_tournoi_portent_un_lien_daide(client):
     # les deux écrans PUBLICS du module, et n'offraient aucun accès à l'aide —
     # alors que c'est là que naissent les questions (« bye », classement,
     # code de désinscription).
-    r = client.post("/tournoi/nouveau", data={"nom": "Coup de cœur"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "Coup de cœur"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -1037,7 +1037,7 @@ def test_ecrans_publics_tournoi_portent_un_lien_daide(client):
 
 
 def test_suppression_double_confirmation(client):
-    r = client.post("/tournoi/nouveau", data={"nom": "À supprimer"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "À supprimer"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     # Sans la case cochée : pas de suppression (renvoi vers la confirmation).
@@ -1053,7 +1053,7 @@ def test_suppression_double_confirmation(client):
 
 def test_high_score_route_complet(client):
     # Création + ouverture + 2 participants manuels.
-    r = client.post("/tournoi/nouveau", data={"nom": "HS Route"},
+    r = client.post("/tournoi/nouveau", data={"jeu": "HS Route"},
                     follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
@@ -1094,5 +1094,135 @@ def test_routes_benevole_protegees(client, monkeypatch):
     # Public accessible, gestion refusée sans jeton.
     assert client.get("/tournois").status_code == 200
     assert client.get("/tournoi/nouveau").status_code == 403
-    r = client.post("/tournoi/nouveau", data={"nom": "X"})
+    r = client.post("/tournoi/nouveau", data={"jeu": "X"})
     assert r.status_code == 403
+
+
+# ===========================================================================
+# Formulaire : « Nom du jeu » principal + « Titre spécifique » facultatif
+# ---------------------------------------------------------------------------
+# Un tournoi porte presque toujours le nom du jeu. Le formulaire demande donc
+# d'abord ce nom, et l'intitulé stocké (colonne `nom`, affichée partout) vaut
+# le titre spécifique s'il est saisi, sinon le nom du jeu. Corollaire : quand
+# les deux sont identiques, les écrans ne répètent plus le jeu sous l'intitulé.
+# ===========================================================================
+def test_form_champs_jeu_et_titre(client):
+    page = client.get("/tournoi/nouveau").text
+    assert 'name="jeu"' in page and "Nom du jeu" in page
+    assert 'name="titre"' in page and "Titre spécifique du tournoi" in page
+    # L'ancien champ « Nom du tournoi » a disparu (le jeu tient ce rôle).
+    assert 'name="nom"' not in page
+
+
+def test_creation_jeu_seul_intitule_egal_au_jeu(client):
+    r = client.post("/tournoi/nouveau", data={"jeu": "Carcassonne"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    tid = r.headers["location"].split("/")[2]
+
+    from app.tournoi.db import get_connection
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, int(tid))
+    finally:
+        conn.close()
+    assert t["nom"] == "Carcassonne" and t["jeu"] == "Carcassonne"
+
+    # Aucune répétition : sur la liste le jeu n'apparaît qu'une fois (l'intitulé,
+    # pas le sous-titre), et la page publique n'affiche pas de ligne « Jeu ».
+    assert client.get("/tournois").text.count("Carcassonne") == 1
+    assert "<dt>Jeu</dt>" not in client.get(f"/tournoi/{tid}").text
+
+
+def test_creation_avec_titre_specifique(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"jeu": "Catan", "titre": "Coupe des familles"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+
+    from app.tournoi.db import get_connection
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, int(tid))
+    finally:
+        conn.close()
+    assert t["nom"] == "Coupe des familles" and t["jeu"] == "Catan"
+
+    # Les deux diffèrent : le jeu est bien affiché en plus de l'intitulé.
+    page = client.get(f"/tournoi/{tid}").text
+    assert "Coupe des familles" in page and "<dt>Jeu</dt><dd>Catan</dd>" in page
+    assert "Catan" in client.get("/tournois").text
+
+
+def test_creation_sans_jeu_ni_titre_refusee(client):
+    r = client.post("/tournoi/nouveau", data={"jeu": "  ", "titre": ""})
+    assert r.status_code == 400
+    assert "Indiquez au moins le nom du jeu." in r.text
+
+
+def test_titre_seul_accepte(client):
+    """Tournoi multi-jeux : le titre suffit, le champ jeu peut rester vide."""
+    r = client.post("/tournoi/nouveau", data={"titre": "Grand défi du dimanche"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    from app.tournoi.db import get_connection
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, int(tid))
+    finally:
+        conn.close()
+    assert t["nom"] == "Grand défi du dimanche" and t["jeu"] is None
+
+
+def test_edition_prerempli_jeu_et_titre(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"jeu": "Dixit", "titre": "Nocturne"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    page = client.get(f"/tournoi/{tid}/editer").text
+    assert 'name="jeu" value="Dixit"' in page
+    assert 'name="titre" value="Nocturne"' in page
+
+    # Sans titre spécifique, le champ titre reste VIDE (l'intitulé est le jeu).
+    r = client.post("/tournoi/nouveau", data={"jeu": "Azul"}, follow_redirects=False)
+    tid2 = r.headers["location"].split("/")[2]
+    page2 = client.get(f"/tournoi/{tid2}/editer").text
+    assert 'name="jeu" value="Azul"' in page2
+    assert 'name="titre" value=""' in page2
+
+
+def test_edition_tournoi_ancien_sans_jeu(client):
+    """
+    Tournoi créé AVANT ce formulaire (intitulé saisi, champ `jeu` vide) :
+    l'édition ne doit pas exiger de ressaisie ni changer l'intitulé affiché.
+    """
+    from app.tournoi.db import get_connection
+    conn = get_connection()
+    try:
+        tid = services.creer_tournoi(conn, "Tournoi historique")
+    finally:
+        conn.close()
+
+    page = client.get(f"/tournoi/{tid}/editer").text
+    assert 'name="jeu" value="Tournoi historique"' in page
+    assert 'name="titre" value=""' in page
+
+    # Réenregistrer tel quel conserve l'intitulé (et remplit le champ jeu).
+    client.post(f"/tournoi/{tid}/editer", data={"jeu": "Tournoi historique"})
+    conn = get_connection()
+    try:
+        t = services.get_tournoi(conn, tid)
+    finally:
+        conn.close()
+    assert t["nom"] == "Tournoi historique" and t["jeu"] == "Tournoi historique"
+
+
+def test_ical_ne_repete_pas_le_jeu(client):
+    r = client.post("/tournoi/nouveau",
+                    data={"jeu": "Splendor", "date_heure": "2026-06-13T14:00"},
+                    follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    ics = client.get(f"/tournoi/{tid}/agenda.ics").text
+    assert "SUMMARY:Splendor" in ics
+    # Le jeu est déjà le titre : pas de « Jeu : Splendor » dans la description.
+    assert "Jeu : Splendor" not in ics
