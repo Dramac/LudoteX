@@ -166,6 +166,40 @@ def test_peupler_tournoi_couvre_etats_et_modes(bases):
         conn.close()
 
 
+def test_peupler_tournoi_intitules_sans_redondance(bases):
+    """
+    Les intitulés générés ne répètent ni le mot « Tournoi » (on est dans la
+    rubrique Tournois), ni l'état, ni le mode de scoring : l'écran les affiche
+    déjà. Ils valent donc le nom du jeu, sauf UN titre spécifique d'exemple.
+    """
+    from app import formation
+    from app.tournoi.db import get_connection
+
+    conn = get_connection()
+    try:
+        formation.peupler_tournoi(conn)
+        lignes = conn.execute("SELECT nom, jeu FROM tournois").fetchall()
+    finally:
+        conn.close()
+
+    noms = [r[0] for r in lignes]
+    interdits = ("tournoi", "high score", "ronde suisse", "élimination",
+                 "brouillon", "inscriptions ouvertes", "terminé", "par équipes")
+    for nom in noms:
+        for mot in interdits:
+            assert mot not in nom.casefold(), f"{nom!r} contient {mot!r}"
+
+    # Intitulés tous distincts (sans le suffixe de mode, deux tournois du même
+    # jeu seraient indiscernables dans la liste).
+    assert len(set(noms)) == len(noms)
+
+    # Six intitulés valent exactement le nom du jeu ; un seul est un titre
+    # spécifique, avec son jeu renseigné à part.
+    specifiques = [(n, j) for n, j in lignes if n != j]
+    assert len(specifiques) == 1
+    assert specifiques[0][1]  # le jeu reste renseigné
+
+
 def test_peupler_tournoi_idempotent(bases):
     from app import formation
     from app.tournoi.db import get_connection

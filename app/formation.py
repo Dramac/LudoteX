@@ -31,6 +31,9 @@ DONNÉES CRÉÉES (trois bases de l'instance courante)
 - TOURNOIS : plusieurs tournois d'exemple couvrant les états et les modes de
   scoring (brouillon, inscriptions ouvertes, par équipes, high score en cours,
   ronde suisse en cours, élimination directe, tournoi terminé avec classement).
+  Leur intitulé est le NOM DU JEU seul, comme le propose le formulaire : ni le
+  mot « Tournoi », ni l'état, ni le mode de scoring — l'écran les affiche déjà.
+  Un seul porte un titre spécifique, pour illustrer le champ facultatif.
 - PROGRAMME DU WEEK-END (même base que les tournois) : quatre éléments couvrant
   ce qu'un bénévole doit savoir reconnaître — un publié qui commence dans
   quelques minutes (il apparaît donc tout de suite sur l'accueil ET dans la
@@ -356,11 +359,19 @@ def _scores_high_score(conn: sqlite3.Connection, id_tournoi: int) -> None:
     tournoi_services.enregistrer_scores_high_score(conn, id_tournoi, scores)
 
 
-def _tournoi_lance(conn: sqlite3.Connection, nom: str, jeu: str, n: int,
-                   mode: str, nb_rondes: int | None = None) -> int:
-    """Crée un tournoi, l'ouvre, inscrit `n` joueurs, puis le lance en `mode`."""
+def _tournoi_lance(conn: sqlite3.Connection, jeu: str, n: int,
+                   mode: str, nb_rondes: int | None = None,
+                   titre: str | None = None) -> int:
+    """
+    Crée un tournoi, l'ouvre, inscrit `n` joueurs, puis le lance en `mode`.
+
+    L'intitulé est le nom du jeu, sauf `titre` explicite : comme dans le
+    formulaire, le titre spécifique ne sert qu'aux cas particuliers. Ni le mot
+    « Tournoi » ni le mode de scoring n'apparaissent dans l'intitulé — la page
+    les affiche déjà par ailleurs.
+    """
     id_t = tournoi_services.creer_tournoi(
-        conn, nom, jeu=jeu, age="tout public",
+        conn, titre or jeu, jeu=jeu, age="tout public",
         nb_places=max(8, n), duree_min=60, date_heure=_date_locale_dans(0),
     )
     tournoi_services.changer_etat(conn, id_t, "inscriptions")
@@ -386,6 +397,13 @@ def peupler_tournoi(conn: sqlite3.Connection, noms: list[str] | None = None) -> 
     if noms is None:
         noms = noms_jeux_formation(NB_JEUX)
     jeux = random.sample(noms, min(len(noms), 7))
+    # Sept jeux DISTINCTS : l'intitulé d'un tournoi étant désormais le nom du
+    # jeu, deux tournois du même jeu seraient indiscernables dans la liste.
+    for n in noms_jeux_formation(7):
+        if len(jeux) >= 7:
+            break
+        if n not in jeux:
+            jeux.append(n)
 
     def jeu(i: int) -> str:
         return jeux[i % len(jeux)]
@@ -394,24 +412,29 @@ def peupler_tournoi(conn: sqlite3.Connection, noms: list[str] | None = None) -> 
     total_inscrits = 0
 
     # 1. Brouillon (pas encore ouvert aux inscriptions).
+    #    Comme dans le formulaire, l'intitulé est le NOM DU JEU seul : ni le mot
+    #    « Tournoi » (on est dans la rubrique Tournois), ni l'état, ni le mode de
+    #    scoring, tous déjà lisibles à l'écran.
     tournoi_services.creer_tournoi(
-        conn, f"Tournoi {jeu(0)} (brouillon)", jeu=jeu(0),
+        conn, jeu(0), jeu=jeu(0),
         age="tout public", nb_places=8, duree_min=90,
     )
     nb_tournois += 1
 
     # 2. Inscriptions ouvertes, imminent (apparaît sur l'accueil et /live).
     id_t = tournoi_services.creer_tournoi(
-        conn, f"Tournoi {jeu(1)} — inscriptions ouvertes", jeu=jeu(1),
+        conn, jeu(1), jeu=jeu(1),
         age="10+", nb_places=8, duree_min=60, date_heure=_date_locale_dans(45),
     )
     tournoi_services.changer_etat(conn, id_t, "inscriptions")
     total_inscrits += _inscrire_plusieurs(conn, id_t, 5)
     nb_tournois += 1
 
-    # 3. Par équipes, inscriptions ouvertes.
+    # 3. Par équipes, inscriptions ouvertes. Seul tournoi à porter un TITRE
+    #    SPÉCIFIQUE, pour montrer le champ facultatif du formulaire (le jeu
+    #    reste renseigné à part, et s'affiche donc sous l'intitulé).
     id_t = tournoi_services.creer_tournoi(
-        conn, f"Tournoi par équipes — {jeu(2)}", jeu=jeu(2),
+        conn, "Coupe des familles", jeu=jeu(2),
         age="tout public", nb_places=8, duree_min=60,
         par_equipes=True, taille_equipe=2, date_heure=_date_locale_dans(180),
     )
@@ -422,27 +445,23 @@ def peupler_tournoi(conn: sqlite3.Connection, noms: list[str] | None = None) -> 
     nb_tournois += 1
 
     # 4. High score en cours (avec scores saisis).
-    id_t = _tournoi_lance(conn, f"Tournoi {jeu(3)} — high score", jeu(3),
-                          n=5, mode="high_score")
+    id_t = _tournoi_lance(conn, jeu(3), n=5, mode="high_score")
     _scores_high_score(conn, id_t)
     total_inscrits += 5
     nb_tournois += 1
 
     # 5. Ronde suisse en cours (ronde 1 générée).
-    _tournoi_lance(conn, f"Tournoi {jeu(4)} — ronde suisse", jeu(4),
-                   n=6, mode="ronde_suisse", nb_rondes=3)
+    _tournoi_lance(conn, jeu(4), n=6, mode="ronde_suisse", nb_rondes=3)
     total_inscrits += 6
     nb_tournois += 1
 
     # 6. Élimination directe en cours.
-    _tournoi_lance(conn, f"Tournoi {jeu(5)} — élimination directe", jeu(5),
-                   n=8, mode="elimination")
+    _tournoi_lance(conn, jeu(5), n=8, mode="elimination")
     total_inscrits += 8
     nb_tournois += 1
 
     # 7. Terminé (high score + classement figé).
-    id_t = _tournoi_lance(conn, f"Tournoi {jeu(6)} — terminé", jeu(6),
-                          n=5, mode="high_score")
+    id_t = _tournoi_lance(conn, jeu(6), n=5, mode="high_score")
     _scores_high_score(conn, id_t)
     tournoi_services.changer_etat(conn, id_t, "termine")
     total_inscrits += 5

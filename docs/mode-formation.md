@@ -72,7 +72,10 @@ entièrement les **trois** bases de l'instance de formation :
 - **Tournois** : plusieurs tournois d'exemple couvrant les états et les modes —
   un brouillon, un ouvert aux inscriptions, un par équipes, un high score en
   cours (avec scores), une ronde suisse, une élimination directe, et un tournoi
-  terminé avec classement.
+  terminé avec classement. Leur intitulé est le **nom du jeu** seul, comme le
+  propose le formulaire : ni le mot « Tournoi », ni l'état, ni le mode de
+  scoring, que les écrans affichent déjà. Un seul porte un **titre spécifique**
+  (« Coupe des familles »), pour illustrer le champ facultatif.
 - **Programme du week-end** (même base que les tournois) : quatre éléments
   couvrant les états ET les surfaces d'affichage — un publié qui commence dans
   20 min (donc visible tout de suite sur l'accueil et dans la colonne
