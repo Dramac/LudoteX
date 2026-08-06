@@ -1349,7 +1349,13 @@ def test_live_page(client):
     assert "Tableau de bord" in r.text
     assert "Jeux sortis" in r.text and "Tournois en cours" in r.text
     assert "/live/data" in r.text          # le polling JS pointe bien vers l'endpoint
-    assert "Menu de l'application" in r.text   # bouton retour vers le menu
+    # Mise en page en deux zones (haut : annonce + chiffres | mouvements ;
+    # bas : tournois | animations).
+    assert 'id="zone-haute"' in r.text and 'id="zone-basse"' in r.text
+    # Le bouton « Menu de l'application » a été retiré à la refonte 16:9 :
+    # personne ne clique sur un téléviseur, et il coûtait une bande de hauteur
+    # sur toute la largeur.
+    assert "Menu de l'application" not in r.text
     # Sécurité : aucune mention de pochette sur l'écran public.
     assert "pochette" not in r.text.lower()
 
@@ -1668,9 +1674,83 @@ def test_live_animation_annulee_reste_affichee_barree(client):
     animations = client.get("/live/data").json()["animations"]
     assert len(animations) == 1
     assert animations[0]["annule"] is True
-    # Le gabarit prévoit bien le rendu barré et la puce correspondante.
+    # Le gabarit prévoit bien le rendu barré et l'étiquette correspondante.
+    # (La « puce » d'origine est devenue une étiquette discrète à la refonte
+    # 16:9 — même intention, moins de poids visuel face au titre.)
     page = client.get("/live").text
-    assert "puce annule" in page and "ANNULÉ" in page
+    assert ".ligne.annule" in page          # style barré + estompé
+    assert "etiquette-annule" in page and "annulé" in page
+
+
+def test_live_tournoi_a_venir_places_et_lieu(client):
+    # Refonte 16:9 : la jauge « 4 places libres / 12 » a besoin du total, et
+    # le lieu (« où ça se passe ») accompagne désormais les tournois comme il
+    # accompagnait déjà les animations.
+    from datetime import datetime, timedelta, timezone
+
+    from app.tournoi import db as tdb
+    from app.tournoi import services as ts
+
+    proche = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(timespec="seconds")
+    conn = tdb.get_connection()
+    try:
+        avec = ts.creer_tournoi(conn, "Avec jauge", date_heure=proche,
+                                nb_places=12, emplacement="Salle bleue")
+        ts.changer_etat(conn, avec, "inscriptions")
+        ts.ajouter_participant(conn, avec, "Alice")
+        sans = ts.creer_tournoi(conn, "Sans plafond", date_heure=proche)
+        ts.changer_etat(conn, sans, "inscriptions")
+        conn.commit()
+    finally:
+        conn.close()
+
+    par_nom = {t["nom"]: t for t in client.get("/live/data").json()["tournois_a_venir"]}
+    assert par_nom["Avec jauge"]["nb_places"] == 12
+    assert par_nom["Avec jauge"]["places_restantes"] == 11
+    assert par_nom["Avec jauge"]["lieu"] == "Salle bleue"
+    # Sans plafond : rien n'est inventé, la page dira « inscriptions ouvertes ».
+    assert par_nom["Sans plafond"]["nb_places"] is None
+    assert par_nom["Sans plafond"]["places_restantes"] is None
+    assert par_nom["Sans plafond"]["lieu"] is None
+
+
+def test_live_tournoi_en_cours_sans_mode_de_scoring(client):
+    # Le mode de scoring n'est plus transmis : sur un écran lu de loin,
+    # « Ronde suisse » n'aide personne et concurrençait le titre. Le nombre de
+    # joueurs le remplace.
+    from app.tournoi import db as tdb
+    from app.tournoi import services as ts
+
+    conn = tdb.get_connection()
+    try:
+        tid = ts.creer_tournoi(conn, "En plein jeu", emplacement="Table 4")
+        ts.changer_etat(conn, tid, "inscriptions")
+        ts.ajouter_participant(conn, tid, "Alice")
+        ts.ajouter_participant(conn, tid, "Bob")
+        ts.lancer_tournoi(conn, tid, "high_score")
+        conn.commit()
+    finally:
+        conn.close()
+
+    en_cours = client.get("/live/data").json()["tournois_en_cours"]
+    assert len(en_cours) == 1
+    assert en_cours[0]["nb_inscrits"] == 2
+    assert en_cours[0]["lieu"] == "Table 4"
+    assert "mode" not in en_cours[0]
+    # Aucun pseudo de participant ne remonte sur cet écran public.
+    assert "Alice" not in client.get("/live/data").text
+
+
+def test_live_gabarit_jauge_et_troncature(client):
+    # Les trois formulations de la jauge et le garde-fou de débordement
+    # (« et N autres… » plutôt qu'une liste coupée en silence) sont bien dans
+    # le gabarit — la logique elle-même est en JS, non exécutée sous pytest.
+    page = client.get("/live").text
+    for formulation in ("places libres", "place libre", "complet",
+                        "inscriptions ouvertes"):
+        assert formulation in page
+    assert "data-ligne" in page and "function tronquer" in page
+    assert "autre${caches > 1" in page
 
 
 def test_live_module_programme_desactive_masque_les_animations(client, tmp_path):
