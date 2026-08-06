@@ -118,10 +118,23 @@
     }
     .zone-haute { flex: 1 1 0; }
     .zone-basse { flex: 2 1 0; }
-    .zone > * { flex: 1 1 0; min-width: 0; }
+    /* `min-height: 0` est INDISPENSABLE : sans lui, un bloc flex refuse de
+       descendre sous la hauteur de son contenu et déborde par le bas, en
+       recouvrant la zone suivante au lieu d'être rogné (bug constaté en salle
+       sur la carte des chiffres, sous une annonce de deux lignes). */
+    .zone > * { flex: 1 1 0; min-width: 0; min-height: 0; }
+    /* Zone haute : deux tiers pour l'annonce et les chiffres, un tiers pour le
+       flux des prêts — secondaire, et le seul bloc dont on peut rogner la
+       largeur sans perdre d'information (les noms de jeux sont déjà tronqués
+       en fin de ligne). */
+    .zone-haute > .bloc-info { flex: 2 1 0; }
+    .zone-haute > .panneau   { flex: 1 1 0; }
 
     /* Colonne gauche de la zone haute : l'annonce chapeaute les chiffres. */
-    .bloc-info { display: flex; flex-direction: column; gap: 0.8vw; }
+    .bloc-info {
+      display: flex; flex-direction: column; gap: 0.8vw;
+      overflow: hidden;   /* filet : jamais de débordement sur la zone du bas */
+    }
 
     /* --- Bandeau d'annonce libre, piloté depuis /admin/ecran-salle --- */
     .bandeau-annonce {
@@ -137,14 +150,22 @@
       gap: 0.7em;
     }
     .bandeau-annonce .puce-annonce { font-size: 1.2em; }
+    /* 200 caractères tiennent en deux lignes à cette largeur ; au-delà, on
+       borne plutôt que de laisser l'annonce manger la carte des chiffres. */
+    .bandeau-annonce span[id] {
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
 
     /* --- Barre de compteurs : les trois chiffres ne doivent pas écraser
        l'information vivante (tournois, animations, mouvements). --- */
     .barre-chiffres {
       flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
       display: flex;
       align-items: center;
-      gap: 1.6vw;
+      gap: 1.3vw;
       background: var(--carte);
       border: 1px solid var(--bordure);
       border-radius: 1vw;
@@ -156,7 +177,7 @@
       gap: 0.5em;
     }
     .barre-chiffres .nombre {
-      font-size: 2.4em; font-weight: 800; line-height: 1;
+      font-size: 2.1em; font-weight: 800; line-height: 1;
       font-variant-numeric: tabular-nums;
     }
     .barre-chiffres .detail {
@@ -165,10 +186,10 @@
       line-height: 1.25;
     }
     .barre-chiffres .libelle {
-      font-size: 0.85em; color: var(--attenue);
+      font-size: 0.78em; color: var(--attenue);
       text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .barre-chiffres .sous { font-size: 0.8em; color: var(--attenue); }
+    .barre-chiffres .sous { font-size: 0.72em; color: var(--attenue); }
     .barre-chiffres .separateur {
       align-self: stretch;
       width: 1px;
@@ -272,8 +293,8 @@
        redevient l'élément le plus gros de la ligne. */
     .mouv {
       display: grid;
-      grid-template-columns: auto 3.2em 1fr auto;
-      align-items: baseline; gap: 0.6em;
+      grid-template-columns: auto 3em 1fr auto;
+      align-items: baseline; gap: 0.5em;
       padding: 0.25vw 0; border-bottom: 1px solid var(--bordure);
     }
     .mouv .pastille {
@@ -293,7 +314,7 @@
        les animations passent avant. Ce qui ne tient pas est annoncé par
        « et N autres… » plutôt que coupé en silence. */
     .mouv .nom {
-      font-size: 0.95em; font-weight: 600;
+      font-size: 0.9em; font-weight: 600;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .mouv .quand {
@@ -346,7 +367,7 @@
       </div>
 
       <div class="panneau" id="panneau-mouvements">
-        <h2>🔄 Derniers prêts &amp; retours</h2>
+        <h2>🔄 Prêts &amp; retours</h2>
         <div class="liste" id="mouvements"></div>
       </div>
     </section>
