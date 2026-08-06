@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.4.0 — 2026-08-06
+
+- L'**écran de salle** (`/live`) a été repensé pour un téléviseur : les tournois et les animations occupent désormais les deux tiers du bas de l'écran, tandis que les chiffres et le flux des prêts se partagent une bande en haut. Le flux des prêts prenait jusqu'ici un tiers de l'écran sur toute la hauteur, au détriment de ce qu'un visiteur vient chercher.
+- Les **tournois à venir** et les **animations** se lisent comme un horaire : l'heure en gros à gauche, puis le nom, le lieu et les places — « 4 places libres / 12 », « complet », ou « inscriptions ouvertes » quand le nombre de places n'est pas fixé. Le prochain est mis en avant avec son délai (« dans 12 min »).
+- Le **lieu des tournois** s'affiche enfin en salle, comme celui des animations. À l'inverse, le mode de jeu (« Ronde suisse ») n'y figure plus : il n'aidait aucun visiteur et prenait le pas sur le nom du tournoi, remplacé par le nombre de joueurs.
+- Dans le flux des prêts, les mots « PRÊT » et « RETOUR » laissent la vedette au **nom du jeu** : une pastille de couleur porte l'information (orange pour une sortie, vert pour un retour).
+- Une liste plus longue que la place disponible se termine maintenant par **« et 3 autres… »**. Auparavant, les éléments en trop disparaissaient sans que rien ne le signale.
+- Marges élargies pour les téléviseurs qui rognent les bords, et taille de texte adaptée aussi bien au 16/9 qu'au 16/10.
+
 ## 1.3.2 — 2026-08-05
 
 - Correctif : le téléphone d'un membre du bureau qui active l'accès bénévole puis se connecte en administration reste désormais compté et affiché comme actif sur les deux, y compris après un redémarrage du service. Jusqu'ici, la connexion administration effaçait par erreur son accès bénévole dans la liste des appareils (sans toucher à son fonctionnement réel), ce qui faussait le compteur d'« appareils bénévoles actifs ».
