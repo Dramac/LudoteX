@@ -2043,6 +2043,43 @@ les nouveaux champs et sur la présence des formulations dans le gabarit.
 places, troncature, absence volontaire de bouton, section « Si ça ne marche
 pas » ajoutée).
 
+**Formulaire de tournoi — « Nom du jeu » d'abord, titre spécifique en option
+(2026-08-06) : FAIT.** Départ : sur le site de FORMATION, les intitulés
+générés embarquaient le mot « Tournoi » et le mode de scoring (« Tournoi
+Catan — ronde suisse »), deux informations que la page affiche déjà par
+ailleurs. En remontant la cause, le formulaire lui-même invitait à cette
+redondance : « Nom du tournoi * » (obligatoire) + « Jeu » (facultatif)
+poussait à réécrire dans l'intitulé ce que les autres champs portent.
+**Décision Simon** : inverser les deux — **« Nom du jeu * »** devient le champ
+principal (cas majoritaire) et **« Titre spécifique du tournoi »** un champ
+facultatif. **Aucun changement de schéma** : `nom` reste la colonne d'affichage
+(NOT NULL), calculée par `routes._intitule(jeu, titre)` = titre s'il est
+saisi, sinon le nom du jeu — les dizaines d'écrans, exports, `.ics` et lignes
+de journal qui lisent `nom` sont donc intacts. Validation : au moins un des
+deux (message « Indiquez au moins le nom du jeu. ») — un titre seul reste
+accepté (tournoi multi-jeux), jamais bloquant. Édition : `routes._champs_nom(t)`
+redécompose le tournoi stocké ; pour un tournoi **créé avant** (intitulé saisi,
+`jeu` vide) l'intitulé est proposé comme nom de jeu, pour ne pas exiger de
+ressaisie ni changer l'affichage. **Corollaire d'affichage** : quand
+`jeu == nom`, le jeu n'est plus répété sous l'intitulé — liste des tournois
+(dont le sous-titre est désormais assemblé puis joint, ce qui supprime au
+passage le séparateur « · » orphelin quand le premier morceau manque), page
+publique, gestion, duplication, frise et bloc « ça commence bientôt » de
+l'accueil, et description du `.ics`. `/live` n'affichait pas ce champ : rien à
+y faire. **`app/formation.py`** : intitulés = nom du jeu seul, sauf un
+« Coupe des familles » (par équipes) qui illustre le titre spécifique ; les
+sept jeux tirés sont désormais garantis DISTINCTS, sans quoi deux tournois
+seraient devenus indiscernables une fois le suffixe de mode retiré. **Tests
+adaptés en connaissance de cause** : ~30 POST de tests postaient `nom=…` vers
+`/tournoi/nouveau` ou `/editer` (champ qui n'existe plus) → `jeu=…`, et les
+deux qui envoyaient nom ET jeu → `titre=…` + `jeu=…`. **9 tests ajoutés**
+(présence/absence des champs, intitulé = jeu, titre spécifique, refus des deux
+vides, titre seul, préremplissage à l'édition, tournoi ancien sans jeu, `.ics`
+sans répétition, garde-fou sur les intitulés de formation). **Suite globale :
+651 tests verts.** Wiki : `Module-Tournois.md` (section « Écrans bénévole »).
+Non traité, signalé : les intitulés du module Programme (« Initiation à X »
+avec le type « Initiation ») présentent la même redondance en plus discret.
+
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
 donc PAS être « corrigées dans le même commit que le code », contrairement à
