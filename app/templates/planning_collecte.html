@@ -8,6 +8,14 @@
   <h1>Mes disponibilités</h1>
   <p class="stats-note">{{ ev.nom }}</p>
 
+  {# Échec d'un envoi : le formulaire est réaffiché AVEC la saisie (voir
+     routes.py::collecte_post). Placé avant le test d'état pour rester visible
+     dans les deux branches ; la raison « collecte fermée » n'arrive pas ici,
+     elle est déjà dite par la bannière ci-dessous. #}
+  {% if erreur %}
+    <div class="resultat resultat-attention"><p>{{ erreur }}</p></div>
+  {% endif %}
+
   {% if ev.etat != "collecte" %}
     <p class="resultat resultat-attention">
       La collecte est fermée pour cet événement.</p>

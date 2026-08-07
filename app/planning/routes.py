@@ -26,6 +26,7 @@ CARTE DES URL
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date, datetime
 from io import BytesIO
 
@@ -107,22 +108,43 @@ def aide(request: Request):
     return templates.TemplateResponse(request, "planning_aide.html", {})
 
 
-@router.get("/planning/collecte/{ev:int}")
-def collecte_form(request: Request, ev: int, code: str = ""):
-    """Formulaire de souhaits. Avec `?code=`, recharge une réponse pour l'éditer."""
-    conn = get_connection()
-    try:
-        evenement = services.get_evenement(conn, ev)
-        if evenement is None:
-            conn.close()
-            return RedirectResponse("/planning", status_code=303)
-        postes = services.lister_postes(conn, ev)
-        creneaux = services.lister_creneaux(conn, ev)
-        benevole = services.get_benevole_par_code(conn, code, ev) if code else None
-        dispos = services.dispos_du_benevole(conn, benevole["id_benevole"]) if benevole else set()
-        prefs = services.prefs_du_benevole(conn, benevole["id_benevole"]) if benevole else {}
-    finally:
-        conn.close()
+# Messages d'échec du formulaire de collecte, par `raison` renvoyée par
+# `services.enregistrer_souhaits`. Deux absences volontaires :
+# - "fermee" : le gabarit affiche DÉJÀ « La collecte est fermée pour cet
+#   événement. » dès que `ev.etat != "collecte"`, et masque le formulaire.
+#   Ajouter un second message dirait deux fois la même chose.
+# - "introuvable" : il n'y a plus d'événement à afficher, donc pas de page où
+#   poser un message — la route redirige vers /planning, comme le fait déjà
+#   `collecte_form` dans le même cas.
+_MESSAGES_COLLECTE = {
+    "nom_vide": "Merci d'indiquer votre nom (ou un pseudo) avant d'envoyer.",
+    "occupe": (
+        "Votre réponse n'a pas pu être enregistrée : plusieurs personnes "
+        "répondaient exactement en même temps. Rien n'a été perdu — vos "
+        "réponses sont toujours là, appuyez de nouveau sur « Envoyer mes "
+        "souhaits »."
+    ),
+}
+
+
+def _rendre_collecte(request: Request, conn, evenement, *, code, benevole,
+                     dispos, prefs, erreur=None, status_code=200):
+    """
+    Rend le formulaire de souhaits — POINT DE RENDU COMMUN au GET et au POST.
+
+    Factorisé parce que le POST doit désormais RÉAFFICHER le formulaire en cas
+    d'échec (et non plus rediriger vers une page vierge) : sans ce point unique,
+    le regroupement des créneaux par jour existerait en deux exemplaires, à
+    tenir en accord — le genre de duplication qui finit par diverger.
+
+    `benevole` n'a pas besoin d'être une ligne de la base : le gabarit ne lit
+    que `nom`/`contact`/`max_heures`/`note`, donc le POST y passe simplement ce
+    que la personne vient de saisir, et le formulaire se retrouve rempli comme
+    elle l'avait laissé.
+    """
+    ev_id = evenement["id_evenement"]
+    postes = services.lister_postes(conn, ev_id)
+    creneaux = services.lister_creneaux(conn, ev_id)
     # Regroupe les créneaux par jour pour l'affichage, dans l'ordre CHRONOLOGIQUE
     # (premier créneau de chaque jour), pas alphabétique — voir M2/idees-ux.md
     # et services.jours_chronologiques (même logique que construire_grille).
@@ -131,18 +153,49 @@ def collecte_form(request: Request, ev: int, code: str = ""):
     }
     for c in creneaux:
         idx[c["libelle_jour"]]["creneaux"].append(c)
-    jours = list(idx.values())
     return templates.TemplateResponse(
         request, "planning_collecte.html",
-        {"ev": evenement, "postes": postes, "jours": jours,
+        {"ev": evenement, "postes": postes, "jours": list(idx.values()),
          "benevole": benevole, "dispos": dispos, "prefs": prefs,
-         "niveaux": services.NIVEAUX_PREFERENCE, "code": code},
+         "niveaux": services.NIVEAUX_PREFERENCE, "code": code or "",
+         "erreur": erreur},
+        status_code=status_code,
     )
+
+
+@router.get("/planning/collecte/{ev:int}")
+def collecte_form(request: Request, ev: int, code: str = ""):
+    """Formulaire de souhaits. Avec `?code=`, recharge une réponse pour l'éditer."""
+    conn = get_connection()
+    try:
+        evenement = services.get_evenement(conn, ev)
+        if evenement is None:
+            return RedirectResponse("/planning", status_code=303)
+        benevole = services.get_benevole_par_code(conn, code, ev) if code else None
+        dispos = services.dispos_du_benevole(conn, benevole["id_benevole"]) if benevole else set()
+        prefs = services.prefs_du_benevole(conn, benevole["id_benevole"]) if benevole else {}
+        return _rendre_collecte(
+            request, conn, evenement,
+            code=code, benevole=benevole, dispos=dispos, prefs=prefs,
+        )
+    finally:
+        conn.close()
 
 
 @router.post("/planning/collecte/{ev:int}")
 async def collecte_post(request: Request, ev: int):
-    """Enregistre (ou met à jour) la réponse d'un bénévole, puis confirme."""
+    """
+    Enregistre (ou met à jour) la réponse d'un bénévole, puis confirme.
+
+    EN CAS D'ÉCHEC, le formulaire est RÉAFFICHÉ avec un message et la saisie
+    intacte. Il redirigeait auparavant vers un formulaire vierge, sans un mot :
+    la personne perdait son nom, son contact, toutes ses cases de disponibilité
+    et ses préférences par poste — le formulaire le plus long du site — sans
+    comprendre pourquoi. C'était atteignable sans le moindre accès simultané
+    (nom laissé vide, ou questionnaire fermé par le bureau entre l'ouverture de
+    la page et l'envoi) et contredisait frontalement la règle « ne jamais
+    bloquer : message + rattrapage en un tap » (spec §6).
+    """
     form = await request.form()
     nom = form.get("nom", "")
     contact = form.get("contact", "")
@@ -159,17 +212,41 @@ async def collecte_post(request: Request, ev: int):
 
     conn = get_connection()
     try:
-        r = services.enregistrer_souhaits(
-            conn, ev, nom, contact=contact, max_heures=max_heures, note=note,
-            dispos=dispos, preferences=preferences, code_modif=code,
+        try:
+            r = services.enregistrer_souhaits(
+                conn, ev, nom, contact=contact, max_heures=max_heures, note=note,
+                dispos=dispos, preferences=preferences, code_modif=code,
+            )
+        except sqlite3.OperationalError as erreur:
+            # Seul un CONFLIT D'ACCÈS se traduit en message ; une base illisible
+            # ou un disque plein reste une vraie erreur, et la page 500 de
+            # main.py (avec sa trace au journal) est alors la bonne réponse.
+            # Même règle et même formulation que routes/pret.py::_sans_conflit.
+            if "lock" not in str(erreur).lower() and "busy" not in str(erreur).lower():
+                raise
+            r = {"ok": False, "raison": "occupe", "code": None}
+
+        if r["ok"]:
+            return RedirectResponse(
+                f"/planning/collecte/{ev}/merci?code={r['code']}", status_code=303
+            )
+
+        evenement = services.get_evenement(conn, ev)
+        if evenement is None:
+            return RedirectResponse("/planning", status_code=303)
+        return _rendre_collecte(
+            request, conn, evenement,
+            code=code,
+            # La saisie telle qu'elle vient d'être envoyée, pas la ligne en
+            # base : c'est ce que la personne s'attend à retrouver à l'écran.
+            benevole={"nom": nom, "contact": contact,
+                      "max_heures": max_heures, "note": note},
+            dispos=dispos, prefs=preferences,
+            erreur=_MESSAGES_COLLECTE.get(r.get("raison")),
+            status_code=400,
         )
     finally:
         conn.close()
-    if not r["ok"]:
-        return RedirectResponse(f"/planning/collecte/{ev}", status_code=303)
-    return RedirectResponse(
-        f"/planning/collecte/{ev}/merci?code={r['code']}", status_code=303
-    )
 
 
 @router.get("/planning/collecte/{ev:int}/merci")

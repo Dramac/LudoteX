@@ -682,6 +682,135 @@ def test_route_aide(client):
     assert r.status_code == 200 and "mode d'emploi" in r.text
 
 
+def _evenement_avec_trame(client, nom="Test"):
+    """Événement en collecte + un poste + un créneau. Renvoie (ev, creneau, poste)."""
+    _login_admin(client)
+    r = client.post("/planning/admin/creer", data={"nom": nom},
+                    follow_redirects=False)
+    ev = int(r.headers["location"].rsplit("/", 1)[-1])
+    client.post(f"/planning/admin/{ev}/poste", data={"nom": "Accueil"})
+    client.post(f"/planning/admin/{ev}/creneau",
+                data={"libelle_jour": "Samedi", "debut": "2026-09-12T14:00",
+                      "fin": "2026-09-12T16:00", "type_creneau": "poste"})
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        return (ev,
+                services.lister_creneaux(conn, ev)[0]["id_creneau"],
+                services.lister_postes(conn, ev)[0]["id_poste"])
+    finally:
+        conn.close()
+
+
+def test_collecte_echec_reaffiche_le_formulaire_avec_la_saisie(client):
+    # ROB-01 (session robustesse) : le POST redirigeait vers un formulaire
+    # VIERGE, sans un mot, dès que enregistrer_souhaits refusait. La personne
+    # perdait son nom, son contact, toutes ses cases de disponibilité et ses
+    # préférences par poste -- le formulaire le plus long du site -- sans savoir
+    # pourquoi. Atteignable sans le moindre accès simultané (ici : nom vide).
+    ev, cr, po = _evenement_avec_trame(client)
+
+    rep = client.post(
+        f"/planning/collecte/{ev}",
+        data={"nom": "   ", "contact": "alice@example.org", "max_heures": "6",
+              "note": "Je pars tôt le dimanche", "dispo": str(cr),
+              f"pref_{po}": "prefere"},
+        follow_redirects=False,
+    )
+
+    # Plus de redirection : la page revient, avec un message explicite.
+    # (Assertions sans apostrophe : Jinja échappe « ' » en « &#39; ».)
+    assert rep.status_code == 400
+    assert "indiquer votre nom" in rep.text
+
+    # ... et TOUTE la saisie est encore là. Espaces normalisés : le gabarit
+    # coupe ses balises sur plusieurs lignes.
+    compact = " ".join(rep.text.split())
+    assert 'value="alice@example.org"' in compact
+    assert 'value="6"' in compact
+    assert "Je pars tôt le dimanche" in compact
+    assert f'name="dispo" value="{cr}" checked' in compact
+    assert f'name="pref_{po}" value="prefere" checked' in compact
+
+    # Rien n'a été enregistré pour autant.
+    from app.planning import services
+    from app.planning.db import get_connection
+    conn = get_connection()
+    try:
+        assert services.lister_benevoles(conn, ev) == []
+    finally:
+        conn.close()
+
+
+def test_collecte_conflit_dacces_donne_un_message_pas_une_erreur(client, monkeypatch):
+    # Pendant de routes/pret.py::_sans_conflit pour l'écriture PUBLIQUE du
+    # planning : un « database is locked » doit produire un message et laisser
+    # la saisie en place, jamais la page 500. Le verrou est simulé -- le
+    # provoquer réellement demanderait de tenir une transaction concurrente
+    # pendant les 15 s de db.TIMEOUT_ECRITURE_S.
+    import sqlite3
+
+    from app.planning import services
+
+    ev, cr, po = _evenement_avec_trame(client)
+
+    def _verrou(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(services, "enregistrer_souhaits", _verrou)
+
+    rep = client.post(f"/planning/collecte/{ev}",
+                      data={"nom": "Alice", "dispo": str(cr),
+                            f"pref_{po}": "prefere"},
+                      follow_redirects=False)
+
+    assert rep.status_code == 400
+    assert "plusieurs personnes" in rep.text
+    assert "vos réponses sont toujours là" in rep.text
+    # La saisie est conservée : on peut réappuyer sans tout retaper.
+    assert 'value="Alice"' in rep.text
+
+
+def test_collecte_erreur_reelle_reste_une_erreur(client, monkeypatch):
+    # Contre-test du précédent : SEUL un conflit d'accès devient un message.
+    # Une base illisible ou un disque plein n'est pas un conflit, et la page
+    # 500 de main.py (avec sa trace au journal) reste la bonne réponse -- même
+    # règle que routes/pret.py::_sans_conflit. Sans ce test, élargir le filtre
+    # à toutes les OperationalError passerait inaperçu.
+    import sqlite3
+
+    from app.planning import services
+
+    ev, cr, po = _evenement_avec_trame(client)
+
+    def _panne(*args, **kwargs):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(services, "enregistrer_souhaits", _panne)
+
+    with pytest.raises(sqlite3.OperationalError):
+        client.post(f"/planning/collecte/{ev}",
+                    data={"nom": "Alice"}, follow_redirects=False)
+
+
+def test_collecte_fermee_ne_double_pas_le_message(client):
+    # Quand le bureau ferme le questionnaire entre l'ouverture de la page et
+    # l'envoi, le gabarit affiche DÉJÀ « La collecte est fermée pour cet
+    # événement. » et masque le formulaire. On ne superpose pas un second
+    # message qui dirait la même chose (_MESSAGES_COLLECTE n'a pas d'entrée
+    # "fermee", volontairement).
+    ev, cr, po = _evenement_avec_trame(client)
+    client.post(f"/planning/admin/{ev}/etat", data={"etat": "brouillon"})
+
+    rep = client.post(f"/planning/collecte/{ev}",
+                      data={"nom": "Alice"}, follow_redirects=False)
+
+    assert rep.status_code == 400
+    assert "La collecte est fermée pour cet événement." in rep.text
+    assert rep.text.count("resultat-attention") == 1
+
+
 def test_route_collecte_ordre_jours_chronologique(client):
     # M2 : le formulaire de collecte affiche « Samedi » avant « Dimanche »,
     # même si « Dimanche » est créé/listé en premier (ordre chronologique,
