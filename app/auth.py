@@ -194,6 +194,55 @@ def exiger_jeton(request: Request) -> None:
 # charge attendue. Avec plusieurs workers, prévoir un store partagé (Redis…).
 _tentatives: dict[str, list[float]] = {}
 
+# Intervalle MINIMAL entre deux balayages de fond (voir `_balayer`). Cinq
+# minutes : assez rare pour que le coût soit négligeable, assez fréquent pour
+# qu'une salve d'adresses de passage ne s'accumule pas longtemps.
+INTERVALLE_BALAYAGE_S = 300.0
+
+# Instant du dernier balayage, et plus grande fenêtre jamais demandée à
+# `trop_de_tentatives` (voir `_balayer` pour le rôle de cette seconde valeur).
+_dernier_balayage = 0.0
+_fenetre_max = 0
+
+
+def _balayer(maintenant: float) -> None:
+    """
+    Purge les adresses dont AUCUNE tentative n'est plus dans la fenêtre.
+
+    POURQUOI (ROB-05, audit du 24/07). `trop_de_tentatives` ne nettoie que la
+    clé qu'on vient de lire : une adresse qui ne revient jamais — un scanner
+    de ports, un robot, un visiteur d'un jour — laisse sa liste en mémoire
+    pour la durée de vie du process. Fuite lente et théorique, mais gratuite à
+    corriger.
+
+    AMORTI, PAS PÉRIODIQUE : le balayage a lieu à l'accès, au plus une fois
+    par `INTERVALLE_BALAYAGE_S`. Pas de tâche de fond, donc rien à démarrer ni
+    à arrêter — ces modules sont aussi importés par les scripts en ligne de
+    commande et par `lancer.py`, où une boucle asyncio n'aurait aucun sens.
+
+    L'HORIZON DE PURGE EST LA PLUS GRANDE FENÊTRE VUE, jamais celle de l'appel
+    courant : `fenetre` est un paramètre, et le lot D du plan d'action prévoit
+    justement une limite dédiée au login admin, potentiellement plus longue.
+    Purger sur une fenêtre trop courte effacerait le compteur d'une adresse
+    encore surveillée par un autre appelant — elle repartirait avec un quota
+    neuf. Autrement dit : ce serait un AFFAIBLISSEMENT silencieux de la
+    protection, pas une simple libération de mémoire. On ne supprime donc une
+    adresse que lorsqu'elle est périmée pour TOUS les appelants.
+
+    Aucun effet observable : les entrées supprimées auraient de toute façon
+    été filtrées au prochain calcul de fenêtre glissante.
+    """
+    global _dernier_balayage
+    if maintenant - _dernier_balayage < INTERVALLE_BALAYAGE_S:
+        return
+    _dernier_balayage = maintenant
+    perimees = [
+        ip for ip, essais in _tentatives.items()
+        if not essais or maintenant - essais[-1] >= _fenetre_max
+    ]
+    for ip in perimees:
+        _tentatives.pop(ip, None)
+
 
 def trop_de_tentatives(ip: str, limite: int, fenetre: int = 60) -> bool:
     """
@@ -201,7 +250,8 @@ def trop_de_tentatives(ip: str, limite: int, fenetre: int = 60) -> bool:
 
     Implémente une fenêtre glissante : on ne garde que les tentatives des
     `fenetre` dernières secondes, on ajoute la tentative courante, puis on
-    compare le total à `limite`.
+    compare le total à `limite`. Passe au besoin un coup de balai sur les
+    adresses devenues inutiles (voir `_balayer`).
 
     Args:
         ip: adresse IP de l'appelant.
@@ -211,7 +261,10 @@ def trop_de_tentatives(ip: str, limite: int, fenetre: int = 60) -> bool:
     Returns:
         True si le nombre de tentatives dans la fenêtre dépasse `limite`.
     """
+    global _fenetre_max
+    _fenetre_max = max(_fenetre_max, fenetre)
     maintenant = time.time()
+    _balayer(maintenant)
     recent = [t for t in _tentatives.get(ip, []) if maintenant - t < fenetre]
     recent.append(maintenant)
     _tentatives[ip] = recent

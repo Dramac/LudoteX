@@ -151,6 +151,52 @@ _sessions: dict[str, float] = {}
 _appareils: dict[str, str] = {}
 
 
+# Intervalle MINIMAL entre deux balayages de fond, et instant du dernier.
+# Même mécanique que `app/auth.py` — voir `_balayer` ci-dessous pour le détail
+# et pour la raison de la duplication.
+INTERVALLE_BALAYAGE_S = 300.0
+_dernier_balayage = 0.0
+
+
+def _balayer(maintenant: float) -> None:
+    """
+    Purge les sessions expirées, et les appareils qui n'en ont plus.
+
+    POURQUOI (ROB-05, audit du 24/07). `session_valide` ne nettoie que le
+    `sid` qu'on lui présente : une session jamais rouverte — le cas normal,
+    quelqu'un ferme son navigateur sans se déconnecter — reste en mémoire
+    jusqu'au redémarrage du service. Fuite lente et théorique, gratuite à
+    corriger.
+
+    AMORTI, au plus une fois par `INTERVALLE_BALAYAGE_S`, à l'accès : aucune
+    tâche de fond à démarrer ni à arrêter (même raisonnement que dans
+    `app/auth.py`, qui détaille le choix).
+
+    DUPLICATION ASSUMÉE avec `auth._balayer` : `app/auth.py` importe DÉJÀ ce
+    module (`from app import admin_auth`), donc factoriser dans l'un ou
+    l'autre créerait un cycle d'import. Les deux balayages ne partagent
+    d'ailleurs que leur cadence : ici on compare des échéances stockées, là
+    des horodatages de tentatives sur une fenêtre glissante. C'est le même cas
+    de figure qu'`_ics_horodatage` (dupliqué entre tournoi et planning), pas
+    celui de `services.transaction` (importée plutôt que recopiée).
+
+    Aucun effet observable : ces sessions étaient déjà refusées par
+    `session_valide`, on cesse seulement d'en garder la trace.
+    """
+    global _dernier_balayage
+    if maintenant - _dernier_balayage < INTERVALLE_BALAYAGE_S:
+        return
+    _dernier_balayage = maintenant
+    for sid in [s for s, expire in _sessions.items() if maintenant > expire]:
+        _sessions.pop(sid, None)
+        _appareils.pop(sid, None)
+    # Filet : un appareil dont la session a disparu par un autre chemin ne
+    # doit pas survivre seul (`appareils_admin_ouverts` le filtrerait, mais
+    # il occuperait quand même la mémoire).
+    for sid in [s for s in _appareils if s not in _sessions]:
+        _appareils.pop(sid, None)
+
+
 def ouvrir_session(appareil: str | None = None) -> str:
     """
     Crée une session et renvoie son identifiant (à poser en cookie).
@@ -161,8 +207,10 @@ def ouvrir_session(appareil: str | None = None) -> str:
             session pour que `/admin/jeton` puisse dire quels postes
             d'administration sont encore ouverts.
     """
+    maintenant = time.time()
+    _balayer(maintenant)
     sid = secrets.token_urlsafe(32)
-    _sessions[sid] = time.time() + DUREE_SESSION
+    _sessions[sid] = maintenant + DUREE_SESSION
     if appareil:
         _appareils[sid] = appareil
     return sid
@@ -186,10 +234,12 @@ def session_valide(sid: str | None) -> bool:
     """Indique si l'identifiant de session existe et n'est pas expiré."""
     if not sid:
         return False
+    maintenant = time.time()
+    _balayer(maintenant)
     expire = _sessions.get(sid)
     if expire is None:
         return False
-    if time.time() > expire:           # expirée : on nettoie
+    if maintenant > expire:            # expirée : on nettoie
         _sessions.pop(sid, None)
         _appareils.pop(sid, None)
         return False
