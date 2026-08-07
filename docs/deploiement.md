@@ -206,6 +206,20 @@ Drive...), puis décommenter la ligne `rclone copy` dans
 sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes
 ```
 
+Cette même commande sert à **mesurer la taille réelle** d'une archive
+(utile pour ROB-03, ci-dessous) :
+
+```bash
+ls -lh /var/lib/ludotex/sauvegardes/ludotex-backup-*.zip | tail -1
+```
+
+> **Taille max d'un envoi (ROB-03)** : `client_max_body_size` vaut `20m`
+> dans `deploy/nginx-ludotex.conf` (relevé depuis `5m` le 24/07/2026, qui ne
+> laissait aucune marge pour la restauration d'un zip des 3 bases). Si la
+> mesure ci-dessus dépasse durablement 15 Mo, remonter cette valeur (et la
+> tenir cohérente avec le futur plafond applicatif de `routes/admin.py`,
+> encore à venir).
+
 ## 7bis. Site de formation (optionnel)
 
 À la fin de son déroulement, `deploy/install.sh` propose d'installer aussi un
