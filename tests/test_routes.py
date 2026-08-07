@@ -689,6 +689,52 @@ def test_url_inconnue_non_regression_module_desactive(client):
     assert "Page introuvable" not in r.text
 
 
+def test_methode_non_autorisee_page_conviviale(client):
+    """
+    ROB-04 : tout code HORS 403/404 retombait sur le gestionnaire par défaut
+    de FastAPI, donc sortait en `{"detail": …}`. Le cas atteignable est le 405
+    — un favori posé sur l'URL d'une ACTION (ici « rendre »), qui n'accepte
+    que POST. Le contrôle de méthode a lieu au ROUTAGE, avant les dépendances :
+    inutile d'activer le jeton bénévole pour l'atteindre.
+    """
+    r = client.get("/pret/001/rendre")
+    assert r.status_code == 405                     # sémantique inchangée
+    assert "text/html" in r.headers["content-type"]
+    assert '{"detail"' not in r.text
+    # Une explication qui parle du geste, pas « Method Not Allowed ».
+    assert "ne s" in r.text and "ouvre pas directement" in r.text
+    assert 'href="/catalogue"' in r.text            # de quoi repartir
+
+
+def test_code_http_sans_gabarit_dedie_reste_du_html(client):
+    """
+    Le repli est GÉNÉRIQUE, pas une liste de codes à tenir à jour : un code
+    sans entrée dans `_MESSAGES_HTTP` doit quand même sortir en HTML. Sans ce
+    test, restreindre le gestionnaire au seul 405 passerait inaperçu.
+
+    Aucune route de l'application ne lève ce genre de code (les seules
+    `HTTPException` du dépôt sont des 403) : on le provoque donc directement
+    sur le gestionnaire.
+    """
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from starlette.routing import Route
+
+    from app.main import app as application
+
+    async def _lever(request):
+        raise StarletteHTTPException(status_code=418)
+
+    application.router.routes.append(Route("/_test-418", _lever, methods=["GET"]))
+    try:
+        r = client.get("/_test-418")
+    finally:
+        application.router.routes.pop()
+
+    assert r.status_code == 418
+    assert "text/html" in r.headers["content-type"]
+    assert '{"detail"' not in r.text
+
+
 def test_fiche_sorties_de_page_visiteur(client, monkeypatch):
     """
     A1 : la fiche est la cible des 703 QR et était un cul-de-sac. Un visiteur

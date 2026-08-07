@@ -6,8 +6,9 @@ RÔLE
 - Crée l'objet `app` (l'application ASGI servie par uvicorn).
 - Monte les fichiers statiques (CSS, JS du scanner) sous /static.
 - Enregistre les routeurs (un module par domaine fonctionnel dans app/routes/).
-- Définit les gestionnaires d'erreur : 403 (page « accès réservé ») et 500
-  (page d'erreur conviviale + journalisation) pour rester robuste en ligne.
+- Définit les gestionnaires d'erreur : 403 (page « accès réservé »), 404 (page
+  « introuvable »), 500 (page conviviale + journalisation) et un repli HTML
+  générique pour tout autre code — aucune réponse ne sort en JSON brut.
 - Émet un avertissement au démarrage si aucun jeton bénévole n'est configuré.
 
 CARTE DES URL
@@ -31,7 +32,6 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -86,26 +86,56 @@ async def gestion_module_desactive(request, exc: ModuleDesactive):
     )
 
 
+# Titre et explication de la page d'erreur GÉNÉRIQUE (probleme.html), par code
+# HTTP. 403 et 404 n'y figurent pas : ils ont leur propre gabarit, donc un
+# message autrement plus utile.
+#
+# Le 405 est le seul cas vraiment atteignable ici, et il a une cause concrète :
+# un favori ou un lien enregistré sur l'URL d'une ACTION (les `POST` de prêt,
+# de retour, d'inscription…) plutôt que sur la page qui porte le bouton. Le
+# dire en clair vaut mieux que « Method Not Allowed », qui n'aide personne.
+_MESSAGES_HTTP = {
+    405: (
+        "Cette adresse ne s'ouvre pas directement",
+        "Elle correspond à une action — ce qu'un bouton déclenche — et non à "
+        "une page à consulter. C'est en général un favori enregistré au mauvais "
+        "moment. Repartez d'un des liens ci-dessous, puis refaites le geste "
+        "depuis la page.",
+    ),
+}
+
+_MESSAGE_HTTP_DEFAUT = (
+    "Cette page n'a pas pu s'afficher",
+    "La demande n'a pas abouti. Vous pouvez réessayer, ou repartir d'un des "
+    "liens ci-dessous.",
+)
+
+
 @app.exception_handler(StarletteHTTPException)
 async def gestion_http(request, exc: StarletteHTTPException):
     """
-    Gestionnaire global des erreurs HTTP.
-
-    Deux cas renvoient une PAGE HTML conviviale plutôt qu'une erreur JSON
-    brute ; tous les autres codes retombent sur le comportement par défaut de
-    FastAPI.
+    Gestionnaire global des erreurs HTTP — AUCUN code ne sort plus en JSON brut.
 
     - 403 : levé par `auth.exiger_jeton` quand l'appareil n'a pas activé
       l'accès bénévole, ou par `modules.garde_module` sur un module réservé.
     - 404 : adresse ne correspondant à AUCUNE route (faute de frappe, vieux
-      lien, slash final). C'était le seul endroit du site où l'utilisateur
-      voyait sortir de la technique — `{"detail": "Not Found"}` sur fond
-      blanc, sans aucun lien pour repartir.
+      lien, slash final).
+    - TOUT LE RESTE : page générique `probleme.html`. Le cas atteignable est le
+      405 (`GET` sur une route qui n'accepte que `POST`) ; il sortait jusqu'ici
+      en `{"detail": "Method Not Allowed"}`, la « technique » que le projet
+      chasse partout ailleurs (fiche ROB-04 de l'audit du 24/07). Le repli est
+      volontairement GÉNÉRIQUE plutôt qu'une liste de codes à tenir à jour :
+      un code oublié retomberait sinon en JSON, ce qu'on vient de corriger.
 
-    Les 404 MÉTIER ne passent pas ici : « exemplaire inconnu », « tournoi
-    inconnu » et « module désactivé » retournent leur propre gabarit avec
-    `status_code=404` au lieu de lever une exception. Elles gardent donc leur
-    message spécifique, plus utile que cette page générique.
+    Le code HTTP d'origine est TOUJOURS conservé dans la réponse : la page
+    devient lisible, la sémantique ne bouge pas (indexation, supervision).
+
+    NE PASSENT PAS ICI, et gardent donc leur message spécifique :
+    - les 404 MÉTIER (« exemplaire inconnu », « tournoi inconnu ») — elles
+      RETOURNENT leur propre gabarit avec `status_code=404` au lieu de lever ;
+    - le module désactivé, qui a son propre gestionnaire (`ModuleDesactive`) ;
+    - les erreurs de validation de FastAPI (`RequestValidationError`), qui ne
+      sont pas des `HTTPException`.
     """
     if exc.status_code == 403:
         return templates.TemplateResponse(
@@ -115,7 +145,11 @@ async def gestion_http(request, exc: StarletteHTTPException):
         return templates.TemplateResponse(
             request, "introuvable.html", {}, status_code=404
         )
-    return await http_exception_handler(request, exc)
+    titre, message = _MESSAGES_HTTP.get(exc.status_code, _MESSAGE_HTTP_DEFAUT)
+    return templates.TemplateResponse(
+        request, "probleme.html",
+        {"titre": titre, "message": message}, status_code=exc.status_code,
+    )
 
 
 @app.exception_handler(Exception)
