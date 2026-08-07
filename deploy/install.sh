@@ -419,6 +419,26 @@ fi
 etape "Sauvegarde automatique"
 
 chmod +x "$INSTALL_DIR/deploy/sauvegarde.sh"
+
+# SEC-11 (audit du 24/07/2026) : ce dossier reçoit à la fois les sauvegardes
+# de routine (ludotex-backup-*.zip, si la tâche cron ci-dessous est acceptée)
+# ET les filets de sécurité automatiques posés par l'application AVANT
+# CHAQUE restauration (avant-restauration-*.zip, voir
+# app.sauvegarde.sauvegarde_de_securite — dossier dérivé du chemin de
+# DATABASE_PATH, donc systématiquement $DATA_DIR/sauvegardes quelle que
+# soit l'acceptation de la tâche cron). Ces DEUX types d'archive contiennent
+# les TROIS bases en clair, dont les numéros de pochette des prêts EN COURS
+# au moment de chaque sauvegarde/restauration (D5 ne les efface qu'à la
+# clôture) — sensible, donc posé en 0700 propriétaire du service, créé ici
+# de façon inconditionnelle (l'app peut créer ce dossier à tout moment via
+# une restauration, avec les permissions par défaut du umask si on ne le
+# fait pas nous-mêmes en amont).
+SAUVEGARDES_DIR="$DATA_DIR/sauvegardes"
+mkdir -p "$SAUVEGARDES_DIR"
+chown "$SERVICE_USER:$SERVICE_USER" "$SAUVEGARDES_DIR"
+chmod 700 "$SAUVEGARDES_DIR"
+info "Dossier des sauvegardes sécurisé (0700, propriétaire $SERVICE_USER) : $SAUVEGARDES_DIR"
+
 read -r -p "Configurer la sauvegarde quotidienne automatique (3h du matin) ? [O/n] : " CONFIG_SAUVEGARDE
 if [[ "${CONFIG_SAUVEGARDE,,}" != n* ]]; then
     LIGNE_CRON="0 3 * * * $INSTALL_DIR/deploy/sauvegarde.sh $INSTALL_DIR $DATA_DIR/sauvegardes >> /var/log/ludotex-sauvegarde.log 2>&1"
@@ -452,6 +472,15 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
     info "Bases jetables : $DATA_DIR_FORMATION"
     mkdir -p "$DATA_DIR_FORMATION"
     chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR_FORMATION"
+
+    # SEC-11 : même précaution que pour la production (voir l'étape
+    # « Sauvegarde automatique » ci-dessus) — l'app.sauvegarde de cette
+    # instance écrit ses propres filets de sécurité dans
+    # $DATA_DIR_FORMATION/sauvegardes dès qu'une restauration y est faite.
+    # Données fictives (moins sensible que la production), mais coût nul.
+    mkdir -p "$DATA_DIR_FORMATION/sauvegardes"
+    chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR_FORMATION/sauvegardes"
+    chmod 700 "$DATA_DIR_FORMATION/sauvegardes"
 
     # Appelle un module Python sur l'instance de FORMATION, sans jamais passer
     # par le .env de production (variables injectées directement, chacune un

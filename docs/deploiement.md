@@ -197,6 +197,19 @@ Chaque sauvegarde est une archive `.zip` regroupant les **trois bases** (prêt,
 tournois, planning) — directement restaurable depuis l'espace admin
 (`/admin/données` → « Restaurer une sauvegarde »).
 
+> **Dossier sensible (SEC-11)** : `deploy/install.sh` pose
+> `$DATA_DIR/sauvegardes` en **0700, propriétaire du service** — ces
+> archives contiennent les trois bases en clair, dont les numéros de
+> pochette des prêts en cours au moment de chaque sauvegarde. Ce même
+> dossier reçoit aussi les **filets de sécurité automatiques**
+> (`avant-restauration-*.zip`) posés par l'application juste avant chaque
+> restauration ; `deploy/sauvegarde.sh` les purge désormais au-delà de
+> 30 jours (ils n'étaient auparavant jamais nettoyés). Vérifier les
+> permissions :
+> ```bash
+> ls -ld /var/lib/ludotex/sauvegardes   # doit afficher drwx------ pretjeux pretjeux
+> ```
+
 Pour une copie **hors serveur** (recommandé, protège contre une panne du VPS
 lui-même) : installer `rclone`, configurer une cible (Nextcloud, Google
 Drive...), puis décommenter la ligne `rclone copy` dans
@@ -429,6 +442,12 @@ sudo certbot --nginx -d pret.example.fr
 ### I. Sauvegarde de la base
 
 ```bash
+# SEC-11 : dossier sensible (voir plus haut) — le créer en 0700 AVANT la
+# première sauvegarde si on ne passe pas par deploy/install.sh.
+sudo mkdir -p /var/lib/ludotex/sauvegardes
+sudo chown pretjeux:pretjeux /var/lib/ludotex/sauvegardes
+sudo chmod 700 /var/lib/ludotex/sauvegardes
+
 chmod +x /opt/ludotex/deploy/sauvegarde.sh
 sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes
 sudo -u pretjeux crontab -e
