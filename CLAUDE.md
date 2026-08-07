@@ -2087,6 +2087,64 @@ ce qu'affirme la section « Tenir le wiki à jour » plus bas. Il faut committer
 et pousser `wiki/` séparément. (Autre point périmé de ce fichier :
 `wiki/Module-Rangement.md` existe désormais.)
 
+**Audit sécurité (24/07/2026) — LOT A, durcissement du déploiement : FAIT.**
+Traite les 5 constats les plus rapides de `docs/audit-securite-2026-07-24.md`
+(voir aussi `docs/plan-action-securite.md` § Lot A), **exclusivement dans
+`deploy/` + `docs/deploiement.md`** — aucune modification de `app/`, la
+1.0.0 étant en production depuis le 23/07, ce lot durcit une installation
+EN LIGNE et pas une préparation. Cinq commits, un par constat.
+**SEC-01** : en-têtes de sécurité HTTP (HSTS, X-Frame-Options DENY,
+X-Content-Type-Options nosniff, Referrer-Policy same-origin, CSP) posés au
+niveau `server` des deux fichiers nginx (add_header n'étant pas cumulatif,
+poser au niveau `location` aurait fait perdre l'héritage à `/static/`).
+CSP la plus stricte compatible avec l'état actuel des gabarits :
+`'unsafe-inline'` nécessaire sur script-src ET style-src (10 gabarits ont
+des `<script>` inline sans nonce, `live.html` a un `<style>` inline),
+`data:` sur img-src (filigrane du mode formation). Documenté ce que la CSP
+protège (chargement externe, framing, formulaires) et ce qu'elle NE
+protège PAS (injection de script — reste sous la garde de l'autoescape
+Jinja). `certbot --nginx --redirect` duplique le bloc 80 vers le 443 : ces
+en-têtes s'y retrouvent après obtention du certificat. **SEC-02(a)** : le
+jeton bénévole et les codes personnels planning transitaient en clair dans
+`access.log` (query string) sur quatre routes (`/acces`,
+`/planning/collecte/{ev}` y compris `/merci`, `/planning/mon`,
+`/planning/mon.ics`) — masqués via un `map` sur `$uri` + deux `access_log
+if=` conditionnels (format normal partout ailleurs, format sans arguments
+sur ces routes). `/tournoi/desinscription?code=` a la même forme mais
+laissé hors périmètre (code jugé moins sensible : pas d'accès à des
+coordonnées). **SEC-04(a)** : `limit_req_zone`/`limit_req` devant
+`/live/data` (rate=2r/s, burst=20 nodelay — marge x20 sur l'usage d'un
+écran de salle) et `/stats/export.xlsx|pdf` (rate=6r/m, burst=3 nodelay).
+A nécessité de remonter les 4 `proxy_set_header` de `location /` au niveau
+`server` pour que les nouvelles `location` en héritent. **ROB-03(b)** :
+`client_max_body_size` remonté de `5m` à `20m` (la restauration d'une
+sauvegarde télécharge un zip des 3 bases par ce même chemin HTTP ; 5m ne
+laissait aucune marge de croissance) — ⚠️ à garder cohérent avec le futur
+plafond APPLICATIF du lot C (ROB-03(a), pas encore fait). **SEC-11** :
+`app.sauvegarde.sauvegarde_de_securite()` écrit ses filets
+(`avant-restauration-*.zip`, contenant les numéros de pochette des prêts
+en cours au moment de chaque restauration) dans le MÊME dossier que les
+sauvegardes cron (`$DATA_DIR/sauvegardes`), jamais purgés par la rotation
+existante (qui ne filtrait que `ludotex-backup-*.zip`) — dossier posé en
+0700 propriétaire du service par `install.sh` (production ET formation),
+purge par mtime à 30 jours ajoutée dans `deploy/sauvegarde.sh`.
+Sur les DEUX fichiers nginx, noms de zone/`map`/`log_format` préfixés
+différemment (`ludotex_*` vs `ludotexformation_*`) : une fois le site de
+formation installé, les deux fichiers sont fusionnés dans le même contexte
+http nginx, et une collision de nom ferait échouer `nginx -t` pour TOUTE
+la configuration, prod comprise — piège identifié avant d'écrire le code,
+pas après. `docs/deploiement.md` mis à jour à chaque commit (vérifications
+curl/grep à l'étape 5, dépannage 429 et rollback git à l'étape 9, mesure
+de taille + note permissions à l'étape 7, commandes manuelles équivalentes
+à l'annexe I). **Non couvert par pytest** (fichiers `deploy/`) — chaque
+commit porte sa propre commande de vérification VPS
+(`nginx -t`, `curl -sI`, `grep`, `ab`, `ls -ld`) ; non exécuté ni testé sur
+un VPS réel dans cette session (revue statique uniquement). Wiki non
+touché (rien de visible pour un utilisateur final). **Reste du plan
+d'action, non traité ici** : lots B (robustesse SQLite/erreurs), C
+(injections localisées/dépendances), D (anti-abus/débit applicatif), E
+(CSRF/secrets dans les URL transverse) — voir `docs/plan-action-securite.md`.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
