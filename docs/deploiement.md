@@ -293,6 +293,14 @@ automatiques et sans perte de données).
   **jamais** rechargée par `nginx -t` seul : le site continue de tourner sur
   l'ancienne configuration tant que `systemctl reload nginx` n'a pas été
   exécuté avec succès — pas de coupure pendant qu'on corrige.
+- **429 (« Too Many Requests ») sur `/live/data` ou un export de `/stats`** :
+  limite de débit posée le 24/07/2026 (SEC-04) — normale en cas d'usage
+  automatisé/répété rapide, anormale en usage courant. Si l'écran de salle
+  légitime déclenche ce code (plusieurs écrans partageant la même adresse
+  IP publique, par exemple), augmenter `burst` de la zone `ludotex_live`
+  (ou `ludotexformation_live` côté formation) dans le fichier nginx
+  concerné — voir le commentaire de dimensionnement en tête de fichier —
+  puis `sudo nginx -t && sudo systemctl reload nginx`.
 
 ## 10. Exploitation au quotidien
 
