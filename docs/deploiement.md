@@ -156,6 +156,18 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
   ligne « Refused to... » ne doit apparaître (signe que la
   Content-Security-Policy bloquerait quelque chose que l'application utilise
   réellement). En cas de souci, voir « En cas de problème » plus bas.
+- **Secrets absents des logs nginx** (SEC-02) — après avoir ouvert le lien
+  d'activation bénévole (`?jeton=...`), vérifier qu'il n'apparaît PAS en
+  clair dans `access.log` :
+  ```bash
+  sudo grep "jeton=" /var/log/nginx/access.log   # ne doit rien renvoyer
+  sudo grep "code="  /var/log/nginx/access.log   # idem, une fois le planning testé
+  ```
+  Si une ligne ressort quand même, vérifier que `sudo nginx -T` affiche bien
+  les deux `map`/`log_format` `ludotex_*` (ou `ludotexformation_*` sur le
+  site de formation) — un fichier `sites-available` mal recopié ou un
+  ancien lien symbolique dans `sites-enabled` peut faire tourner une
+  configuration périmée malgré un `git pull` à jour.
 
 ## 6. QR définitifs
 
