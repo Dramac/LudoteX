@@ -2145,6 +2145,90 @@ d'action, non traité ici** : lots B (robustesse SQLite/erreurs), C
 (injections localisées/dépendances), D (anti-abus/débit applicatif), E
 (CSRF/secrets dans les URL transverse) — voir `docs/plan-action-securite.md`.
 
+**Audit sécurité (24/07/2026) — LOT B, robustesse SQLite & pages d'erreur :
+FAIT** (07/08). ⚠️ Le plan d'action était PÉRIMÉ sur ce lot : la session
+« course d'attribution des numéros de pochette » (02/08) avait déjà traité
+l'essentiel de ROB-01 côté prêt (`TIMEOUT_ECRITURE_S`, `BEGIN IMMEDIATE`,
+index UNIQUE, rattrapage `occupe`) et A2 le 404 de ROB-04. Quatre commits sur
+le reliquat réel.
+**ROB-01 (reliquat)** : `tournoi/db.py` et `planning/db.py` appelaient encore
+`sqlite3.connect()` **sans `timeout=`**, subissant le défaut implicite de 5 s
+là où le prêt patiente 15 s — écart réel depuis que `tournoi::inscrire`
+s'ouvre en `BEGIN IMMEDIATE` (les inscriptions concurrentes s'attendent, et
+c'est ce délai qui borne l'attente). `TIMEOUT_ECRITURE_S` **importée** de
+`app/db.py` plutôt que redéclarée : l'indépendance des trois bases porte sur
+les DONNÉES, pas sur les constantes de réglage — trois valeurs à tenir en
+accord dériveraient sans que rien ne le signale (précédent :
+`services.transaction` importée le 02/08 ; `_ics_horodatage` reste le cas
+particulier assumé). Justification en tête de `tournoi/db.py`, renvoi depuis
+`planning/db.py`. **4 tests** (`tests/test_connexions_timeout.py`, bases sur
+FICHIER) : l'un intercepte `sqlite3.connect` pour constater la valeur
+transmise (structurel assumé — distinguer 15 s de 5 s par le comportement
+coûterait 15 s de suite) ; l'autre, paramétré sur les 3 bases, abaisse la
+constante à 0,3 s et vérifie que l'abandon est immédiat — ⚠️ en la remplaçant
+**dans le module testé**, le `from app.db import` liant la valeur dans son
+espace de noms à l'import.
+**Défaut trouvé en instruisant la question « manque-t-il un rattrapage ? »**
+(arbitré avec Simon avant écriture) : `POST /planning/collecte/{ev}`
+redirigeait, en cas d'échec, vers un formulaire **VIERGE et sans un mot** — le
+bénévole perdait nom, contact, plafond, remarque, toutes ses cases de
+disponibilité et ses préférences par poste, sur le formulaire le plus long du
+site. Atteignable **sans aucune concurrence** (nom vide, ou questionnaire
+fermé entre l'ouverture de la page et l'envoi) : violation frontale de « ne
+jamais bloquer », sur l'une des deux seules routes d'écriture PUBLIQUES.
+Désormais réaffiché (400) avec message et saisie intacte ; rendu factorisé
+dans `_rendre_collecte` (GET + POST, sinon le groupement des créneaux par jour
+existerait en double). Le gabarit ne lisant que `nom`/`contact`/`max_heures`/
+`note`, le POST lui passe la saisie brute plutôt qu'une ligne de base. Deux
+absences volontaires dans `_MESSAGES_COLLECTE` : `fermee` (la bannière
+existante le dit déjà — un test compte les bannières) et `introuvable` (plus
+d'événement à afficher → redirection). Le rattrapage « occupé » (`database is
+locked`) vient **en bonus** dans l'emplacement ainsi créé, filtre et
+formulation repris tels quels de `routes/pret.py::_sans_conflit` (seul un
+conflit devient un message ; disque plein garde sa 500). **4 tests**, dont un
+CONTRE-TEST sur `disk I/O error`.
+**ROB-04** : tout code hors 403/404 retombait sur `http_exception_handler`,
+donc `{"detail": …}`. Cas atteignable = **405** (favori posé sur l'URL d'une
+ACTION). Nouveau gabarit `probleme.html` + repli **générique** (pas une liste
+de codes : un code oublié retomberait en JSON, précisément le défaut corrigé),
+`_MESSAGES_HTTP` ne portant que le 405. Code HTTP d'origine toujours conservé.
+Vérifié que les 404 MÉTIER (qui *retournent* leur gabarit au lieu de lever),
+`ModuleDesactive` et `RequestValidationError` ne passent pas par là, et que
+les seules `HTTPException` du dépôt sont des 403 — aucun appelant machine
+concerné. **2 tests** (dont un code sans entrée dédiée, sinon restreindre le
+gestionnaire au seul 405 passerait inaperçu).
+**ROB-05** : `auth._tentatives` et `admin_auth._sessions`/`_appareils` ne se
+purgeaient qu'à la relecture de la MÊME clé. Balayage **amorti à l'accès**
+(au plus une fois par `INTERVALLE_BALAYAGE_S` = 5 min), pas de tâche de fond —
+ces modules sont aussi importés par les scripts et `lancer.py`. Le vrai piège
+n'était pas « ça purge » mais « ça purge sans rien changer d'observable » :
+d'où l'horizon de purge côté auth = **la plus grande fenêtre jamais vue**
+(`_fenetre_max`) et non celle de l'appel courant — `fenetre` est un paramètre,
+et le lot D prévoit une limite dédiée au login admin ; purger trop tôt
+offrirait un quota neuf à une adresse encore surveillée, soit un
+affaiblissement silencieux déguisé en libération de mémoire. Les deux
+`_balayer` sont **dupliqués** (`app/auth.py` importe déjà `admin_auth` :
+factoriser créerait un cycle). La fixture autouse de `conftest.py` est
+**intacte et reste opérante** (le balayage lit `_tentatives` par son nom
+global, donc suit le dictionnaire rebranché — un test le vérifie) ;
+`_dernier_balayage`/`_fenetre_max` ne sont pas réinitialisés et n'ont pas à
+l'être (ils ne pèsent que sur la fréquence du ménage). Protection toujours
+**« best effort »** : mémoire d'un process, worker unique imposé par
+`deploy/ludotex.service`. **10 tests**, chacun vérifié en injectant sa
+régression (horizon ramené à la fenêtre de l'appel, balayage non amorti,
+appareils non suivis, balayage purgeant tout). Piège d'isolation rencontré :
+`_sessions`/`_appareils` sont des globaux que le reste de la suite remplit —
+la première rédaction passait seule et échouait dans la suite complète ; la
+fixture `sessions_isolees` VIDE les deux dictionnaires pour la durée du test.
+**Suite globale : 671 tests verts** (651 + 20). Wiki : `Module-Planning.md`
+gagne sa section « Si ça ne marche pas » (elle n'en avait aucune), dont un
+paragraphe qui **dit franchement une limite** plutôt que de promettre un
+recours inexistant — `supprimer_benevole` existe sans être appelée par aucune
+route (fiche D4, revérifiée), donc une réponse en double reste en place
+jusqu'à la purge. **Reste du plan d'action** : lots C (injections
+localisées/dépendances), D (anti-abus/débit applicatif), E (CSRF/secrets dans
+les URL).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
