@@ -145,6 +145,17 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
 - Ouvrir sur un smartphone le **lien d'activation bénévole** affiché à la fin
   du script (ou depuis `/admin` → Accès bénévole → partager le lien), puis
   tester un scan depuis `/scanner`.
+- **En-têtes de sécurité** (durcissement nginx du 24/07/2026, SEC-01) —
+  vérifier qu'ils sont bien présents une fois le certificat HTTPS obtenu :
+  ```bash
+  curl -sI https://jeux.monasso.fr/ | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+  ```
+  Les cinq lignes doivent apparaître. Ouvrir ensuite `/live`, `/scanner`,
+  `/admin/jeton`, `/admin/etiquettes` et `/tournoi/<id>/gerer` dans un
+  navigateur, console développeur ouverte (F12 → onglet Console) : aucune
+  ligne « Refused to... » ne doit apparaître (signe que la
+  Content-Security-Policy bloquerait quelque chose que l'application utilise
+  réellement). En cas de souci, voir « En cas de problème » plus bas.
 
 ## 6. QR définitifs
 
@@ -253,6 +264,23 @@ automatiques et sans perte de données).
   technique.
 - **Jeton bénévole expiré** : se reconnecter à `/admin` (le mot de passe
   admin reste valide) → « Accès bénévole » → réinitialiser.
+- **Une page semble cassée après une mise à jour de nginx (SEC-01/02/04/
+  ROB-03)** : vérifier d'abord la console développeur (F12 → Console) pour
+  une ligne « Refused to... » liée à la Content-Security-Policy. Pour
+  revenir en arrière sans rien deviner : la configuration précédente est
+  dans l'historique git du dépôt —
+  ```bash
+  cd /opt/ludotex
+  git log --oneline -- deploy/nginx-ludotex.conf   # repérer le commit voulu
+  git show <commit_precedent>:deploy/nginx-ludotex.conf | sudo tee /etc/nginx/sites-available/ludotex
+  sudo nginx -t && sudo systemctl reload nginx
+  ```
+  (adapter le chemin pour `deploy/nginx-ludotex-formation.conf` si c'est le
+  site de formation qui est concerné). Si `sudo nginx -t` signale une erreur
+  de syntaxe juste après une modification manuelle, la configuration n'est
+  **jamais** rechargée par `nginx -t` seul : le site continue de tourner sur
+  l'ancienne configuration tant que `systemctl reload nginx` n'a pas été
+  exécuté avec succès — pas de coupure pendant qu'on corrige.
 
 ## 10. Exploitation au quotidien
 
