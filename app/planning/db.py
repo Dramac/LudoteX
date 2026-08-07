@@ -6,6 +6,14 @@ base du planning. Volontairement DISTINCT afin que les trois bases restent
 indépendantes (ouverture, init, migrations, purge, sauvegarde). Aucun autre
 module n'ouvre cette base, et réciproquement.
 
+DÉLAI D'ATTENTE DU VERROU D'ÉCRITURE
+------------------------------------
+`TIMEOUT_ECRITURE_S` est IMPORTÉE de `app/db.py` plutôt que redéfinie ici :
+même raisonnement que dans `app/tournoi/db.py`, dont l'en-tête porte la
+justification complète. En résumé : l'indépendance des trois bases porte sur
+les données, pas sur les constantes de réglage, et trois valeurs à tenir en
+accord dériveraient sans que rien ne le signale.
+
 CONFIGURATION
 -------------
 Le chemin du fichier SQLite est lu dans la variable d'environnement
@@ -34,6 +42,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.db import TIMEOUT_ECRITURE_S
 from app.planning import models
 
 # Charge .env à la racine s'il existe (sans effet en test/sandbox).
@@ -58,13 +67,15 @@ def get_connection() -> sqlite3.Connection:
     Ouvre et configure une connexion vers la base du planning.
 
     Mêmes réglages que les autres bases : `row_factory = Row` (accès par nom),
-    `foreign_keys = ON` (cascade de suppression effective) et WAL. Le dossier
-    parent est créé si nécessaire. L'appelant doit fermer la connexion.
+    `foreign_keys = ON` (cascade de suppression effective), WAL, et le même
+    délai d'attente du verrou d'écriture (`db.TIMEOUT_ECRITURE_S`) — voir le
+    commentaire d'import en tête de module. Le dossier parent est créé si
+    nécessaire. L'appelant doit fermer la connexion.
     """
     db_path = get_database_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=TIMEOUT_ECRITURE_S)
     conn.row_factory = sqlite3.Row
     for pragma in models.PRAGMAS:
         conn.execute(pragma)

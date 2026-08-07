@@ -6,6 +6,21 @@ afin que les deux bases (prêt / tournoi) restent indépendantes (ouverture,
 init, migrations, sauvegarde). Aucun module de prêt n'ouvre cette base, et
 réciproquement.
 
+DÉLAI D'ATTENTE DU VERROU D'ÉCRITURE
+------------------------------------
+`TIMEOUT_ECRITURE_S` est IMPORTÉE de `app/db.py` plutôt que redéfinie ici.
+L'indépendance revendiquée ci-dessus porte sur les DONNÉES (aucune FK, aucune
+requête croisée, sauvegardes séparées), pas sur les constantes de réglage : la
+patience d'un écrivain face au verrou SQLite est un choix d'exploitation unique,
+et deux valeurs qui dérivent l'une de l'autre seraient un piège silencieux — une
+base répondrait au bout de 15 s, l'autre abandonnerait à 5 s, sans que rien ne
+le signale. C'est aussi le précédent du projet : `tournoi/` et `planning/`
+importent déjà une dizaine d'helpers de `app/services.py` (`maintenant`,
+`FUSEAU_LOCAL`, `local_vers_utc_iso`…), et `services.transaction` a été importée
+plutôt que dupliquée (02/08). La duplication d'`_ics_horodatage` était un cas
+particulier assumé — quelques lignes de formatage sans réglage à tenir en
+accord — pas une règle contre l'import.
+
 CONFIGURATION
 -------------
 Le chemin du fichier SQLite est lu dans la variable d'environnement
@@ -34,6 +49,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.db import TIMEOUT_ECRITURE_S
 from app.tournoi import models
 
 # Charge .env à la racine s'il existe (sans effet en test/sandbox).
@@ -58,13 +74,15 @@ def get_connection() -> sqlite3.Connection:
     Ouvre et configure une connexion vers la base des tournois.
 
     Mêmes réglages que la base de prêt : `row_factory = Row` (accès par nom),
-    `foreign_keys = ON` (cascade de suppression effective) et WAL. Le dossier
-    parent est créé si nécessaire. L'appelant doit fermer la connexion.
+    `foreign_keys = ON` (cascade de suppression effective), WAL, et le même
+    délai d'attente du verrou d'écriture (`db.TIMEOUT_ECRITURE_S`) — voir le
+    commentaire d'import en tête de module. Le dossier parent est créé si
+    nécessaire. L'appelant doit fermer la connexion.
     """
     db_path = get_database_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=TIMEOUT_ECRITURE_S)
     conn.row_factory = sqlite3.Row
     for pragma in models.PRAGMAS:
         conn.execute(pragma)
