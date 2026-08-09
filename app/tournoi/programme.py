@@ -379,10 +379,16 @@ def fin_iso(date_heure_iso: str | None, duree_min: int | None) -> str | None:
 # ===========================================================================
 # Export iCalendar (.ics) — patron `tournoi.services.ical_tournoi`
 # ===========================================================================
-def ical_element(conn: sqlite3.Connection, id_element: int) -> str | None:
+def ical_element(conn: sqlite3.Connection, id_element: int,
+                 nom_evenement: str | None = None) -> str | None:
     """
     Contenu iCalendar (.ics) d'un élément de programme pour « Ajouter à mon
     agenda ». Aucune donnée personnelle. None si introuvable ou sans date.
+
+    `nom_evenement` en paramètre, pour la même raison que dans `ical_tournoi`
+    (voir sa docstring) : le réglage vit dans la base de PRÊT, ce module ne
+    connaît que celle des TOURNOIS, et c'est la route qui fait le lien. Absent,
+    la description est exactement ce qu'elle était.
     """
     e = get_element(conn, id_element)
     if e is None or not e["date_heure"]:
@@ -396,6 +402,8 @@ def ical_element(conn: sqlite3.Connection, id_element: int) -> str | None:
     description = []
     if e["description"]:
         description.append(e["description"])
+    if nom_evenement:
+        description.append(nom_evenement)
     description.append(f"Programme — {NOM_ASSOCIATION}")
 
     lignes = [

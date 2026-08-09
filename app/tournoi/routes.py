@@ -35,7 +35,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app import auth, journal
 from app.auth import exiger_jeton
-from app.services import local_vers_utc_iso, pluriel
+from app.services import local_vers_utc_iso, nom_evenement, pluriel
 from app.templating import templates
 from app.tournoi import services
 from app.tournoi.db import get_connection
@@ -243,9 +243,12 @@ def agenda_ics(request: Request, id_tournoi: int):
     Télécharge l'événement du tournoi au format iCalendar (.ics) — « Ajouter à
     mon agenda ». Public, sans donnée personnelle. 404 si pas de date.
     """
+    # Le nom de l'événement vit dans la base de PRÊT : c'est la route qui va le
+    # chercher et le transmet, jamais le service (voir `ical_tournoi`).
+    nom = nom_evenement()
     conn = get_connection()
     try:
-        ics = services.ical_tournoi(conn, id_tournoi)
+        ics = services.ical_tournoi(conn, id_tournoi, nom_evenement=nom)
     finally:
         conn.close()
     if ics is None:

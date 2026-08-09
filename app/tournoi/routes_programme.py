@@ -47,7 +47,7 @@ from fastapi.responses import RedirectResponse, Response
 from app import journal
 from app.auth import exiger_jeton
 from app.db import get_connection as get_pret_connection
-from app.services import local_vers_utc_iso, lire_parametre
+from app.services import lire_nom_evenement, lire_parametre, local_vers_utc_iso
 from app.templating import templates
 from app.tournoi import programme
 from app.tournoi.db import get_connection
@@ -81,26 +81,40 @@ def _types_pour_formulaire(conn, id_type_courant: int | None) -> list[dict]:
     return types
 
 
-def _jours_evenement() -> list:
+def _reglages_evenement() -> tuple[list, str | None]:
     """
-    Les deux jours couverts par la grille (le jour de l'événement + le
-    lendemain), déduits de `parametres.evenement_date` — réglage stocké dans la
-    base de PRÊT, déjà utilisé par la frise des tournois sur l'accueil. Liste
-    vide si aucune date n'est configurée (jamais bloquant : la page l'affiche
-    alors clairement plutôt qu'une grille vide sans explication).
+    Les deux réglages de l'événement dont ce module a besoin, en UNE seule
+    ouverture de la base de PRÊT (où ils vivent tous les deux) :
+
+    - les deux jours couverts par la grille (le jour de l'événement + le
+      lendemain), déduits de `parametres.evenement_date` — liste vide si aucune
+      date n'est configurée (jamais bloquant : la page l'affiche alors
+      clairement plutôt qu'une grille vide sans explication) ;
+    - le nom de l'événement, ou None, pour la description des `.ics`.
+
+    Une seule fonction pour les deux : la connexion de prêt était déjà ouverte
+    ici, en rouvrir une seconde juste pour le nom serait un travail en double.
+    Les appelants qui n'ont besoin que des jours ignorent simplement le second
+    membre.
     """
     conn = get_pret_connection()
     try:
         valeur = lire_parametre(conn, "evenement_date")
+        nom = lire_nom_evenement(conn)
     finally:
         conn.close()
     if not valeur:
-        return []
+        return [], nom
     try:
         jour1 = datetime.strptime(valeur, "%Y-%m-%d").date()
     except ValueError:
-        return []
-    return [jour1, jour1 + timedelta(days=1)]
+        return [], nom
+    return [jour1, jour1 + timedelta(days=1)], nom
+
+
+def _jours_evenement() -> list:
+    """Raccourci : seulement les jours (voir `_reglages_evenement`)."""
+    return _reglages_evenement()[0]
 
 
 # ===========================================================================
@@ -179,9 +193,12 @@ def agenda_ics(request: Request, id_element: int):
     Télécharge l'événement au format iCalendar (.ics) — « Ajouter à mon
     agenda ». Public, sans donnée personnelle. 404 si introuvable ou sans date.
     """
+    # Le nom de l'événement vit dans la base de PRÊT : c'est la route qui va le
+    # chercher et le transmet, jamais le service (voir `ical_element`).
+    nom = _reglages_evenement()[1]
     conn = get_connection()
     try:
-        ics = programme.ical_element(conn, id_element)
+        ics = programme.ical_element(conn, id_element, nom_evenement=nom)
     finally:
         conn.close()
     if ics is None:

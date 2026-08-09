@@ -1364,11 +1364,22 @@ def _ics_horodatage(dt: datetime) -> str:
     return dt.astimezone(FUSEAU_UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
+def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int,
+                 nom_evenement: str | None = None) -> str | None:
     """
     Construit le contenu iCalendar (.ics) d'un tournoi pour « Ajouter à mon
     agenda ». Aucune donnée personnelle. Renvoie None si le tournoi est
     introuvable ou n'a pas de date (pas d'événement à planifier).
+
+    `nom_evenement` (« Festival du Jeu 2026 ») apparaît dans la DESCRIPTION :
+    dans l'agenda de quelqu'un, à deux mois de là, « Catan » seul ne dit pas de
+    quel week-end il s'agit.
+
+    Il arrive en PARAMÈTRE, renseigné par la route, et n'est pas lu ici : ce
+    réglage vit dans la base de PRÊT et cette fonction n'a en main que celle des
+    TOURNOIS. Lui faire ouvrir une seconde base romprait l'indépendance des
+    trois bases, qui est un invariant du projet. Absent (défaut), la description
+    est exactement ce qu'elle était.
     """
     t = get_tournoi(conn, id_tournoi)
     if t is None or not t["date_heure"]:
@@ -1383,6 +1394,8 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int) -> str | None:
     # Sans titre spécifique, l'intitulé EST le nom du jeu (déjà en SUMMARY).
     if t["jeu"] and t["jeu"] != t["nom"]:
         description.append(f"Jeu : {t['jeu']}")
+    if nom_evenement:
+        description.append(nom_evenement)
     description.append(f"Tournoi — {NOM_ASSOCIATION}")
 
     lignes = [
