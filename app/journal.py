@@ -103,6 +103,9 @@ ACTIONS = {
     "retour",
     "re_pret",
     "sortie_tournoi",
+    # Transfert de pochette (docs/conception-transfert-pochette.md §9) :
+    # rendre une boîte et en prêter une autre sans déplacer la pochette.
+    "transfert",
 }
 
 # Longueurs de troncature (§3.3) : assainissement obligatoire, pas défensif.

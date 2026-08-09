@@ -5,8 +5,9 @@ du chantier (docs/conception-journal.md §8, étape 4 du §11).
     Le journal enregistre l'objet, jamais la personne, jamais le secret.
 
 Un scénario COMPLET est joué (activation du jeton bénévole, prêt, retour,
-création et inscription à un tournoi par équipes, purge d'une édition du
-planning, connexion administrateur, restauration de sauvegarde), avec des
+transfert de pochette, création et inscription à un tournoi par équipes,
+purge d'une édition du planning, connexion administrateur, restauration de
+sauvegarde), avec des
 valeurs volontairement DISTINCTIVES — un pseudo, un nom d'équipe, un nom de
 bénévole, un jeton et un mot de passe qu'on ne risque pas de croiser par
 hasard. Le fichier produit est ensuite passé au crible.
@@ -63,6 +64,12 @@ def bases(tmp_path, monkeypatch):
     conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('CATAN', 'Catan')")
     conn.execute(
         "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('001', 'CATAN')"
+    )
+    # Seconde boîte, nécessaire au scénario de TRANSFERT DE POCHETTE
+    # (docs/conception-transfert-pochette.md) : il faut deux exemplaires.
+    conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('DIXIT', 'Dixit')")
+    conn.execute(
+        "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('002', 'DIXIT')"
     )
     for cle, valeur in (("pret_token", JETON), ("pret_token_expire", None)):
         conn.execute(
@@ -139,6 +146,19 @@ def scenario(client, bases, _journal_isole):
     client.post("/pret/001/rendre")
     client.post("/pret/001/rendre")  # déjà disponible
 
+    # --- Transfert de pochette (docs/conception-transfert-pochette.md) -----
+    # Rendre 001 et prêter 002 sans faire ressortir la pièce d'identité de
+    # son casier : un second numéro, distinct du premier, qui ne doit pas
+    # davantage fuiter dans le journal.
+    client.post("/pret/001/preter")
+    conn = db.get_connection()
+    try:
+        pret_transfert = services.pret_en_cours(conn, "001")
+        secrets["pochette_transfert"] = str(pret_transfert["numero_pochette"])
+    finally:
+        conn.close()
+    client.post("/pret/001/transfert/002")
+
     # --- Public : inscription à un tournoi PAR ÉQUIPES ----------------------
     # Par équipes exprès : c'est le cas qui porte le plus de données
     # personnelles d'un coup (nom d'équipe + membres + code).
@@ -199,7 +219,7 @@ def test_le_scenario_produit_des_lignes(scenario):
     # disparaissent, ce fichier ne teste plus rien et doit échouer.
     assert {
         "connexion_reussie", "planning_purge", "sauvegarde_restauree",
-        "pret", "retour", "tournoi_lance",
+        "pret", "retour", "tournoi_lance", "transfert",
     } <= actions
 
 
@@ -254,12 +274,12 @@ def test_aucun_numero_de_pochette(scenario):
     texte, secrets = scenario
     assert "pochette" not in texte.lower()
 
-    numero = secrets["pochette"]
+    numeros = {secrets["pochette"], secrets["pochette_transfert"]}
     for ligne in _lignes(texte):
         if ligne.get("module") != "pret":
             continue
         for champ in ("objet", "ref", "detail"):
-            assert ligne.get(champ) != numero
+            assert ligne.get(champ) not in numeros
 
 
 def test_aucune_adresse_ip_ni_query_string_brute(scenario):
