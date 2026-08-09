@@ -96,13 +96,19 @@ def _journaliser_transfert(request: Request, info_rendu: dict, info_nouveau: dic
     (`transfert_impossible`, `nouveau_sorti`, `occupe`…) sont journalisés au
     même titre que le succès, `detail` portant la raison précise quand elle
     existe (`resultat["raison"]`), sinon le type de refus lui-même.
+
+    `ref` porte le titre de la boîte NOUVELLEMENT PRÊTÉE, comme l'action
+    `pret` : un transfert est, du point de vue de ce qui sort, un prêt de
+    plus. Filtrer le journal sur une référence donne ainsi la même chose quel
+    que soit le chemin emprunté pour prêter le jeu — le titre rendu, lui,
+    reste lisible dans `objet`.
     """
     type_ = resultat.get("type")
     echec = type_ in _ECHECS
     journal.journaliser(
         request, "pret", "transfert",
         objet=f"{info_rendu.get('nom')} → {info_nouveau.get('nom')}",
-        ref=info_rendu.get("reference_titre"),
+        ref=info_nouveau.get("reference_titre"),
         ok=not echec,
         detail=(resultat.get("raison") or type_) if echec else None,
     )

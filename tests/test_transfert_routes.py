@@ -289,6 +289,10 @@ def test_le_transfert_est_journalise_sans_numero(client, _journal_isole):
     assert len(lignes) == 1
     ligne = lignes[0]
     assert ligne["objet"] == "Catan → Dixit"
+    # `ref` = le titre NOUVELLEMENT PRÊTÉ, comme l'action `pret` : filtrer le
+    # journal sur une référence doit donner la même chose quel que soit le
+    # chemin emprunté pour prêter le jeu (voir `_journaliser_transfert`).
+    assert ligne["ref"] == "DIXIT"
     assert ligne["ok"] is True
     # Le mot ET la valeur : ni l'un ni l'autre ne doivent apparaître, dans
     # AUCUN champ (patron de test_journal_interdits.py::test_aucun_numero_de_pochette
