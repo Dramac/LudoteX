@@ -80,15 +80,14 @@
             <div class="planning-heure" style="grid-row: {{ h.row }};">{{ h.label }}</div>
           {% endfor %}
           {% for b in jour.blocs %}
-            <div class="planning-bloc"
-                 style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};">
+            <a class="planning-bloc"
+               style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};"
+               href="/programme/{{ b.id_element }}">
               <span class="planning-bloc-heure">{{ b.heure_txt }}</span>
               <span class="planning-bloc-nom">{{ b.type_icone ~ ' ' if b.type_icone }}{{ b.intitule }}</span>
               {% if b.lieu %}<span class="planning-bloc-meta">📍 {{ b.lieu }}</span>{% endif %}
               {% if b.public_vise %}<span class="planning-bloc-meta">{{ b.public_vise }}</span>{% endif %}
-              <a class="planning-bloc-meta" href="/programme/{{ b.id_element }}/agenda.ics"
-                 title="Ajouter à mon agenda">📅 Agenda</a>
-            </div>
+            </a>
           {% endfor %}
         </div>
       {% endif %}

@@ -48,6 +48,7 @@
           </td>
           <td class="rangement-actions">
             <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/editer">Modifier</a>
+            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}" title="Ce que voit le public (404 tant que l'élément n'est pas publié)">Page publique</a>
             {% if "publie" in possibles %}
               <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline">
                 <input type="hidden" name="etat" value="publie">

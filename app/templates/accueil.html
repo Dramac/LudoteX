@@ -41,18 +41,19 @@
           <div class="planning-ligne" style="grid-row: {{ h.row }};"></div>
           <div class="planning-heure" style="grid-row: {{ h.row }};">{{ h.label }}</div>
         {% endfor %}
-        {# Cartes positionnées selon début/durée et couloir. Deux sources :
-           un tournoi a une page (donc un lien), une animation n'en a pas. #}
+        {# Cartes positionnées selon début/durée et couloir. Deux sources,
+           chacune avec sa propre page de détail (tournoi ou programme). #}
         {% for b in jour.blocs %}
           {% if b.source == "programme" %}
-            <div class="planning-bloc planning-bloc--programme"
-                 style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};">
+            <a class="planning-bloc planning-bloc--programme"
+               style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};"
+               href="/programme/{{ b.id_element }}">
               <span class="planning-bloc-heure">{{ b.heure_txt }}</span>
               <span class="planning-bloc-nom">{% if b.type_icone %}{{ b.type_icone }} {% endif %}{{ b.intitule }}</span>
               {% if b.type_nom %}<span class="planning-bloc-meta">{{ b.type_nom }}</span>{% endif %}
               {% if b.lieu %}<span class="planning-bloc-meta">📍 {{ b.lieu }}</span>{% endif %}
               {% if b.public_vise %}<span class="planning-bloc-meta">{{ b.public_vise }}</span>{% endif %}
-            </div>
+            </a>
           {% else %}
             <a class="planning-bloc planning-bloc--{{ b.etat }}"
                style="grid-column: {{ b.col }}; grid-row: {{ b.row_debut }} / span {{ b.row_span }};"
@@ -95,15 +96,14 @@
             <span class="badge badge-dispo">{{ e.nb_inscrits }} {{ pluriel(e.nb_inscrits, 'inscrit', 'inscrits') }}</span>
           {% endif %}
         {% else %}
-          {# Un élément de programme n'a pas de page de détail : pas de lien. #}
-          <span class="jeu-lien">
+          <a class="jeu-lien" href="/programme/{{ e.id }}">
             <span class="jeu-nom">{% if e.icone %}{{ e.icone }} {% else %}🎲 {% endif %}{{ e.intitule }}</span>
             <span class="jeu-categorie">
               {{ e.date_heure | dt_local }}
               {% if e.lieu %} · {{ e.lieu }}{% endif %}
               {% if e.public_vise %} · {{ e.public_vise }}{% endif %}
             </span>
-          </span>
+          </a>
         {% endif %}
       </li>
     {% endfor %}
