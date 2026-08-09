@@ -666,6 +666,13 @@ summary:focus-visible,
   font-size: 0.85rem;
 }
 
+/* Numéro de version rappelé à côté de la licence : utile pour un dépannage
+   (« quelle version tourne ? ») sans jamais attirer l'oeil du visiteur. */
+.pied-version {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* --- Module tournois --- */
 a.bouton { text-align: center; text-decoration: none; box-sizing: border-box; }
 /* Bouton d'action discret rendu comme un lien (ex. « Retirer » un participant). */

@@ -26,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 
 from app import admin_auth, auth, modules, services
 from app.config import FORMATION_URL, MODE_FORMATION, NOM_ASSOCIATION
+from app.version import APP_VERSION
 
 # Dossier contenant les gabarits HTML (app/templates/).
 BASE_DIR = Path(__file__).resolve().parent
@@ -112,6 +113,11 @@ def _dt_input(iso_utc: str | None) -> str:
 
 # Filtre : pré-remplir un champ <input type="datetime-local"> depuis l'UTC ISO.
 templates.env.filters["dt_input"] = _dt_input
+
+# Numéro de version de l'application, rappelé dans le pied de page de toutes
+# les pages (à côté de la licence). Constante importée d'`app/version.py`, le
+# porteur canonique du numéro — jamais recopié en dur dans un gabarit.
+templates.env.globals["app_version"] = APP_VERSION
 
 # Version du CSS pour « casser » le cache navigateur : la date de modification du
 # fichier style.css. Recalculée au démarrage (uvicorn --reload redémarre quand le

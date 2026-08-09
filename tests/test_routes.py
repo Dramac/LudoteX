@@ -150,6 +150,20 @@ def test_apropos_page(client):
     assert APP_VERSION in r.text
 
 
+def test_pied_de_page_affiche_la_version(client):
+    # Le numéro de version est rappelé dans le pied de page de TOUTES les pages
+    # (à côté de la licence), pour qu'un dépannage n'ait pas à passer par
+    # /apropos ou /admin/supervision. Il vient d'`app/version.py`, le porteur
+    # canonique — jamais recopié en dur dans un gabarit.
+    from app.version import APP_VERSION
+
+    for url in ("/", "/catalogue", "/aide"):
+        r = client.get(url)
+        assert r.status_code == 200, url
+        assert "GPLv3" in r.text, url
+        assert f"v{APP_VERSION}" in r.text, url
+
+
 def test_apropos_mentionne_le_journal_dactivite(client):
     # docs/conception-journal.md §10 arbitrage 6 : une phrase disant qu'un
     # journal technique existe, sans donnée personnelle.
