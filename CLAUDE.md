@@ -2251,13 +2251,29 @@ L'**URL est conservée** (liée depuis le tableau de bord et `admin_aide.html`) 
 seuls le titre, le `<h1>`, le libellé du menu et le `title` du lien changent.
 Une date invalide refuse l'enregistrement des DEUX champs plutôt que
 d'enregistrer le nom en silence.
-**Titre de `/live` en cascade à trois niveaux** : titre saisi > nom de
-l'événement > nom de l'association. `TITRE_DEFAUT` (constante) devient
-`titre_defaut(conn)` (le repli se lit en base) ; appelants alignés dans
-`live.py` et dans les DEUX routes `/admin/ecran-salle` (formulaire, POST,
-aperçu, placeholder). C'est la **seule** façon dont le nom apparaît sur
-`/live` — pas de ligne à lui : la refonte du 06/08 a rendu cette hauteur au
-contenu utile, et un titre saisi suivi du nom dessous ferait doublon.
+**Titre de `/live` = le nom de l'événement, point** (repli : nom de
+l'association). `TITRE_DEFAUT` (constante) devient `live.titre_ecran(conn)`.
+C'est la **seule** façon dont le nom apparaît sur `/live` — pas de ligne à
+lui : la refonte du 06/08 a rendu cette hauteur au contenu utile.
+⚠️ **Corrigé en cours de session, après test de Simon** : la première version
+posait une cascade à TROIS niveaux (titre saisi sur `/admin/ecran-salle` >
+nom de l'événement > association), et renseigner le nom ne changeait rien à
+l'écran. Cause : le champ « Titre » était **prérempli avec la valeur par
+défaut** quand aucun titre n'était enregistré — enregistrer une annonce ou un
+réglage de panneaux suffisait donc à figer le nom de l'association comme
+titre explicite, qui l'emportait ensuite pour toujours, sans que rien ne
+l'explique. **Décision Simon : un seul réglage.** Le champ « Titre » est
+supprimé de `/admin/ecran-salle` (la page rappelle la valeur en vigueur et
+renvoie vers `/admin/evenement`), le POST perd son paramètre `titre`, et la
+clé `live_titre` n'a plus aucun lecteur. Migration
+`db._migrer_titre_live_vers_nom_evenement` (idempotente, jouée au démarrage
+ET après restauration de sauvegarde) : l'ancienne valeur **devient** le nom
+de l'événement s'il est vide (rien à ressaisir, et le nom apparaît en prime
+sur les trois autres surfaces) ; si un nom existait déjà, c'est lui qui fait
+foi et l'ancien titre est abandonné **avec un avertissement dans les journaux
+du serveur**, jamais en silence. La clé morte est supprimée dans les deux
+cas — la laisser en place ferait réapparaître l'ancienne valeur et
+entretiendrait le double domicile que ce lot supprime.
 **Affichage public** : global Jinja `nom_evenement()` + composant
 `.rappel-evenement` (documenté `docs/ui-composants.md` **§15**), une ligne
 discrète SOUS le `<h1>` existant sur l'accueil, `/programme`, `/tournois` et la
@@ -2286,11 +2302,16 @@ existant changent tous la valeur : il reste vert sans modification.
 `docs/idees-evolutions.md`, « prérequis structurant n°1 ») : le jour venu, ce
 sont ces deux clés à migrer et ce seul couple de fonctions à faire pointer
 ailleurs. Noté dans la fiche.
-**15 tests dédiés** (`tests/test_evenement_nom.py` : non-régression sans la
-clé sur les 5 surfaces, cascade dans ses 3 cas, écriture/effacement/bornage à
-80 caractères, garde admin, les deux lignes de journal et l'absence de ligne
-quand rien ne change, nom présent dans les deux `.ics`). Aucun test existant
-adapté. **Suite globale : 686 tests verts.**
+**18 tests dédiés** (`tests/test_evenement_nom.py` : non-régression sans la
+clé sur les 5 surfaces, titre de `/live`, absence du champ titre en admin, le
+scénario exact du défaut ci-dessus, les deux sens de la migration + son
+idempotence, écriture/effacement/bornage à 80 caractères, garde admin, les
+deux lignes de journal et l'absence de ligne quand rien ne change, nom présent
+dans les deux `.ics`). **Un seul test existant adapté en connaissance de
+cause** : `test_live_titre_configurable` écrivait la clé `live_titre`, qui
+n'existe plus — la propriété testée (un titre projeté configurable) n'a pas
+changé. **Suite globale : 729 tests verts** (le lot « transfert de pochette »,
+committé en parallèle, en apporte 30).
 
 **Programme du week-end — page publique par élément (revient sur une décision
 du jalon 2) : FAIT** (2026-08-09). Le §6.1 de `docs/conception-programme.md`
