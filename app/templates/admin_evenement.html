@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block titre %}Date de l'événement — Administration — {{ nom_association }}{% endblock %}
+{% block titre %}Gestion de l'événement — Administration — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
-  <h1>Date de l'événement</h1>
+  <h1>Gestion de l'événement</h1>
   <p class="stats-note">
-    Le <strong>planning des tournois</strong> affiché sur la page d'accueil
-    couvre ce jour-là et le lendemain (2 jours). Laissez vide pour masquer le
-    planning.
+    Le <strong>nom</strong> et la <strong>date</strong> de l'édition en cours.
+    Ils se règlent une fois, en début de préparation, et servent partout
+    ailleurs dans l'application.
   </p>
 
   {% if message %}
@@ -18,13 +18,46 @@
 
   <form method="post" action="/admin/evenement" class="recherche-form">
     <div class="champ">
+      <label for="nom_evenement">Nom de l'événement</label>
+      <input type="text" id="nom_evenement" name="nom_evenement" maxlength="80"
+             value="{{ nom_evenement or '' }}"
+             placeholder="Festival du Jeu 2026">
+      <small class="stats-note">
+        80 caractères au plus. Rappelé sur la page d'accueil, le programme et
+        les tournois, et proposé comme titre de l'écran de salle.
+        <strong>Laissez vide</strong> pour n'afficher aucun nom : les pages
+        redeviennent exactement ce qu'elles étaient.
+      </small>
+    </div>
+
+    <div class="champ">
       <label for="date_evenement">Premier jour de l'événement</label>
       <input type="date" id="date_evenement" name="date_evenement"
              value="{{ date_evenement or '' }}">
+      <small class="stats-note">
+        Le <strong>programme du week-end</strong> affiché sur la page d'accueil
+        couvre ce jour-là et le lendemain (2 jours). Laissez vide pour le
+        masquer.
+      </small>
     </div>
+
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>
-
-  <p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
 </section>
+
+{# Les autres réglages qui concernent l'événement gardent leurs pages propres :
+   cette page ne fait qu'y renvoyer, elle n'en absorbe aucun. #}
+<section class="carte">
+  <h2>Autres réglages de l'événement</h2>
+  <ul class="admin-menu">
+    <li><a class="lien" href="/admin/ecran-salle"><span class="admin-icone">📺</span>Écran de salle</a>
+        — titre projeté, annonce, panneaux affichés.</li>
+    <li><a class="lien" href="/admin/programme-types"><span class="admin-icone">🎪</span>Types de programme</a>
+        — animation, atelier, initiation…</li>
+    <li><a class="lien" href="/planning/admin"><span class="admin-icone">🗓️</span>Planning bénévole</a>
+        — souhaits, préremplissage, publication.</li>
+  </ul>
+</section>
+
+<p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
 {% endblock %}

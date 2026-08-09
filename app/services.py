@@ -1431,6 +1431,69 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
 
 
 # ===========================================================================
+# Identité de l'événement (nom + date), réglée depuis /admin/evenement
+# ===========================================================================
+# Deux réglages, deux clés voisines dans `parametres` (base de PRÊT) :
+# - `evenement_date` : premier jour, borne de la frise et de la grille du
+#   programme (lue directement par ses appelants historiques) ;
+# - `evenement_nom`  : le nom de l'édition (« Festival du Jeu 2026 »), rappelé
+#   sur les surfaces publiques.
+#
+# UN SEUL DOMICILE POUR LA LECTURE DU NOM. Il est lu depuis les gabarits (global
+# Jinja), depuis l'écran de salle, depuis le module programme et depuis les deux
+# routes `.ics` : quatre appelants, dont deux n'ont pas de connexion de prêt en
+# main. D'où le couple ci-dessous plutôt qu'un `lire_parametre(conn,
+# "evenement_nom")` recopié partout — le projet a déjà payé ce motif ailleurs
+# (double domicile des index uniques, duplication de la logique d'expiration
+# d'annonce).
+#
+# ⚠️ Cette clé est l'AMORCE de la future table `editions` (fiche 6.4 de
+# docs/idees-evolutions.md, « prérequis structurant n°1 ») : le jour où cette
+# table existera, c'est ce couple de fonctions qu'il faudra faire pointer
+# ailleurs, pas une dizaine d'appels dispersés.
+CLE_EVENEMENT_NOM = "evenement_nom"
+
+# Longueur maximale du nom, alignée sur le titre de l'écran de salle (qui peut
+# être ce même nom, par la cascade de `live.titre_defaut`).
+LONGUEUR_NOM_EVENEMENT = 80
+
+
+def lire_nom_evenement(conn: sqlite3.Connection) -> str | None:
+    """
+    Nom de l'événement, ou None s'il n'a jamais été renseigné.
+
+    None (et non une chaîne vide ou un libellé de repli) : les appelants doivent
+    pouvoir ne RIEN afficher du tout, conformément à la règle « ne jamais
+    afficher une valeur absente » déjà appliquée au rangement et à l'annonce de
+    l'écran de salle. Une base où la clé n'a jamais été écrite se comporte donc
+    exactement comme avant l'introduction du réglage.
+    """
+    return lire_parametre(conn, CLE_EVENEMENT_NOM)
+
+
+def nom_evenement() -> str | None:
+    """
+    Même valeur que `lire_nom_evenement`, pour les appelants qui n'ont PAS de
+    connexion de prêt en main : le global Jinja (les gabarits ne disposent que
+    de la requête) et les routes des modules tournois/programme, qui travaillent
+    sur une autre base.
+
+    Même exception délibérée à la convention `conn` en paramètre que
+    `rangement_visible`/`rangement_actif`, et même parade : une connexion ouverte
+    puis refermée ici. Ne PAS appeler depuis un service qui reçoit déjà une
+    connexion — utiliser `lire_nom_evenement` (les services ne traversent jamais
+    les bases : l'indépendance des trois bases est un invariant du projet).
+    """
+    from app.db import get_connection
+
+    conn = get_connection()
+    try:
+        return lire_nom_evenement(conn)
+    finally:
+        conn.close()
+
+
+# ===========================================================================
 # Rangement des boîtes (voir docs/conception-rangement.md)
 # ===========================================================================
 # Deux contextes (§2) : "evenement" (texte libre, colonne exemplaires.

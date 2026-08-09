@@ -1051,30 +1051,56 @@ def journal_telecharger(request: Request):
 
 @router.get("/evenement")
 def evenement_formulaire(request: Request):
-    """Réglage de la date de l'événement (jour 1 du planning public sur 2 jours)."""
+    """
+    « Gestion de l'événement » : le nom de l'édition et sa date, plus des liens
+    vers les autres réglages qui la concernent (écran de salle, types de
+    programme, planning bénévole), qui gardent leurs pages propres.
+
+    L'URL reste `/admin/evenement` : elle est liée depuis le tableau de bord et
+    depuis `admin_aide.html`, et rien ne justifie de casser ces liens pour un
+    changement de titre.
+    """
     if (garde := _garde(request)):
         return garde
     conn = get_connection()
     try:
         valeur = services.lire_parametre(conn, "evenement_date")
+        nom = services.lire_nom_evenement(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
-        request, "admin_evenement.html", {"date_evenement": valeur, "message": None}
+        request, "admin_evenement.html",
+        {"date_evenement": valeur, "nom_evenement": nom, "message": None},
     )
 
 
 @router.post("/evenement")
-def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
+def evenement_enregistrer(
+    request: Request,
+    nom_evenement: str = Form(""),
+    date_evenement: str = Form(""),
+):
     """
-    Enregistre (ou efface si vide) la date de l'événement. Le planning public
-    couvre ce jour-là et le lendemain. Format attendu : AAAA-MM-JJ.
+    Enregistre (ou efface si vide) le nom et la date de l'événement. Le planning
+    public couvre ce jour-là et le lendemain. Format de date : AAAA-MM-JJ.
+
+    Le nom n'a aucune contrainte de forme (saisie libre, simplement normalisée
+    et bornée) : il ne peut donc jamais mettre le formulaire en échec. Une date
+    invalide, elle, refuse l'enregistrement des DEUX champs — plutôt que
+    d'enregistrer le nom en silence et de laisser croire que tout est passé.
+
+    Chaque clé n'est journalisée que si elle CHANGE réellement. Les deux champs
+    voyageant désormais dans le même formulaire, écrire une ligne à chaque envoi
+    produirait des « date modifiée » alors que seul le nom a bougé — même
+    précaution que sur /admin/ecran-salle, où enregistrer le titre seul ne doit
+    pas produire une ligne « annonce effacée » imaginaire.
     """
     if (garde := _garde(request)):
         return garde
     from datetime import datetime as _dt
 
     saisie = date_evenement.strip()
+    saisie_nom = " ".join(nom_evenement.split())[:services.LONGUEUR_NOM_EVENEMENT]
     if saisie:
         try:
             _dt.strptime(saisie, "%Y-%m-%d")
@@ -1085,23 +1111,39 @@ def evenement_enregistrer(request: Request, date_evenement: str = Form("")):
             )
             return templates.TemplateResponse(
                 request, "admin_evenement.html",
-                {"date_evenement": saisie,
+                {"date_evenement": saisie, "nom_evenement": saisie_nom,
                  "message": ("erreur", "Date invalide (format attendu : AAAA-MM-JJ).")},
                 status_code=400,
             )
     conn = get_connection()
     try:
+        # Lus AVANT écriture : servent uniquement à savoir ce qui a changé.
+        date_precedente = services.lire_parametre(conn, "evenement_date")
+        nom_precedent = services.lire_nom_evenement(conn)
         services.ecrire_parametre(conn, "evenement_date", saisie or None)
+        services.ecrire_parametre(conn, services.CLE_EVENEMENT_NOM, saisie_nom or None)
     finally:
         conn.close()
-    journal.journaliser(
-        request, "admin", "evenement_date_modifiee", objet=saisie or "effacée",
-    )
-    message = (("succes", "Date enregistrée.") if saisie
-               else ("succes", "Date effacée — le planning est masqué."))
+
+    # Le nom d'un événement n'est pas une donnée personnelle : il part tel quel
+    # en `objet` (le journal le tronque à 120 caractères, il est borné à 80).
+    if (saisie or None) != date_precedente:
+        journal.journaliser(
+            request, "admin", "evenement_date_modifiee", objet=saisie or "effacée",
+        )
+    if (saisie_nom or None) != nom_precedent:
+        journal.journaliser(
+            request, "admin", "evenement_nom_modifie", objet=saisie_nom or "effacé",
+        )
+
+    partie_nom = ("Nom enregistré." if saisie_nom
+                  else "Nom effacé — il n'est plus rappelé nulle part.")
+    partie_date = ("Date enregistrée." if saisie
+                   else "Date effacée — le planning est masqué.")
     return templates.TemplateResponse(
         request, "admin_evenement.html",
-        {"date_evenement": saisie or None, "message": message}
+        {"date_evenement": saisie or None, "nom_evenement": saisie_nom or None,
+         "message": ("succes", f"{partie_nom} {partie_date}")},
     )
 
 
