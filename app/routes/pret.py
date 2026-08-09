@@ -29,11 +29,23 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
     {"type": "deja_sorti",       "numero": n}             déjà sorti (no-op)
     {"type": "deja_disponible"}                           rien à rendre (no-op)
     {"type": "occupe"}                                    conflit d'accès simultané, rien d'enregistré
+    {"type": "transfert",            "numero": n, "rendu_nom": …, "meme_boite": bool}
+        transfert réussi (docs/conception-transfert-pochette.md) : la pochette
+        n'a pas bougé, seul le jeu associé change.
+    {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
+        rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
+
+TRANSFERT DE POCHETTE (docs/conception-transfert-pochette.md)
+---------------------------------------------------------------
+Quatre routes dédiées, à la suite de celles-ci (« Rendre » puis « Prêter »
+sans jamais faire ressortir la pièce d'identité de son casier). Voir leurs
+docstrings pour le détail de chaque écran.
 """
 
 import sqlite3
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import RedirectResponse
 
 from app import journal, services
 from app.auth import exiger_jeton
@@ -44,7 +56,12 @@ from app.templating import templates
 router = APIRouter(prefix="/pret", tags=["pret"])
 
 
-_ECHECS = {"deja_sorti", "deja_disponible", "occupe"}
+# "transfert_impossible" et "nouveau_sorti" sont les refus PROPRES au
+# transfert (voir _journaliser_transfert) : réunis ici avec les échecs
+# historiques pour ne garder qu'UN SEUL endroit qui décide de ce qui compte
+# comme un échec dans le journal (docs/conception-journal.md §2.3).
+_ECHECS = {"deja_sorti", "deja_disponible", "occupe",
+           "transfert_impossible", "nouveau_sorti"}
 
 
 def _journaliser_pret(request: Request, action: str, info: dict, resultat: dict) -> None:
@@ -66,22 +83,60 @@ def _journaliser_pret(request: Request, action: str, info: dict, resultat: dict)
     )
 
 
+def _journaliser_transfert(request: Request, info_rendu: dict, info_nouveau: dict,
+                            resultat: dict) -> None:
+    """
+    Une ligne pour le transfert de pochette (docs/conception-transfert-pochette.md
+    §9). `_journaliser_pret` ci-dessus travaille sur UN SEUL exemplaire ; le
+    transfert en manipule deux, d'où cet appel dédié plutôt que de tordre le
+    helper existant pour lui faire porter une paire.
+
+    `objet` porte les noms des DEUX jeux (« Catan → Dixit »), jamais le numéro
+    de pochette (§8, D5 vient de le purger à la clôture). Les refus
+    (`transfert_impossible`, `nouveau_sorti`, `occupe`…) sont journalisés au
+    même titre que le succès, `detail` portant la raison précise quand elle
+    existe (`resultat["raison"]`), sinon le type de refus lui-même.
+    """
+    type_ = resultat.get("type")
+    echec = type_ in _ECHECS
+    journal.journaliser(
+        request, "pret", "transfert",
+        objet=f"{info_rendu.get('nom')} → {info_nouveau.get('nom')}",
+        ref=info_rendu.get("reference_titre"),
+        ok=not echec,
+        detail=(resultat.get("raison") or type_) if echec else None,
+    )
+
+
+# Sentinelle distinguant « calculer l'emplacement automatiquement » (défaut,
+# tous les appelants historiques) de « ne rien calculer, la valeur est déjà
+# connue » — cas du transfert, qui doit afficher l'emplacement de LA BOÎTE
+# RENDUE alors que `_rendu` est appelée sur LA NOUVELLE (voir son 3ᵉ point).
+_AUTO = object()
+
+
 def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
-           status: int = 200):
+           status: int = 200, emplacement_rangement=_AUTO):
     """
     Rend l'écran prêt/retour avec l'état COURANT de l'exemplaire.
 
-    Fonction interne (préfixe `_`) factorisant le rendu commun aux quatre routes.
+    Fonction interne (préfixe `_`) factorisant le rendu commun aux routes.
     Elle relit toujours l'état frais en base, de sorte que la page reflète la
     réalité après l'action. Le `resultat` éventuel sert au bandeau de
     confirmation.
 
     Args:
         request: requête courante.
-        id_exemplaire: identifiant concerné.
+        id_exemplaire: identifiant concerné (c'est SA fiche qui est rendue).
         resultat: dict décrivant l'issue d'une action (voir en-tête), ou None
             pour un simple affichage (GET).
         status: code HTTP si l'exemplaire existe (404 forcé sinon).
+        emplacement_rangement: par défaut, calculé automatiquement pour un
+            retour (voir plus bas). Le TRANSFERT est le seul appelant qui le
+            fixe explicitement : l'écran est rendu sur la boîte NOUVELLEMENT
+            sortie, mais c'est la boîte RENDUE qu'il faut ranger — deviner à
+            partir de `id_exemplaire` donnerait l'emplacement de la mauvaise
+            boîte.
 
     Returns:
         La page pret.html.
@@ -94,9 +149,10 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
         # calculé pour un retour (jamais bloquant si rien n'est renseigné —
         # emplacement_actuel renvoie alors None, le gabarit n'affiche rien).
         # Pas de lecture inutile sur les autres écrans (prêt, sortie tournoi...).
-        emplacement_rangement = None
-        if info and resultat and resultat.get("type") in ("rendu", "rendu_tournoi"):
-            emplacement_rangement = services.emplacement_actuel(conn, id_exemplaire)
+        if emplacement_rangement is _AUTO:
+            emplacement_rangement = None
+            if info and resultat and resultat.get("type") in ("rendu", "rendu_tournoi"):
+                emplacement_rangement = services.emplacement_actuel(conn, id_exemplaire)
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -265,3 +321,204 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
         conn.close()
     _journaliser_pret(request, "re_pret", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
+
+
+# ===========================================================================
+# TRANSFERT DE POCHETTE (docs/conception-transfert-pochette.md)
+# ===========================================================================
+def _transfert_ou_refus(conn, id_rendu: str):
+    """
+    Vérifie, EN LECTURE SEULE, que `id_rendu` a une pochette à transférer —
+    pour l'affichage des trois écrans GET ci-dessous. Le service, lui, refait
+    ce contrôle SOUS LE VERROU d'écriture au moment d'agir (voir
+    `services.transferer_pochette`) : cette fonction ne fait donc courir
+    aucun risque de contrôler puis d'agir sur un état périmé, elle ne fait
+    qu'éviter d'ouvrir un écran de scan pour rien.
+
+    Returns:
+        (numero, None) si transférable, ou (None, resultat_refus) sinon, où
+        `resultat_refus` est prêt à passer à `_rendu` sur /pret/{id_rendu}
+        (patron des trois refus du service — voir le tableau de la note de
+        conception §6/l'en-tête de ce fichier).
+    """
+    courant = services.pret_en_cours(conn, id_rendu)
+    if courant is None:
+        return None, {"type": "transfert_impossible", "raison": "rien_a_rendre"}
+    if courant["motif"] != "pret" or not courant["numero_pochette"]:
+        return None, {"type": "transfert_impossible", "raison": "sans_pochette"}
+    return courant["numero_pochette"], None
+
+
+@router.get("/{id_rendu}/transfert")
+def transfert_ecran(request: Request, id_rendu: str, _=Depends(exiger_jeton)):
+    """
+    Écran de transfert (§5 de la note) : caméra embarquée pour scanner le
+    NOUVEAU jeu. RIEN n'est encore écrit — c'est le scan de la seconde boîte
+    (ou sa saisie manuelle) qui déclenchera l'écran de confirmation, jamais
+    directement une écriture (règle générale du scan, voir §2 des trois
+    pièges en tête de la note d'implémentation).
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_rendu)
+        if info is None:
+            return _rendu(request, id_rendu)  # 404, patron existant
+        numero, refus = _transfert_ou_refus(conn, id_rendu)
+        if refus:
+            return _rendu(request, id_rendu, refus)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "transfert_scan.html",
+        {"id_rendu": id_rendu, "info": info, "numero": numero},
+    )
+
+
+@router.get("/{id_rendu}/transfert/saisie")
+def transfert_saisie(request: Request, id_rendu: str, code: str = "",
+                      _=Depends(exiger_jeton)):
+    """
+    Secours clavier de l'écran de transfert (patron exact de
+    `/scanner/saisie`). N'ÉCRIT RIEN : redirige (303) vers l'écran de
+    confirmation si le code correspond à une boîte connue, sinon réaffiche
+    l'écran de transfert avec un message et le champ prérempli.
+
+    ⚠️ Cette route DOIT être déclarée avant `/transfert/{id_nouveau}` : sinon
+    FastAPI capture « saisie » comme un `id_nouveau` (un test le verrouille).
+    """
+    id_nouveau = (code or "").strip()
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_rendu)
+        if info is None:
+            return _rendu(request, id_rendu)
+        numero, refus = _transfert_ou_refus(conn, id_rendu)
+        if refus:
+            return _rendu(request, id_rendu, refus)
+
+        if not id_nouveau:
+            return templates.TemplateResponse(
+                request, "transfert_scan.html",
+                {"id_rendu": id_rendu, "info": info, "numero": numero,
+                 "erreur": "Veuillez saisir un code.", "code_saisi": ""},
+            )
+        if services.info_exemplaire(conn, id_nouveau) is None:
+            return templates.TemplateResponse(
+                request, "transfert_scan.html",
+                {"id_rendu": id_rendu, "info": info, "numero": numero,
+                 "erreur": f"Aucune boîte ne porte le code « {id_nouveau} ». "
+                           "Vérifiez et réessayez.",
+                 "code_saisi": id_nouveau},
+            )
+    finally:
+        conn.close()
+    return RedirectResponse(f"/pret/{id_rendu}/transfert/{id_nouveau}", status_code=303)
+
+
+@router.get("/{id_rendu}/transfert/{id_nouveau}")
+def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
+                            _=Depends(exiger_jeton)):
+    """
+    Écran de confirmation (§5 de la note) : les DEUX noms de jeux et le
+    numéro conservé, avant d'écrire quoi que ce soit — c'est ici que le
+    bénévole rattrape un scan de la mauvaise boîte.
+
+    `id_nouveau` inconnu (URL forgée, ou navigation directe du scan caméra
+    sur un QR qui ne correspond à rien) : même patron que le scan normal vers
+    /pret/<id> — 404 via `_rendu`, pas un message de rattrapage (celui-ci est
+    réservé à la saisie manuelle, voir `transfert_saisie`).
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_rendu)
+        if info is None:
+            return _rendu(request, id_rendu)
+        numero, refus = _transfert_ou_refus(conn, id_rendu)
+        if refus:
+            return _rendu(request, id_rendu, refus)
+        nouvelle_info = services.info_exemplaire(conn, id_nouveau)
+        if nouvelle_info is None:
+            return _rendu(request, id_nouveau)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "transfert_confirmation.html",
+        {"id_rendu": id_rendu, "id_nouveau": id_nouveau, "info": info,
+         "nouvelle_info": nouvelle_info, "numero": numero,
+         "meme_boite": id_nouveau == id_rendu},
+    )
+
+
+@router.post("/{id_rendu}/transfert/{id_nouveau}")
+def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
+                         _=Depends(exiger_jeton)):
+    """
+    L'opération de transfert (POST) : clôture du prêt en cours d'`id_rendu`
+    et ouverture d'un nouveau prêt sur `id_nouveau`, SUR LE MÊME NUMÉRO de
+    pochette (voir `services.transferer_pochette`, qui fait tout tenir dans
+    une seule transaction).
+
+    Refus possibles, aucun n'écrit rien :
+    - `nouveau_sorti` : la boîte scannée est déjà sortie -> le bénévole est
+      au milieu de son geste, on reste sur l'écran de transfert pour en
+      scanner une autre (§6 de la note) ;
+    - `rien_a_rendre` / `sans_pochette` : `id_rendu` n'a plus de pochette à
+      transférer -> écran /pret/{id_rendu} habituel, le bouton Rendre juste
+      en dessous ;
+    - `occupe` (conflit d'accès simultané, voir `_sans_conflit`) : message
+      existant, inchangé.
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_rendu)
+        if info is None:
+            return _rendu(request, id_rendu)
+        nouvelle_info = services.info_exemplaire(conn, id_nouveau)
+        if nouvelle_info is None:
+            return _rendu(request, id_nouveau)
+
+        def ecrire():
+            res = services.transferer_pochette(conn, id_rendu, id_nouveau)
+            if res.get("rien_a_rendre"):
+                return {"type": "transfert_impossible", "raison": "rien_a_rendre"}
+            if res.get("sans_pochette"):
+                return {"type": "transfert_impossible", "raison": "sans_pochette"}
+            if res.get("nouveau_sorti"):
+                return {"type": "nouveau_sorti", "numero": res["numero"]}
+            return {"type": "transfert", "numero": res["numero"],
+                    "meme_boite": res["meme_boite"]}
+
+        resultat = _sans_conflit(conn, id_rendu, ecrire)
+        _journaliser_transfert(request, info, nouvelle_info, resultat)
+
+        if resultat["type"] == "nouveau_sorti":
+            # Rien n'a été écrit : la pochette d'id_rendu n'a pas bougé, on
+            # reste sur l'écran de transfert pour rescanner autre chose.
+            courant = services.pret_en_cours(conn, id_rendu)
+            return templates.TemplateResponse(
+                request, "transfert_scan.html",
+                {"id_rendu": id_rendu, "info": info,
+                 "numero": courant["numero_pochette"] if courant else None,
+                 "erreur": f"{nouvelle_info['nom']} est déjà sortie "
+                           f"(pochette n°{resultat['numero']}). Scannez-en une autre."},
+            )
+        if resultat["type"] != "transfert":
+            # transfert_impossible / occupe / deja_sorti (conflit rare, voir
+            # _sans_conflit) : même écran, même patron que les autres actions.
+            return _rendu(request, id_rendu, resultat)
+
+        # Succès : « où ranger le jeu » porte sur la boîte RENDUE, lue AVANT
+        # de fermer la connexion (voir le 3ᵉ point de la note d'implémentation
+        # et la docstring de `_rendu`).
+        emplacement_rendu = services.emplacement_actuel(conn, id_rendu)
+    finally:
+        conn.close()
+
+    # L'écran de résultat est rendu sur LA NOUVELLE boîte (c'est elle qui est
+    # désormais sortie), avec l'emplacement de LA BOÎTE RENDUE.
+    return _rendu(
+        request, id_nouveau,
+        {"type": "transfert", "numero": resultat["numero"],
+         "rendu_nom": info["nom"], "meme_boite": resultat["meme_boite"]},
+        emplacement_rangement=emplacement_rendu,
+    )
