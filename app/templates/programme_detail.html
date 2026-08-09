@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titre %}{{ e.intitule if e else "Élément introuvable" }} — Programme — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{% block contenu %}
+{% if e is none %}
+  <section class="carte">
+    <h1>Élément introuvable</h1>
+    <p>Cet élément de programme n'existe pas (ou plus).</p>
+    <p><a class="lien" href="/programme">Retour au programme</a></p>
+  </section>
+{% else %}
+  <section class="carte">
+    <h1>{{ e.intitule }}</h1>
+
+    {% if e.etat == "annule" %}
+      <div class="resultat resultat-attention">
+        <p><strong>Annulé</strong> — cet élément ne se tiendra pas.</p>
+      </div>
+    {% endif %}
+
+    <dl class="caracteristiques">
+      {% if type %}<dt>Type</dt><dd>{{ type.icone ~ ' ' if type.icone }}{{ type.nom }}</dd>{% endif %}
+      {% if e.date_heure %}<dt>Début</dt><dd>{{ e.date_heure | dt_local }}</dd>{% endif %}
+      {% if e.duree_min %}<dt>Durée</dt><dd>{{ e.duree_min }} min</dd>{% endif %}
+      {% if e.lieu %}<dt>Lieu</dt><dd>{{ e.lieu }}</dd>{% endif %}
+      {% if e.public_vise %}<dt>Public visé</dt><dd>{{ e.public_vise }}</dd>{% endif %}
+      {% if e.jauge %}<dt>Jauge</dt><dd>{{ e.jauge }} {{ pluriel(e.jauge, 'place', 'places') }} <small>(indicatif)</small></dd>{% endif %}
+    </dl>
+
+    {% if e.description %}
+      <p class="descriptif">{{ e.description }}</p>
+    {% endif %}
+
+    {% if e.date_heure %}
+      <a class="bouton bouton-secondaire" href="/programme/{{ e.id_element }}/agenda.ics">
+        📅 Ajouter à mon agenda</a>
+    {% endif %}
+
+    <p class="lien-fiche"><a class="lien" href="/programme">← Programme du week-end</a>
+       &nbsp;·&nbsp; <a class="lien" href="/programme/aide">❓ Aide</a></p>
+  </section>
+{% endif %}
+{% endblock %}

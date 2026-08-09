@@ -20,6 +20,7 @@ CARTE DES URL
 -------------
     /programme                              grille publique (filtres jour/type)
     /programme/aide                         aide / mode d'emploi (publique)
+    /programme/{id}                         page publique d'un élément (publique)
     /programme/{id}/agenda.ics              « Ajouter à mon agenda » (publique)
     /programme/gestion         [bénévole]  liste de travail (brouillons compris)
     /programme/nouveau         [bénévole]  formulaire de création
@@ -33,8 +34,12 @@ collision avec les segments littéraux (`gestion`, `nouveau`, `aide`).
 
 Pas de route `/programme/{id}/gerer` : contrairement aux tournois (participants,
 scores, rencontres), un élément de programme n'a que des champs simples — les
-actions (modifier, changer d'état, dupliquer, supprimer) vivent directement
-dans les lignes de la liste `/programme/gestion`.
+actions D'ÉDITION (modifier, changer d'état, dupliquer, supprimer) vivent
+directement dans les lignes de la liste `/programme/gestion`, il n'y a toujours
+aucun écran de GESTION dédié par élément. Il existe en revanche, depuis la
+révision du 09/08/2026 (voir `docs/conception-programme.md`), une page
+PUBLIQUE de LECTURE par élément (`/programme/{id}`, ci-dessus) — patron
+`tournoi.routes.detail`, avec bouton `.ics` et bandeau « annulé ».
 """
 
 from __future__ import annotations
@@ -179,6 +184,31 @@ def _puces_filtres(jour_choisi, filtre_type) -> list[dict]:
         url = "/programme" + (f"?{urlencode(params)}" if params else "")
         puces.append({"label": filtre_type["nom"], "url": url})
     return puces
+
+
+@router.get("/programme/{id_element:int}")
+def detail(request: Request, id_element: int):
+    """
+    Page publique d'un élément de programme (patron `tournoi.routes.detail`).
+    Un BROUILLON n'est jamais public : traité comme un identifiant inconnu
+    (404), pas comme un cas particulier. Un élément ANNULÉ reste accessible,
+    avec un bandeau — cohérent avec `/live`, qui l'affiche déjà barré pendant
+    sa fenêtre : quelqu'un qui a le lien ou l'a mis à son agenda doit
+    apprendre l'annulation, pas tomber sur une page introuvable.
+    """
+    conn = get_connection()
+    try:
+        e = programme.get_element(conn, id_element)
+        if e is not None and e["etat"] == "brouillon":
+            e = None
+        elem_type = programme.get_type(conn, e["id_type"]) if e and e["id_type"] else None
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "programme_detail.html",
+        {"e": e, "type": elem_type},
+        status_code=200 if e else 404,
+    )
 
 
 @router.get("/programme/aide")
