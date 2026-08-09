@@ -1164,6 +1164,98 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     return {"ancien_numero": ancien, "nouveau_numero": nouveau}
 
 
+def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
+                        id_nouveau: str) -> dict:
+    """
+    Rend une boîte et en prête une autre SANS déplacer la pochette
+    (docs/conception-transfert-pochette.md).
+
+    Le visiteur rapporte un jeu et repart aussitôt avec un autre. Enchaîner
+    « Rendre » puis « Prêter » ferait sortir sa pièce d'identité du casier n°7
+    pour l'y remettre dix secondes plus tard — le plus petit numéro libre étant
+    justement, la plupart du temps, celui qu'on vient de libérer. Ici la pièce
+    d'identité ne bouge pas : c'est le JEU rattaché au n°7 qui change.
+
+    ⚠️ EXCEPTION ASSUMÉE À LA RÈGLE DU PLUS PETIT NUMÉRO LIBRE
+    -----------------------------------------------------------
+    Le nouveau prêt réutilise le numéro du prêt clos, MÊME SI un numéro plus
+    petit est libre — c'est le seul point du code qui déroge à la règle de la
+    spécification §6, et `plus_petit_numero_libre()` n'est donc pas appelée.
+    Ce n'est pas un contournement mais une lecture plus juste de la règle : la
+    pochette n'est jamais devenue libre, puisque la pièce d'identité n'a pas
+    quitté son casier. Voir §3 de la note de conception ; un test verrouille le
+    fait qu'un numéro plus petit disponible n'est PAS pris.
+
+    ORDRE IMPOSÉ À L'INTÉRIEUR DE LA TRANSACTION
+    ---------------------------------------------
+    L'index UNIQUE partiel `idx_pochettes_un_seul_pret` interdit à deux prêts
+    OUVERTS de porter le même numéro. La clôture de l'ancien prêt doit donc
+    précéder l'insertion du nouveau : la ligne close sort du prédicat partiel
+    (`date_retour IS NULL`) avant que la nouvelle n'y entre. Inverser les deux
+    ferait échouer l'écriture. Le tout dans une SEULE transaction (`BEGIN
+    IMMEDIATE`) : l'état est lu sous le verrou d'écriture, comme dans `rendre`
+    et `repreter`, et personne ne peut voir la pochette n°7 sans détenteur.
+
+    La table `pochettes` n'est pas libérée : le n°7 reste occupé du début à la
+    fin. Le `UPDATE` de réaffirmation ci-dessous ne sert qu'en base déjà
+    incohérente (numéro détenu mais marqué libre) — sans lui, ce numéro
+    resterait attribuable à un autre prêt.
+
+    Cette fonction ne suppose pas que les deux boîtes existent : la route le
+    vérifie avant d'appeler (patron des autres actions de prêt).
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_rendu: boîte que le visiteur rapporte (doit être sortie).
+        id_nouveau: boîte qu'il emporte. Peut être la MÊME que `id_rendu` (il
+            se ravise) : le prêt est alors clos puis rouvert sur le même
+            numéro, ce qui vaut mieux que `repreter` qui, lui, en change.
+
+    Returns:
+        {"transfere": True, "numero": n, "meme_boite": bool} en cas de succès ;
+        {"rien_a_rendre": True} si `id_rendu` n'a aucun prêt en cours (un autre
+        bénévole a pu l'enregistrer entre-temps) ;
+        {"sans_pochette": True} si le prêt en cours est une sortie tournoi, qui
+        n'a pas de pièce d'identité à transférer ;
+        {"nouveau_sorti": True, "numero": n} si `id_nouveau` est déjà sortie.
+        Dans les trois cas de refus, RIEN n'est écrit : l'écran garde ses
+        boutons et le retour classique reste à un tap (« ne jamais bloquer »).
+    """
+    with transaction(conn):
+        courant = pret_en_cours(conn, id_rendu)
+        if courant is None:
+            return {"rien_a_rendre": True}
+        numero = courant["numero_pochette"]
+        # Sortie tournoi (numéro 0) ou ligne sans numéro : rien à transférer.
+        if courant["motif"] != "pret" or not numero:
+            return {"sans_pochette": True}
+        meme_boite = id_nouveau == id_rendu
+        if not meme_boite:
+            autre = pret_en_cours(conn, id_nouveau)
+            if autre is not None:
+                return {"nouveau_sorti": True,
+                        "numero": autre["numero_pochette"]}
+        # 1. Clôture de l'ancien prêt, dont le numéro est effacé (D5) — mais
+        #    la pochette n'est PAS libérée : la pièce d'identité y est encore.
+        conn.execute(
+            "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
+            (maintenant(), courant["id_pret"]),
+        )
+        _effacer_pochette(conn, courant["id_pret"])
+        # 2. Nouveau prêt sur LE MÊME numéro (voir l'exception ci-dessus).
+        conn.execute(
+            """
+            INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
+            VALUES (?, ?, ?, 'pret')
+            """,
+            (id_nouveau, numero, maintenant()),
+        )
+        conn.execute(
+            "UPDATE pochettes SET occupe = 1 WHERE numero_pochette = ?", (numero,)
+        )
+    return {"transfere": True, "numero": numero, "meme_boite": meme_boite}
+
+
 # ===========================================================================
 # ADMINISTRATION — création/édition du catalogue depuis l'application
 # ===========================================================================
