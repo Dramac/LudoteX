@@ -848,8 +848,9 @@ def test_accueil_ce_qui_commence_fusionne_les_deux_sources(client):
     assert "Initiation dans 10 min" in page and "Tournoi de 40 min" in page
     # Ordre chronologique, toutes sources confondues.
     assert page.index("Initiation dans 10 min") < page.index("Tournoi de 40 min")
-    # Un élément de programme n'a pas de page de détail : aucun lien vers lui.
-    assert 'href="/programme/' not in page
+    # Révision du 09/08/2026 : un élément de programme a désormais sa propre
+    # page publique, comme un tournoi — le bloc y renvoie.
+    assert 'href="/programme/' in page
 
 
 def test_accueil_frise_fusionnee(client):
@@ -900,3 +901,138 @@ def test_accueil_sans_rien_a_annoncer(client):
     page = client.get("/").text
     assert "Ça commence bientôt" not in page
     assert "Programme du week-end" not in page
+
+
+# ===========================================================================
+# Révision du 09/08/2026 — page publique de détail (/programme/{id})
+# ===========================================================================
+def _id_type(nom: str) -> int:
+    """Id d'un type de programme amorcé au seed, par son nom."""
+    from app.tournoi import db as tdb
+
+    conn = tdb.get_connection()
+    try:
+        return conn.execute(
+            "SELECT id_type FROM types_programme WHERE nom = ?", (nom,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_detail_element_publie(client):
+    id_type = _id_type("Atelier")
+    r = client.post("/programme/nouveau", data={
+        "intitule": "Peinture de figurines", "description": "Un atelier calme.",
+        "id_type": str(id_type), "date_heure": "2026-08-01T10:00",
+        "heure_fin": "2026-08-01T11:00", "lieu": "Table 3",
+        "public_vise": "8 ans et +", "jauge": "6",
+    }, follow_redirects=False)
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        id_element = conn.execute(
+            "SELECT id_element FROM programme WHERE intitule = ?", ("Peinture de figurines",)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    client.post(f"/programme/{id_element}/etat", data={"etat": "publie"})
+
+    r = client.get(f"/programme/{id_element}")
+    assert r.status_code == 200
+    page = r.text
+    assert "Peinture de figurines" in page
+    assert "Atelier" in page  # type
+    assert "Table 3" in page
+    assert "8 ans et +" in page
+    assert "6" in page and "place" in page  # jauge indicative
+    assert "Un atelier calme." in page
+    assert f'href="/programme/{id_element}/agenda.ics"' in page
+    # Aucune donnée personnelle sur cette page publique.
+    assert "ATTENDEE" not in page and "ORGANIZER" not in page and "@" not in page
+
+
+def test_detail_element_sans_date_pas_de_bouton_agenda(client):
+    client.post("/programme/nouveau", data={"intitule": "Sans horaire"})
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        id_element = conn.execute(
+            "SELECT id_element FROM programme WHERE intitule = ?", ("Sans horaire",)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    client.post(f"/programme/{id_element}/etat", data={"etat": "publie"})
+
+    r = client.get(f"/programme/{id_element}")
+    assert r.status_code == 200
+    assert "agenda.ics" not in r.text
+
+
+def test_detail_brouillon_404(client):
+    client.post("/programme/nouveau", data={"intitule": "Encore un brouillon"})
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        id_element = conn.execute(
+            "SELECT id_element FROM programme WHERE intitule = ?", ("Encore un brouillon",)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    # Jamais public, quand bien même l'identifiant existe : même sort qu'un id inconnu.
+    r = client.get(f"/programme/{id_element}")
+    assert r.status_code == 404
+    assert "introuvable" in r.text.lower()
+
+
+def test_detail_id_inconnu_404(client):
+    r = client.get("/programme/999999")
+    assert r.status_code == 404
+    assert "introuvable" in r.text.lower()
+
+
+def test_detail_annule_affiche_un_bandeau(client):
+    id_element = _element_publie(client, "Loto du samedi", "2026-08-01T14:00")
+    client.post(f"/programme/{id_element}/etat", data={"etat": "annule"})
+
+    r = client.get(f"/programme/{id_element}")
+    assert r.status_code == 200
+    assert "Annulé" in r.text
+    # Toujours accessible, pas un cul-de-sac : quelqu'un qui a le lien apprend
+    # l'annulation au lieu de tomber sur une page « introuvable ».
+    assert "Loto du samedi" in r.text
+
+
+def test_grille_publique_pointe_vers_le_detail_et_pas_dagenda(client):
+    id_element = _element_publie(client, "Quiz musical", "2026-08-01T16:00",
+                                 heure_fin="2026-08-01T17:00")
+    _regler_date_evenement(client, "2026-08-01")
+
+    page = client.get("/programme").text
+    assert f'href="/programme/{id_element}"' in page
+    # Le piège du lot : le lien .ics a quitté la grille (aurait imbriqué un
+    # <a> dans un <a> une fois le bloc lui-même cliquable).
+    assert "agenda.ics" not in page
+
+
+def test_accueil_frise_pointe_vers_le_detail(client):
+    id_element = _element_publie(client, "Atelier du dimanche", "2026-08-01T14:00",
+                                 heure_fin="2026-08-01T15:00")
+    _regler_date_evenement(client, "2026-08-01")
+
+    page = client.get("/").text
+    assert f'href="/programme/{id_element}"' in page
+
+
+def test_module_desactive_bloque_aussi_la_page_de_detail(client):
+    id_element = _element_publie(client, "Cache-cache", _dans_minutes_local(30))
+    _desactiver_module("programme")
+
+    r = client.get(f"/programme/{id_element}")
+    assert r.status_code == 404
+    assert "indisponible" in r.text.lower()
+
+
+def test_gestion_propose_un_lien_vers_la_page_publique(client):
+    id_element = _element_publie(client, "Belote", "2026-08-01T09:00")
+    page = client.get("/programme/gestion").text
+    assert f'href="/programme/{id_element}"' in page

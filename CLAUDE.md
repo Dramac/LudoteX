@@ -2292,6 +2292,47 @@ clé sur les 5 surfaces, cascade dans ses 3 cas, écriture/effacement/bornage à
 quand rien ne change, nom présent dans les deux `.ics`). Aucun test existant
 adapté. **Suite globale : 686 tests verts.**
 
+**Programme du week-end — page publique par élément (revient sur une décision
+du jalon 2) : FAIT** (2026-08-09). Le §6.1 de `docs/conception-programme.md`
+écartait délibérément une page de détail pour un élément de programme (« un
+élément n'a que des champs simples ») ; à l'usage, l'absence se voyait — un
+tournoi est cliquable dans la frise de l'accueil et sur `/programme`, une
+animation ne l'était pas, sans que rien n'explique la différence, et un
+élément annulé ne pouvait prévenir personne de son annulation. Nouvelle route
+`GET /programme/{id_element:int}` (patron **exact** `tournoi.routes.detail`) +
+gabarit `programme_detail.html` : un **brouillon** est traité comme un
+identifiant inconnu (404, jamais public, comme un tournoi) ; un élément
+**annulé** reste accessible avec un bandeau `.resultat.resultat-attention`
+(« Annulé — cet élément ne se tiendra pas ») — cohérent avec `/live`, qui
+l'affiche déjà barré pendant sa fenêtre : quelqu'un qui a le lien ou l'a mis à
+son agenda doit apprendre l'annulation, pas tomber sur une page introuvable.
+Contenu : intitulé, type (icône + nom, même archivé), horaire (`dt_local`),
+durée, lieu, public visé, jauge (« indicatif »), description, bouton
+« 📅 Ajouter à mon agenda » **masqué si l'élément n'a pas de date** (le `.ics`
+renverrait 404). **Le piège du lot** : le bloc de grille de `programme_public.html`
+contenait déjà un `<a>` vers `agenda.ics` — le rendre lui-même cliquable
+aurait imbriqué un `<a>` dans un `<a>` (HTML invalide). Le lien `.ics` **quitte
+donc la grille** pour vivre sur la nouvelle page, exactement comme un bloc de
+tournoi n'a jamais eu de lien interne. Blocs rendus cliquables (mêmes
+`<div>`→`<a>`) : la grille de `/programme`, la frise deux jours de l'accueil
+(`planning-bloc--programme`), et le bloc « Ça commence bientôt » (`jeu-lien`,
+qui était un `<span>` non cliquable). Lien « Page publique » ajouté sur chaque
+ligne de `/programme/gestion` (un brouillon y affiche honnêtement un 404 —
+sert justement à vérifier qu'il n'est pas encore public). Trois affirmations
+devenues fausses corrigées : la docstring de `routes_programme.py` (« pas de
+route `/programme/{id}/gerer} » reste vrai — toujours aucun écran de GESTION
+par élément — mais précise qu'une page PUBLIQUE existe désormais), les deux
+commentaires d'`accueil.html` qui disaient « une animation n'a pas de page,
+pas de lien », et une section de révision ajoutée en fin de
+`docs/conception-programme.md` (§10, sans réécrire le §6.1 d'origine). **24
+tests ajoutés** (page publiée/annulée/sans date/brouillon/id inconnu, blocs
+cliquables sur `/programme` et l'accueil, absence d'`agenda.ics` dans la
+grille, garde de module, lien de gestion), **1 test adapté en connaissance de
+cause** (`test_accueil_ce_qui_commence_fusionne_les_deux_sources` assertait
+l'absence du lien — assertion inversée). **Suite globale : 695 tests verts.**
+Wiki : `Module-Programme.md` (nouvelle description de la page d'un élément,
+bandeau annulé, lien « Page publique » en gestion).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
