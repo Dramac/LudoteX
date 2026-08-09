@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.6.0 — 2026-08-09
+
+- L'application connaît désormais le **nom de l'événement** (« Festival du Jeu 2026 »), en plus de sa date. Il se règle dans **Administration → Gestion de l'événement**, l'ancien écran « Date de l'événement », qui rassemble maintenant les deux réglages et renvoie vers l'écran de salle, les types de programme et le planning bénévole.
+- Le nom est rappelé sur la **page d'accueil**, sur le **programme du week-end**, sur la **liste des tournois** et sur la page d'un tournoi, ainsi que dans les fichiers **ajoutés à l'agenda**. Tant qu'aucun nom n'est saisi, rien ne change nulle part.
+- Sur l'**écran de salle**, le titre affiché est le titre saisi s'il y en a un, sinon le nom de l'événement, sinon le nom de l'association. Le champ « titre » reste disponible pour donner un titre différent à l'écran projeté.
+- Chaque **animation du programme a maintenant sa page**, comme les tournois : depuis le programme du week-end ou la page d'accueil, un clic ouvre le détail (type, horaire, durée, lieu, public visé, places, description) avec le bouton **« 📅 Ajouter à mon agenda »**.
+- Une animation **annulée** garde sa page, avec un bandeau qui l'annonce clairement : quelqu'un qui a le lien ou l'a mise à son agenda apprend l'annulation au lieu de tomber sur une page introuvable.
+- Le **numéro de version** est rappelé en bas de chaque page, à côté de la licence : plus besoin de chercher pour savoir quelle version tourne.
+
 ## 1.5.0 — 2026-08-06
 
 - **Créer un tournoi** commence maintenant par le **nom du jeu**, seul champ obligatoire : c'est le cas de très loin le plus fréquent. Le titre du tournoi n'est plus à saisir séparément — il vaut le nom du jeu.
