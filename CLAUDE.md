@@ -2333,6 +2333,24 @@ l'absence du lien — assertion inversée). **Suite globale : 695 tests verts.**
 Wiki : `Module-Programme.md` (nouvelle description de la page d'un élément,
 bandeau annulé, lien « Page publique » en gestion).
 
+**Numéro de version au pied de page : FAIT** (2026-08-09). Le numéro n'était
+lisible que sur `/apropos` et `/admin/supervision` ; il est désormais rappelé
+dans le pied de page de **toutes** les pages, à côté de « Licence GPLv3 »
+(`base.html`, un seul point de rendu). Nouveau global Jinja `app_version`
+(`app/templating.py`) importé d'`app/version.py`, **porteur canonique du
+numéro** — jamais recopié en dur dans un gabarit, donc la montée de version
+suffit à mettre le pied de page à jour. Classe `.pied-version`
+(`font-variant-numeric: tabular-nums`, insécable) ; pas de lien vers
+`/apropos`, qui figure déjà juste avant dans le même pied de page (doublon
+évité). **1 test** (présence sur trois pages publiques, valeur lue depuis
+`APP_VERSION` et non écrite en dur). Wiki : `Guide-Admin.md` (le bloc
+« Version déployée » de la supervision précise qu'on peut aussi lire le
+numéro en bas de n'importe quelle page). **Suite globale : 696 tests verts.**
+
+**Version 1.6.0** (2026-08-09) : nom de l'événement + page publique par
+élément de programme + numéro de version au pied de page. Les trois porteurs
+du numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) sont alignés.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
