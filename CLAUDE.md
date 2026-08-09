@@ -2229,6 +2229,69 @@ jusqu'à la purge. **Reste du plan d'action** : lots C (injections
 localisées/dépendances), D (anti-abus/débit applicatif), E (CSRF/secrets dans
 les URL).
 
+**NOM DE L'ÉVÉNEMENT ET PAGE « GESTION DE L'ÉVÉNEMENT » : FAIT** (2026-08-09,
+cadré dans `docs/prompt-impl-evenement-nom.md`). L'application ne connaissait
+que la DATE de l'édition ; elle porte désormais aussi son **nom** (« Festival
+du Jeu 2026 »). Quatre commits.
+**Clé `evenement_nom`** dans `parametres` (base de PRÊT), à côté
+d'`evenement_date` — aucune table, aucune migration, aucun historique.
+**UN SEUL DOMICILE pour la lecture** (`app/services.py`) :
+`lire_nom_evenement(conn)` pour les appelants qui ont une connexion, et
+`nom_evenement()` qui ouvre/ferme la sienne pour ceux qui n'en ont pas (global
+Jinja, modules tournois/programme) — même exception assumée à la convention
+`conn` en paramètre que `rangement_visible`/`rangement_actif`, mais **sans
+paramètre** (le nom ne dépend pas du visiteur). Le motif « `lire_parametre`
+recopié à six endroits » est précisément celui que le projet a payé cher
+ailleurs (double domicile des index uniques, duplication de la logique
+d'expiration d'annonce).
+**`/admin/evenement` devient « Gestion de l'événement »** : nom + date dans un
+seul formulaire, plus des **liens** vers Écran de salle / Types de programme /
+Planning bénévole, qui gardent leurs pages propres (la page n'absorbe rien).
+L'**URL est conservée** (liée depuis le tableau de bord et `admin_aide.html`) ;
+seuls le titre, le `<h1>`, le libellé du menu et le `title` du lien changent.
+Une date invalide refuse l'enregistrement des DEUX champs plutôt que
+d'enregistrer le nom en silence.
+**Titre de `/live` en cascade à trois niveaux** : titre saisi > nom de
+l'événement > nom de l'association. `TITRE_DEFAUT` (constante) devient
+`titre_defaut(conn)` (le repli se lit en base) ; appelants alignés dans
+`live.py` et dans les DEUX routes `/admin/ecran-salle` (formulaire, POST,
+aperçu, placeholder). C'est la **seule** façon dont le nom apparaît sur
+`/live` — pas de ligne à lui : la refonte du 06/08 a rendu cette hauteur au
+contenu utile, et un titre saisi suivi du nom dessous ferait doublon.
+**Affichage public** : global Jinja `nom_evenement()` + composant
+`.rappel-evenement` (documenté `docs/ui-composants.md` **§15**), une ligne
+discrète SOUS le `<h1>` existant sur l'accueil, `/programme`, `/tournois` et la
+page publique d'un tournoi. Toujours conditionné : **nom absent = rien du
+tout**, jamais de libellé vide ni de « aucun nom d'événement » (règle déjà
+appliquée au rangement et à l'annonce de l'écran de salle) — un test vérifie
+que les cinq surfaces se comportent **exactement** comme avant sur une base où
+la clé n'a jamais été écrite. Rien sur les écrans bénévole/admin : ceux qui les
+utilisent savent quel événement ils préparent.
+**`.ics`** : `ical_tournoi` et `ical_element` gagnent un paramètre optionnel
+`nom_evenement`, **renseigné par la route**. Les deux services n'ont en main
+que la connexion des TOURNOIS alors que le réglage vit dans la base de PRÊT :
+leur faire ouvrir une seconde base romprait l'indépendance des trois bases.
+Côté programme, `_jours_evenement()` ouvrait déjà la bonne connexion → devient
+`_reglages_evenement()` et rapporte les DEUX réglages en une seule ouverture
+(`_jours_evenement()` subsiste en raccourci).
+**Journal** : action `evenement_nom_modifie` ajoutée au vocabulaire fermé ;
+`evenement_date_modifiee` **inchangée** (des tests et le wiki la citent
+nommément). Seul écart de comportement, assumé : chaque clé n'est journalisée
+que **si elle change** — les deux champs voyageant désormais dans le même
+formulaire, écrire à chaque envoi produirait des « date modifiée » alors que
+seul le nom a bougé (même précaution que sur `/admin/ecran-salle`, qui n'écrit
+« annonce effacée » que s'il y avait bien une annonce). Les trois POST du test
+existant changent tous la valeur : il reste vert sans modification.
+⚠️ Cette clé est l'**amorce de la future table `editions`** (fiche 6.4 de
+`docs/idees-evolutions.md`, « prérequis structurant n°1 ») : le jour venu, ce
+sont ces deux clés à migrer et ce seul couple de fonctions à faire pointer
+ailleurs. Noté dans la fiche.
+**15 tests dédiés** (`tests/test_evenement_nom.py` : non-régression sans la
+clé sur les 5 surfaces, cascade dans ses 3 cas, écriture/effacement/bornage à
+80 caractères, garde admin, les deux lignes de journal et l'absence de ligne
+quand rien ne change, nom présent dans les deux `.ics`). Aucun test existant
+adapté. **Suite globale : 686 tests verts.**
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

@@ -432,6 +432,16 @@ mise en œuvre quand elle coule de source.
   (« +12 % de prêts vs 2025 ») sans manipuler des filtres de dates à la main.
 - **Note** : la clé `evenement_date` existe ; il s'agirait d'en faire une
   petite table `editions` (nom, début, fin) référencée par les stats.
+- **Amorce posée (2026-08-09)** : la clé **`evenement_nom`** rejoint
+  `evenement_date` dans `parametres` (base de prêt), réglée depuis
+  « Gestion de l'événement » (`/admin/evenement`). Le jour où la table
+  `editions` sera créée, ce sont ces DEUX clés qu'il faudra migrer — et un
+  seul couple de fonctions à faire pointer ailleurs
+  (`services.lire_nom_evenement` / `services.nom_evenement`), délibérément
+  domicilié à un seul endroit pour cette raison, plutôt qu'une dizaine
+  d'appels dispersés. Rien d'autre n'est à reprendre : l'affichage passe
+  partout par le global Jinja `nom_evenement()`, et les deux `.ics` par un
+  paramètre renseigné par leur route.
 - **Pertinence ↑ renforcée — devient le prérequis structurant n°1.** Toujours
   aucune table `editions`, et le besoin s'est étendu au-delà des seules stats :
   le module **rangement** a introduit un contexte « Événement » dont les
