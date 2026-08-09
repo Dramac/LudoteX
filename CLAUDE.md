@@ -2372,6 +2372,79 @@ numéro en bas de n'importe quelle page). **Suite globale : 696 tests verts.**
 élément de programme + numéro de version au pied de page. Les trois porteurs
 du numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) sont alignés.
 
+**TRANSFERT DE POCHETTE — rendre une boîte et en prêter une autre sans
+déplacer la pièce d'identité : FAIT** (2026-08-10, cadré dans
+`docs/conception-transfert-pochette.md`, prompts d'implémentation
+`docs/prompt-impl-transfert-pochette.md` et `docs/prompt-wiki-transfert-pochette.md`).
+Un visiteur rapporte un jeu et repart aussitôt avec un autre : enchaîner
+« Rendre » puis « Prêter » faisait sortir sa pièce d'identité du casier n°7
+pour l'y remettre dix secondes plus tard, le plus petit numéro libre étant
+précisément celui qu'on venait de libérer. **Le besoin n'est pas « ne pas
+rendre la PI », c'est ne pas déplacer la pochette.**
+**Décisions Simon** : écran de transfert avec scan intégré (plutôt qu'un état
+en suspens dans un cookie) ; point d'entrée unique, l'écran de la boîte
+rendue ; libellé **« Rendre et prêter un nouveau jeu sans retour PI »**
+conservé tel quel (réserve consignée : « PI » n'apparaît nulle part ailleurs
+dans l'interface — le sous-titre du bouton porte donc l'explication en clair) ;
+**numéro de pochette conservé à l'identique**.
+⚠️ **EXCEPTION ASSUMÉE À UNE RÈGLE NON NÉGOCIABLE.**
+`services.transferer_pochette(conn, id_rendu, id_nouveau)` réutilise le numéro
+du prêt qu'il clôt **même si un numéro plus petit est libre** — seul endroit
+du code qui déroge à « toujours le plus petit numéro libre » (spec §6), et
+`plus_petit_numero_libre()` n'est donc pas appelée. Ce n'est pas un
+contournement : la pochette n'est jamais devenue libre, puisque la pièce
+d'identité n'a pas quitté son casier. Réattribuer le plus petit libre
+afficherait « déplacez la pièce d'identité en n°3 », soit le geste même que la
+fonctionnalité supprime. Un test verrouille explicitement ce point (§3 de la
+note), sans quoi quelqu'un « corrigera » un jour le service en toute bonne foi.
+**Aucune table, aucune colonne, aucune migration** : le transfert produit ce
+que produiraient un retour et un prêt. **Ordre imposé dans la transaction**
+(unique, `BEGIN IMMEDIATE`, patron de `repreter`) : clôture + effacement du
+numéro (D5) **avant** l'INSERT, sinon l'index UNIQUE partiel
+`idx_pochettes_un_seul_pret` refuse l'écriture (la ligne close doit sortir du
+prédicat `date_retour IS NULL` avant que la nouvelle n'y entre) — un test le
+démontre plutôt que de laisser le commentaire invérifiable. La table
+`pochettes` n'est **pas** libérée (le n°7 reste `occupe = 1` de bout en bout) ;
+un `UPDATE` de réaffirmation ne sert qu'en base déjà incohérente. Quatre refus,
+**aucun n'écrit rien** : `rien_a_rendre`, `sans_pochette` (sortie tournoi),
+`nouveau_sorti`, plus le `occupe` habituel via `_sans_conflit`.
+**Quatre routes** dans `routes/pret.py` : `GET .../transfert` (écran de scan),
+`GET .../transfert/saisie` (secours clavier), `GET .../transfert/{id_nouveau}`
+(confirmation), `POST .../transfert/{id_nouveau}` (l'opération). Trois pièges
+traités : (1) `/transfert/saisie` **déclarée avant** `/transfert/{id_nouveau}`,
+sinon FastAPI capture « saisie » comme un id (test dédié) ; (2) **le scan
+n'écrit jamais** — la caméra mène à la confirmation, comme partout ailleurs
+dans l'appli, et c'est là que le bénévole rattrape un scan de la mauvaise
+boîte, au même nombre de taps qu'un prêt ordinaire ; (3) l'écran de résultat
+est rendu sur la boîte **nouvellement sortie** mais l'emplacement de rangement
+affiché est celui de la boîte **rendue** — d'où la sentinelle `_AUTO` dans
+`_rendu()`, qui distingue « calculer » de « valeur déjà connue » sans changer
+le comportement des appelants historiques. L'écran de confirmation **prévient**
+quand la boîte visée est déjà sortie (évite un tap perdu) mais **garde son
+bouton** : ce n'est qu'un instantané, seul le POST fait autorité sous le verrou.
+`scanner.js` : **pas de duplication**, `ouvrir()` gagne une troisième cible
+`<body data-scan-cible="…">` **prioritaire** sur le mode rangement (action
+délibérée > mode d'appareil), sur le patron exact de `data-rangement`.
+**Troisième variante visuelle obligatoire** (§8 de la note) : le grand numéro
+parle par la couleur — vert « déposez la PI », bleu « récupérez-la » — et le
+transfert dit une troisième chose, **ne touchez pas à la pochette**. Réutiliser
+l'une des deux aurait fait faire le geste qu'on supprime →
+`.pochette-num--transfert` (violet d'identité), **toujours accompagnée de la
+phrase explicite**, jamais de la seule couleur ; règle de choix des trois
+variantes gravée dans `docs/ui-composants.md` **§16**.
+**Journal** : action `transfert` au vocabulaire fermé, `objet` = les deux noms
+(« Catan → Dixit »), `ref` = le titre **nouvellement prêté** (comme l'action
+`pret` : un filtre par référence donne la même chose quel que soit le chemin
+emprunté pour prêter le jeu), jamais le numéro de pochette ; refus journalisés
+au même titre que les succès. Garde-fou `test_journal_interdits.py` étendu au
+scénario. **30 tests dédiés** (`tests/test_transfert_pochette.py` 13 —
+dont la concurrence sur base FICHIER — et `tests/test_transfert_routes.py` 17),
+chacun vérifié en injectant sa régression (numéro réattribué, ordre des
+écritures inversé, `BEGIN IMMEDIATE` neutralisé, écran rendu sur la mauvaise
+boîte, routes déclarées dans le mauvais ordre). **Suite globale : 729 tests
+verts.** Wiki : `Module-Pret`, `Guide-Benevole` (dont le diagramme Mermaid),
+`FAQ`, `Journal-Activite`.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
