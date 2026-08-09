@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.7.0 — 2026-08-10
+
+- Quand une personne rend un jeu et en reprend un autre dans la foulée, un nouveau bouton **« Rendre et prêter un nouveau jeu sans retour PI »** évite de lui rendre sa pièce d'identité pour la reprendre aussitôt : elle **reste dans sa pochette**, et c'est le jeu qui lui est associé qui change. Scanner la nouvelle boîte, confirmer, c'est fait.
+- Avant d'enregistrer quoi que ce soit, un écran de confirmation montre **les deux jeux** (« Catan → Dixit ») et le numéro de pochette conservé : c'est là qu'on rattrape un scan de la mauvaise boîte. Tant que l'on n'a pas confirmé, rien n'est enregistré — abandonner en cours de route ne casse rien, le bouton **Rendre** habituel reste à portée.
+- Après un transfert, le numéro s'affiche dans une **troisième couleur**, avec la consigne « la pièce d'identité reste en place ». Impossible de le confondre avec un prêt (vert, on dépose la pièce d'identité) ou un retour (bleu, on va la récupérer). L'emplacement où ranger le jeu rendu s'affiche comme d'habitude.
+- Le bouton n'apparaît **que sur un prêt au public** — jamais sur un jeu sorti pour un tournoi, qui n'a pas de pièce d'identité. Et si la personne se ravise et repart avec le même jeu, il suffit de le rescanner : elle garde sa pochette.
+- **Écran de salle** : le titre projeté n'a plus qu'un seul réglage, le **nom de l'événement** (Administration → **Gestion de l'événement**). Le champ « Titre » disparaît de l'écran de salle, où il pouvait figer le nom de l'association et empêcher ensuite le nom de l'événement de s'afficher. Un titre déjà enregistré est repris automatiquement comme nom d'événement : rien à ressaisir.
+
 ## 1.6.0 — 2026-08-09
 
 - L'application connaît désormais le **nom de l'événement** (« Festival du Jeu 2026 »), en plus de sa date. Il se règle dans **Administration → Gestion de l'événement**, l'ancien écran « Date de l'événement », qui rassemble maintenant les deux réglages et renvoie vers l'écran de salle, les types de programme et le planning bénévole.
