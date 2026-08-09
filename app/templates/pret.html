@@ -48,6 +48,31 @@
       <section class="resultat resultat-attention">
         <p>Cet exemplaire était déjà disponible. Rien à rendre.</p>
       </section>
+    {% elif resultat.type == "transfert" %}
+      {# Transfert de pochette (docs/conception-transfert-pochette.md §8) :
+         ni « glissez la PI » (vert) ni « récupérez-la » (bleu) — une
+         troisième couleur, pour dire NE TOUCHEZ PAS À LA POCHETTE. #}
+      <section class="resultat resultat-ok">
+        <p class="resultat-libelle">
+          {% if resultat.meme_boite %}Repart avec le même jeu — pochette n°
+          {% else %}Pochette inchangée n°{% endif %}
+        </p>
+        <p class="pochette-num pochette-num--transfert">{{ resultat.numero }}</p>
+        <p class="resultat-consigne">La pièce d'identité reste en place — ne touchez pas à la pochette.</p>
+        {% if not resultat.meme_boite %}
+          <p class="resultat-consigne">{{ resultat.rendu_nom }} → {{ info.nom }}</p>
+        {% endif %}
+      </section>
+    {% elif resultat.type == "transfert_impossible" %}
+      <section class="resultat resultat-attention">
+        <p>
+          {% if resultat.raison == "rien_a_rendre" %}
+            Cette boîte a déjà été rendue par un autre bénévole entre-temps. Il n'y a plus de pochette à transférer.
+          {% else %}
+            Cette sortie est un prêt de tournoi : il n'y a pas de pièce d'identité à transférer.
+          {% endif %}
+        </p>
+      </section>
     {# Conflit d'accès simultané : la transaction a été annulée, donc RIEN n'a
        été enregistré — le dire explicitement, sinon le bénévole n'ose pas
        réappuyer de peur de créer un doublon. Les boutons d'action restent
@@ -85,6 +110,15 @@
           Rendre <span class="bouton-sous">libère la pochette n°{{ pret_actuel.numero_pochette }}</span>
         </button>
       </form>
+      {# Transfert de pochette (docs/conception-transfert-pochette.md) :
+         UNIQUEMENT pour un prêt au public — jamais pour une sortie tournoi,
+         qui n'a pas de pièce d'identité (branche juste au-dessus). Un lien,
+         pas un bouton POST : il OUVRE un écran, il n'écrit rien (§2 des
+         trois pièges de la note d'implémentation). #}
+      <a class="bouton bouton-secondaire" href="/pret/{{ info.id_exemplaire }}/transfert">
+        Rendre et prêter un nouveau jeu sans retour PI
+        <span class="bouton-sous">la pièce d'identité reste dans la pochette n°{{ pret_actuel.numero_pochette }}</span>
+      </a>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/repreter">
         <button class="bouton bouton-secondaire" type="submit">
           Le re-prêter <span class="bouton-sous">oubli de scan : nouveau prêt</span>

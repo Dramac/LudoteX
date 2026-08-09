@@ -284,6 +284,12 @@ summary:focus-visible,
 /* Retour d'un jeu : même gabarit que le prêt, numéro en BLEU pour distinguer
    d'un coup d'œil « je récupère » (retour) de « je dépose » (prêt, vert). */
 .pochette-num--retour { color: #1a73e8; }
+/* Transfert de pochette (docs/conception-transfert-pochette.md §8) : ni vert
+   (glissez la PI) ni bleu (récupérez-la) — une troisième couleur pour dire
+   NE TOUCHEZ PAS À LA POCHETTE. Réutilise le violet d'identité du site
+   (déjà .bouton-filtrer, theme-color) qui ne porte par ailleurs aucun sens
+   de dépôt/retrait sur cet écran — voir docs/ui-composants.md §16. */
+.pochette-num--transfert { color: #4a148c; }
 .resultat-consigne { margin: 0; font-weight: 600; }
 
 /* Code personnel (fiche D4, docs/audit-ux-2026-07-18.md) : code de

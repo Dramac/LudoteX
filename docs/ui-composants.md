@@ -330,3 +330,32 @@ titre (`live.titre_defaut`) et non par une ligne à lui — la refonte du 06/08 
 rendu cette hauteur au contenu utile. Sur les écrans bénévole et
 d'administration, il n'apporte rien : les personnes qui les utilisent savent
 quel événement elles préparent.
+
+---
+
+## 16. Trois variantes de `.pochette-num` — règle de choix
+
+Le grand numéro de pochette affiché sur `/pret/<id>` parle par la couleur,
+sans texte à lire de loin. Trois variantes, trois gestes différents :
+
+```html
+<p class="pochette-num">7</p>              <!-- vert  : DÉPOSEZ la PI ici -->
+<p class="pochette-num pochette-num--retour">7</p>     <!-- bleu   : RÉCUPÉREZ la PI ici -->
+<p class="pochette-num pochette-num--transfert">7</p>  <!-- violet : NE TOUCHEZ PAS à la pochette -->
+```
+
+Ajoutée par le **transfert de pochette**
+(`docs/conception-transfert-pochette.md` §8) : rendre une boîte et en prêter
+une autre sans faire ressortir la pièce d'identité de son casier. Réutiliser
+le vert ou le bleu aurait fait faire au bénévole le geste exact que la
+fonctionnalité supprime — d'où une troisième couleur, le violet d'identité du
+site (`#4a148c`, déjà `.bouton-filtrer`, `theme-color`), qui ne porte par
+ailleurs aucun sens de dépôt/retrait sur cet écran.
+
+**Règle de choix** : le vert et le bleu se choisissent déjà tout seuls (prêt
+vs retour). Le violet ne s'utilise QUE quand le numéro affiché correspond à
+une pochette qui ne bouge pas — à ce jour, uniquement l'écran de résultat du
+transfert (`pret.html`, `resultat.type == "transfert"`). Toujours accompagné
+d'une phrase explicite (« La pièce d'identité reste en place — ne touchez pas
+à la pochette. »), jamais de la seule couleur : un bénévole qui découvre
+l'écran pour la première fois ne connaît pas encore le code couleur.

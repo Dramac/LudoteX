@@ -55,25 +55,38 @@
   }
 
   /**
-   * Ouvre l'écran prêt/retour pour l'id donné (et stoppe la boucle de scan).
+   * Ouvre l'écran prêt/retour (ou une autre cible) pour l'id donné, et stoppe
+   * la boucle de scan.
    *
-   * MODE RANGEMENT (§4.a) : tant que <body data-rangement="1"> est posé
-   * (bandeau actif, voir scanner.html), on redirige vers /scanner/ranger au
-   * lieu de /pret/<id> — le serveur affecte l'emplacement actif à la boîte
-   * puis réaffiche /scanner (caméra prête pour la suivante) au lieu d'ouvrir
-   * sa fiche.
+   * TROIS CIBLES POSSIBLES, dans cet ordre de PRIORITÉ :
+   *   1. `<body data-scan-cible="...">` — cible EXPLICITE posée par le
+   *      gabarit courant (ex. transfert_scan.html : "/pret/<id_rendu>/transfert/").
+   *      L'id scanné est simplement concaténé au préfixe. PRIORITAIRE sur le
+   *      mode rangement : c'est une action délibérée du bénévole (il a ouvert
+   *      cet écran précis pour ça), alors que le rangement est un mode
+   *      d'APPAREIL qui peut rester actif en arrière-plan
+   *      (docs/conception-transfert-pochette.md, étape 4).
+   *   2. `<body data-rangement="1">` (§4.a) — mode rangement actif : redirige
+   *      vers /scanner/ranger, qui affecte l'emplacement actif à la boîte au
+   *      lieu d'ouvrir sa fiche.
+   *   3. Par défaut : /pret/<id>, l'écran prêt/retour habituel.
    *
    * @param {string} id - identifiant d'exemplaire.
    */
   function ouvrir(id) {
     fini = true;  // empêche une 2e détection de redéclencher une navigation
-    var enModeRangement = document.body.dataset.rangement === "1";
+    var cible = document.body.dataset.scanCible;
+    var enModeRangement = !cible && document.body.dataset.rangement === "1";
     statut.textContent = enModeRangement
       ? "Jeu détecté — rangement…"
       : "Jeu détecté — ouverture…";
-    window.location.href = enModeRangement
-      ? "/scanner/ranger?code=" + encodeURIComponent(id)
-      : "/pret/" + encodeURIComponent(id);
+    if (cible) {
+      window.location.href = cible + encodeURIComponent(id);
+    } else if (enModeRangement) {
+      window.location.href = "/scanner/ranger?code=" + encodeURIComponent(id);
+    } else {
+      window.location.href = "/pret/" + encodeURIComponent(id);
+    }
   }
 
   /**
