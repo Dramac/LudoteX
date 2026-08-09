@@ -70,6 +70,16 @@ templates.env.globals["rangement_visible"] = services.rangement_visible
 # docs/audit-ux-2026-07-18.md). Usage : {% set rgt = rangement_actif(request) %}
 templates.env.globals["rangement_actif"] = services.rangement_actif
 
+# Nom de l'événement en cours (« Festival du Jeu 2026 »), réglé depuis
+# /admin/evenement — à ne pas confondre avec `nom_association`, qui vient du
+# .env et ne change pas d'une édition à l'autre. Vaut None tant qu'il n'a pas
+# été renseigné : les gabarits doivent donc TOUJOURS le tester avant de
+# l'afficher ({% if nom_evenement() %}), pour ne jamais montrer un rappel vide.
+# Ouvre sa propre connexion, comme `rangement_visible`/`rangement_actif` (seule
+# la requête est disponible dans un gabarit) — mais sans paramètre : le nom ne
+# dépend pas du visiteur.
+templates.env.globals["nom_evenement"] = services.nom_evenement
+
 # Accord singulier/pluriel disponible dans TOUS les gabarits, sans import :
 # {{ n }} {{ pluriel(n, 'jeu', 'jeux') }} -- remplace les pluriels parenthésés
 # type « jeu(x) », « prêt(s) » (docs/idees-ux.md Q2).

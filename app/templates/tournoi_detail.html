@@ -12,6 +12,8 @@
 {% else %}
   <section class="carte">
     <h1>{{ t.nom }}</h1>
+    {% set evenement = nom_evenement() %}
+    {% if evenement %}<p class="rappel-evenement">{{ evenement }}</p>{% endif %}
 
     {% if t.etat == "termine" %}
       <p class="etat etat-sorti">Terminé</p>

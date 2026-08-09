@@ -5,6 +5,8 @@
 {% block contenu %}
 <section class="carte" id="haut">
   <h1>Programme du week-end</h1>
+  {% set evenement = nom_evenement() %}
+  {% if evenement %}<p class="rappel-evenement">{{ evenement }}</p>{% endif %}
   <p class="stats-note">
     Animations, ateliers, initiations, temps forts et interventions
     partenaires — en plus des <a class="lien" href="/tournois">tournois</a>.

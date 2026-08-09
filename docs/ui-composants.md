@@ -286,7 +286,8 @@ eux.
 **Exception assumée** : `live.html` n'étend pas `base.html` — c'est une page
 autonome pensée pour un projecteur/TV, avec son propre `<title>{{ data.titre
 }} — Tableau de bord</title>`. `data.titre` est réglable en admin
-(`/admin/ecran-salle`, défaut = nom de l'association) : lui ajouter
+(`/admin/ecran-salle` ; à défaut, cascade sur le nom de l'événement puis sur
+celui de l'association — voir `live.titre_defaut`) : lui ajouter
 inconditionnellement `— {{ nom_association }}` doublonnerait le nom par
 défaut et braderait la personnalisation admin. Laissé tel quel, décision
 prise dans la fiche elle-même.
@@ -295,3 +296,37 @@ Garde-fou : `tests/test_routes.py::test_d1_titre_onglet_se_termine_par_nom_assoc
 (paramétré sur les routes principales de chaque famille) et
 `test_d1_titre_onglet_tournoi_et_planning_avec_objet` (pages qui exigent un
 tournoi/événement existant).
+
+---
+
+## 15. Rappel du nom de l'événement — `.rappel-evenement`
+
+Le nom de l'édition en cours (« Festival du Jeu 2026 »), réglé depuis
+`/admin/evenement`, est rappelé sur quatre surfaces publiques : la page
+d'accueil, `/programme`, `/tournois` et la page publique d'un tournoi.
+
+```html
+{% set evenement = nom_evenement() %}
+{% if evenement %}<p class="rappel-evenement">{{ evenement }}</p>{% endif %}
+```
+
+**Trois règles.**
+
+1. **Toujours sous un `<h1>`, jamais à sa place.** C'est un rappel de contexte,
+   pas le sujet de la page : le `<h1>` reste « Tournois », « Programme du
+   week-end », le nom du tournoi. La classe est volontairement plus discrète
+   qu'un titre et plus lisible que `.stats-note` (réservée aux notes
+   explicatives de bas de champ).
+2. **Toujours conditionné.** `nom_evenement()` vaut `None` tant que le réglage
+   n'a pas été renseigné : sans le `{% if %}`, la page afficherait un rappel
+   vide. Règle « ne jamais afficher une valeur absente », déjà appliquée au
+   rangement et à l'annonce de l'écran de salle.
+3. **Ne pas confondre avec `nom_association`.** Le nom de l'association vient
+   du `.env` et ne change pas d'une édition à l'autre ; le nom de l'événement
+   se règle en administration et change chaque année.
+
+**Où il n'apparaît PAS**, et pourquoi : sur `/live`, il passe par la cascade du
+titre (`live.titre_defaut`) et non par une ligne à lui — la refonte du 06/08 a
+rendu cette hauteur au contenu utile. Sur les écrans bénévole et
+d'administration, il n'apporte rien : les personnes qui les utilisent savent
+quel événement elles préparent.

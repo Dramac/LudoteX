@@ -6,6 +6,8 @@
   <img class="logo-catalogue" src="/static/img/logo_ludotex.jpg"
        alt="{{ nom_association }}">
   <h1>{{ nom_association }}</h1>
+  {% set evenement = nom_evenement() %}
+  {% if evenement %}<p class="rappel-evenement">{{ evenement }}</p>{% endif %}
   <p class="accueil-dispo">
     <strong>{{ disponible }}</strong> {{ pluriel(disponible, 'jeu', 'jeux') }}
     {{ pluriel(disponible, 'disponible', 'disponibles') }} au prêt

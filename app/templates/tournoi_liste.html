@@ -31,6 +31,8 @@
 {% block contenu %}
 <section class="carte">
   <h1>Tournois</h1>
+  {% set evenement = nom_evenement() %}
+  {% if evenement %}<p class="rappel-evenement">{{ evenement }}</p>{% endif %}
 
   {% if message %}
     <div class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">

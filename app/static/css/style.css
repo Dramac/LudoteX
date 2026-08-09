@@ -438,6 +438,16 @@ summary:focus-visible,
 .histo-barre { height: 16px; background: #7e57c2; border-radius: 4px; min-width: 2px; }
 .histo-val { font-size: 0.85rem; font-weight: 600; }
 .stats-note { color: #6b7075; font-size: 0.8rem; }
+/* Rappel du nom de l'événement sous un titre de page (accueil, programme,
+   tournois). C'est un RAPPEL, pas le sujet de la page : il ne concurrence
+   jamais le <h1> qui le précède. Plus lisible que .stats-note, qui est réservée
+   aux notes explicatives de bas de champ. Voir docs/ui-composants.md §15. */
+.rappel-evenement {
+  color: var(--gris);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: -4px 0 16px;
+}
 .stats-export { font-weight: 600; }
 .case { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .case input { width: auto; }
