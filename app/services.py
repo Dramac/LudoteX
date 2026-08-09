@@ -1545,8 +1545,8 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
 # ailleurs, pas une dizaine d'appels dispersés.
 CLE_EVENEMENT_NOM = "evenement_nom"
 
-# Longueur maximale du nom, alignée sur le titre de l'écran de salle (qui peut
-# être ce même nom, par la cascade de `live.titre_defaut`).
+# Longueur maximale du nom. C'est aussi le titre affiché sur l'écran de salle
+# (voir `live.titre_ecran`) : il doit rester lisible de loin sur une seule ligne.
 LONGUEUR_NOM_EVENEMENT = 80
 
 

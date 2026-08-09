@@ -1186,16 +1186,15 @@ def ecran_salle_formulaire(request: Request):
     if (garde := _garde(request)):
         return garde
     from app.routes.live import (
-        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, annonce_active,
-        panneaux_actifs, reglages_panneaux, titre_defaut,
+        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, annonce_active,
+        panneaux_actifs, reglages_panneaux, titre_ecran,
     )
 
     conn = get_connection()
     try:
-        # Repli de la cascade (nom de l'événement, sinon nom de l'association) :
-        # calculé sur la connexion ouverte ici, comme le fait /live.
-        defaut = titre_defaut(conn)
-        titre = services.lire_parametre(conn, CLE_TITRE, defaut)
+        # Le titre ne se règle plus ici (il vaut le nom de l'événement) : on ne
+        # l'affiche qu'à titre indicatif, avec un lien pour aller le changer.
+        titre = titre_ecran(conn)
         annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
         annonce_expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
         # Réglages tels que saisis (le formulaire réaffiche le choix du
@@ -1212,7 +1211,7 @@ def ecran_salle_formulaire(request: Request):
         conn.close()
     return templates.TemplateResponse(
         request, "admin_live.html",
-        {"titre": titre, "titre_defaut": defaut,
+        {"titre": titre,
          "annonce": annonce, "annonce_duree": _minutes_restantes(annonce_expire_iso),
          "annonce_expire_iso": annonce_expire_iso if annonce else None,
          "annonce_affichee": annonce_affichee,
@@ -1225,7 +1224,6 @@ def ecran_salle_formulaire(request: Request):
 @router.post("/ecran-salle")
 def ecran_salle_enregistrer(
     request: Request,
-    titre: str = Form(""),
     annonce: str = Form(""),
     annonce_duree: str = Form(""),
     panneau_chiffres: str = Form(""),
@@ -1234,23 +1232,24 @@ def ecran_salle_enregistrer(
     panneau_mouvements: str = Form(""),
 ):
     """
-    Enregistre le titre et l'annonce de l'écran de salle.
-    - Titre vide => retour au titre par défaut.
+    Enregistre l'annonce et les panneaux de l'écran de salle.
     - Annonce vide (champ vidé, ou bouton « Effacer l'annonce ») => aucun
       bandeau sur /live.
     - Durée (minutes) optionnelle : vide/0/invalide => affichage illimité,
       comme avant. Une durée valide fixe une échéance (now + N min), au-delà
       de laquelle l'annonce s'auto-masque (voir `live.annonce_active`) sans
       jamais être effacée de force ici.
+
+    Le TITRE ne se règle plus ici : il vaut le nom de l'événement (voir
+    `live.titre_ecran`). Cette page ne l'affiche qu'à titre indicatif.
     """
     if (garde := _garde(request)):
         return garde
     from app.routes.live import (
-        CLES_PANNEAUX, CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE,
-        annonce_active, panneaux_actifs, reglages_panneaux, titre_defaut,
+        CLES_PANNEAUX, CLE_ANNONCE, CLE_ANNONCE_EXPIRE,
+        annonce_active, panneaux_actifs, reglages_panneaux, titre_ecran,
     )
 
-    saisie_titre = " ".join(titre.split())[:80]
     saisie_annonce = " ".join(annonce.split())[:200]
 
     duree_min = None
@@ -1269,7 +1268,7 @@ def ecran_salle_enregistrer(
 
     # Cases à cocher : une case décochée n'est pas transmise par le navigateur,
     # d'où la lecture par présence. Les deux formulaires de la page envoient
-    # TOUJOURS les trois champs (le mini-formulaire « Effacer l'annonce » les
+    # TOUJOURS les quatre cases (le mini-formulaire « Effacer l'annonce » les
     # rejoue en champs cachés) : effacer une annonce ne doit jamais éteindre
     # silencieusement les panneaux.
     choix_panneaux = {
@@ -1282,11 +1281,10 @@ def ecran_salle_enregistrer(
     conn = get_connection()
     try:
         # Lu AVANT écriture : sert uniquement à savoir s'il y avait une annonce
-        # à effacer. Enregistrer le titre seul, sans annonce ni avant ni après,
-        # ne doit rien écrire au journal — sinon chaque passage sur cette page
-        # produirait une ligne « annonce effacée » qui ne s'est jamais produite.
+        # à effacer. Enregistrer les panneaux seuls, sans annonce ni avant ni
+        # après, ne doit rien écrire au journal — sinon chaque passage sur cette
+        # page produirait une ligne « annonce effacée » qui n'a jamais eu lieu.
         annonce_precedente = services.lire_parametre(conn, CLE_ANNONCE, None)
-        services.ecrire_parametre(conn, CLE_TITRE, saisie_titre or None)
         services.ecrire_parametre(conn, CLE_ANNONCE, saisie_annonce or None)
         services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
         for nom, cle in CLES_PANNEAUX.items():
@@ -1295,7 +1293,7 @@ def ecran_salle_enregistrer(
         annonce_affichee = annonce_active(conn)
         panneaux = reglages_panneaux(conn)
         panneaux_reels = panneaux_actifs(conn)
-        defaut = titre_defaut(conn)
+        titre = titre_ecran(conn)
     finally:
         conn.close()
 
@@ -1309,8 +1307,6 @@ def ecran_salle_enregistrer(
     elif annonce_precedente:
         journal.journaliser(request, "live", "annonce_effacee", objet=annonce_precedente)
 
-    partie_titre = ("Titre enregistré." if saisie_titre
-                     else "Titre effacé — le titre par défaut est utilisé.")
     if saisie_annonce:
         partie_annonce = (f"Annonce enregistrée, affichée en salle pendant {duree_min} min."
                            if expire_iso else
@@ -1321,15 +1317,15 @@ def ecran_salle_enregistrer(
     # avertit sans bloquer — comme partout dans le projet.
     if not any(choix_panneaux.values()):
         message = ("attention",
-                   f"{partie_titre} {partie_annonce} Attention : aucun panneau "
+                   f"{partie_annonce} Attention : aucun panneau "
                    "n'est affiché — l'écran de salle ne montrera plus que le "
                    "titre, l'horloge et l'annonce.")
     else:
-        message = ("succes", f"{partie_titre} {partie_annonce}")
+        message = ("succes", partie_annonce)
 
     return templates.TemplateResponse(
         request, "admin_live.html",
-        {"titre": saisie_titre or defaut, "titre_defaut": defaut,
+        {"titre": titre,
          "annonce": saisie_annonce, "annonce_duree": _minutes_restantes(expire_iso),
          "annonce_expire_iso": expire_iso if saisie_annonce else None,
          "annonce_affichee": annonce_affichee,

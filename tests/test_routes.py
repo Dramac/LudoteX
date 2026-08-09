@@ -1483,14 +1483,25 @@ def test_live_horodatage_sans_secondes(client):
 
 
 def test_live_titre_configurable(client):
+    """
+    Le titre de /live suit le NOM DE L'ÉVÉNEMENT, à défaut le nom de
+    l'association.
+
+    Adapté EN CONNAISSANCE DE CAUSE : ce test écrivait auparavant la clé
+    `live_titre`, réglage propre à l'écran de salle. Elle n'existe plus — deux
+    réglages sur deux pages disaient presque toujours la même chose, et le
+    premier rendait le second sans effet (voir `live.titre_ecran`). La
+    propriété testée, elle, n'a pas changé : le titre projeté est
+    configurable et se répercute sur la page comme sur les données.
+    """
     # Titre par défaut quand rien n'est réglé.
     assert client.get("/live/data").json()["titre"] == "LudoteX"
-    # Réglage du titre (comme le ferait l'admin) -> répercuté sur page et données.
     from app import db, services
 
     conn = db.get_connection()
     try:
-        services.ecrire_parametre(conn, "live_titre", "Festival du Jeu 2026")
+        services.ecrire_parametre(conn, services.CLE_EVENEMENT_NOM,
+                                  "Festival du Jeu 2026")
     finally:
         conn.close()
     assert client.get("/live/data").json()["titre"] == "Festival du Jeu 2026"

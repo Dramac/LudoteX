@@ -6,8 +6,17 @@
   <h1>Écran de salle</h1>
   <p class="stats-note">
     Réglages du <strong>tableau de bord projeté en salle</strong>
-    (<a class="lien" href="/live">/live</a>) : son titre, l'annonce du moment et
-    les panneaux affichés.
+    (<a class="lien" href="/live">/live</a>) : l'annonce du moment et les
+    panneaux affichés.
+  </p>
+
+  {# Le titre n'est plus un réglage de cette page : il vaut le nom de
+     l'événement. Il est rappelé ici parce que c'est ici qu'on vient le
+     chercher, avec le lien pour aller le changer au bon endroit. #}
+  <p class="stats-note">
+    Titre affiché en haut de l'écran : <strong>{{ titre }}</strong> — c'est le
+    <a class="lien" href="/admin/evenement">nom de l'événement</a>, ou à défaut
+    le nom de l'association.
   </p>
 
   {% if message %}
@@ -25,18 +34,6 @@
   {% endif %}
 
   <form method="post" action="/admin/ecran-salle" class="recherche-form">
-    <div class="champ">
-      <label for="titre">Titre de l'écran de salle</label>
-      <input type="text" id="titre" name="titre" maxlength="80"
-             value="{{ titre or '' }}" placeholder="{{ titre_defaut }}">
-      <small class="stats-note">
-        Laissé vide, l'écran affiche le
-        <a class="lien" href="/admin/evenement">nom de l'événement</a> s'il est
-        renseigné, sinon le nom de l'association — soit « {{ titre_defaut }} »
-        en l'état.
-      </small>
-    </div>
-
     <div class="champ">
       <label>Panneaux affichés en salle</label>
       <label class="case">
@@ -120,7 +117,6 @@
 
   {% if annonce %}
     <form method="post" action="/admin/ecran-salle" class="recherche-form">
-      <input type="hidden" name="titre" value="{{ titre or '' }}">
       <input type="hidden" name="annonce" value="">
       <input type="hidden" name="annonce_duree" value="">
       {# Les panneaux sont rejoués à l'identique : effacer une annonce ne doit

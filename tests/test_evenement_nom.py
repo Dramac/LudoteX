@@ -166,42 +166,93 @@ def test_sans_nom_le_service_renvoie_none(client):
 
 
 # ---------------------------------------------------------------------------
-# 2. CASCADE DU TITRE DE /live — trois cas
+# 2. TITRE DE /live — un seul réglage, celui de « Gestion de l'événement »
 # ---------------------------------------------------------------------------
-def test_cascade_titre_live_sans_rien(client):
-    """Ni titre saisi, ni nom d'événement : le nom de l'association."""
+def test_titre_live_sans_nom(client):
+    """Aucun nom d'événement : le nom de l'association."""
     assert client.get("/live/data").json()["titre"] == "LudoteX"
 
 
-def test_cascade_titre_live_nom_evenement_seul(client):
-    """Nom d'événement sans titre saisi : c'est le nom qui s'affiche."""
+def test_titre_live_est_le_nom_de_l_evenement(client):
+    """Le nom renseigné dans « Gestion de l'événement » titre l'écran projeté."""
     _poser_nom(client)
     assert client.get("/live/data").json()["titre"] == NOM
-    # Le titre par défaut proposé en admin suit la même cascade.
+    assert NOM in client.get("/live").text
+
+
+def test_ecran_salle_n_a_plus_de_champ_titre(client):
+    """
+    Le titre ne se règle plus sur /admin/ecran-salle : plus de champ de saisie,
+    seulement un rappel de sa valeur et un lien vers l'endroit où la changer.
+
+    Garde-fou du défaut qui a motivé ce choix : le champ était prérempli avec
+    la valeur par défaut, si bien qu'enregistrer une annonce figeait le nom de
+    l'association comme titre explicite — après quoi renseigner le nom de
+    l'événement ne changeait plus rien à l'écran.
+    """
+    _poser_nom(client)
     page = client.get("/admin/ecran-salle")
+    assert page.status_code == 200
+    assert 'name="titre"' not in page.text
     assert NOM in page.text
+    assert 'href="/admin/evenement"' in page.text
 
 
-def test_cascade_titre_live_titre_saisi_l_emporte(client):
-    """Un titre saisi l'emporte sur le nom de l'événement, qui l'emporte lui-même
-    sur le nom de l'association."""
+def test_enregistrer_une_annonce_ne_fige_pas_le_titre(client):
+    """Le scénario exact du défaut corrigé : après un enregistrement sur
+    /admin/ecran-salle, changer le nom de l'événement doit toujours changer
+    l'écran."""
     _poser_nom(client)
     client.post(
         "/admin/ecran-salle",
-        data={"titre": "Grand tournoi du dimanche", "annonce": "",
+        data={"annonce": "Tombola à 15 h", "annonce_duree": "",
               "panneau_chiffres": "1", "panneau_tournois": "1",
               "panneau_programme": "1", "panneau_mouvements": "1"},
     )
-    assert client.get("/live/data").json()["titre"] == "Grand tournoi du dimanche"
-
-    # Titre vidé : on retombe sur le nom de l'événement, pas sur l'association.
-    client.post(
-        "/admin/ecran-salle",
-        data={"titre": "", "annonce": "", "panneau_chiffres": "1",
-              "panneau_tournois": "1", "panneau_programme": "1",
-              "panneau_mouvements": "1"},
-    )
     assert client.get("/live/data").json()["titre"] == NOM
+
+    _poser_nom(client, nom="La nuit du jeu 2027")
+    assert client.get("/live/data").json()["titre"] == "La nuit du jeu 2027"
+
+
+def test_migration_de_l_ancien_titre_vers_le_nom_de_l_evenement(client, tmp_path):
+    """
+    Une base d'avant ce lot porte `live_titre` : la valeur est REPRISE comme
+    nom de l'événement (rien à ressaisir, l'écran continue d'afficher la même
+    chose), et l'ancienne clé disparaît.
+    """
+    from app import db, services
+
+    conn = db.get_connection()
+    try:
+        services.ecrire_parametre(conn, "live_titre", "La nuit du jeu 2026")
+        services.ecrire_parametre(conn, services.CLE_EVENEMENT_NOM, None)
+        db.init_db(conn)  # rejoue les migrations, comme au démarrage
+        assert services.lire_nom_evenement(conn) == "La nuit du jeu 2026"
+        assert services.lire_parametre(conn, "live_titre") is None
+        # Idempotence : un second passage ne change plus rien.
+        db.init_db(conn)
+        assert services.lire_nom_evenement(conn) == "La nuit du jeu 2026"
+    finally:
+        conn.close()
+    assert client.get("/live/data").json()["titre"] == "La nuit du jeu 2026"
+
+
+def test_migration_ne_recouvre_pas_un_nom_deja_renseigne(client):
+    """Si les deux réglages coexistaient, c'est le nom de l'événement qui fait
+    foi ; l'ancien titre est abandonné (et averti dans les journaux serveur),
+    jamais réécrit par-dessus."""
+    from app import db, services
+
+    conn = db.get_connection()
+    try:
+        services.ecrire_parametre(conn, services.CLE_EVENEMENT_NOM, NOM)
+        services.ecrire_parametre(conn, "live_titre", "Un vieux titre")
+        db.init_db(conn)
+        assert services.lire_nom_evenement(conn) == NOM
+        assert services.lire_parametre(conn, "live_titre") is None
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------

@@ -303,6 +303,69 @@ def _creer_index_uniques(conn: sqlite3.Connection) -> list[str]:
     return refuses
 
 
+def _migrer_titre_live_vers_nom_evenement(conn: sqlite3.Connection) -> str | None:
+    """
+    Reprend l'ancien réglage `live_titre` dans `evenement_nom` (idempotent).
+
+    POURQUOI
+    --------
+    Le titre de l'écran de salle et le nom de l'événement étaient deux réglages
+    distincts, sur deux pages différentes, disant presque toujours la même
+    chose — et le premier l'emportant sur le second, renseigner le nom de
+    l'événement restait sans effet sur `/live`. Il n'y a désormais plus qu'un
+    seul réglage, dans « Gestion de l'événement ». `live_titre` n'a plus aucun
+    lecteur : cette migration le déplace au lieu de le laisser mourir en base.
+
+    Deux cas, aucune perte silencieuse :
+    - `evenement_nom` absent : la valeur de `live_titre` DEVIENT le nom de
+      l'événement (le bureau n'a rien à ressaisir, et ce qui s'affichait en
+      salle continue de s'afficher).
+    - `evenement_nom` déjà renseigné : les deux réglages coexistaient, c'est
+      donc le nom de l'événement qui fait foi. L'ancien titre est abandonné —
+      mais il est AVERTI dans les journaux du serveur, jamais effacé en
+      silence.
+
+    Dans les deux cas la clé `live_titre` est supprimée : la laisser en place
+    ferait réapparaître l'ancienne valeur au prochain changement de nom, et
+    entretiendrait un double domicile que ce lot supprime précisément.
+
+    Returns:
+        L'ancienne valeur reprise, ou None s'il n'y avait rien à migrer (cas
+        nominal d'une base à jour, et de toute base créée après ce lot).
+    """
+    ancien = conn.execute(
+        "SELECT valeur FROM parametres WHERE cle = 'live_titre'"
+    ).fetchone()
+    if not ancien or not ancien[0]:
+        return None
+    ancien = ancien[0]
+    actuel = conn.execute(
+        "SELECT valeur FROM parametres WHERE cle = 'evenement_nom'"
+    ).fetchone()
+    if actuel and actuel[0]:
+        logging.getLogger("uvicorn.error").warning(
+            "Ancien titre d'écran de salle « %s » abandonné : un nom "
+            "d'événement (« %s ») est déjà renseigné et fait foi. Le titre de "
+            "/live se règle désormais dans « Gestion de l'événement ».",
+            ancien, actuel[0],
+        )
+    else:
+        conn.execute(
+            "INSERT INTO parametres (cle, valeur) VALUES ('evenement_nom', ?) "
+            "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+            (ancien,),
+        )
+        logging.getLogger("uvicorn.error").info(
+            "Titre d'écran de salle « %s » repris comme nom de l'événement : "
+            "il se règle désormais dans « Gestion de l'événement », et sert "
+            "aussi de rappel sur l'accueil, le programme et les tournois.",
+            ancien,
+        )
+    conn.execute("DELETE FROM parametres WHERE cle = 'live_titre'")
+    conn.commit()
+    return ancien
+
+
 def _seed_emplacements_rangement(conn: sqlite3.Connection) -> None:
     """
     Premier remplissage de `emplacements_rangement` (idempotent).
@@ -350,6 +413,9 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         # dans la foulée. Et comme cette étape ne lève jamais, une incohérence
         # préexistante ne peut pas faire échouer la migration ci-dessus.
         _creer_index_uniques(conn)
+        # Réglage devenu obsolète : le titre de /live se règle désormais dans
+        # « Gestion de l'événement » (une seule saisie au lieu de deux).
+        _migrer_titre_live_vers_nom_evenement(conn)
         _seed_emplacements_rangement(conn)
     finally:
         # On ne ferme que si on a ouvert : ne pas fermer la connexion du test.

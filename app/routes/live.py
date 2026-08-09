@@ -39,8 +39,10 @@ FENETRE_A_VENIR_MIN = 120
 # les lignes en trop ne tiendraient de toute façon pas à l'écran — la page les
 # tronque avec un « et N autres… », mais autant ne pas les transporter.
 NB_MOUVEMENTS = 8
-# Clé du paramètre « titre de l'écran salle » (réglable en admin).
-CLE_TITRE = "live_titre"
+# Le titre de l'écran de salle n'a plus de réglage à lui : c'est le NOM DE
+# L'ÉVÉNEMENT (« Gestion de l'événement »), et à défaut le nom de l'association.
+# L'ancienne clé `live_titre` a été reprise dans `evenement_nom` par
+# `db._migrer_titre_live_vers_nom_evenement` ; elle n'a plus aucun lecteur.
 
 # Annonce libre affichée en bandeau sur l'écran de salle (idée 5.2). Une seule
 # annonce à la fois, pas d'historique. `CLE_ANNONCE_EXPIRE` est optionnelle :
@@ -70,22 +72,24 @@ CLES_PANNEAUX = {
 }
 
 
-def titre_defaut(conn) -> str:
+def titre_ecran(conn) -> str:
     """
-    Titre de l'écran de salle quand AUCUN titre propre n'a été saisi en
-    administration : le nom de l'événement s'il est renseigné, sinon le nom de
-    l'association.
+    Le texte affiché en haut de l'écran projeté : le NOM DE L'ÉVÉNEMENT s'il est
+    renseigné, sinon le nom de l'association.
 
-    Cascade à trois niveaux (titre saisi > nom de l'événement > nom de
-    l'association) : le titre saisi l'emporte toujours, il reste le moyen
-    d'écrire sur l'écran quelque chose que ni l'un ni l'autre ne dit. C'est
-    aussi la seule façon dont le nom de l'événement apparaît sur /live — on ne
-    lui ajoute pas de ligne à lui : la refonte du 06/08 a rendu cette hauteur
-    au contenu utile, et un titre saisi suivi du nom juste dessous ferait
-    doublon.
+    UN SEUL RÉGLAGE, ET C'EST VOULU. Il a existé un champ « Titre de l'écran de
+    salle » distinct, qui l'emportait sur le nom de l'événement : deux réglages
+    sur deux pages disant presque toujours la même chose, dont l'un rendait
+    l'autre sans effet. Pire, le champ était prérempli avec la valeur par défaut,
+    si bien qu'enregistrer une annonce suffisait à figer le nom de l'association
+    comme titre explicite — après quoi renseigner le nom de l'événement ne
+    changeait plus rien à l'écran, sans que rien ne l'explique. Le champ a été
+    supprimé et son ancienne valeur reprise (voir
+    `db._migrer_titre_live_vers_nom_evenement`).
 
-    Était une constante (`TITRE_DEFAUT`) tant que le repli ne dépendait de rien ;
-    devient une fonction du jour où il se lit en base.
+    C'est aussi la seule façon dont le nom de l'événement apparaît sur /live :
+    pas de ligne à lui, la refonte du 06/08 a rendu cette hauteur au contenu
+    utile.
     """
     return services.lire_nom_evenement(conn) or NOM_ASSOCIATION
 
@@ -184,7 +188,7 @@ def _collecter_donnees() -> dict:
     conn = get_connection()
     try:
         panneaux = panneaux_actifs(conn)
-        titre = services.lire_parametre(conn, CLE_TITRE, titre_defaut(conn))
+        titre = titre_ecran(conn)
         annonce = annonce_active(conn)
         # Le compteur « Tournois en cours » vit dans la barre de chiffres, pas
         # dans le panneau : il suit donc le réglage des chiffres, mais reste
