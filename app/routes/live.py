@@ -39,10 +39,8 @@ FENETRE_A_VENIR_MIN = 120
 # les lignes en trop ne tiendraient de toute façon pas à l'écran — la page les
 # tronque avec un « et N autres… », mais autant ne pas les transporter.
 NB_MOUVEMENTS = 8
-# Clé du paramètre « titre de l'écran salle » (réglable en admin) + valeur par
-# défaut si rien n'est encore renseigné.
+# Clé du paramètre « titre de l'écran salle » (réglable en admin).
 CLE_TITRE = "live_titre"
-TITRE_DEFAUT = NOM_ASSOCIATION
 
 # Annonce libre affichée en bandeau sur l'écran de salle (idée 5.2). Une seule
 # annonce à la fois, pas d'historique. `CLE_ANNONCE_EXPIRE` est optionnelle :
@@ -70,6 +68,26 @@ CLES_PANNEAUX = {
     "programme":  "live_panneau_programme",
     "mouvements": "live_panneau_mouvements",
 }
+
+
+def titre_defaut(conn) -> str:
+    """
+    Titre de l'écran de salle quand AUCUN titre propre n'a été saisi en
+    administration : le nom de l'événement s'il est renseigné, sinon le nom de
+    l'association.
+
+    Cascade à trois niveaux (titre saisi > nom de l'événement > nom de
+    l'association) : le titre saisi l'emporte toujours, il reste le moyen
+    d'écrire sur l'écran quelque chose que ni l'un ni l'autre ne dit. C'est
+    aussi la seule façon dont le nom de l'événement apparaît sur /live — on ne
+    lui ajoute pas de ligne à lui : la refonte du 06/08 a rendu cette hauteur
+    au contenu utile, et un titre saisi suivi du nom juste dessous ferait
+    doublon.
+
+    Était une constante (`TITRE_DEFAUT`) tant que le repli ne dépendait de rien ;
+    devient une fonction du jour où il se lit en base.
+    """
+    return services.lire_nom_evenement(conn) or NOM_ASSOCIATION
 
 
 def reglages_panneaux(conn) -> dict[str, bool]:
@@ -166,7 +184,7 @@ def _collecter_donnees() -> dict:
     conn = get_connection()
     try:
         panneaux = panneaux_actifs(conn)
-        titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
+        titre = services.lire_parametre(conn, CLE_TITRE, titre_defaut(conn))
         annonce = annonce_active(conn)
         # Le compteur « Tournois en cours » vit dans la barre de chiffres, pas
         # dans le panneau : il suit donc le réglage des chiffres, mais reste

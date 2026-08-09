@@ -1186,13 +1186,16 @@ def ecran_salle_formulaire(request: Request):
     if (garde := _garde(request)):
         return garde
     from app.routes.live import (
-        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT, annonce_active,
-        panneaux_actifs, reglages_panneaux,
+        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, annonce_active,
+        panneaux_actifs, reglages_panneaux, titre_defaut,
     )
 
     conn = get_connection()
     try:
-        titre = services.lire_parametre(conn, CLE_TITRE, TITRE_DEFAUT)
+        # Repli de la cascade (nom de l'événement, sinon nom de l'association) :
+        # calculé sur la connexion ouverte ici, comme le fait /live.
+        defaut = titre_defaut(conn)
+        titre = services.lire_parametre(conn, CLE_TITRE, defaut)
         annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
         annonce_expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
         # Réglages tels que saisis (le formulaire réaffiche le choix du
@@ -1209,7 +1212,7 @@ def ecran_salle_formulaire(request: Request):
         conn.close()
     return templates.TemplateResponse(
         request, "admin_live.html",
-        {"titre": titre, "titre_defaut": TITRE_DEFAUT,
+        {"titre": titre, "titre_defaut": defaut,
          "annonce": annonce, "annonce_duree": _minutes_restantes(annonce_expire_iso),
          "annonce_expire_iso": annonce_expire_iso if annonce else None,
          "annonce_affichee": annonce_affichee,
@@ -1243,8 +1246,8 @@ def ecran_salle_enregistrer(
     if (garde := _garde(request)):
         return garde
     from app.routes.live import (
-        CLES_PANNEAUX, CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE, TITRE_DEFAUT,
-        annonce_active, panneaux_actifs, reglages_panneaux,
+        CLES_PANNEAUX, CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLE_TITRE,
+        annonce_active, panneaux_actifs, reglages_panneaux, titre_defaut,
     )
 
     saisie_titre = " ".join(titre.split())[:80]
@@ -1292,6 +1295,7 @@ def ecran_salle_enregistrer(
         annonce_affichee = annonce_active(conn)
         panneaux = reglages_panneaux(conn)
         panneaux_reels = panneaux_actifs(conn)
+        defaut = titre_defaut(conn)
     finally:
         conn.close()
 
@@ -1325,7 +1329,7 @@ def ecran_salle_enregistrer(
 
     return templates.TemplateResponse(
         request, "admin_live.html",
-        {"titre": saisie_titre or TITRE_DEFAUT, "titre_defaut": TITRE_DEFAUT,
+        {"titre": saisie_titre or defaut, "titre_defaut": defaut,
          "annonce": saisie_annonce, "annonce_duree": _minutes_restantes(expire_iso),
          "annonce_expire_iso": expire_iso if saisie_annonce else None,
          "annonce_affichee": annonce_affichee,

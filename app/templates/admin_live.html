@@ -5,9 +5,9 @@
 <section class="carte">
   <h1>Écran de salle</h1>
   <p class="stats-note">
-    Titre affiché en haut du <strong>tableau de bord projeté en salle</strong>
-    (<a class="lien" href="/live">/live</a>). Laissez vide pour revenir au titre
-    par défaut : « {{ titre_defaut }} ».
+    Réglages du <strong>tableau de bord projeté en salle</strong>
+    (<a class="lien" href="/live">/live</a>) : son titre, l'annonce du moment et
+    les panneaux affichés.
   </p>
 
   {% if message %}
@@ -29,6 +29,12 @@
       <label for="titre">Titre de l'écran de salle</label>
       <input type="text" id="titre" name="titre" maxlength="80"
              value="{{ titre or '' }}" placeholder="{{ titre_defaut }}">
+      <small class="stats-note">
+        Laissé vide, l'écran affiche le
+        <a class="lien" href="/admin/evenement">nom de l'événement</a> s'il est
+        renseigné, sinon le nom de l'association — soit « {{ titre_defaut }} »
+        en l'état.
+      </small>
     </div>
 
     <div class="champ">
