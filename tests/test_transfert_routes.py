@@ -120,6 +120,36 @@ def test_confirmation_meme_boite_le_dit_explicitement(client):
     r = client.get("/pret/001/transfert/001")
     assert r.status_code == 200
     assert "même jeu" in r.text.lower()
+    # La boîte rendue EST sortie : c'est la situation nominale, pas un
+    # avertissement (celui-ci ne vaut que pour une AUTRE boîte déjà prêtée).
+    assert "déjà sortie" not in r.text.lower()
+
+
+def test_confirmation_avertit_si_la_nouvelle_boite_est_deja_sortie(client, tmp_path):
+    """
+    Le POST refuserait (`nouveau_sorti`) : le dire dès la confirmation évite un
+    tap perdu. Le bouton reste néanmoins proposé — l'écran n'est qu'un
+    instantané, seul le POST fait autorité sous le verrou d'écriture.
+    """
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    avant = _nb_prets(tmp_path)
+
+    r = client.get("/pret/001/transfert/002")
+    assert r.status_code == 200
+    assert "déjà sortie" in r.text.lower()
+    assert "Confirmer" in r.text          # jamais bloquant : le bouton reste
+    assert _nb_prets(tmp_path) == avant   # et toujours rien d'écrit
+
+
+def test_confirmation_avertit_sans_numero_pour_une_sortie_tournoi(client):
+    """Une sortie tournoi n'a pas de pochette : aucun numéro à afficher."""
+    client.post("/pret/001/preter")
+    client.post("/pret/002/tournoi")
+
+    r = client.get("/pret/001/transfert/002")
+    assert "déjà sortie" in r.text.lower()
+    assert "pochette n°0" not in r.text.lower()
 
 
 # ---------------------------------------------------------------------------

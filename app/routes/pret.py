@@ -427,6 +427,14 @@ def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
     sur un QR qui ne correspond à rien) : même patron que le scan normal vers
     /pret/<id> — 404 via `_rendu`, pas un message de rattrapage (celui-ci est
     réservé à la saisie manuelle, voir `transfert_saisie`).
+
+    AVERTISSEMENT « déjà sortie » : si la nouvelle boîte est actuellement
+    prêtée, le POST la refusera (`nouveau_sorti`). Le dire ICI évite un tap
+    perdu dans un geste conçu pour en économiser. Le bouton reste néanmoins en
+    place, et c'est délibéré : cet écran n'est qu'un INSTANTANÉ, la boîte peut
+    très bien revenir entre-temps — seul le POST fait autorité, sous le verrou
+    d'écriture. Sans objet quand la nouvelle boîte est la boîte rendue
+    elle-même : elle est sortie, c'est justement la situation nominale.
     """
     conn = get_connection()
     try:
@@ -439,13 +447,19 @@ def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
         nouvelle_info = services.info_exemplaire(conn, id_nouveau)
         if nouvelle_info is None:
             return _rendu(request, id_nouveau)
+        meme_boite = id_nouveau == id_rendu
+        deja_sortie = None
+        if not meme_boite:
+            autre = services.pret_en_cours(conn, id_nouveau)
+            if autre is not None:
+                deja_sortie = autre["numero_pochette"]
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "transfert_confirmation.html",
         {"id_rendu": id_rendu, "id_nouveau": id_nouveau, "info": info,
          "nouvelle_info": nouvelle_info, "numero": numero,
-         "meme_boite": id_nouveau == id_rendu},
+         "meme_boite": meme_boite, "deja_sortie": deja_sortie},
     )
 
 

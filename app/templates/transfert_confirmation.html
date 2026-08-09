@@ -18,6 +18,19 @@
     </p>
   {% endif %}
 
+  {# La nouvelle boîte est déjà prêtée : le POST refusera. Le dire ici évite
+     un tap pour rien. Le bouton reste en place — cet écran n'est qu'un
+     instantané, la boîte peut revenir entre-temps et seul le POST fait
+     autorité (voir la docstring de `transfert_confirmation`). Une sortie
+     tournoi n'a pas de pochette : on n'affiche alors aucun numéro. #}
+  {% if deja_sortie is not none %}
+    <p class="resultat resultat-attention">
+      <strong>{{ nouvelle_info.nom }}</strong> est déjà sortie{% if deja_sortie %}
+      (pochette n°{{ deja_sortie }}){% endif %}. Le transfert sera refusé si
+      elle n'est pas rendue d'ici là — scannez plutôt une autre boîte.
+    </p>
+  {% endif %}
+
   <form method="post" action="/pret/{{ id_rendu }}/transfert/{{ id_nouveau }}">
     <button class="bouton bouton-principal" type="submit">Confirmer</button>
   </form>
