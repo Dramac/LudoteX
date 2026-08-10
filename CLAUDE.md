@@ -2445,6 +2445,76 @@ boîte, routes déclarées dans le mauvais ordre). **Suite globale : 729 tests
 verts.** Wiki : `Module-Pret`, `Guide-Benevole` (dont le diagramme Mermaid),
 `FAQ`, `Journal-Activite`.
 
+**CARNET DE MAINTENANCE — signalements d'état des boîtes (lots 1 à 3 sur 4) :
+FAIT** (2026-08-10, conception `docs/conception-signalements.md`, découpage
+`docs/prompt-impl-signalements.md`). Réunit les fiches 2.2 et 6.2 de
+`docs/idees-evolutions.md` : un bénévole constate qu'il manque un dé, et
+l'information avait jusqu'ici pour seul réceptacle le voisin de comptoir.
+**Deux tables neuves dans la base de PRÊT** (`categories_signalement` AVANT
+`signalements`, qui la référence), FK **nullable et sans cascade** (patron
+`programme.id_type`), état **déduit** (`traite_le IS NULL`, comme l'état d'un
+exemplaire), index partiel de lecture, aucun index UNIQUE (deux signalements
+identiques sont légitimes). Catégories **configurables** (arbitrage Simon
+contre la constante fermée), patron `emplacements_rangement` : archivage doux,
+seed de cinq entrées qui ne remplit que si la table est vide et **ne
+ressuscite jamais** une entrée supprimée. Pas de `services.transaction` : un
+signalement est un INSERT autonome, `traiter_signalement` est un
+`UPDATE ... WHERE traite_le IS NULL` donc idempotent. **Côté bénévole**, le
+patron du transfert de pochette : un lien **permanent** en pied de carte de
+`/pret/<id>` qui **ouvre un écran** (`GET|POST .../signaler`) sans rien écrire,
+rattrapage sans perte de saisie si la catégorie manque ou a été archivée entre
+l'affichage et l'envoi, et un bandeau d'alerte listant les signalements ouverts
+**visible dès l'ouverture de l'écran**, avant toute action — il ne bloque
+jamais le prêt. **Le point dur** (§3 de la note) : le détail libre est la
+**seule porte d'entrée d'une donnée personnelle** dans l'application de prêt,
+d'où la consigne « Décrivez la boîte, jamais une personne » **sous le champ
+lui-même** (précédent du libellé d'appareil de `/admin/jeton`) et le texte
+jamais public, jamais journalisé.
+
+**Lot 3 (administration), objet de la session du 2026-08-10.** CRUD des
+catégories `/admin/categories-signalement` (transposition ligne à ligne de
+`/admin/rangement`, sans la colonne icône des types de programme), avec la
+consigne « cette liste est lue au comptoir » posée sous le champ de création —
+c'est le seul frein à l'enflure d'une liste ouverte. Liste
+`/admin/signalements` : jeu, boîte, catégorie, détail, date, **les deux
+emplacements** et « Marquer traité » ; filtres état (ouverts/traités/tous, la
+vue par défaut ne porte pas de puce) et catégorie, avec puces de retrait
+(patron `catalogue._puces_filtres`) ; les filtres courants voyagent en champs
+cachés avec l'action pour revenir sur la même vue. **Pas de pagination**
+(piège 4 instruit, pas recopié : quelques dizaines d'incidents par édition, pas
+le parc — la vue « Ranger les jeux » n'est pas un modèle ici). Les deux
+emplacements viennent de `lister_signalements`, **jamais** d'`emplacement_actuel`
+(elle choisit selon le contexte réglé, or la liste se traite après l'événement,
+contexte repassé en « local »), et chacun ne s'affiche que s'il est renseigné.
+**Arbitrage tranché avant d'écrire** (§7, décision consignée dans la note) :
+`exports.catalogue_xlsx` devient **`exports.tableau_xlsx(entetes, lignes,
+titre_feuille)`** — un seul appelant en production, aucun en test, et son unique
+partie non générique (le titre de feuille en dur) aurait intitulé
+« Catalogue » le classeur des signalements. Le PDF a sa fonction propre
+`exports.signalements_pdf` (A4 **paysage**, `Paragraph` par cellule sinon
+reportlab déborde ; style d'en-tête dédié, `TEXTCOLOR` d'un `TableStyle` ne
+s'appliquant pas au contenu d'un `Paragraph`). Les deux exports partent de
+`/admin/signalements` **uniquement** et respectent les filtres ; un test
+vérifie qu'aucun signalement ne sort par `/stats` ni par ses deux exports, qui
+sont **publics** (piège 2, précédent D5). Tableau de bord : « Carnet de
+maintenance » dans le groupe « Jeux & étiquettes », compteur entre parenthèses
+**seulement s'il est non nul** (jamais un « (0) » permanent), plus « Catégories
+de signalement » ; nouvelle section `#apres-signalements` de `/admin/aide`, qui
+**dit franchement** qu'un signalement saisi par erreur ne peut pas être
+supprimé — aucune route ne le permet, vérifié — le recours réel étant de le
+marquer traité. Page en `.contenu-large` (piège 5, l'erreur des 540 px, déjà
+commise six fois) ; le garde-fou correspondant et celui du « jamais de non
+renseigné » ont été **vérifiés en injectant leur régression**. **52 tests
+dédiés** (`tests/test_signalements_admin.py`). **Suite globale : 827 tests
+verts.**
+
+⚠️ **Reste le lot 4** : actions au vocabulaire fermé (`signalement_cree`,
+`signalement_traite`, `categorie_signalement_creee`/`_modifiee`/`_supprimee`),
+points d'appel **dans les routes** — aucun `journaliser()` n'a été posé par les
+lots 1 à 3, y compris sur le CRUD des catégories —, extension du garde-fou
+`tests/test_journal_interdits.py` au texte libre, wiki et proposition de montée
+de version **mineure**.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
@@ -2708,7 +2778,9 @@ imprime toutes les boîtes des jeux choisis ; services `titres_pour_etiquettes` 
 `exemplaires_pour_etiquettes`), **importer/exporter le catalogue**
 (`/admin/donnees` : import d'un CSV téléversé via `scripts.import_csv.importer` ;
 export CSV/Excel ré-importable via `services.lignes_export_catalogue` +
-`exports.catalogue_csv`/`catalogue_xlsx`, en-têtes = `EN_TETES_CATALOGUE`),
+`exports.catalogue_csv`/`tableau_xlsx` (ex-`catalogue_xlsx`, renommée quand le
+carnet de maintenance lui a donné un second appelant), en-têtes =
+`EN_TETES_CATALOGUE`),
 changer le mot de passe. Le **dessin
 d'étiquette est mutualisé** dans `app/etiquettes.py` (partagé avec
 `scripts/generate_qr.py`). Accès non authentifié → redirection vers /admin (pas
