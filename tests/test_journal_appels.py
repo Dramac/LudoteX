@@ -697,3 +697,136 @@ def test_re_pret_et_sortie_tournoi_journalises(client, _journal_isole):
     client.post("/pret/001/tournoi")
     tournoi = _derniere(_journal_isole, "sortie_tournoi")
     assert tournoi["ok"] is True and tournoi["objet"] == "Catan"
+
+
+# ===========================================================================
+# LOT 4 des signalements — Carnet de maintenance
+# (docs/conception-signalements.md §10)
+#
+# Les interdits (le détail libre, surtout) sont couverts par le garde-fou
+# `tests/test_journal_interdits.py`, qui joue le scénario complet ; ici on
+# vérifie la présence, le contenu utile et les DEUX absences délibérées :
+# archiver/réactiver/réordonner ne produisent rien, comme pour les types de
+# programme, et un second « Marquer traité » non plus.
+# ===========================================================================
+TEXTE_SIGNALEMENT = "DetailLibreQuiNeDoitPasSortir"
+
+
+def _premiere_categorie(conn):
+    return conn.execute(
+        "SELECT id_categorie, nom FROM categories_signalement "
+        "WHERE actif = 1 ORDER BY ordre LIMIT 1"
+    ).fetchone()
+
+
+def test_signalement_cree_journalise_le_jeu_et_la_categorie(client, conn, _journal_isole):
+    """
+    `objet` porte le jeu ET le libellé de la catégorie — ce dernier ne peut
+    pas voyager dans `detail`, que `journaliser` ne conserve que sur un
+    échec (§3 de docs/conception-journal.md). Le détail libre, lui, ne
+    voyage nulle part.
+    """
+    _connexion(client)
+    categorie = _premiere_categorie(conn)
+    client.post("/pret/001/signaler", data={
+        "id_categorie": str(categorie["id_categorie"]), "texte": TEXTE_SIGNALEMENT,
+    })
+
+    ligne = _derniere(_journal_isole, "signalement_cree")
+    assert ligne["module"] == "pret" and ligne["ok"] is True
+    assert ligne["objet"] == f"Catan — {categorie['nom']}"
+    assert ligne["ref"] == "CATAN"
+    assert TEXTE_SIGNALEMENT not in json.dumps(ligne)
+
+
+def test_signalement_refuse_journalise_le_motif_sans_la_saisie(client, _journal_isole):
+    """
+    La branche de refus réaffiche le formulaire avec la saisie conservée :
+    elle journalise donc, elle aussi, et c'est le seul endroit du carnet où
+    `detail` est écrit. Il porte le motif, jamais ce que le bénévole avait
+    tapé. Une catégorie archivée entre l'affichage et l'envoi est exactement
+    le genre de surprise qu'on cherche après coup (§2.3).
+    """
+    _connexion(client)
+    client.post("/pret/001/signaler", data={"texte": TEXTE_SIGNALEMENT})
+
+    ligne = _derniere(_journal_isole, "signalement_cree")
+    assert ligne["ok"] is False and ligne["detail"] == "categorie_manquante"
+    assert TEXTE_SIGNALEMENT not in json.dumps(ligne)
+
+
+def test_signalement_traite_journalise_une_seule_fois(client, conn, _journal_isole):
+    """
+    `traiter_signalement` est idempotent (UPDATE ... WHERE traite_le IS
+    NULL) : un second appui ne change rien en base et ne doit donc rien
+    écrire non plus — une ligne « traité » affirmerait un fait qui n'a pas eu
+    lieu. Même précaution que « annonce effacée » sur /admin/ecran-salle.
+    """
+    _connexion(client)
+    categorie = _premiere_categorie(conn)
+    client.post("/pret/001/signaler", data={"id_categorie": str(categorie["id_categorie"])})
+    (id_signalement,) = conn.execute(
+        "SELECT id_signalement FROM signalements ORDER BY id_signalement DESC LIMIT 1"
+    ).fetchone()
+
+    client.post(f"/admin/signalements/{id_signalement}/traiter")
+    ligne = _derniere(_journal_isole, "signalement_traite")
+    assert ligne["module"] == "pret" and ligne["qui"] == "admin"
+    assert ligne["objet"].startswith("Catan") and ligne["ref"] == "CATAN"
+
+    client.post(f"/admin/signalements/{id_signalement}/traiter")  # sans effet
+    assert len(_actions(_journal_isole, "signalement_traite")) == 1
+
+    # Identifiant inconnu : pas davantage de ligne.
+    client.post("/admin/signalements/999999/traiter")
+    assert len(_actions(_journal_isole, "signalement_traite")) == 1
+
+
+def test_crud_des_categories_de_signalement_journalise(client, conn, _journal_isole):
+    _connexion(client)
+    client.post("/admin/categories-signalement", data={"nom": "Notice envolée"})
+    creee = _derniere(_journal_isole, "categorie_signalement_creee")
+    assert creee["module"] == "pret" and creee["ok"] is True
+    assert creee["objet"] == "Notice envolée"
+
+    id_categorie = int(creee["ref"])
+    client.post(f"/admin/categories-signalement/{id_categorie}/renommer",
+                data={"nom": "Notice manquante"})
+    modifiee = _derniere(_journal_isole, "categorie_signalement_modifiee")
+    assert modifiee["objet"] == "Notice manquante" and modifiee["ok"] is True
+
+    client.post(f"/admin/categories-signalement/{id_categorie}/supprimer")
+    supprimee = _derniere(_journal_isole, "categorie_signalement_supprimee")
+    # Le libellé est lu AVANT la suppression : après, la ligne ne pourrait
+    # plus dire que « la catégorie 6 ».
+    assert supprimee["objet"] == "Notice manquante" and supprimee["ok"] is True
+
+
+def test_suppression_refusee_de_categorie_journalisee_en_echec(client, conn, _journal_isole):
+    _connexion(client)
+    categorie = _premiere_categorie(conn)
+    client.post("/pret/001/signaler", data={"id_categorie": str(categorie["id_categorie"])})
+
+    client.post(f"/admin/categories-signalement/{categorie['id_categorie']}/supprimer")
+    ligne = _derniere(_journal_isole, "categorie_signalement_supprimee")
+    assert ligne["ok"] is False and ligne["detail"] == "rattachee"
+
+
+def test_archivage_et_reordonnancement_restent_hors_journal(client, conn, _journal_isole):
+    """
+    Décision explicite du §10 de la note, reprise des types de programme : ce
+    sont des ajustements de PRÉSENTATION, pas des faits qu'on cherche après
+    coup. Ce test existe pour que l'absence reste un choix, pas un oubli
+    qu'on « corrigerait » un jour sans s'en apercevoir.
+    """
+    _connexion(client)
+    categorie = _premiere_categorie(conn)
+    id_categorie = categorie["id_categorie"]
+    avant = len(_lignes(_journal_isole))
+
+    client.post(f"/admin/categories-signalement/{id_categorie}/archiver")
+    client.post(f"/admin/categories-signalement/{id_categorie}/reactiver")
+    client.post(f"/admin/categories-signalement/{id_categorie}/descendre")
+    client.post(f"/admin/categories-signalement/{id_categorie}/monter")
+
+    assert len(_lignes(_journal_isole)) == avant
