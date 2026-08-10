@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.9.0 — 2026-08-10
+
+- Un jeu **rendu moins d'une minute après avoir été prêté** n'est plus compté comme un prêt : c'est presque toujours une mauvaise boîte scannée, ou un visiteur qui se ravise pendant qu'on lui prend sa pièce d'identité. Ces cas apparaissent désormais à part, sous le libellé **erreurs de prêt**, sur la page des statistiques.
+- Ils sortent de **tous** les autres chiffres — total, palmarès du jeu concerné, durée moyenne qu'un prêt de dix secondes tirait vers le bas, histogramme, liste détaillée, exports Excel et PDF. Rien n'est effacé pour autant : le compteur dit combien de fois c'est arrivé.
+- Au comptoir, **rien ne change** : le bénévole rend la pièce d'identité comme d'habitude, à la pochette indiquée. Une simple ligne sous le numéro le prévient que ce prêt ne sera pas compté.
+- Nouveau réglage dans **Gestion de l'événement** : l'**inscription aux tournois** peut être réservée aux bénévoles. La page d'un tournoi reste alors publique et complète — horaire, lieu, places, classement, **📅 Ajouter à mon agenda** — mais le bouton **S'inscrire** cède la place à « Inscriptions auprès d'un bénévole, sur place. » Chacun peut toujours se désinscrire seul avec son code.
+- Cinq écrans étaient bridés à une largeur de smartphone sur ordinateur : la **gestion d'un tournoi**, la **liste des tournois**, l'**accès bénévole**, la **gestion de l'événement** et l'**aide** occupent maintenant la place disponible.
+
 ## 1.8.0 — 2026-08-10
 
 - Le **site de formation** peut désormais reprendre le **vrai catalogue** de l'association. Les étiquettes déjà collées sur les boîtes y fonctionnent alors : un bénévole s'entraîne avec de vraies boîtes en main, et rien de ce qu'il fait ne compte pour de bon. Jusqu'ici, scanner une vraie boîte sur le site de formation affichait « boîte inconnue », le site ne connaissant qu'une soixantaine de jeux inventés.
