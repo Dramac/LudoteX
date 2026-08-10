@@ -2603,6 +2603,89 @@ interrogeant `/jeu/00472` et `/pret/00472` par TestClient. Wiki :
 `Mode-Formation.md` (section « Scanner de vraies boîtes pendant une formation »,
 dont l'avertissement sur l'appareil photo).
 
+**TROIS AJUSTEMENTS LÉGERS (2026-08-10, un commit chacun) : FAIT.**
+
+**1. Erreurs de prêt.** Un jeu rendu moins de `services.SEUIL_ERREUR_PRET_S`
+(= 60 s) après sa sortie n'a pas été prêté : mauvaise boîte scannée, ou
+visiteur qui se ravise pendant qu'on lui prend sa pièce d'identité. La ligne
+passe de `motif = 'pret'` à `motif = 'erreur'` **à la clôture**
+(`_marquer_erreur_si_immediat`, appelée dans la transaction). Les ~8 requêtes
+de statistiques filtrant déjà `motif = 'pret'`, l'exclusion est acquise
+**sans en toucher une seule** — c'est ce qui a fait préférer la troisième
+valeur de motif à un filtre de durée recopié partout. Compteur dédié
+`stats_globales()["erreurs"]`, affiché sur `/stats` (le « 0 » est montré :
+sur un tableau de bord chiffré il informe, la règle « jamais de (0)
+permanent » vise les compteurs de menu) et dans les deux exports.
+**Aucune migration** : la colonne existait, son domaine n'est pas contraint
+en base, et une ligne d'avant reste `'pret'`. Appliqué à `rendre` ET à
+`transferer_pochette` (un transfert est le rattrapage type d'une mauvaise
+boîte) ; **pas** à `repreter` (la boîte reste sortie — la requalifier
+retirerait des stats un prêt en cours) ni à `cloturer_tous_les_prets` (une
+boîte encore dehors en fin d'événement est un prêt qu'on n'a pas vu revenir),
+deux contre-tests le verrouillent. Côté bénévole **rien ne change** : même
+pochette, même geste, plus une ligne d'information sous le numéro
+(`resultat.erreur`) — surtout pas un bandeau d'avertissement, rien n'a mal
+tourné. Journal inchangé (l'action reste `retour` ; `detail` n'est conservé
+que sur un échec, donc inutilisable ici). **Piège qui a occupé le plus de
+temps** : dans un test, un prêt et son retour sont séparés de quelques
+microsecondes — six tests existants sont donc devenus des « erreurs » et ont
+cassé. Fixture partagée `vieillir_prets` (`tests/conftest.py`) qui recule
+`date_sortie` en Python (SQLite `datetime()` rend une chaîne naïve, sans « T »
+ni décalage, que `fromisoformat` relit sans fuseau et qui lèverait au calcul
+des durées). Seuil volontairement **non neutralisé** dans la suite : cela
+masquerait une régression sur le comportement lui-même. **17 tests dédiés**
+(`tests/test_erreurs_pret.py`). Corrigé au passage : `test_formation_mode_
+inactif_par_defaut` échouait **déjà avant cette session** (il cherchait les
+mots « Site de formation » n'importe où dans `/admin`, or le bloc de
+supervision y affiche le résumé du fichier `VERSION`, qui les contient depuis
+la v1.8.0) — l'assertion porte désormais sur le lien lui-même.
+
+**2. Cinq écrans élargis.** `.contenu` est plafonné à 540 px pour tout le
+site ; ce plafond étant global, il bride aussi les grands écrans — même cause
+que les six diagnostics précédents, même remède (`conteneur_extra`).
+Concernés : `/tournoi/<id>/gerer` et `/tournois` (listes de travail),
+`/admin/jeton` (tableau des appareils), plus `/admin/evenement` et `/aide`.
+⚠️ **Ces deux derniers sont des exceptions assumées** à la règle jusqu'ici
+suivie (« les formulaires et les pages de lecture restent volontairement
+étroits ») : élargis sur demande de Simon. La règle de choix ET la dérogation
+sont écrites dans **`docs/ui-composants.md` §17**, pour qu'on ne les prenne
+pas plus tard pour un oubli. Test garde-fou sur la **source** des gabarits
+(deux de ces écrans demandent une session admin, un troisième un tournoi
+existant, alors que la propriété est statique).
+
+**3. Inscription aux tournois réservable aux bénévoles.** Troisième réglage
+de « Gestion de l'événement », clé `tournoi_inscription` dans `parametres`
+(base de PRÊT), couple `lire_inscription_tournoi(conn)` /
+`inscription_tournoi_reservee()` sur le patron exact du nom d'événement.
+Réservée aux bénévoles, la page d'un tournoi **reste publique et complète**
+(horaire, lieu, places, classement, `.ics`) : seul le bouton « S'inscrire »
+cède la place à « Inscriptions auprès d'un bénévole, sur place. »
+(`.inscription-comptoir`) — c'était la demande : que la fenêtre tournoi
+devienne une information. Le bénévole garde le formulaire ; la
+**désinscription par code reste ouverte à tous** (décision Simon : un inscrit
+au comptoir doit pouvoir se désister seul). Contrôle refait **au POST** et
+pas seulement à l'affichage (formulaire ouvert avant le changement de
+réglage, ou adresse appelée directement) ; dans les deux cas on **redirige**
+vers la page du tournoi, qui explique où s'adresser, plutôt que de refuser.
+C'est la **route** qui lit le réglage et le transmet — aucun service du
+module tournois n'ouvre la base de prêt (indépendance des trois bases, déjà
+tenue pour le nom d'événement dans les `.ics`). Toute valeur absente ou
+inattendue retombe sur « visiteurs », **à la lecture comme à l'écriture** :
+ce réglage ne doit jamais fermer les inscriptions par accident, et une base
+d'avant se comporte exactement comme avant. Se combine avec la case
+« Inscription en ligne » de chaque tournoi (elle dit *si*, le réglage dit
+*qui*). Journal : action `inscription_tournoi_modifiee`, écrite **seulement
+si la valeur change** (les trois réglages voyagent dans le même formulaire).
+Le groupe de boutons radio est un `<fieldset class="champ champ-groupe">`
+avec `<legend>` (deux règles CSS) : sans quoi un lecteur d'écran annonce les
+deux options hors contexte. **11 tests**, chacun vérifié en injectant sa
+régression.
+
+**Suite globale : 867 tests verts** (841 + 26). Wiki : `Module-Statistiques`
+(section « Les erreurs de prêt »), `Module-Pret`, `Glossaire` (entrée « Erreur
+de prêt »), `Module-Tournois` (section « Qui peut inscrire »), `Guide-Admin`
+(le troisième réglage), `Journal-Activite`.
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).
