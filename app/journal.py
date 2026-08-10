@@ -72,6 +72,7 @@ ACTIONS = {
     "annonce_effacee",
     "evenement_date_modifiee",
     "evenement_nom_modifie",
+    "inscription_tournoi_modifiee",
     "planning_purge",
     "formation_reinitialisee",
     "jeu_cree",

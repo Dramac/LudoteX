@@ -40,6 +40,12 @@
       <a class="bouton bouton-principal" href="/tournoi/{{ t.id_tournoi }}/inscription">S'inscrire</a>
     {% elif t.etat == "inscriptions" and places_restantes == 0 %}
       <p class="etat etat-sorti">Complet</p>
+    {% elif inscription_au_comptoir and t.etat == "inscriptions" %}
+      {# Le bureau a réservé les inscriptions aux bénévoles : la page reste
+         entière (horaire, lieu, places, agenda), seul le bouton cède la place
+         à une orientation. On ne dit pas « inscriptions fermées », ce qui
+         serait faux et découragerait quelqu'un qui n'a qu'à se déplacer. #}
+      <p class="inscription-comptoir">Inscriptions auprès d'un bénévole, sur place.</p>
     {% endif %}
 
     {% if t.date_heure %}

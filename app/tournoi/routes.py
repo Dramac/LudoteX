@@ -35,7 +35,12 @@ from fastapi.responses import RedirectResponse, Response
 
 from app import auth, journal
 from app.auth import exiger_jeton
-from app.services import local_vers_utc_iso, nom_evenement, pluriel
+from app.services import (
+    inscription_tournoi_reservee,
+    local_vers_utc_iso,
+    nom_evenement,
+    pluriel,
+)
 from app.templating import templates
 from app.tournoi import services
 from app.tournoi.db import get_connection
@@ -81,6 +86,23 @@ def _champs_nom(t: dict | None) -> tuple[str, str]:
     if not jeu:
         return nom, ""
     return jeu, ("" if nom == jeu else nom)
+
+
+def _inscription_au_comptoir(request: Request) -> bool:
+    """
+    True quand la personne qui consulte ne peut PAS s'inscrire elle-même :
+    le bureau a réservé les inscriptions aux bénévoles (réglage global de
+    /admin/evenement) et cette requête n'est pas celle d'un bénévole.
+
+    Un bénévole ou un administrateur garde le formulaire : c'est lui qui
+    inscrit les gens au comptoir. Pour tous les autres, la page du tournoi
+    reste entière — horaire, lieu, places, classement, ajout à l'agenda —,
+    seul le bouton « S'inscrire » cède la place à une phrase d'orientation.
+
+    Le réglage vit dans la base de PRÊT : c'est la route qui le lit, jamais un
+    service du module tournois (indépendance des trois bases).
+    """
+    return inscription_tournoi_reservee() and not auth.peut_ecrire(request)
 
 
 def _membres_du_formulaire(form) -> list[str]:
@@ -205,12 +227,13 @@ def detail(request: Request, id_tournoi: int):
     """
     participants, ouverte, restantes = [], False, None
     classement, rondes, tours, vainqueur, confrontations = None, None, None, None, None
+    au_comptoir = _inscription_au_comptoir(request)
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
         if t is not None:
             participants = services.lister_inscriptions(conn, id_tournoi)
-            ouverte = services.inscription_ouverte(conn, t)
+            ouverte = services.inscription_ouverte(conn, t) and not au_comptoir
             restantes = services.places_restantes(conn, t)
             lance = t["etat"] in ("lance", "termine")
             if lance and t["mode_scoring"] == "high_score":
@@ -231,6 +254,7 @@ def detail(request: Request, id_tournoi: int):
         request, "tournoi_detail.html",
         {"t": t, "participants": participants,
          "inscription_ouverte": ouverte, "places_restantes": restantes,
+         "inscription_au_comptoir": au_comptoir,
          "classement": classement, "rondes": rondes,
          "tours": tours, "vainqueur": vainqueur, "confrontations": confrontations},
         status_code=200 if t else 404,
@@ -273,10 +297,12 @@ def inscription_formulaire(request: Request, id_tournoi: int):
         return templates.TemplateResponse(
             request, "tournoi_detail.html",
             {"t": None, "participants": [], "inscription_ouverte": False,
-             "places_restantes": None},
+             "places_restantes": None, "inscription_au_comptoir": False},
             status_code=404,
         )
-    if not ouverte:
+    # Inscriptions réservées aux bénévoles : la page du tournoi explique où
+    # s'adresser, on y renvoie plutôt que de refuser (« ne jamais bloquer »).
+    if not ouverte or _inscription_au_comptoir(request):
         return RedirectResponse(f"/tournoi/{id_tournoi}", status_code=303)
     return templates.TemplateResponse(
         request, "tournoi_inscription.html", {"t": t, "erreur": None}
@@ -290,7 +316,13 @@ async def inscription_action(request: Request, id_tournoi: int,
     Enregistre une inscription publique. En cas de succès, affiche l'écran de
     confirmation AVEC le code de désinscription (RGPD : e-mail jamais stocké).
     Pour un tournoi par équipes : `pseudo` = nom d'équipe + champs `membre_<n>`.
+
+    Le contrôle « inscriptions réservées aux bénévoles » est refait ICI et pas
+    seulement à l'affichage : le formulaire peut avoir été ouvert avant que le
+    bureau ne change le réglage, ou l'adresse envoyée directement.
     """
+    if _inscription_au_comptoir(request):
+        return RedirectResponse(f"/tournoi/{id_tournoi}", status_code=303)
     form = await request.form()
     membres = _membres_du_formulaire(form)
     conn = get_connection()

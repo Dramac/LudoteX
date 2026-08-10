@@ -454,7 +454,24 @@ summary:focus-visible,
   font-weight: 600;
   margin: -4px 0 16px;
 }
+/* Orientation qui REMPLACE le bouton « S'inscrire » quand le bureau a réservé
+   les inscriptions aux bénévoles (page publique d'un tournoi). Ni une note de
+   bas de champ (.stats-note, trop discrète : elle prend la place d'un appel à
+   l'action), ni un badge d'état (.etat, prévu pour un mot, pas une phrase),
+   d'où cette règle plutôt qu'un détournement de l'une des deux. */
+.inscription-comptoir {
+  color: var(--gris);
+  font-weight: 600;
+  margin: 16px 0;
+}
 .stats-export { font-weight: 600; }
+/* Groupe de boutons radio : un <fieldset class="champ champ-groupe"> se
+   présente comme n'importe quel .champ (le navigateur ajoute sinon une
+   bordure et des marges qui le distinguent du reste du formulaire), et sa
+   <legend> reprend l'apparence d'un libellé de champ. */
+.champ-groupe { border: 0; padding: 0; margin: 0; min-width: 0; }
+.champ-groupe legend { padding: 0; color: var(--gris); font-size: 0.9rem; }
+
 .case { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .case input { width: auto; }
 /* Tableau de données dense (lecture) : .detail (stats/tournois) et

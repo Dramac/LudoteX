@@ -1073,11 +1073,13 @@ def evenement_formulaire(request: Request):
     try:
         valeur = services.lire_parametre(conn, "evenement_date")
         nom = services.lire_nom_evenement(conn)
+        inscription = services.lire_inscription_tournoi(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "admin_evenement.html",
-        {"date_evenement": valeur, "nom_evenement": nom, "message": None},
+        {"date_evenement": valeur, "nom_evenement": nom,
+         "inscription_tournoi": inscription, "message": None},
     )
 
 
@@ -1086,10 +1088,12 @@ def evenement_enregistrer(
     request: Request,
     nom_evenement: str = Form(""),
     date_evenement: str = Form(""),
+    inscription_tournoi: str = Form("visiteurs"),
 ):
     """
-    Enregistre (ou efface si vide) le nom et la date de l'événement. Le planning
-    public couvre ce jour-là et le lendemain. Format de date : AAAA-MM-JJ.
+    Enregistre (ou efface si vide) le nom et la date de l'événement, et qui peut
+    s'inscrire en ligne aux tournois. Le planning public couvre ce jour-là et le
+    lendemain. Format de date : AAAA-MM-JJ.
 
     Le nom n'a aucune contrainte de forme (saisie libre, simplement normalisée
     et bornée) : il ne peut donc jamais mettre le formulaire en échec. Une date
@@ -1108,6 +1112,11 @@ def evenement_enregistrer(
 
     saisie = date_evenement.strip()
     saisie_nom = " ".join(nom_evenement.split())[:services.LONGUEUR_NOM_EVENEMENT]
+    # Toute valeur inattendue retombe sur « visiteurs » : ce réglage ne doit
+    # jamais fermer les inscriptions par accident (même règle qu'à la lecture).
+    saisie_inscription = (inscription_tournoi
+                          if inscription_tournoi in services.INSCRIPTION_TOURNOI_VALEURS
+                          else "visiteurs")
     if saisie:
         try:
             _dt.strptime(saisie, "%Y-%m-%d")
@@ -1119,6 +1128,7 @@ def evenement_enregistrer(
             return templates.TemplateResponse(
                 request, "admin_evenement.html",
                 {"date_evenement": saisie, "nom_evenement": saisie_nom,
+                 "inscription_tournoi": saisie_inscription,
                  "message": ("erreur", "Date invalide (format attendu : AAAA-MM-JJ).")},
                 status_code=400,
             )
@@ -1127,8 +1137,12 @@ def evenement_enregistrer(
         # Lus AVANT écriture : servent uniquement à savoir ce qui a changé.
         date_precedente = services.lire_parametre(conn, "evenement_date")
         nom_precedent = services.lire_nom_evenement(conn)
+        inscription_precedente = services.lire_inscription_tournoi(conn)
         services.ecrire_parametre(conn, "evenement_date", saisie or None)
         services.ecrire_parametre(conn, services.CLE_EVENEMENT_NOM, saisie_nom or None)
+        services.ecrire_parametre(
+            conn, services.CLE_INSCRIPTION_TOURNOI, saisie_inscription
+        )
     finally:
         conn.close()
 
@@ -1142,15 +1156,24 @@ def evenement_enregistrer(
         journal.journaliser(
             request, "admin", "evenement_nom_modifie", objet=saisie_nom or "effacé",
         )
+    if saisie_inscription != inscription_precedente:
+        journal.journaliser(
+            request, "admin", "inscription_tournoi_modifiee", objet=saisie_inscription,
+        )
 
     partie_nom = ("Nom enregistré." if saisie_nom
                   else "Nom effacé — il n'est plus rappelé nulle part.")
     partie_date = ("Date enregistrée." if saisie
                    else "Date effacée — le planning est masqué.")
+    partie_inscription = (
+        "Inscriptions aux tournois réservées aux bénévoles."
+        if saisie_inscription == "benevoles"
+        else "Inscriptions aux tournois ouvertes aux visiteurs.")
     return templates.TemplateResponse(
         request, "admin_evenement.html",
         {"date_evenement": saisie or None, "nom_evenement": saisie_nom or None,
-         "message": ("succes", f"{partie_nom} {partie_date}")},
+         "inscription_tournoi": saisie_inscription,
+         "message": ("succes", f"{partie_nom} {partie_date} {partie_inscription}")},
     )
 
 

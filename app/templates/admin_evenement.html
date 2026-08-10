@@ -6,9 +6,10 @@
 <section class="carte">
   <h1>Gestion de l'événement</h1>
   <p class="stats-note">
-    Le <strong>nom</strong> et la <strong>date</strong> de l'édition en cours.
-    Ils se règlent une fois, en début de préparation, et servent partout
-    ailleurs dans l'application.
+    Le <strong>nom</strong> et la <strong>date</strong> de l'édition en cours,
+    et qui peut <strong>inscrire aux tournois</strong>. Ces réglages se font
+    une fois, en début de préparation, et servent partout ailleurs dans
+    l'application.
   </p>
 
   {% if message %}
@@ -41,6 +42,31 @@
         masquer.
       </small>
     </div>
+
+    {# <fieldset>/<legend> plutôt qu'un <div> et un titre libre : un lecteur
+       d'écran annonce alors « Inscription aux tournois » avant chaque choix,
+       sans quoi les deux options s'entendent hors contexte. #}
+    <fieldset class="champ champ-groupe">
+      <legend>Inscription aux tournois</legend>
+      <label class="case">
+        <input type="radio" name="inscription_tournoi" value="visiteurs"
+               {{ 'checked' if inscription_tournoi != 'benevoles' else '' }}>
+        Ouverte aux visiteurs
+      </label>
+      <label class="case">
+        <input type="radio" name="inscription_tournoi" value="benevoles"
+               {{ 'checked' if inscription_tournoi == 'benevoles' else '' }}>
+        Réservée aux bénévoles
+      </label>
+      <small class="stats-note">
+        Réservée aux bénévoles, la page d'un tournoi reste <strong>publique et
+        complète</strong> — horaire, lieu, places, classement, ajout à
+        l'agenda : seul le bouton <strong>S'inscrire</strong> disparaît, au
+        profit de « Inscriptions auprès d'un bénévole, sur place. » Les
+        bénévoles, eux, gardent le formulaire pour inscrire au comptoir, et
+        chacun peut toujours se désinscrire avec son code.
+      </small>
+    </fieldset>
 
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>

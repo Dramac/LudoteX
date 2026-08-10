@@ -1659,6 +1659,62 @@ def nom_evenement() -> str | None:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Qui peut inscrire à un tournoi (réglé depuis /admin/evenement)
+# ---------------------------------------------------------------------------
+# Troisième réglage de l'identité de l'événement, même domicile et même patron
+# de lecture que le nom ci-dessus. Deux valeurs seulement :
+#   absent / "visiteurs"  — n'importe qui s'inscrit en ligne (comportement
+#                           historique, donc défaut : une base où la clé n'a
+#                           jamais été écrite se comporte exactement comme
+#                           avant) ;
+#   "benevoles"           — l'inscription passe par un bénévole. La page d'un
+#                           tournoi reste PUBLIQUE et complète (horaire, lieu,
+#                           places, classement, ajout à l'agenda) : seul le
+#                           bouton « S'inscrire » disparaît pour un visiteur.
+#
+# Le réglage est GLOBAL, et se combine avec la case « Inscription en ligne » de
+# chaque tournoi : la case ferme les inscriptions d'un tournoi précis, ce
+# réglage-ci décide de qui peut les prendre quand elles sont ouvertes.
+#
+# ⚠️ La valeur vit dans la base de PRÊT alors que les tournois ont la leur.
+# C'est la ROUTE qui lit ce réglage et le transmet ; aucun service du module
+# tournois n'ouvre la base de prêt (l'indépendance des trois bases est un
+# invariant du projet, déjà tenue pour le nom d'événement dans les `.ics`).
+CLE_INSCRIPTION_TOURNOI = "tournoi_inscription"
+INSCRIPTION_TOURNOI_VALEURS = ("visiteurs", "benevoles")
+
+
+def lire_inscription_tournoi(conn: sqlite3.Connection) -> str:
+    """
+    Qui peut s'inscrire en ligne à un tournoi : « visiteurs » ou « benevoles ».
+
+    Toute valeur absente ou inattendue retombe sur « visiteurs » — le réglage
+    ne doit jamais fermer les inscriptions par accident, et une base d'avant
+    son introduction n'en porte aucune trace.
+    """
+    valeur = lire_parametre(conn, CLE_INSCRIPTION_TOURNOI)
+    return valeur if valeur in INSCRIPTION_TOURNOI_VALEURS else "visiteurs"
+
+
+def inscription_tournoi_reservee() -> bool:
+    """
+    True si les inscriptions aux tournois sont réservées aux bénévoles.
+
+    Pendant de `nom_evenement` : ouvre et referme sa propre connexion, pour les
+    appelants qui n'ont pas de connexion de PRÊT en main — ici les routes du
+    module tournois. Même mise en garde : ne pas l'appeler depuis un service
+    qui reçoit déjà une connexion.
+    """
+    from app.db import get_connection
+
+    conn = get_connection()
+    try:
+        return lire_inscription_tournoi(conn) == "benevoles"
+    finally:
+        conn.close()
+
+
 # ===========================================================================
 # Rangement des boîtes (voir docs/conception-rangement.md)
 # ===========================================================================
