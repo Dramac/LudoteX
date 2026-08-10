@@ -2622,9 +2622,8 @@ def creer_signalement(
     Returns:
         L'identifiant du signalement créé.
     """
-    texte_normalise = texte.strip() if texte else None
-    if texte_normalise:
-        texte_normalise = texte_normalise[:LONGUEUR_MAX_TEXTE_SIGNALEMENT]
+    texte_normalise = texte.strip()[:LONGUEUR_MAX_TEXTE_SIGNALEMENT] if texte else None
+    texte_normalise = texte_normalise or None  # chaîne vide après strip -> None
     curseur = conn.execute(
         "INSERT INTO signalements (id_exemplaire, id_categorie, texte, cree_le) "
         "VALUES (?, ?, ?, ?)",
