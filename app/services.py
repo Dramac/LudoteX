@@ -2584,3 +2584,137 @@ def deplacer_categorie_signalement(conn: sqlite3.Connection, id_categorie: int, 
         (a["ordre"], b["id_categorie"]),
     )
     conn.commit()
+
+
+# ===========================================================================
+# CARNET DE MAINTENANCE — signalements (docs/conception-signalements.md §3/§4).
+#
+# Pas de `services.transaction` ici : un signalement est un INSERT autonome
+# (ni lecture-puis-écriture, ni ressource à attribuer, contrairement au prêt),
+# et le passage à « traité » est un UPDATE idempotent — rien à protéger par un
+# `BEGIN IMMEDIATE` (§4 de la note, piège 1 du lot 1).
+#
+# Volontairement séparé d'`info_exemplaire` (même raison qu'`emplacement_actuel`) :
+# `info` est réutilisée par les gabarits PUBLICS, et le carnet de maintenance
+# n'est jamais public (bénévoles et admin seulement, §2).
+# ===========================================================================
+
+# Bornage du détail libre à l'enregistrement, sans jamais refuser la saisie
+# (patron de l'annonce d'écran de salle, routes/live.py).
+LONGUEUR_MAX_TEXTE_SIGNALEMENT = 300
+
+
+def creer_signalement(
+    conn: sqlite3.Connection,
+    id_exemplaire: str,
+    id_categorie: int | None,
+    texte: str | None = None,
+) -> int:
+    """
+    Enregistre un signalement sur une boîte. `texte` est facultatif (la
+    catégorie seule suffit, §3) et borné à `LONGUEUR_MAX_TEXTE_SIGNALEMENT`
+    caractères plutôt que refusé.
+
+    Ne valide PAS `id_categorie` (existence, catégorie active) : c'est la
+    responsabilité de l'appelant (route), qui doit relire la liste des
+    catégories actives et ne jamais faire confiance au formulaire (§8).
+
+    Returns:
+        L'identifiant du signalement créé.
+    """
+    texte_normalise = texte.strip() if texte else None
+    if texte_normalise:
+        texte_normalise = texte_normalise[:LONGUEUR_MAX_TEXTE_SIGNALEMENT]
+    curseur = conn.execute(
+        "INSERT INTO signalements (id_exemplaire, id_categorie, texte, cree_le) "
+        "VALUES (?, ?, ?, ?)",
+        (id_exemplaire, id_categorie, texte_normalise, maintenant()),
+    )
+    conn.commit()
+    return curseur.lastrowid
+
+
+def signalements_ouverts(conn: sqlite3.Connection, id_exemplaire: str) -> list[dict]:
+    """
+    Signalements OUVERTS (`traite_le IS NULL`) d'une boîte, du plus ancien au
+    plus récent — sert au bandeau d'alerte de /pret/<id> (§6, « prévenir »).
+    """
+    rows = conn.execute(
+        """
+        SELECT s.id_signalement, s.texte, s.cree_le,
+               c.nom AS categorie_nom
+        FROM signalements s
+        LEFT JOIN categories_signalement c ON c.id_categorie = s.id_categorie
+        WHERE s.id_exemplaire = ? AND s.traite_le IS NULL
+        ORDER BY s.cree_le
+        """,
+        (id_exemplaire,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def lister_signalements(
+    conn: sqlite3.Connection,
+    etat: str = "ouverts",
+    id_categorie: int | None = None,
+) -> list[dict]:
+    """
+    Liste des signalements pour l'écran d'administration (§7), triée du plus
+    récent au plus ancien. `etat` : "ouverts" (défaut) / "traites" / "tous".
+
+    Ramène les DEUX emplacements — événement ET local — par jointure dans
+    cette même requête (piège 3 du lot 1) : ne PAS appeler
+    `emplacement_actuel`, qui choisit selon le contexte réglé en
+    administration et ne convient pas ici (§7 de la note — cette liste se
+    consulte souvent après l'événement, quand le contexte a changé).
+    """
+    conditions = []
+    params: list = []
+    if etat == "ouverts":
+        conditions.append("s.traite_le IS NULL")
+    elif etat == "traites":
+        conditions.append("s.traite_le IS NOT NULL")
+    if id_categorie is not None:
+        conditions.append("s.id_categorie = ?")
+        params.append(id_categorie)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    rows = conn.execute(
+        f"""
+        SELECT s.id_signalement, s.id_exemplaire, s.texte, s.cree_le, s.traite_le,
+               t.nom AS jeu_nom,
+               c.nom AS categorie_nom,
+               x.emplacement_evenement,
+               el.nom AS emplacement_local_nom
+        FROM signalements s
+        JOIN exemplaires x ON x.id_exemplaire = s.id_exemplaire
+        JOIN titres t ON t.reference_titre = x.reference_titre
+        LEFT JOIN categories_signalement c ON c.id_categorie = s.id_categorie
+        LEFT JOIN emplacements_rangement el ON el.id_emplacement = x.emplacement_local_id
+        {where}
+        ORDER BY s.cree_le DESC
+        """,
+        params,
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def traiter_signalement(conn: sqlite3.Connection, id_signalement: int) -> None:
+    """
+    Referme un signalement (l'administrateur seul, §2). `UPDATE ... WHERE
+    traite_le IS NULL` : IDEMPOTENT, un second appel ne change rien et ne
+    lève aucune erreur (piège 2 du lot 1).
+    """
+    conn.execute(
+        "UPDATE signalements SET traite_le = ? "
+        "WHERE id_signalement = ? AND traite_le IS NULL",
+        (maintenant(), id_signalement),
+    )
+    conn.commit()
+
+
+def compter_signalements_ouverts(conn: sqlite3.Connection) -> int:
+    """Nombre total de signalements ouverts, tous jeux confondus (compteur §7)."""
+    (n,) = conn.execute(
+        "SELECT COUNT(*) FROM signalements WHERE traite_le IS NULL"
+    ).fetchone()
+    return n
