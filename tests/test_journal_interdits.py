@@ -6,11 +6,21 @@ du chantier (docs/conception-journal.md §8, étape 4 du §11).
 
 Un scénario COMPLET est joué (activation du jeton bénévole, prêt, retour,
 transfert de pochette, création et inscription à un tournoi par équipes,
-purge d'une édition du planning, connexion administrateur, restauration de
-sauvegarde), avec des
+signalement d'état d'une boîte, purge d'une édition du planning, connexion
+administrateur, restauration de sauvegarde), avec des
 valeurs volontairement DISTINCTIVES — un pseudo, un nom d'équipe, un nom de
 bénévole, un jeton et un mot de passe qu'on ne risque pas de croiser par
 hasard. Le fichier produit est ensuite passé au crible.
+
+⚠️ LE DÉTAIL LIBRE D'UN SIGNALEMENT est le seul endroit de l'application de
+prêt par lequel une donnée personnelle peut entrer
+(docs/conception-signalements.md §3) : rien n'empêche un bénévole d'y écrire
+« cassé par le gamin en pull rouge de la table 3 ». C'est la raison d'être de
+`TEXTE_LIBRE` ci-dessous, injecté DEUX fois — sur un envoi accepté et sur un
+envoi refusé, la branche de refus réaffichant la saisie et journalisant elle
+aussi. Le libellé de la CATÉGORIE, lui, est délibérément journalisé : c'est
+la réserve assumée et documentée du §3, point 2, depuis que les catégories
+sont configurables — ne pas la « corriger » ici.
 
 Deux familles d'assertions, complémentaires :
 
@@ -43,6 +53,11 @@ NOM_EQUIPE = "EquipeInterditeKrakoa"
 MEMBRE = "MembreInterditFilibert"
 BENEVOLE = "BenevoleInterditGudule"
 EDITION = "Edition de test 2026"
+# Le détail libre d'un signalement, écrit tel qu'un bénévole pressé pourrait
+# le taper au comptoir — la phrase même contre laquelle la consigne « Décrivez
+# la boîte, jamais une personne » est affichée sous le champ.
+TEXTE_LIBRE = "TexteInterditCasseParMadameHortense en pull rouge"
+TEXTE_LIBRE_REFUSE = "TexteInterditRefuseParLaTanteAgathe"
 
 
 @pytest.fixture
@@ -159,6 +174,31 @@ def scenario(client, bases, _journal_isole):
         conn.close()
     client.post("/pret/001/transfert/002")
 
+    # --- Carnet de maintenance : un signalement avec du TEXTE LIBRE --------
+    # Le seul champ de l'application de prêt par lequel une donnée
+    # personnelle peut entrer (docs/conception-signalements.md §3). Deux
+    # envois : un REFUSÉ (aucune catégorie choisie — la branche qui réaffiche
+    # la saisie et journalise le motif), puis un accepté.
+    conn = db.get_connection()
+    try:
+        categories = services.categories_signalement_actives(conn)
+        id_categorie = categories[0]["id_categorie"]
+    finally:
+        conn.close()
+
+    client.post("/pret/001/signaler", data={"texte": TEXTE_LIBRE_REFUSE})
+    client.post(
+        "/pret/001/signaler",
+        data={"id_categorie": str(id_categorie), "texte": TEXTE_LIBRE},
+    )
+
+    conn = db.get_connection()
+    try:
+        ouverts = services.lister_signalements(conn, "ouverts")
+        id_signalement = ouverts[0]["id_signalement"]
+    finally:
+        conn.close()
+
     # --- Public : inscription à un tournoi PAR ÉQUIPES ----------------------
     # Par équipes exprès : c'est le cas qui porte le plus de données
     # personnelles d'un coup (nom d'équipe + membres + code).
@@ -190,6 +230,9 @@ def scenario(client, bases, _journal_isole):
 
     # --- Administration : connexion, puis restauration de sauvegarde -------
     client.post("/admin/login", data={"mot_de_passe": MOT_DE_PASSE})
+    # Refermer le signalement : la seconde ligne du carnet de maintenance, et
+    # celle qui relit en base un enregistrement contenant le texte libre.
+    client.post(f"/admin/signalements/{id_signalement}/traiter")
     client.post(f"/planning/admin/{ev}/purger")
 
     from app import sauvegarde
@@ -220,6 +263,7 @@ def test_le_scenario_produit_des_lignes(scenario):
     assert {
         "connexion_reussie", "planning_purge", "sauvegarde_restauree",
         "pret", "retour", "tournoi_lance", "transfert",
+        "signalement_cree", "signalement_traite",
     } <= actions
 
 
@@ -250,6 +294,8 @@ def test_aucun_secret_ni_identite_dans_le_journal(scenario):
         "nom de bénévole du planning": BENEVOLE,
         "code de désinscription du tournoi": secrets["code_tournoi"],
         "code de modification du planning": secrets["code_planning"],
+        "détail libre d'un signalement": TEXTE_LIBRE,
+        "détail libre d'un signalement refusé": TEXTE_LIBRE_REFUSE,
     }
     for quoi, valeur in interdits.items():
         assert valeur not in texte, f"{quoi} trouvé dans le journal : {valeur!r}"
@@ -280,6 +326,43 @@ def test_aucun_numero_de_pochette(scenario):
             continue
         for champ in ("objet", "ref", "detail"):
             assert ligne.get(champ) not in numeros
+
+
+def test_le_carnet_de_maintenance_dit_le_jeu_et_la_categorie_jamais_le_texte(scenario):
+    """
+    Les deux lignes du carnet portent bien quelque chose d'exploitable — le
+    nom du jeu et le libellé de la catégorie — et RIEN du détail libre, pas
+    même un fragment (une troncature à 120 caractères pourrait sinon laisser
+    passer un début de phrase que la recherche de la chaîne entière
+    manquerait).
+
+    Le libellé de catégorie est ici la valeur ATTENDUE, pas une tolérance :
+    c'est la réserve assumée du §3, point 2 de la note — depuis que les
+    catégories sont configurables, ce libellé n'est plus sûr par
+    construction, mais il se crée au calme par le bureau et sert des
+    centaines de fois, là où le champ de terrain se remplit en trois secondes
+    au comptoir.
+    """
+    texte, _ = scenario
+    lignes = [l for l in _lignes(texte)
+              if l["action"] in ("signalement_cree", "signalement_traite")]
+    assert lignes
+
+    # Trois lignes attendues : un refus, une création, une clôture.
+    refus = [l for l in lignes if l["ok"] is False]
+    assert refus and refus[0]["detail"] == "categorie_manquante"
+
+    creation = [l for l in lignes
+                if l["action"] == "signalement_cree" and l["ok"] is True]
+    assert creation
+    assert creation[0]["objet"].startswith("Catan")
+    assert " — " in creation[0]["objet"]  # le jeu ET la catégorie
+    assert creation[0]["ref"] == "CATAN"
+
+    # Aucun fragment distinctif du texte libre, dans AUCUNE ligne du fichier
+    # (pas seulement celles du carnet : une fuite pourrait passer ailleurs).
+    for fragment in ("Hortense", "Agathe", "pull rouge", "TexteInterdit"):
+        assert fragment not in texte, f"fragment de texte libre trouvé : {fragment!r}"
 
 
 def test_aucune_adresse_ip_ni_query_string_brute(scenario):
