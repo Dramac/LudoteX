@@ -64,10 +64,17 @@ def _rendre_dashboard(request: Request, message):
     conn = get_connection()
     try:
         etat = supervision.etat_supervision(conn)
+        # Compteur du carnet de maintenance : un COUNT sur l'index partiel,
+        # à côté de lectures bien plus coûteuses (tailles de bases, disque).
+        # Le gabarit ne l'affiche que s'il est non nul — jamais « 0
+        # signalement », règle déjà appliquée au rangement et à l'annonce
+        # d'écran de salle.
+        nb_signalements = services.compter_signalements_ouverts(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
-        request, "admin_dashboard.html", {"message": message, "etat": etat}
+        request, "admin_dashboard.html",
+        {"message": message, "etat": etat, "nb_signalements": nb_signalements},
     )
 
 

@@ -631,3 +631,59 @@ def test_rien_de_tout_cela_ne_sort_par_stats(client):
 
     pdf = client.get("/stats/export.pdf")
     assert b"texte-libre-distinctif" not in pdf.content
+
+
+# ===========================================================================
+# Tableau de bord et aide
+# ===========================================================================
+def test_tableau_de_bord_lie_les_deux_ecrans(client):
+    _connecter(client)
+    r = client.get("/admin")
+    assert 'href="/admin/signalements"' in r.text
+    assert 'href="/admin/categories-signalement"' in r.text
+
+
+def test_compteur_du_tableau_de_bord(client):
+    _connecter(client)
+    _creer_signalement("001", "pièce")
+    _creer_signalement("002", "boîte")
+
+    r = client.get("/admin")
+    assert "Carnet de maintenance (2)" in r.text
+
+
+def test_pas_de_compteur_a_zero_au_tableau_de_bord(client):
+    """Jamais « (0) » : le projet n'affiche pas un rappel vide."""
+    _connecter(client)
+    r = client.get("/admin")
+    assert "Carnet de maintenance" in r.text
+    assert "Carnet de maintenance (0)" not in r.text
+
+
+def test_compteur_retombe_apres_traitement(client):
+    _connecter(client)
+    id_s = _creer_signalement("001", "pièce")
+    assert "Carnet de maintenance (1)" in client.get("/admin").text
+
+    client.post(f"/admin/signalements/{id_s}/traiter", data={"etat": "ouverts"})
+    assert "Carnet de maintenance (1)" not in client.get("/admin").text
+
+
+def test_aide_admin_a_sa_section_et_la_page_y_renvoie(client):
+    _connecter(client)
+    aide = client.get("/admin/aide")
+    assert 'id="apres-signalements"' in aide.text
+    assert "Carnet de maintenance" in aide.text
+
+    liste = client.get("/admin/signalements")
+    assert "/admin/aide#apres-signalements" in liste.text
+
+
+def test_l_aide_ne_promet_pas_de_suppression(client):
+    """
+    Aucune route ne supprime un signalement (vérifié) : l'aide doit le dire
+    plutôt que décrire une procédure plausible mais fausse.
+    """
+    _connecter(client)
+    aide = client.get("/admin/aide")
+    assert "ne peut pas être supprimé" in aide.text

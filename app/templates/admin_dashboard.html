@@ -22,6 +22,11 @@
           <li><a class="lien" href="/admin/jeu-nouveau" title="Créer une nouvelle fiche de jeu"><span class="admin-icone">➕</span>Créer un jeu</a></li>
           <li><a class="lien" href="/admin/jeux" title="Rechercher un jeu existant ou réimprimer une étiquette"><span class="admin-icone">🔎</span>Rechercher un jeu</a></li>
           <li><a class="lien" href="/admin/etiquettes" title="Imprimer des étiquettes en lot"><span class="admin-icone">🖨️</span>Étiquettes (lot)</a></li>
+          {# Le compteur n'apparaît que s'il y a quelque chose à traiter : un
+             « (0) » permanent serait du bruit, et le projet n'affiche jamais
+             un rappel vide. #}
+          <li><a class="lien" href="/admin/signalements" title="Ce que les bénévoles ont signalé sur les boîtes"><span class="admin-icone">⚠️</span>Carnet de maintenance{% if nb_signalements %} ({{ nb_signalements }}){% endif %}</a></li>
+          <li><a class="lien" href="/admin/categories-signalement" title="Liste des catégories proposées au comptoir (pièce manquante, boîte abîmée…)"><span class="admin-icone">🏷️</span>Catégories de signalement</a></li>
         </ul>
       </div>
 
