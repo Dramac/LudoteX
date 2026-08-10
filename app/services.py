@@ -2438,3 +2438,149 @@ def purger_appareils_anciens(conn: sqlite3.Connection,
         "DELETE FROM appareils WHERE COALESCE(expire_le, active_le) < ?", (limite,)
     )
     return cur.rowcount
+
+
+# ===========================================================================
+# CARNET DE MAINTENANCE — catégories de signalement
+# (docs/conception-signalements.md §2/§4). Liste configurable en admin, patron
+# ligne à ligne de `*_emplacement_rangement` : archivage doux (`actif`),
+# jamais de suppression sous un signalement déjà rattaché.
+# ===========================================================================
+def lister_categories_signalement(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Liste complète (actives + archivées) des catégories de signalement, triée
+    par ordre d'affichage puis nom, avec le nombre de signalements qui s'y
+    rattachent (`usage_count`) — sert à décider si la suppression dure est
+    proposée.
+    """
+    rows = conn.execute(
+        """
+        SELECT c.id_categorie, c.nom, c.actif, c.ordre,
+               COUNT(s.id_signalement) AS usage_count
+        FROM categories_signalement c
+        LEFT JOIN signalements s ON s.id_categorie = c.id_categorie
+        GROUP BY c.id_categorie
+        ORDER BY c.ordre, c.nom COLLATE NOCASE
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def categories_signalement_actives(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """
+    Catégories ACTIVES, triées pour l'affichage dans le formulaire bénévole
+    (boutons radio, §5 de la note). Les archivées en sont exclues (mais
+    restent affichées là où elles sont déjà pointées, côté admin).
+    """
+    return conn.execute(
+        "SELECT id_categorie, nom FROM categories_signalement "
+        "WHERE actif = 1 ORDER BY ordre, nom COLLATE NOCASE"
+    ).fetchall()
+
+
+def creer_categorie_signalement(conn: sqlite3.Connection, nom: str) -> int | None:
+    """Ajoute une catégorie en fin de liste (ordre = max + 1). None si nom vide."""
+    nom_normalise = " ".join(nom.split())
+    if not nom_normalise:
+        return None
+    (max_ordre,) = conn.execute(
+        "SELECT COALESCE(MAX(ordre), -1) FROM categories_signalement"
+    ).fetchone()
+    curseur = conn.execute(
+        "INSERT INTO categories_signalement (nom, actif, ordre) VALUES (?, 1, ?)",
+        (nom_normalise, max_ordre + 1),
+    )
+    conn.commit()
+    return curseur.lastrowid
+
+
+def renommer_categorie_signalement(conn: sqlite3.Connection, id_categorie: int, nom: str) -> bool:
+    """
+    Renomme (répercuté automatiquement sur l'historique via la FK, §4). False
+    si `nom` est vide (rien n'est modifié).
+    """
+    nom_normalise = " ".join(nom.split())
+    if not nom_normalise:
+        return False
+    conn.execute(
+        "UPDATE categories_signalement SET nom = ? WHERE id_categorie = ?",
+        (nom_normalise, id_categorie),
+    )
+    conn.commit()
+    return True
+
+
+def archiver_categorie_signalement(conn: sqlite3.Connection, id_categorie: int) -> None:
+    """
+    Retrait doux (§2) : disparaît du formulaire bénévole, mais les
+    signalements qui la portent gardent leur référence.
+    """
+    conn.execute(
+        "UPDATE categories_signalement SET actif = 0 WHERE id_categorie = ?",
+        (id_categorie,),
+    )
+    conn.commit()
+
+
+def reactiver_categorie_signalement(conn: sqlite3.Connection, id_categorie: int) -> None:
+    """Annule un archivage : redevient proposée dans le formulaire bénévole."""
+    conn.execute(
+        "UPDATE categories_signalement SET actif = 1 WHERE id_categorie = ?",
+        (id_categorie,),
+    )
+    conn.commit()
+
+
+def compteur_usage_categorie_signalement(conn: sqlite3.Connection, id_categorie: int) -> int:
+    """Nombre de signalements qui pointent actuellement vers cette catégorie."""
+    (n,) = conn.execute(
+        "SELECT COUNT(*) FROM signalements WHERE id_categorie = ?",
+        (id_categorie,),
+    ).fetchone()
+    return n
+
+
+def supprimer_categorie_signalement(conn: sqlite3.Connection, id_categorie: int) -> bool:
+    """
+    Suppression DURE : refusée (False, rien n'est modifié) si au moins un
+    signalement pointe encore vers cette catégorie — jamais de FK orpheline.
+    """
+    if compteur_usage_categorie_signalement(conn, id_categorie) > 0:
+        return False
+    conn.execute(
+        "DELETE FROM categories_signalement WHERE id_categorie = ?",
+        (id_categorie,),
+    )
+    conn.commit()
+    return True
+
+
+def deplacer_categorie_signalement(conn: sqlite3.Connection, id_categorie: int, sens: str) -> None:
+    """
+    Échange la position d'une catégorie avec sa voisine immédiate dans la
+    liste triée (`sens` = "haut" ou "bas"). Sans effet si elle est déjà en
+    bout de liste ou si `id_categorie` est inconnu. Travaille sur la POSITION
+    dans la liste triée (pas la valeur brute d'`ordre`), robuste même si deux
+    lignes partagent le même `ordre`.
+    """
+    lignes = conn.execute(
+        "SELECT id_categorie, ordre FROM categories_signalement "
+        "ORDER BY ordre, nom COLLATE NOCASE"
+    ).fetchall()
+    ids = [r["id_categorie"] for r in lignes]
+    if id_categorie not in ids:
+        return
+    idx = ids.index(id_categorie)
+    voisin = idx - 1 if sens == "haut" else idx + 1
+    if voisin < 0 or voisin >= len(ids):
+        return
+    a, b = lignes[idx], lignes[voisin]
+    conn.execute(
+        "UPDATE categories_signalement SET ordre = ? WHERE id_categorie = ?",
+        (b["ordre"], a["id_categorie"]),
+    )
+    conn.execute(
+        "UPDATE categories_signalement SET ordre = ? WHERE id_categorie = ?",
+        (a["ordre"], b["id_categorie"]),
+    )
+    conn.commit()
