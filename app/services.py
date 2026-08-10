@@ -2697,6 +2697,39 @@ def lister_signalements(
     return [dict(r) for r in rows]
 
 
+def get_signalement(conn: sqlite3.Connection, id_signalement: int) -> dict | None:
+    """
+    Un signalement et son contexte lisible, ou None s'il est inconnu.
+
+    Existe pour la LIGNE DE JOURNAL du « Marquer traité » : elle doit nommer
+    le jeu, que la table `signalements` ne porte pas (même besoin que
+    `info_exemplaire` pour les quatre actions de prêt), et son `traite_le`
+    permet à la route de ne rien écrire quand le second appui d'un
+    administrateur ne change rien — `traiter_signalement` étant idempotent,
+    journaliser sans regarder produirait des lignes qui affirment un fait qui
+    n'a pas eu lieu (même précaution que « annonce effacée », qui n'est écrite
+    que s'il y avait bien une annonce).
+
+    `texte` n'est délibérément PAS ramené : aucun appelant n'en a besoin, et
+    c'est le seul champ de l'application de prêt par lequel une donnée
+    personnelle peut entrer (docs/conception-signalements.md §3).
+    """
+    row = conn.execute(
+        """
+        SELECT s.id_signalement, s.id_exemplaire, s.cree_le, s.traite_le,
+               t.nom AS jeu_nom, t.reference_titre,
+               c.nom AS categorie_nom
+        FROM signalements s
+        JOIN exemplaires x ON x.id_exemplaire = s.id_exemplaire
+        JOIN titres t ON t.reference_titre = x.reference_titre
+        LEFT JOIN categories_signalement c ON c.id_categorie = s.id_categorie
+        WHERE s.id_signalement = ?
+        """,
+        (id_signalement,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def traiter_signalement(conn: sqlite3.Connection, id_signalement: int) -> None:
     """
     Referme un signalement (l'administrateur seul, §2). `UPDATE ... WHERE

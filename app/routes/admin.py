@@ -1875,6 +1875,11 @@ def categories_signalement_creer(request: Request, nom: str = Form("")):
     finally:
         conn.close()
     msg = "Catégorie ajoutée." if cree is not None else "Nom manquant : rien n'a été ajouté."
+    journal.journaliser(
+        request, "pret", "categorie_signalement_creee",
+        objet=nom.strip() or None, ref=str(cree) if cree is not None else None,
+        ok=cree is not None, detail=None if cree is not None else "nom_manquant",
+    )
     return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
 
 
@@ -1889,8 +1894,14 @@ def categories_signalement_renommer(request: Request, id_categorie: int, nom: st
         conn.close()
     # Renommer se répercute sur tout l'historique (référence, pas libellé
     # recopié — §4 de la note) : corriger une faute de frappe ne coupe pas la
-    # liste en deux.
+    # liste en deux. Raison de plus de journaliser le renommage : c'est la
+    # seule action de ce CRUD qui change ce que disent des lignes déjà écrites.
     msg = "Catégorie renommée." if ok else "Nom manquant : rien n'a été modifié."
+    journal.journaliser(
+        request, "pret", "categorie_signalement_modifiee",
+        objet=nom.strip() or None, ref=str(id_categorie), ok=ok,
+        detail=None if ok else "nom_manquant",
+    )
     return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
 
 
@@ -1927,12 +1938,26 @@ def categories_signalement_supprimer(request: Request, id_categorie: int):
         return garde
     conn = get_connection()
     try:
+        # Le libellé est lu AVANT la suppression : après, la ligne de journal
+        # ne pourrait plus dire que « la catégorie 4 », ce qui n'aide personne.
+        # Pas de `get_categorie_signalement` dédié pour autant — la liste
+        # complète tient en quelques entrées par construction (§2 de la note,
+        # qui met précisément en garde contre son enflure).
+        avant = next(
+            (c for c in services.lister_categories_signalement(conn)
+             if c["id_categorie"] == id_categorie), None
+        )
         ok = services.supprimer_categorie_signalement(conn, id_categorie)
     finally:
         conn.close()
     msg = (
         "Catégorie supprimée définitivement." if ok else
         "Suppression refusée : des signalements y sont encore rattachés."
+    )
+    journal.journaliser(
+        request, "pret", "categorie_signalement_supprimee",
+        objet=avant["nom"] if avant else None, ref=str(id_categorie),
+        ok=ok, detail=None if ok else "rattachee",
     )
     return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
 
@@ -2080,9 +2105,25 @@ def signalement_traiter(request: Request, id_signalement: int,
 
     conn = get_connection()
     try:
+        # Lu AVANT : la ligne de journal doit nommer le jeu (la table
+        # `signalements` ne le porte pas), et `traite_le` dit si ce clic
+        # change réellement quelque chose.
+        avant = services.get_signalement(conn, id_signalement)
         services.traiter_signalement(conn, id_signalement)
     finally:
         conn.close()
+    # Rien n'est journalisé pour un signalement inconnu ou DÉJÀ traité : le
+    # service est idempotent, et une ligne « traité » sur un second appui
+    # affirmerait un fait qui n'a pas eu lieu. Même précaution que « annonce
+    # effacée », qui n'est écrite que s'il y avait bien une annonce.
+    if avant is not None and avant["traite_le"] is None:
+        objet = avant["jeu_nom"]
+        if avant["categorie_nom"]:
+            objet = f"{objet} — {avant['categorie_nom']}"
+        journal.journaliser(
+            request, "pret", "signalement_traite",
+            objet=objet, ref=avant["reference_titre"],
+        )
     etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
     return RedirectResponse(
         _url_signalements(etat_n, _entier_ou_none(categorie), "Signalement marqué traité."),
