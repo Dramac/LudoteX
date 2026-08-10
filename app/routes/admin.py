@@ -1955,6 +1955,132 @@ def categories_signalement_descendre(request: Request, id_categorie: int):
 
 
 # ---------------------------------------------------------------------------
+# Carnet de maintenance : la LISTE des signalements
+# (docs/conception-signalements.md §7). Écran de travail du bureau, consulté
+# surtout APRÈS l'événement : qu'est-ce qu'on répare, qu'est-ce qu'on rachète.
+#
+# PAS DE PAGINATION, contrairement à « Ranger les jeux » (piège 4 du lot 3,
+# instruit plutôt que recopié) : cette vue liste des incidents, pas le parc.
+# Quelques dizaines de lignes par édition — la pagination coûterait un état de
+# plus à transporter dans chaque action, pour rien. À reprendre le jour où le
+# volume le démentira.
+#
+# Les deux emplacements (événement ET local) sont ramenés par
+# `services.lister_signalements` elle-même, en une jointure : surtout PAS
+# `emplacement_actuel`, qui choisit selon le contexte réglé — et le contexte
+# est justement repassé en « local » quand on traite une boîte signalée en
+# salle (§7).
+# ---------------------------------------------------------------------------
+ETATS_SIGNALEMENTS = ("ouverts", "traites", "tous")
+_LIBELLES_ETAT_SIGNALEMENT = {
+    "ouverts": "à traiter", "traites": "déjà traités", "tous": "tous",
+}
+
+
+def _url_signalements(etat: str, id_categorie: int | None, msg: str | None = None) -> str:
+    """URL de /admin/signalements conservant les filtres (POST-Redirect-GET)."""
+    from urllib.parse import urlencode
+
+    params: dict = {}
+    if etat != "ouverts":  # « ouverts » est la vue par défaut : rien à porter
+        params["etat"] = etat
+    if id_categorie is not None:
+        params["categorie"] = id_categorie
+    if msg:
+        params["msg"] = msg
+    requete = urlencode(params)
+    return "/admin/signalements" + (f"?{requete}" if requete else "")
+
+
+def _puces_filtres_signalements(etat: str, id_categorie: int | None,
+                                nom_categorie: str | None):
+    """Puces de filtres actifs, patron exact de `routes/catalogue.py::_puces_filtres`."""
+    puces = []
+    if etat != "ouverts":
+        puces.append({
+            "label": f"état : {_LIBELLES_ETAT_SIGNALEMENT[etat]}",
+            "url": _url_signalements("ouverts", id_categorie),
+        })
+    if id_categorie is not None:
+        puces.append({
+            "label": f"catégorie : {nom_categorie or id_categorie}",
+            "url": _url_signalements(etat, None),
+        })
+    return puces
+
+
+@router.get("/signalements")
+def signalements_page(request: Request, etat: str = "ouverts",
+                      categorie: str | None = None, msg: str | None = None):
+    """
+    Carnet de maintenance : une ligne par signalement, filtrable par état et
+    par catégorie. Le compteur d'ouverts est celui du tableau de bord — même
+    service, un seul domicile.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.catalogue import _entier_ou_none
+
+    etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
+    id_categorie = _entier_ou_none(categorie)
+
+    conn = get_connection()
+    try:
+        # Toutes les catégories, ARCHIVÉES COMPRISES : un signalement déjà
+        # saisi garde la sienne (FK sans cascade, §4), on doit donc pouvoir
+        # filtrer dessus après son archivage.
+        categories = services.lister_categories_signalement(conn)
+        if id_categorie is not None and not any(
+            c["id_categorie"] == id_categorie for c in categories
+        ):
+            id_categorie = None  # filtre forgé : ignoré, jamais d'erreur
+        signalements = services.lister_signalements(conn, etat_n, id_categorie)
+        nb_ouverts = services.compter_signalements_ouverts(conn)
+    finally:
+        conn.close()
+
+    nom_categorie = next(
+        (c["nom"] for c in categories if c["id_categorie"] == id_categorie), None
+    )
+    chips = _puces_filtres_signalements(etat_n, id_categorie, nom_categorie)
+    return templates.TemplateResponse(
+        request, "admin_signalements.html",
+        {
+            "signalements": signalements, "categories": categories,
+            "etat": etat_n, "etats": ETATS_SIGNALEMENTS,
+            "libelles_etat": _LIBELLES_ETAT_SIGNALEMENT,
+            "id_categorie": id_categorie, "nb_ouverts": nb_ouverts,
+            "chips": chips, "filtres_actifs": bool(chips),
+            "message": msg,
+        },
+    )
+
+
+@router.post("/signalements/{id_signalement:int}/traiter")
+def signalement_traiter(request: Request, id_signalement: int,
+                        etat: str = Form("ouverts"), categorie: str = Form("")):
+    """
+    Referme un signalement, puis revient sur la liste AVEC LES MÊMES FILTRES
+    (d'où les deux champs cachés du formulaire). Idempotent côté service : un
+    second appui ne produit ni erreur ni message différent.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.catalogue import _entier_ou_none
+
+    conn = get_connection()
+    try:
+        services.traiter_signalement(conn, id_signalement)
+    finally:
+        conn.close()
+    etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
+    return RedirectResponse(
+        _url_signalements(etat_n, _entier_ou_none(categorie), "Signalement marqué traité."),
+        status_code=303,
+    )
+
+
+# ---------------------------------------------------------------------------
 # « Ranger les jeux » (§13, addendum post-phase 1) : affectation en lot par
 # JEU (pas par exemplaire) — réutilise services.lister_catalogue (mêmes
 # filtres que le catalogue public, categorie/q/age/joueurs, AUCUNE logique de

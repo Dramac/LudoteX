@@ -80,11 +80,27 @@ def _creer_signalement(id_exemplaire="001", categorie="pièce", texte=None) -> i
         conn.close()
 
 
+def _affecter_emplacements(id_exemplaire="001", salle=None, local=None):
+    """Renseigne l'un et/ou l'autre des deux emplacements d'une boîte."""
+    from app import services
+
+    conn = _conn()
+    try:
+        if salle is not None:
+            services.affecter_emplacement(conn, id_exemplaire, "evenement", salle)
+        if local is not None:
+            id_local = services.obtenir_ou_creer_emplacement_rangement(conn, local)[0]
+            services.affecter_emplacement(conn, id_exemplaire, "local", id_local)
+    finally:
+        conn.close()
+
+
 # ===========================================================================
 # Garde admin — toutes les routes de ce lot
 # ===========================================================================
 @pytest.mark.parametrize("chemin", [
     "/admin/categories-signalement",
+    "/admin/signalements",
 ])
 def test_les_pages_redirigent_sans_session_admin(client, chemin):
     r = client.get(chemin, follow_redirects=False)
@@ -99,6 +115,7 @@ def test_les_pages_redirigent_sans_session_admin(client, chemin):
     "/admin/categories-signalement/1/supprimer",
     "/admin/categories-signalement/1/monter",
     "/admin/categories-signalement/1/descendre",
+    "/admin/signalements/1/traiter",
 ])
 def test_les_actions_redirigent_sans_session_admin(client, chemin):
     r = client.post(chemin, data={"nom": "X"}, follow_redirects=False)
@@ -279,3 +296,217 @@ def test_monter_et_descendre_changent_l_ordre(client):
     finally:
         conn.close()
     assert premiers[0] == "Pièce manquante"
+
+
+# ===========================================================================
+# La liste des signalements (§7)
+# ===========================================================================
+def test_liste_vide_le_dit_sans_tableau(client):
+    _connecter(client)
+    r = client.get("/admin/signalements")
+    assert r.status_code == 200
+    assert "Aucun signalement en attente" in r.text
+
+
+def test_liste_affiche_jeu_boite_categorie_detail_et_date(client):
+    _connecter(client)
+    _creer_signalement("001", "pièce", "il manque un dé rouge")
+
+    r = client.get("/admin/signalements")
+    assert "Catan" in r.text
+    assert "001" in r.text
+    assert "Pièce manquante" in r.text
+    assert "il manque un dé rouge" in r.text
+
+
+def test_compteur_d_ouverts_en_tete(client):
+    _connecter(client)
+    _creer_signalement("001", "pièce")
+    _creer_signalement("002", "boîte")
+
+    r = client.get("/admin/signalements")
+    assert "2 signalements ouverts" in r.text
+
+
+def test_compteur_au_singulier(client):
+    """Le compteur s'accorde (global Jinja `pluriel`, fiche Q2)."""
+    _connecter(client)
+    _creer_signalement("001", "pièce")
+
+    r = client.get("/admin/signalements")
+    assert "1 signalement ouvert" in r.text
+
+
+def test_les_deux_emplacements_cote_a_cote(client):
+    """
+    §7 : les DEUX emplacements, pas celui du contexte actif — la liste se
+    traite après l'événement, quand le contexte est repassé en « local ».
+    """
+    _connecter(client)
+    _affecter_emplacements("001", salle="Table 4", local="Étagère 3")
+    _creer_signalement("001", "pièce")
+
+    r = client.get("/admin/signalements")
+    assert "Table 4" in r.text
+    assert "Étagère 3" in r.text
+
+
+def test_un_seul_emplacement_renseigne_n_affiche_que_lui(client):
+    _connecter(client)
+    _affecter_emplacements("001", salle="Table 4")
+    _creer_signalement("001", "pièce")
+
+    r = client.get("/admin/signalements")
+    assert "Table 4" in r.text
+    assert "Local :" not in r.text
+
+
+def test_aucun_emplacement_n_affiche_rien(client):
+    """Jamais de « non renseigné » : une case vide, et c'est tout."""
+    _connecter(client)
+    _creer_signalement("001", "pièce")
+
+    r = client.get("/admin/signalements")
+    assert "Salle :" not in r.text
+    assert "Local :" not in r.text
+    assert "non renseigné" not in r.text.lower()
+
+
+def test_filtre_par_etat(client):
+    # Détails volontairement distinctifs : `base.html` embarque un script qui
+    # contient des mots courants (« premier », « second »…), et une assertion
+    # d'ABSENCE dessus passerait au vert pour de mauvaises raisons.
+    _connecter(client)
+    id_a = _creer_signalement("001", "pièce", "detail-alpha")
+    _creer_signalement("002", "boîte", "detail-beta")
+
+    from app import services
+    conn = _conn()
+    try:
+        services.traiter_signalement(conn, id_a)
+    finally:
+        conn.close()
+
+    ouverts = client.get("/admin/signalements")
+    assert "detail-beta" in ouverts.text and "detail-alpha" not in ouverts.text
+
+    traites = client.get("/admin/signalements?etat=traites")
+    assert "detail-alpha" in traites.text and "detail-beta" not in traites.text
+
+    tous = client.get("/admin/signalements?etat=tous")
+    assert "detail-alpha" in tous.text and "detail-beta" in tous.text
+
+
+def test_filtre_par_categorie(client):
+    _connecter(client)
+    _creer_signalement("001", "pièce", "detail-alpha")
+    _creer_signalement("002", "boîte", "detail-beta")
+
+    r = client.get(f"/admin/signalements?categorie={_id_categorie('boîte')}")
+    assert "detail-beta" in r.text
+    assert "detail-alpha" not in r.text
+
+
+def test_filtre_de_categorie_forge_est_ignore(client):
+    """Jamais bloquant : un identifiant inconnu retombe sur « toutes »."""
+    _connecter(client)
+    _creer_signalement("001", "pièce", "un dé")
+
+    r = client.get("/admin/signalements?categorie=99999")
+    assert r.status_code == 200
+    assert "un dé" in r.text
+
+
+def test_etat_forge_retombe_sur_ouverts(client):
+    _connecter(client)
+    _creer_signalement("001", "pièce", "un dé")
+
+    r = client.get("/admin/signalements?etat=nimporte-quoi")
+    assert r.status_code == 200
+    assert "un dé" in r.text
+
+
+def test_puces_de_retrait_des_filtres(client):
+    _connecter(client)
+    id_cat = _id_categorie("boîte")
+    _creer_signalement("002", "boîte")
+
+    r = client.get(f"/admin/signalements?etat=tous&categorie={id_cat}")
+    assert "Filtres actifs" in r.text
+    # Retirer l'état seul conserve la catégorie, et réciproquement.
+    assert f"/admin/signalements?categorie={id_cat}" in r.text
+    assert "/admin/signalements?etat=tous" in r.text
+
+
+def test_marquer_traite(client):
+    _connecter(client)
+    id_s = _creer_signalement("001", "pièce", "un dé")
+
+    r = client.post(f"/admin/signalements/{id_s}/traiter",
+                    data={"etat": "ouverts", "categorie": ""},
+                    follow_redirects=True)
+    assert "Signalement marqué traité." in r.text
+    assert "Aucun signalement en attente" in r.text
+    assert "0 signalement ouvert" in r.text
+
+
+def test_marquer_traite_conserve_les_filtres(client):
+    _connecter(client)
+    id_cat = _id_categorie("boîte")
+    id_s = _creer_signalement("002", "boîte")
+
+    r = client.post(f"/admin/signalements/{id_s}/traiter",
+                    data={"etat": "tous", "categorie": str(id_cat)},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    destination = r.headers["location"]
+    assert "etat=tous" in destination and f"categorie={id_cat}" in destination
+
+
+def test_marquer_traite_est_idempotent(client):
+    """Deux appuis (double-clic, page rechargée) : même résultat, aucune erreur."""
+    _connecter(client)
+    id_s = _creer_signalement("001", "pièce")
+
+    client.post(f"/admin/signalements/{id_s}/traiter", data={"etat": "ouverts"})
+    conn = _conn()
+    try:
+        premier = conn.execute(
+            "SELECT traite_le FROM signalements WHERE id_signalement = ?", (id_s,)
+        ).fetchone()["traite_le"]
+    finally:
+        conn.close()
+
+    r = client.post(f"/admin/signalements/{id_s}/traiter", data={"etat": "ouverts"},
+                    follow_redirects=True)
+    assert r.status_code == 200
+    conn = _conn()
+    try:
+        second = conn.execute(
+            "SELECT traite_le FROM signalements WHERE id_signalement = ?", (id_s,)
+        ).fetchone()["traite_le"]
+    finally:
+        conn.close()
+    assert second == premier  # la date de traitement n'est pas réécrite
+
+
+def test_une_ligne_traitee_n_a_pas_de_bouton(client):
+    _connecter(client)
+    id_s = _creer_signalement("001", "pièce")
+    client.post(f"/admin/signalements/{id_s}/traiter", data={"etat": "ouverts"})
+
+    # On vise le FORMULAIRE, pas le libellé : « Marquer traité » figure aussi
+    # dans le bloc d'aide replié de la page.
+    r = client.get("/admin/signalements?etat=traites")
+    assert "/traiter" not in r.text
+    assert "Traité" in r.text
+
+
+def test_la_page_est_large(client):
+    """
+    Piège 5 du lot 3 : un tableau dense a besoin de `contenu-large`, sinon le
+    max-width de 540 px le bride sur ordinateur (erreur déjà commise six fois).
+    """
+    _connecter(client)
+    r = client.get("/admin/signalements")
+    assert "contenu-large" in r.text

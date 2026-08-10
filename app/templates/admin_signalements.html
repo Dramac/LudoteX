@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block titre %}Carnet de maintenance — Administration — {{ nom_association }}{% endblock %}
+{# Tableau dense : sans `contenu-large`, le max-width de 540 px du conteneur
+   par défaut le bride sur ordinateur (même cause déjà rencontrée sur la
+   grille du planning, /stats, l'arbre des tournois…). #}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{#
+  Liste des signalements d'état des boîtes (docs/conception-signalements.md §7).
+  Réservée à l'administration : cette liste nomme des boîtes abîmées et peut
+  porter du texte libre — elle ne sort jamais par une route publique (§7,
+  précédent D5 sur le numéro de pochette).
+#}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Carnet de maintenance</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+  <p class="stats-note">
+    Ce que les bénévoles ont signalé sur les boîtes : pièce manquante, boîte
+    abîmée… À traiter au calme après l'événement — qu'est-ce qu'on répare,
+    qu'est-ce qu'on rachète.
+  </p>
+
+  {% if message %}
+    <p class="resultat resultat-ok">{{ message }}</p>
+  {% endif %}
+
+  <p class="dispo-titre">⚠️ {{ nb_ouverts }} {{ pluriel(nb_ouverts, 'signalement', 'signalements') }} {{ pluriel(nb_ouverts, 'ouvert', 'ouverts') }}</p>
+
+  <details class="aide-inline">
+    <summary>❓ Comment se lit ce carnet</summary>
+    <p>Un signalement est ouvert tant que personne ne l'a refermé.
+       <strong>Marquer traité</strong> le referme : la boîte cesse d'afficher
+       l'alerte au comptoir, et la ligne reste consultable avec le filtre
+       « déjà traités ».</p>
+    <p>Les deux emplacements sont rappelés côte à côte pour retrouver la boîte :
+       celui de la salle et celui du local. L'emplacement de la salle est
+       réécrit à chaque édition — sur un signalement ancien, c'est le local qui
+       est fiable.</p>
+    <p>La liste des catégories proposées au comptoir se règle depuis
+       <a class="lien" href="/admin/categories-signalement">Catégories de
+       signalement</a>.</p>
+  </details>
+
+  <details class="recherche" {% if filtres_actifs %}open{% endif %}>
+    <summary>Filtrer</summary>
+    <form method="get" action="/admin/signalements" class="recherche-form">
+      <div class="champ">
+        <label for="etat">État</label>
+        <select id="etat" name="etat">
+          {% for e in etats %}
+            <option value="{{ e }}" {% if e == etat %}selected{% endif %}>{{ libelles_etat[e] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="champ">
+        <label for="categorie">Catégorie</label>
+        <select id="categorie" name="categorie">
+          <option value="">Toutes</option>
+          {% for c in categories %}
+            <option value="{{ c.id_categorie }}" {% if c.id_categorie == id_categorie %}selected{% endif %}>
+              {{ c.nom }}{% if not c.actif %} (archivée){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="recherche-actions">
+        <button type="submit" class="bouton-filtrer">Filtrer</button>
+        {% if filtres_actifs %}<a class="lien" href="/admin/signalements">Réinitialiser</a>{% endif %}
+      </div>
+    </form>
+  </details>
+
+  {% if chips %}
+  <div class="filtres-actifs">
+    <span class="fa-label">Filtres actifs :</span>
+    {% for c in chips %}
+      <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+    {% endfor %}
+    <a class="lien" href="/admin/signalements">Tout effacer</a>
+  </div>
+  {% endif %}
+</section>
+
+<section class="carte">
+  {% if signalements %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Jeu</th>
+        <th>Boîte</th>
+        <th>Catégorie</th>
+        <th>Détail</th>
+        <th>Signalé le</th>
+        <th>Où la trouver</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in signalements %}
+      <tr>
+        <td>{{ s.jeu_nom }}</td>
+        <td>{{ s.id_exemplaire }}</td>
+        <td>{{ s.categorie_nom or '' }}</td>
+        <td>{{ s.texte or '' }}</td>
+        <td>{{ s.cree_le | dt_local }}</td>
+        {# Chaque emplacement ne s'affiche que s'il est renseigné : jamais de
+           « non renseigné » (règle déjà appliquée au rangement et à l'annonce
+           d'écran de salle). Une boîte sans aucun des deux n'affiche rien. #}
+        <td>
+          {% if s.emplacement_evenement %}
+            <div>Salle : {{ s.emplacement_evenement }}</div>
+          {% endif %}
+          {% if s.emplacement_local_nom %}
+            <div>Local : {{ s.emplacement_local_nom }}</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if s.traite_le %}
+            <span class="badge badge-ok" title="Traité le {{ s.traite_le | dt_local }}">Traité</span>
+          {% else %}
+            <form method="post" action="/admin/signalements/{{ s.id_signalement }}/traiter"
+                  class="rangement-form-inline">
+              {# Les filtres courants voyagent avec l'action : on revient sur la
+                 même vue, pas sur la liste par défaut. #}
+              <input type="hidden" name="etat" value="{{ etat }}">
+              <input type="hidden" name="categorie" value="{{ id_categorie if id_categorie is not none else '' }}">
+              <button type="submit" class="bouton-filtrer">Marquer traité</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>
+      {% if filtres_actifs %}
+        Aucun signalement ne correspond à ces filtres.
+      {% else %}
+        Aucun signalement en attente. Rien à réparer pour l'instant.
+      {% endif %}
+    </p>
+  {% endif %}
+</section>
+
+<p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
+{% endblock %}
