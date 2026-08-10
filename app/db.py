@@ -121,6 +121,17 @@ _EMPLACEMENTS_RANGEMENT_SEED = [
     "valise 2",
 ]
 
+# Premier remplissage des catégories du carnet de maintenance (voir
+# docs/conception-signalements.md §2). Même logique d'application unique que
+# ci-dessus : si le bureau en a supprimé une, elle ne doit jamais ressusciter.
+_CATEGORIES_SIGNALEMENT_SEED = [
+    "Pièce manquante",
+    "Règle manquante",
+    "Boîte abîmée",
+    "Matériel abîmé",
+    "Autre",
+]
+
 
 def _appliquer_migrations(conn: sqlite3.Connection) -> None:
     """Ajoute les colonnes manquantes des bases déjà créées (idempotent)."""
@@ -384,6 +395,25 @@ def _seed_emplacements_rangement(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _seed_categories_signalement(conn: sqlite3.Connection) -> None:
+    """
+    Premier remplissage de `categories_signalement` (idempotent).
+
+    Copie conforme de `_seed_emplacements_rangement` : n'insère les catégories
+    par défaut QUE si la table est vide, donc ne duplique rien si `init_db`
+    est rappelé et ne ressuscite jamais une catégorie que le bureau aurait
+    supprimée depuis.
+    """
+    (nb,) = conn.execute("SELECT COUNT(*) FROM categories_signalement").fetchone()
+    if nb:
+        return
+    conn.executemany(
+        "INSERT INTO categories_signalement (nom, actif, ordre) VALUES (?, 1, ?)",
+        [(nom, ordre) for ordre, nom in enumerate(_CATEGORIES_SIGNALEMENT_SEED)],
+    )
+    conn.commit()
+
+
 def init_db(conn: sqlite3.Connection | None = None) -> None:
     """
     Crée les tables/index manquants et applique les migrations de colonnes.
@@ -417,6 +447,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         # « Gestion de l'événement » (une seule saisie au lieu de deux).
         _migrer_titre_live_vers_nom_evenement(conn)
         _seed_emplacements_rangement(conn)
+        _seed_categories_signalement(conn)
     finally:
         # On ne ferme que si on a ouvert : ne pas fermer la connexion du test.
         if own_connection:

@@ -7,11 +7,15 @@ chaînes SQL, plus quelques constantes. Il n'ouvre aucune connexion : c'est
 schéma d'un coup d'œil, sans logique parasite.
 
 MODÈLE DE DONNÉES (voir docs/specification.md §3) — quatre tables de cœur, plus
-`emplacements_rangement` (suivi du rangement, voir docs/conception-rangement.md) :
+`emplacements_rangement` (suivi du rangement, voir docs/conception-rangement.md)
+et les deux tables du carnet de maintenance (voir
+docs/conception-signalements.md) :
 
     titres                  catalogue, niveau « référence » : un enregistrement par JEU.
     emplacements_rangement  liste gérée en admin des emplacements de rangement LOCAL.
+    categories_signalement  liste gérée en admin des catégories de signalement.
     exemplaires             boîtes physiques, niveau « unité prêtable » : un par QR.
+    signalements            carnet de maintenance : problèmes signalés sur une boîte.
     prets                   historique complet de tous les prêts (jamais purgé).
     pochettes               occupation du moment des numéros de pochette (recyclés).
     parametres              réglages persistants (clé/valeur).
@@ -88,6 +92,22 @@ CREATE TABLE IF NOT EXISTS emplacements_rangement (
 """
 
 # ---------------------------------------------------------------------------
+# categories_signalement — liste gérée en admin des catégories du carnet de
+# maintenance (docs/conception-signalements.md §2/§4). Patron identique à
+# `emplacements_rangement` : archivage doux (`actif`), jamais de suppression
+# sous un signalement déjà rattaché. Doit précéder `signalements` dans
+# SCHEMA_STATEMENTS : celle-ci la référence en FK (nullable, sans cascade).
+# ---------------------------------------------------------------------------
+SCHEMA_CATEGORIES_SIGNALEMENT = """
+CREATE TABLE IF NOT EXISTS categories_signalement (
+    id_categorie  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom           TEXT NOT NULL,               -- libellé affiché (ex. "Pièce manquante")
+    actif         INTEGER NOT NULL DEFAULT 1,  -- 1 = proposé au comptoir, 0 = archivée (retrait doux)
+    ordre         INTEGER NOT NULL DEFAULT 0   -- tri d'affichage au comptoir
+);
+"""
+
+# ---------------------------------------------------------------------------
 # exemplaires — les boîtes physiques, niveau « unité prêtable » (un par QR).
 # ---------------------------------------------------------------------------
 # emplacement_evenement / emplacement_local_id : suivi du rangement (voir
@@ -102,6 +122,38 @@ CREATE TABLE IF NOT EXISTS exemplaires (
     emplacement_local_id  INTEGER,                     -- FK -> emplacements_rangement, contexte local
     FOREIGN KEY (reference_titre) REFERENCES titres (reference_titre),
     FOREIGN KEY (emplacement_local_id) REFERENCES emplacements_rangement (id_emplacement)
+);
+"""
+
+# ---------------------------------------------------------------------------
+# signalements — carnet de maintenance du parc (docs/conception-signalements.md
+# §3/§4) : un bénévole constate qu'il manque une pièce, un livret abîmé, etc.
+#
+# `id_categorie` est NULLABLE et SANS cascade, comme `programme.id_type` :
+# archiver ou supprimer une catégorie ne doit jamais effacer un signalement
+# déjà saisi (référence, pas libellé recopié — renommer une catégorie se
+# répercute donc sur tout l'historique).
+#
+# `texte` est le SEUL endroit de l'application de prêt par lequel une donnée
+# personnelle peut entrer (champ libre, facultatif) — voir §3 de la note de
+# conception : jamais public, jamais dans le journal d'activité.
+#
+# État déduit, pas stocké : ouvert = `traite_le IS NULL`, même principe que
+# l'état d'un exemplaire (prêt avec `date_retour IS NULL`).
+#
+# Aucun index UNIQUE : deux signalements ouverts identiques sur la même boîte
+# sont légitimes (deux bénévoles, deux moments) et sans conséquence.
+# ---------------------------------------------------------------------------
+SCHEMA_SIGNALEMENTS = """
+CREATE TABLE IF NOT EXISTS signalements (
+    id_signalement  INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_exemplaire   TEXT NOT NULL,            -- FK -> exemplaires
+    id_categorie    INTEGER,                  -- FK -> categories_signalement, nullable, SANS cascade
+    texte           TEXT,                     -- détail libre, facultatif, borné
+    cree_le         TEXT NOT NULL,            -- horodatage ISO (UTC)
+    traite_le       TEXT,                     -- NULL tant que le signalement est ouvert
+    FOREIGN KEY (id_exemplaire) REFERENCES exemplaires (id_exemplaire),
+    FOREIGN KEY (id_categorie) REFERENCES categories_signalement (id_categorie)
 );
 """
 
@@ -243,6 +295,11 @@ CREATE INDEX IF NOT EXISTS idx_exemplaires_titre       ON exemplaires (reference
 
 -- Recherche du plus petit numéro de pochette libre.
 CREATE INDEX IF NOT EXISTS idx_pochettes_occupe        ON pochettes (occupe);
+
+-- Bandeau d'alerte de /pret/<id> : signalements ouverts d'une boîte, requête
+-- jouée à chaque ouverture de l'écran (docs/conception-signalements.md §4).
+CREATE INDEX IF NOT EXISTS idx_signalements_ouverts
+    ON signalements (id_exemplaire) WHERE traite_le IS NULL;
 """
 
 # ---------------------------------------------------------------------------
@@ -287,12 +344,15 @@ SCHEMA_INDEXES_UNIQUES = (
 )
 
 # Ordre d'exécution imposé par les clés étrangères : les tables référencées
-# (titres, emplacements_rangement, exemplaires) AVANT celles qui les
-# référencent, puis les index.
+# (titres, emplacements_rangement, categories_signalement, exemplaires) AVANT
+# celles qui les référencent (signalements a besoin des deux dernières), puis
+# les index.
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
     SCHEMA_EMPLACEMENTS_RANGEMENT,
+    SCHEMA_CATEGORIES_SIGNALEMENT,
     SCHEMA_EXEMPLAIRES,
+    SCHEMA_SIGNALEMENTS,
     SCHEMA_PRETS,
     SCHEMA_POCHETTES,
     SCHEMA_PARAMETRES,
