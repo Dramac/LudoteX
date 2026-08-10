@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}{{ t.nom if t else "Tournoi inconnu" }} — Gestion — Tournois — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
 {% if t is none %}

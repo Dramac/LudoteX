@@ -118,6 +118,35 @@ def test_convention_des_libelles_de_liens_daide():
     assert fautifs == []
 
 
+def test_ecrans_larges_declarent_contenu_large():
+    """
+    GARDE-FOU de largeur (docs/ui-composants.md §17). `.contenu` est plafonné
+    à 540 px pour toute l'application : sans `conteneur_extra`, ces écrans se
+    retrouvent en colonne étroite sur un ordinateur — le même diagnostic a
+    déjà été posé sept fois sur des pages différentes.
+
+    Le test lit la SOURCE des gabarits plutôt que les pages rendues : deux de
+    ces écrans demandent une session admin et un troisième un tournoi
+    existant, alors que la propriété vérifiée est purement statique.
+    """
+    import pathlib
+
+    dossier = pathlib.Path(__file__).resolve().parent.parent / "app" / "templates"
+    attendus = [
+        "tournoi_gerer.html",    # écran de gestion d'un tournoi
+        "tournoi_liste.html",    # liste de travail des tournois
+        "admin_jeton.html",      # tableau des appareils
+        "admin_evenement.html",  # exception assumée (formulaire court)
+        "aide.html",             # exception assumée (page de lecture)
+    ]
+    manquants = [
+        nom for nom in attendus
+        if "{% block conteneur_extra %}contenu-large{% endblock %}"
+        not in (dossier / nom).read_text(encoding="utf-8")
+    ]
+    assert manquants == []
+
+
 def test_menu_visiteur_contient_un_lien_aide(client):
     # Fiche B2 point 2 : un visiteur (sans cookie bénévole) doit pouvoir
     # atteindre l'aide depuis le bandeau. Le fragment est rendu DEUX fois par

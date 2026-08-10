@@ -359,3 +359,41 @@ transfert (`pret.html`, `resultat.type == "transfert"`). Toujours accompagné
 d'une phrase explicite (« La pièce d'identité reste en place — ne touchez pas
 à la pochette. »), jamais de la seule couleur : un bénévole qui découvre
 l'écran pour la première fois ne connaît pas encore le code couleur.
+
+---
+
+## 17. Largeur de page — `.contenu` (540 px) ou `.contenu-large`
+
+`.contenu` est plafonné à **540 px** dans `style.css` : le site est
+mobile-first, et une colonne de texte étroite se lit mieux. Ce plafond étant
+GLOBAL, il s'applique aussi sur un écran d'ordinateur — c'est la cause qu'on
+a déjà diagnostiquée six fois (grille du planning, `/stats`, arbre et rondes
+de tournoi, tableau de bord admin, « Ranger les jeux »), toujours pour la
+même raison et toujours avec le même remède :
+
+```jinja
+{% block conteneur_extra %}contenu-large{% endblock %}
+```
+
+**Règle de choix.** Poser `contenu-large` dès qu'une page contient l'une de
+ces trois choses :
+
+1. un **tableau de données** (`.detail` / `.admin-table`) de plus de trois
+   colonnes ;
+2. une **grille** ou une frise horaire (planning, programme, arbre de
+   tournoi) ;
+3. une **liste de travail dense** que l'on parcourt du regard plutôt qu'on ne
+   lit — une ligne par objet, avec ses actions au bout.
+
+Les autres restent étroites : catalogue, fiche d'un jeu, écran de prêt,
+formulaires de saisie courts, formulaire de collecte du planning.
+
+**Décision Simon du 2026-08-10** — cinq écrans passent en `contenu-large` :
+`/tournoi/<id>/gerer` et `/tournois` (listes de travail, critère 3),
+`/admin/jeton` (tableau des appareils, critère 1), `/admin/evenement` et
+`/aide`. Ces deux derniers sont des **exceptions assumées** à la règle
+ci-dessus : ce sont un formulaire court et une page de lecture, que le
+critère de largeur n'aurait pas retenus. Ils ont été élargis sur demande, la
+lecture à 540 px sur un grand écran ayant été jugée trop contrainte à
+l'usage. Si d'autres pages de lecture suivent un jour, c'est le plafond
+global qu'il faudra rediscuter, pas la liste des exceptions.
