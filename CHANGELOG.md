@@ -6,6 +6,13 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.8.0 — 2026-08-10
+
+- Le **site de formation** peut désormais reprendre le **vrai catalogue** de l'association. Les étiquettes déjà collées sur les boîtes y fonctionnent alors : un bénévole s'entraîne avec de vraies boîtes en main, et rien de ce qu'il fait ne compte pour de bon. Jusqu'ici, scanner une vraie boîte sur le site de formation affichait « boîte inconnue », le site ne connaissant qu'une soixantaine de jeux inventés.
+- La mise en place se fait en une fois, par la personne qui gère l'application : exporter le catalogue depuis **Données & sauvegarde**, déposer le fichier sur le serveur, réinitialiser les données de formation. C'est une **copie figée**, à rafraîchir quand on le décide — les deux sites restent totalement indépendants.
+- Le message qui suit **Réinitialiser les données de formation** annonce maintenant d'où viennent les jeux — « copie du vrai catalogue » ou « jeux fictifs » —, de quoi vérifier d'un coup d'œil que la copie a bien été prise en compte.
+- Pendant une session de formation, toujours scanner avec le **bouton Scanner de l'application**, jamais avec l'appareil photo du téléphone : celui-ci ouvre l'adresse inscrite dans le QR, c'est-à-dire le vrai site.
+
 ## 1.7.0 — 2026-08-10
 
 - Quand une personne rend un jeu et en reprend un autre dans la foulée, un nouveau bouton **« Rendre et prêter un nouveau jeu sans retour PI »** évite de lui rendre sa pièce d'identité pour la reprendre aussitôt : elle **reste dans sa pochette**, et c'est le jeu qui lui est associé qui change. Scanner la nouvelle boîte, confirmer, c'est fait.
