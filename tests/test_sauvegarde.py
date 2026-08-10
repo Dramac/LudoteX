@@ -240,6 +240,80 @@ def test_restaurer_rejoue_les_migrations_sur_une_sauvegarde_ancienne(bases, tmp_
         conn.close()
 
 
+def _base_pret_sans_signalements(chemin: Path) -> None:
+    """
+    Écrit à `chemin` une base de PRÊT au schéma ACTUEL mais ANTÉRIEUR au
+    carnet de maintenance (docs/conception-signalements.md) : sans les tables
+    `categories_signalement`/`signalements`. Sert à simuler la restauration
+    d'une sauvegarde antérieure à ce lot (patron D5, comme pour le module
+    Programme du week-end côté tournois).
+    """
+    from app import db as pret_db
+
+    conn = sqlite3.connect(chemin)
+    try:
+        pret_db.init_db(conn)
+        conn.execute("DROP TABLE signalements")
+        conn.execute("DROP TABLE categories_signalement")
+        conn.execute(
+            "INSERT INTO titres (reference_titre, nom) VALUES ('CATAN', 'Catan')"
+        )
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('00472', 'CATAN')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_restaurer_migre_pret_ancien_sans_signalements(bases, tmp_path):
+    """
+    Une sauvegarde de la base de PRÊT antérieure au carnet de maintenance doit
+    être migrée à la restauration (patron D5, docs/conception-signalements.md
+    §4) : les tables `categories_signalement`/`signalements` doivent
+    apparaître, les catégories amorcées (seed rejoué puisque la table est
+    vide), et les données déjà présentes ne doivent pas être perdues.
+    """
+    from app import sauvegarde, services
+
+    ancienne = tmp_path / "ancienne-pret-signalements.db"
+    _base_pret_sans_signalements(ancienne)
+
+    chemin_zip = tmp_path / "sauvegarde-pret-ancienne.zip"
+    with zipfile.ZipFile(chemin_zip, "w") as zf:
+        zf.writestr("pret-jeux.db", ancienne.read_bytes())
+        zf.writestr("tournoi.db", Path(bases["tournoi"]).read_bytes())
+        zf.writestr("planning.db", Path(bases["planning"]).read_bytes())
+
+    sauvegarde.restaurer_zip_sauvegarde(chemin_zip)
+
+    conn = sqlite3.connect(bases["pret"])
+    conn.row_factory = sqlite3.Row
+    try:
+        tables = {
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert {"categories_signalement", "signalements"} <= tables
+        (nb_categories,) = conn.execute(
+            "SELECT COUNT(*) FROM categories_signalement"
+        ).fetchone()
+        assert nb_categories == 5
+
+        # Les données déjà présentes n'ont pas été perdues au passage.
+        noms = [r[0] for r in conn.execute("SELECT nom FROM titres")]
+        assert noms == ["Catan"]
+
+        # L'application fonctionne sans redémarrage : un signalement peut être
+        # créé sur la base tout juste restaurée (échouerait sur une base non
+        # migrée, faute de table).
+        id_categorie = services.categories_signalement_actives(conn)[0]["id_categorie"]
+        sid = services.creer_signalement(conn, "00472", id_categorie, "test")
+        assert services.compter_signalements_ouverts(conn) == 1
+        assert sid is not None
+    finally:
+        conn.close()
+
+
 def _base_tournoi_schema_ancien(chemin: Path) -> None:
     """
     Écrit à `chemin` une base de TOURNOIS au schéma ANTÉRIEUR au module
