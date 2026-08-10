@@ -426,6 +426,15 @@ mise en œuvre quand elle coule de source.
   planning (`app/planning/exports.py`), classements et vainqueurs pour les
   quatre modes de tournoi. Le rapport d'édition est de plus en plus un travail
   d'**assemblage** et de moins en moins de production de données.
+- **Une pièce détachée de plus (2026-08-10)** : le **carnet de maintenance**
+  (6.2, livré) sort par les exports Excel et PDF de sa propre page
+  d'administration, filtres compris. Il constituera l'une des sections du
+  rapport d'édition — « ce qu'il y a à réparer et à racheter » a sa place dans
+  un bilan présenté en AG, au même titre que la fréquentation. Le raccord n'a
+  pas été fait au moment de livrer le carnet : on ne peut pas ajouter une
+  section à un document qui n'existe pas encore
+  (`docs/conception-signalements.md` §12). Il est noté ici pour ne pas se
+  perdre le jour où 6.3 sera instruite.
 
 ### 6.4 Notion d'« édition » de l'événement
 - **Valeur** : socle des points 6.1/6.3 et de comparaisons année par année
