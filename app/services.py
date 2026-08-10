@@ -121,6 +121,14 @@ def pluriel(n: int, singulier: str, pluriel: str) -> str:
     return singulier if -1 <= n <= 1 else pluriel
 
 
+# Un jeu rendu moins de SEUIL_ERREUR_PRET_S après sa sortie n'a pas été prêté :
+# mauvaise boîte scannée, ou visiteur qui se ravise au comptoir. La ligne est
+# alors requalifiée en `motif = 'erreur'` et sort des statistiques (voir
+# `_marquer_erreur_si_immediat`). Seuil volontairement bas : au-delà d'une
+# minute, un retour rapide reste un vrai prêt (un jeu essayé sur place).
+SEUIL_ERREUR_PRET_S = 60
+
+
 def _duree_secondes(sortie_iso: str, retour_iso: str | None) -> float:
     """Durée d'un prêt en secondes (jusqu'à `retour_iso`, ou jusqu'à maintenant)."""
     debut = datetime.fromisoformat(sortie_iso)
@@ -354,9 +362,11 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
 
     Returns:
-        dict avec total_prets, en_cours, titres_pretes, nb_titres.
+        dict avec total_prets, en_cours, titres_pretes, nb_titres, erreurs.
     """
-    # Les sorties « tournoi » sont exclues de toutes les statistiques.
+    # Les sorties « tournoi » et les erreurs de prêt (retour immédiat, voir
+    # `_marquer_erreur_si_immediat`) sont exclues de toutes les statistiques :
+    # le filtre `motif = 'pret'` ci-dessous s'en charge partout.
     f, params = _filtre_periode("date_sortie", debut, fin)
     total_prets = conn.execute(
         f"SELECT COUNT(*) FROM prets WHERE motif = 'pret'{f}", params
@@ -374,6 +384,10 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         params,
     ).fetchone()[0]
     nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
+    # Erreurs de prêt : comptées à part, jamais mêlées aux chiffres ci-dessus.
+    erreurs = conn.execute(
+        f"SELECT COUNT(*) FROM prets WHERE motif = 'erreur'{f}", params
+    ).fetchone()[0]
     # Durée moyenne, sur les prêts TERMINÉS uniquement (hors tournoi, période incluse).
     moyenne = conn.execute(
         f"""
@@ -389,6 +403,7 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         "titres_pretes": titres_pretes,
         "nb_titres": nb_titres,
         "duree_moyenne": format_duree(moyenne) if moyenne is not None else "—",
+        "erreurs": erreurs,
     }
 
 
@@ -1045,6 +1060,50 @@ def _effacer_pochette(conn: sqlite3.Connection, id_pret: int) -> None:
     )
 
 
+def _marquer_erreur_si_immediat(conn: sqlite3.Connection, courant: dict | sqlite3.Row,
+                                instant_retour: str) -> bool:
+    """
+    Requalifie en « erreur de prêt » un prêt rendu moins d'une minute après sa
+    sortie ; ne committe pas. À appeler DANS la transaction qui clôt le prêt.
+
+    Un jeu qui revient au comptoir en moins d'une minute n'a pas été prêté : le
+    bénévole s'est trompé de boîte, ou le visiteur a changé d'avis pendant qu'on
+    lui prenait sa pièce d'identité. Le compter comme un prêt fausse deux fois
+    les statistiques — un prêt de plus au palmarès du titre, et une durée
+    ridicule dans la moyenne.
+
+    La ligne n'est PAS supprimée : elle passe de `motif = 'pret'` à
+    `motif = 'erreur'`. Toutes les requêtes de statistiques filtrant déjà
+    `motif = 'pret'`, l'exclusion est acquise sans toucher une seule d'entre
+    elles, et le fait reste consultable (compteur dédié sur /stats).
+
+    Les sorties tournoi (`motif = 'tournoi'`) ne sont jamais requalifiées :
+    elles sont déjà hors statistiques, et leur motif porte une information que
+    « erreur » effacerait.
+
+    Args:
+        conn: connexion SQLite ouverte, déjà en transaction.
+        courant: ligne du prêt qu'on vient de clore (`pret_en_cours`).
+        instant_retour: horodatage UTC ISO posé en `date_retour`.
+
+    Returns:
+        True si la ligne a été requalifiée.
+    """
+    if courant["motif"] != "pret":
+        return False
+    try:
+        ecart = _duree_secondes(courant["date_sortie"], instant_retour)
+    except (TypeError, ValueError):
+        # Horodatage illisible : on ne requalifie rien plutôt que de deviner.
+        return False
+    if ecart >= SEUIL_ERREUR_PRET_S:
+        return False
+    conn.execute(
+        "UPDATE prets SET motif = 'erreur' WHERE id_pret = ?", (courant["id_pret"],)
+    )
+    return True
+
+
 def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
     Enregistre le retour d'un exemplaire : clôt le prêt/sortie en cours et, s'il
@@ -1059,10 +1118,16 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     l'afficher au bénévole pour qu'il retrouve la pièce d'identité à restituer.
     C'est le geste central de l'application.
 
+    Un retour immédiat (moins de `SEUIL_ERREUR_PRET_S`) est requalifié en erreur
+    de prêt — voir `_marquer_erreur_si_immediat`. Cela ne change RIEN à ce que
+    voit le bénévole (il doit toujours rendre la pièce d'identité, au même
+    endroit), hormis une ligne d'information : seules les statistiques changent.
+
     Returns:
-        {"numero_libere": n, "motif": "pret"} pour un prêt au public,
-        {"motif": "tournoi"} pour un retour de tournoi (pas d'emplacement), ou
-        {"deja_disponible": True} si rien à clore (cas non bloquant).
+        {"numero_libere": n, "motif": "pret", "erreur": bool} pour un prêt au
+        public, {"motif": "tournoi"} pour un retour de tournoi (pas
+        d'emplacement), ou {"deja_disponible": True} si rien à clore (cas non
+        bloquant).
     """
     with transaction(conn):
         # Lecture SOUS le verrou d'écriture : deux retours simultanés sur la
@@ -1072,16 +1137,18 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         if courant is None:
             return {"deja_disponible": True}
         numero = courant["numero_pochette"]          # lu AVANT effacement
+        instant = maintenant()
         conn.execute(
             "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
-            (maintenant(), courant["id_pret"]),
+            (instant, courant["id_pret"]),
         )
         _effacer_pochette(conn, courant["id_pret"])
         if courant["motif"] == "tournoi":
             return {"motif": "tournoi"}
+        erreur = _marquer_erreur_si_immediat(conn, courant, instant)
         # Prêt au public : on libère le numéro d'emplacement.
         liberer_numero(conn, numero)
-    return {"numero_libere": numero, "motif": "pret"}
+    return {"numero_libere": numero, "motif": "pret", "erreur": erreur}
 
 
 def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
@@ -1237,11 +1304,18 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
                         "numero": autre["numero_pochette"]}
         # 1. Clôture de l'ancien prêt, dont le numéro est effacé (D5) — mais
         #    la pochette n'est PAS libérée : la pièce d'identité y est encore.
+        instant = maintenant()
         conn.execute(
             "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
-            (maintenant(), courant["id_pret"]),
+            (instant, courant["id_pret"]),
         )
         _effacer_pochette(conn, courant["id_pret"])
+        # Un transfert est un retour : si la boîte rendue n'est sortie que
+        # depuis quelques secondes, c'est la mauvaise boîte qu'on avait
+        # scannée, et le transfert est précisément le rattrapage. La ligne
+        # close sort donc des statistiques comme n'importe quel retour
+        # immédiat. Le NOUVEAU prêt, lui, n'est pas concerné : il commence.
+        _marquer_erreur_si_immediat(conn, courant, instant)
         # 2. Nouveau prêt sur LE MÊME numéro (voir l'exception ci-dessus).
         conn.execute(
             """

@@ -33,6 +33,12 @@
     <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">en cours</span></div>
     <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés</span></div>
     <div class="chiffre"><span class="chiffre-val" {% if g.duree_moyenne == "—" %}title="Aucun prêt terminé sur la période"{% endif %}>{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
+    {# Les erreurs de prêt (jeu rendu en moins d'une minute) sont comptées à
+       part et n'entrent dans AUCUN des chiffres ci-dessus. Le « 0 » est
+       affiché : sur un tableau de bord chiffré, il informe autant qu'un
+       autre nombre — la règle « jamais de (0) permanent » vise les
+       compteurs de menu, pas une synthèse. #}
+    <div class="chiffre"><span class="chiffre-val" title="Jeux rendus moins d'une minute après leur sortie : mauvaise boîte scannée, ou visiteur qui se ravise. Non comptés dans les chiffres ci-dessus.">{{ g.erreurs }}</span><span class="chiffre-lib">{{ pluriel(g.erreurs, 'erreur de prêt', 'erreurs de prêt') }}</span></div>
   </div>
 
   <details class="recherche" {% if debut or fin %}open{% endif %}>

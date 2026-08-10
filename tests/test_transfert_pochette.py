@@ -140,8 +140,9 @@ def test_meme_boite_clot_et_rouvre_sur_le_meme_numero(conn):
     assert _nb_prets(conn) == 2          # l'ancien clos + le nouveau
 
 
-def test_deux_prets_comptes_dans_les_statistiques(conn):
+def test_deux_prets_comptes_dans_les_statistiques(conn, vieillir_prets):
     services.preter(conn, "001")
+    vieillir_prets(conn)   # sinon la boîte rendue devient une erreur de prêt
     services.transferer_pochette(conn, "001", "002")
 
     stats = services.stats_globales(conn)

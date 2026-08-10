@@ -38,11 +38,12 @@ def test_preter_attribue_le_plus_petit_numero(conn):
     assert services.dispo_par_titre(conn, "CATAN") == (3, 1)
 
 
-def test_rendre_libere_et_recycle_le_numero(conn):
+def test_rendre_libere_et_recycle_le_numero(conn, vieillir_prets):
     services.preter(conn, "001")        # n°1
     services.preter(conn, "002")        # n°2
+    vieillir_prets(conn)                # un prêt ordinaire, pas une erreur
     res = services.rendre(conn, "001")  # libère n°1
-    assert res == {"numero_libere": 1, "motif": "pret"}
+    assert res == {"numero_libere": 1, "motif": "pret", "erreur": False}
     # le plus petit libre est de nouveau 1
     assert services.preter(conn, "003") == 1
 
@@ -202,9 +203,10 @@ def test_purge_sans_effet_sur_les_statistiques(conn):
     assert avant == apres
 
 
-def test_stats_globales_et_palmares(conn):
+def test_stats_globales_et_palmares(conn, vieillir_prets):
     # 001 prêté 2 fois (1 clôturé + 1 en cours), 002 une fois, 003 jamais.
-    services.preter(conn, "001"); services.rendre(conn, "001"); services.preter(conn, "001")
+    services.preter(conn, "001"); vieillir_prets(conn); services.rendre(conn, "001")
+    services.preter(conn, "001")
     services.preter(conn, "002")
     g = services.stats_globales(conn)
     assert g["total_prets"] == 3
@@ -234,8 +236,9 @@ def test_sortir_tournoi_hors_stats(conn):
     assert services.est_sorti(conn, "001") is False
 
 
-def test_duree_moyenne_et_par_pret(conn):
+def test_duree_moyenne_et_par_pret(conn, vieillir_prets):
     services.preter(conn, "001")
+    vieillir_prets(conn)
     services.rendre(conn, "001")
     g = services.stats_globales(conn)
     assert g["duree_moyenne"] != "—"          # une durée est calculée

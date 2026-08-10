@@ -21,7 +21,19 @@ toute la suite écrirait dans le vrai `data/journal.log` du dépôt. Chaque test
 repart avec un fichier neuf dans un `tmp_path` dédié, JOURNAL_PATH aligné en
 environnement (au cas où du code lirait la variable directement) et le logger
 reconfiguré vers ce chemin.
+
+`vieillir_prets` (sur demande) : dans un test, un prêt et son retour sont
+séparés de quelques microsecondes — ce qu'un bénévole ne peut pas faire. Un tel
+retour est désormais requalifié en ERREUR DE PRÊT (moins d'une minute, voir
+services.SEUIL_ERREUR_PRET_S) et sort donc des statistiques. Les tests qui
+portent sur un prêt ORDINAIRE doivent donc reculer la date de sortie pour
+décrire une situation réelle. On ne neutralise volontairement pas le seuil
+(par exemple en le mettant à zéro pour toute la suite) : cela masquerait une
+régression sur le comportement lui-même.
 """
+
+import sqlite3
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -41,3 +53,33 @@ def _journal_isole(tmp_path, monkeypatch):
     monkeypatch.setenv("JOURNAL_PATH", str(chemin))
     journal.configurer(chemin, console=False)
     yield chemin
+
+
+@pytest.fixture
+def vieillir_prets():
+    """
+    Recule la `date_sortie` des prêts EN COURS, pour qu'un retour enregistré
+    dans la foulée reste un prêt ordinaire et non une erreur de prêt.
+
+    Le décalage se calcule en Python et non en SQL : `datetime()` de SQLite
+    rend une chaîne sans « T » ni décalage horaire (« 2026-08-10 11:00:00 »),
+    que `datetime.fromisoformat` relit en horodatage NAÏF — le comparer à un
+    horodatage aware lèverait plus loin, dans le calcul des durées.
+
+    Returns:
+        Une fonction `(conn, secondes=3600) -> None` à appeler entre le prêt
+        et le retour.
+    """
+    def _vieillir(conn: sqlite3.Connection, secondes: int = 3600) -> None:
+        lignes = conn.execute(
+            "SELECT id_pret, date_sortie FROM prets WHERE date_retour IS NULL"
+        ).fetchall()
+        for id_pret, date_sortie in [(l[0], l[1]) for l in lignes]:
+            recule = (datetime.fromisoformat(date_sortie)
+                      - timedelta(seconds=secondes)).isoformat(timespec="seconds")
+            conn.execute(
+                "UPDATE prets SET date_sortie = ? WHERE id_pret = ?", (recule, id_pret)
+            )
+        conn.commit()
+
+    return _vieillir

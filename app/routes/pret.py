@@ -25,7 +25,11 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
 ----------------------------------------------------
     {"type": "prete",            "numero": n}             prêt réussi
     {"type": "repret",           "nouveau": n, "ancien": a|None}  re-prêt
-    {"type": "rendu",            "numero": n}             retour enregistré
+    {"type": "rendu",            "numero": n, "erreur": bool}
+        retour enregistré ; `erreur` est vrai quand le prêt a duré moins d'une
+        minute et a donc été requalifié en erreur de prêt (hors statistiques,
+        voir services._marquer_erreur_si_immediat). Le geste du bénévole est
+        le même dans les deux cas.
     {"type": "deja_sorti",       "numero": n}             déjà sorti (no-op)
     {"type": "deja_disponible"}                           rien à rendre (no-op)
     {"type": "occupe"}                                    conflit d'accès simultané, rien d'enregistré
@@ -316,7 +320,8 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
                 return {"type": "deja_disponible"}
             if res.get("motif") == "tournoi":
                 return {"type": "rendu_tournoi"}
-            return {"type": "rendu", "numero": res["numero_libere"]}
+            return {"type": "rendu", "numero": res["numero_libere"],
+                    "erreur": bool(res.get("erreur"))}
 
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:

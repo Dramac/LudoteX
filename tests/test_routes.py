@@ -492,7 +492,7 @@ def test_racine_sert_accueil(client):
     assert "LudoteX" in r.text
 
 
-def test_stats_page(client):
+def test_stats_page(client, vieillir_prets):
     # Q9 : aucun prêt terminé -> « — » avec une info-bulle, pas « 0 min ».
     r0 = client.get("/stats")
     assert 'title="Aucun prêt terminé sur la période"' in r0.text
@@ -508,6 +508,15 @@ def test_stats_page(client):
     assert "par exemplaire" in r2.text
 
     # Un prêt TERMINÉ : la durée moyenne est affichée sans info-bulle.
+    # Le prêt est reculé d'une heure : rendu dans la foulée, il serait
+    # requalifié en erreur de prêt et ne compterait plus.
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        vieillir_prets(conn)
+    finally:
+        conn.close()
     client.post("/pret/001/rendre")
     r3 = client.get("/stats")
     assert 'title="Aucun prêt terminé sur la période"' not in r3.text
@@ -1178,7 +1187,11 @@ def test_formation_mode_inactif_par_defaut(client, monkeypatch):
     r_admin = client.get("/admin")
     assert "SITE DE FORMATION" not in r_admin.text
     assert "Réinitialiser les données de formation" not in r_admin.text
-    assert "Site de formation" not in r_admin.text
+    # Le LIEN vers le site de formation, pas la simple présence des mots : le
+    # bloc de supervision du tableau de bord affiche le résumé du fichier
+    # VERSION, qui parle librement de ce qu'apporte la version déployée et a
+    # déjà contenu « Site de formation » (v1.8.0).
+    assert 'title="Ouvrir le site de formation"' not in r_admin.text
 
     assert client.post("/admin/formation/reinitialiser").status_code == 404
 

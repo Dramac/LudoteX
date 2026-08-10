@@ -50,6 +50,13 @@
       <section class="resultat resultat-ok">
         <p class="resultat-libelle">Récupérer la pièce d'identité dans la pochette n°</p>
         <p class="pochette-num pochette-num--retour">{{ resultat.numero }}</p>
+        {# Rendu en moins d'une minute : le geste reste EXACTEMENT le même (la
+           pièce d'identité est au même endroit), seule la comptabilité change.
+           D'où une simple ligne d'information sous le numéro, et surtout pas
+           un bandeau d'avertissement : rien n'a mal tourné. #}
+        {% if resultat.erreur %}
+          <p class="resultat-consigne">Retour immédiat : compté comme une erreur de prêt, hors statistiques.</p>
+        {% endif %}
       </section>
     {% elif resultat.type == "tournoi_sorti" %}
       <section class="resultat resultat-info">

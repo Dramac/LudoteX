@@ -107,6 +107,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
         ("Titres prêtés", g["titres_pretes"]),
         ("Titres au catalogue", g["nb_titres"]),
         ("Durée moyenne de prêt", g.get("duree_moyenne", "—")),
+        ("Erreurs de prêt (hors chiffres ci-dessus)", g.get("erreurs", 0)),
     ]
     for i, (lib, val) in enumerate(lignes, start=4):
         ws[f"A{i}"] = lib
@@ -220,7 +221,9 @@ def construire_pdf(data: dict, periode_txt: str,
              ["Prêts en cours", str(g["en_cours"])],
              ["Titres prêtés", str(g["titres_pretes"])],
              ["Titres au catalogue", str(g["nb_titres"])],
-             ["Durée moyenne de prêt", g.get("duree_moyenne", "—")]],
+             ["Durée moyenne de prêt", g.get("duree_moyenne", "—")],
+             ["Erreurs de prêt (hors chiffres ci-dessus)",
+              str(g.get("erreurs", 0))]],
             [8 * cm, 4 * cm]))
         elements.append(Spacer(1, 0.4 * cm))
 

@@ -349,7 +349,7 @@ def test_repreter_fonctionne_avec_une_transaction_deja_ouverte(base):
         conn.close()
 
 
-def test_rendre_affiche_le_numero_avant_de_l_effacer(base):
+def test_rendre_affiche_le_numero_avant_de_l_effacer(base, vieillir_prets):
     """
     NON-RÉGRESSION du geste central (fiche D5) : le retour doit renvoyer le
     numéro de pochette — le bénévole en a besoin pour retrouver la pièce
@@ -358,8 +358,9 @@ def test_rendre_affiche_le_numero_avant_de_l_effacer(base):
     conn = db.get_connection()
     try:
         numero = services.preter(conn, "001")
+        vieillir_prets(conn)
         res = services.rendre(conn, "001")
-        assert res == {"numero_libere": numero, "motif": "pret"}
+        assert res == {"numero_libere": numero, "motif": "pret", "erreur": False}
         assert conn.execute(
             "SELECT numero_pochette FROM prets WHERE id_exemplaire = '001'"
         ).fetchone()[0] is None
