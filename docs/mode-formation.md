@@ -61,9 +61,14 @@ première) :
 Dans les deux cas, le script (`app/formation.py`) **vide puis repeuple**
 entièrement les **trois** bases de l'instance de formation :
 
-- **Catalogue & prêts** : environ 60 jeux dont les noms sont tirés **au hasard
-  du vrai catalogue** de l'association (pour une formation plus parlante que des
-  « Jeu d'essai n°… »). Les prêts sont **datés** pour simuler un événement en
+- **Catalogue & prêts** : soit une **copie du vrai catalogue** si
+  `FORMATION_CATALOGUE_CSV` est renseignée (voir « Faire fonctionner les QR
+  imprimés » plus bas — c'est ce qui permet de scanner de vraies boîtes pendant
+  une formation), soit, par défaut, environ 60 jeux fictifs dont les noms sont
+  tirés **au hasard du vrai catalogue** de l'association (pour une formation
+  plus parlante que des « Jeu d'essai n°… »). Les prêts d'exemple portent dans
+  les deux cas sur une soixantaine de boîtes au plus, pour que les statistiques
+  de démonstration restent les mêmes. Ils sont **datés** pour simuler un événement en
   cours depuis plusieurs heures : quelques dizaines de prêts terminés aux durées
   variées (~15 min à ~2 h) répartis dans le temps, plus une douzaine encore en
   cours. Les **statistiques** (palmarès, histogramme horaire, durée moyenne,
@@ -95,15 +100,21 @@ entièrement les **trois** bases de l'instance de formation :
 Il est **idempotent** : le relancer repart d'un état propre (seuls les noms de
 jeux tirés au hasard peuvent varier d'une fois à l'autre).
 
-> **D'où viennent les noms de jeux ?** Le script LIT le catalogue de production
-> en **lecture seule** pour en tirer des noms — jamais il ne l'écrit. Il utilise
-> la base pointée par `FORMATION_SOURCE_DB` si elle est définie, sinon le chemin
-> de production par défaut (`data/pret-jeux.db`). S'il n'y accède pas (cas
-> fréquent sur un serveur de formation isolé), il retombe sur une **liste
-> intégrée** de jeux connus — la formation fonctionne quand même. Pour des noms
-> fidèles au vrai catalogue sur le VPS, ajouter
-> `FORMATION_SOURCE_DB=/var/lib/ludotex/app.db` (chemin de la base de prod) dans
-> `/etc/ludotex-formation.env`.
+> **D'où viennent les noms de jeux ?** Si `FORMATION_CATALOGUE_CSV` est
+> renseignée (voir la section suivante), la question ne se pose pas : le
+> catalogue est une copie du vrai, noms compris. Sinon, le script LIT le
+> catalogue de production en **lecture seule** pour en tirer des noms — jamais
+> il ne l'écrit. Il utilise la base pointée par `FORMATION_SOURCE_DB` si elle
+> est définie, sinon le chemin de production par défaut (`data/pret-jeux.db`,
+> relatif au dossier d'installation). S'il n'y accède pas — **c'est le cas sur
+> le VPS**, où la base de production est à `/var/lib/ludotex/pret-jeux.db` et où
+> `install.sh` ne pose pas cette variable —, il retombe sur une **liste
+> intégrée** de jeux connus, sans que rien ne le signale à l'écran. Pour des
+> noms fidèles au vrai catalogue, ajouter
+> `FORMATION_SOURCE_DB=/var/lib/ludotex/pret-jeux.db` dans
+> `/etc/ludotex-formation.env`. À noter : cette variable fait lire à l'instance
+> de formation un fichier de la production ; l'instantané CSV de la section
+> suivante, lui, n'établit aucun lien entre les deux.
 
 > Ce script vide les bases qu'il cible — ne jamais le lancer en pointant vers
 > les bases de PRODUCTION (`DATABASE_PATH`/`TOURNOI_DATABASE_PATH`/
@@ -111,6 +122,85 @@ jeux tirés au hasard peuvent varier d'une fois à l'autre).
 > serveur), vérifier son `.env` avant de taper `python -m app.formation`.
 > En local, `python lancer.py --formation` s'occupe de tout (bases jetables
 > `data/formation-*.db`, peuplement au premier lancement).
+
+## Faire fonctionner les QR imprimés sur le site de formation
+
+### Le problème
+
+Constaté à la première session de formation en conditions réelles : les
+bénévoles avaient les **vraies boîtes** en main, les liens d'activation du
+**site de formation** sur leur téléphone, et aucun scan n'aboutissait.
+
+L'explication tient en une ligne : les QR collés sur les boîtes encodent
+`<domaine>/jeu/<identifiant de la boîte>`, et le site de formation ne
+connaissait que 60 jeux **fictifs**, aux identifiants inventés. Le scan
+fonctionnait — c'est bien l'écran prêt/retour du site de formation qui
+s'ouvrait, le scanner n'ayant que faire du domaine inscrit dans le QR — mais il
+tombait sur « boîte inconnue ».
+
+### La solution : recopier le catalogue
+
+Donner au site de formation **les mêmes boîtes que la production**, en trois
+gestes. C'est un **instantané** : un fichier déposé à la main, rafraîchi quand
+le bureau le décide. Les deux instances ne communiquent jamais entre elles.
+
+1. **Sur la production**, tableau de bord admin → **Données & sauvegarde** →
+   exporter le catalogue au format **CSV**.
+2. **Déposer le fichier sur le serveur**, à un emplacement lisible par le
+   service (par exemple `/var/lib/ludotex-formation/catalogue.csv`) :
+
+   ```bash
+   # depuis votre poste, remplacez l'utilisateur et le domaine
+   scp catalogue.csv root@mon-serveur:/var/lib/ludotex-formation/catalogue.csv
+   # sur le serveur : donner le fichier au service et le rendre lisible par lui
+   chown pretjeux:pretjeux /var/lib/ludotex-formation/catalogue.csv
+   ```
+
+3. **Renseigner la variable**, dans `/etc/ludotex-formation.env` (la ligne y est
+   déjà, en commentaire — il suffit de retirer le `#`) :
+
+   ```
+   FORMATION_CATALOGUE_CSV="/var/lib/ludotex-formation/catalogue.csv"
+   ```
+
+   puis redémarrer l'instance et réinitialiser ses données :
+
+   ```bash
+   systemctl restart ludotex-formation
+   ```
+
+   puis, sur le site de formation, tableau de bord admin →
+   **Réinitialiser les données de formation**.
+
+Le message de confirmation annonce alors *« … 703 jeux (copie du vrai
+catalogue) … »*. S'il dit *« (jeux fictifs) »*, le fichier n'a pas été trouvé
+ou n'a pas pu être lu : la raison est écrite dans les journaux du serveur
+(`journalctl -u ludotex-formation -e`). Dans tous les cas le site de formation
+continue de fonctionner — un catalogue fictif vaut mieux qu'une base vide.
+
+Une fois le catalogue recopié, **les étiquettes déjà collées sur les boîtes
+fonctionnent** sur le site de formation : le bénévole scanne une vraie boîte,
+et c'est l'écran prêt/retour du site de formation qui s'ouvre, avec le bon jeu.
+Ce qu'il y fait n'a toujours aucun effet sur la production (bases séparées).
+
+### Ce que cela ne règle pas
+
+Si le bénévole scanne avec l'**appareil photo natif** de son téléphone (le
+repli proposé par la page d'aide quand la caméra de l'application refuse de
+démarrer), le QR ouvre l'adresse qui y est inscrite : le **site de
+production**. Aucun réglage du site de formation ne peut l'intercepter — cette
+adresse est dans l'encre.
+
+En pratique, deux précautions suffisent :
+
+- rappeler en début de session de passer par le bouton **Scanner** de
+  l'application, jamais par l'appareil photo du téléphone ;
+- ne pas activer l'accès à la production sur les téléphones des personnes en
+  formation : sans jeton valide, un scan égaré tombe sur « accès refusé » et
+  n'enregistre rien.
+
+Pour s'en affranchir complètement, imprimer une petite planche de QR
+d'entraînement (section suivante) et former sur ces boîtes-là.
 
 ## Imprimer des QR d'entraînement
 

@@ -18,11 +18,12 @@ l'autre, cf. ci-dessous).
 
 DONNÉES CRÉÉES (trois bases de l'instance courante)
 ---------------------------------------------------
-- PRÊT : ~60 jeux dont les noms sont tirés AU HASARD du vrai catalogue de
-  l'association (lecture seule ; repli sur une liste intégrée de jeux connus si
-  le catalogue n'est pas accessible). Des noms réels rendent la formation plus
-  parlante qu'une suite « Jeu d'essai n°… » ; l'isolation reste assurée par la
-  base jetable et le bandeau « SITE DE FORMATION », pas par le libellé des jeux.
+- PRÊT : le catalogue, selon ce qui est disponible (voir « CATALOGUE » plus
+  bas) — soit une COPIE du vrai catalogue importée depuis un CSV, soit ~60 jeux
+  fictifs dont les noms sont tirés au hasard du vrai catalogue. Des noms réels
+  rendent la formation plus parlante qu'une suite « Jeu d'essai n°… » ;
+  l'isolation reste assurée par la base jetable et le bandeau « SITE DE
+  FORMATION », pas par le libellé des jeux.
   Les prêts sont DATÉS pour simuler un événement en cours depuis plusieurs
   heures : quelques dizaines de prêts terminés aux durées variées (~15 min à
   ~2 h) répartis dans le temps, plus une douzaine de prêts encore en cours — de
@@ -44,6 +45,34 @@ DONNÉES CRÉÉES (trois bases de l'instance courante)
   bénévoles fictifs, préremplissage) réutilisant la démo du planning, plus un
   jumeau resté « collecte ouverte ».
 
+CATALOGUE : POURQUOI ON PEUT VOULOIR LES VRAIS IDENTIFIANTS
+------------------------------------------------------------
+Les QR imprimés collés sur les boîtes encodent `<domaine>/jeu/<id_exemplaire>`.
+Le scanner embarqué (`static/js/scanner.js`) n'extrait que l'`id_exemplaire` de
+l'URL, sans regarder le domaine : un QR imprimé pour la PRODUCTION scanné
+depuis `/scanner` du site de formation ouvre donc `/pret/<id>` DE L'INSTANCE DE
+FORMATION. Encore faut-il que cet identifiant existe dans sa base — sinon
+l'écran affiche « boîte inconnue » (constaté lors de la première session de
+formation en conditions réelles : les bénévoles avaient les vraies boîtes en
+main et aucune ne s'ouvrait).
+
+D'où `FORMATION_CATALOGUE_CSV` : si cette variable pointe vers un export CSV du
+catalogue (celui que produit `/admin/donnees` de la production, dont la colonne
+« Code jeu » porte l'`id_exemplaire`), ce script importe ce fichier au lieu de
+fabriquer des jeux fictifs. Le site de formation connaît alors exactement les
+mêmes boîtes que la production, et les étiquettes déjà imprimées fonctionnent.
+
+C'est un INSTANTANÉ, pas une liaison : un fichier déposé à la main, rafraîchi
+quand le bureau le décide. Les deux instances n'échangent rien à l'exécution.
+Variable absente, vide ou pointant vers un fichier introuvable : repli
+silencieux (un avertissement dans les journaux) sur le catalogue fictif — un
+site de formation ne doit jamais refuser de démarrer pour cette raison.
+
+⚠️ Ce que cet import NE corrige PAS : un bénévole qui scanne avec l'APPAREIL
+PHOTO NATIF de son téléphone (repli documenté dans `/aide`) ouvre l'URL inscrite
+dans le QR, donc le site de PRODUCTION. Aucun réglage côté formation ne peut
+l'intercepter. Voir `docs/mode-formation.md`.
+
 SÉCURITÉ — À LIRE AVANT DE LANCER CE SCRIPT
 --------------------------------------------
 Ce script écrit dans les bases pointées par les variables d'environnement
@@ -53,10 +82,12 @@ ici : la protection vient entièrement de l'isolation de l'instance de formation
 (ses propres bases jetables, jamais celles de production) — ne JAMAIS lancer ce
 script en pointant vers les bases de production.
 
-La LECTURE du vrai catalogue (pour en tirer des noms de jeux) se fait en
-lecture seule, sur la base pointée par `FORMATION_SOURCE_DB` si définie, sinon
-sur le chemin de production par défaut (`data/pret-jeux.db`). Elle ne modifie
-jamais cette base ; en cas d'échec, on retombe sur une liste de noms intégrée.
+Le CSV de `FORMATION_CATALOGUE_CSV` est lu, jamais écrit. La LECTURE du vrai
+catalogue (pour en tirer des noms de jeux, quand aucun CSV n'est fourni) se fait
+elle aussi en lecture seule, sur la base pointée par `FORMATION_SOURCE_DB` si
+définie, sinon sur le chemin de production par défaut (`data/pret-jeux.db`).
+Elle ne modifie jamais cette base ; en cas d'échec, on retombe sur une liste de
+noms intégrée.
 
 USAGE
 -----
@@ -65,6 +96,7 @@ USAGE
 
 from __future__ import annotations
 
+import logging
 import os
 import random
 import sqlite3
@@ -80,6 +112,12 @@ from app.services import FUSEAU_LOCAL, local_vers_utc_iso, slug_titre
 from app.tournoi import db as tournoi_db
 from app.tournoi import programme
 from app.tournoi import services as tournoi_services
+
+# Journal du serveur (pas le journal d'activité de l'application, qui n'a rien
+# à voir) : même logger que les autres avertissements de démarrage, pour qu'un
+# repli sur le catalogue fictif se retrouve dans `journalctl -u ludotex-formation`
+# au lieu de passer inaperçu.
+_LOG = logging.getLogger("uvicorn.error")
 
 # Catalogue de formation volontairement fourni, pour que les STATISTIQUES
 # ressemblent à un vrai événement en cours (démo crédible pour le bureau).
@@ -128,6 +166,73 @@ _NOMS_SECOURS = [
     "Draftosaurus", "Trekking", "Cartographers", "Res Arcana", "Barrage",
     "Ark Nova", "Le Roi des Nains", "Nidavellir", "Marrakech", "Sagrada",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Catalogue importé (CSV) — voir « CATALOGUE » en tête de module
+# ---------------------------------------------------------------------------
+def _chemin_catalogue_csv() -> Path | None:
+    """
+    Chemin du CSV de catalogue à importer, ou None s'il n'y en a pas.
+
+    JAMAIS BLOQUANT : variable absente ou vide -> None sans un mot (cas
+    nominal d'une instance de formation qui se contente de jeux fictifs) ;
+    variable renseignée mais fichier introuvable -> avertissement dans les
+    journaux du serveur PUIS None. Le second cas est une erreur de
+    configuration du bureau (fichier pas encore déposé, chemin mal recopié) :
+    il ne doit pas empêcher la formation d'avoir lieu, mais il ne doit pas non
+    plus être silencieux — sans cet avertissement, le seul symptôme serait un
+    catalogue de 60 jeux fictifs là où on en attendait 700.
+    """
+    brut = (os.getenv("FORMATION_CATALOGUE_CSV") or "").strip()
+    if not brut:
+        return None
+    chemin = Path(brut)
+    if not chemin.is_file():
+        _LOG.warning(
+            "FORMATION_CATALOGUE_CSV pointe vers un fichier introuvable (%s) : "
+            "repli sur le catalogue fictif. Les QR imprimés de la production "
+            "n'ouvriront donc rien sur ce site de formation.", chemin,
+        )
+        return None
+    return chemin
+
+
+def _importer_catalogue_csv(chemin: Path) -> int:
+    """
+    Importe le CSV de catalogue dans la base de PRÊT de l'instance courante.
+
+    Réutilise `scripts.import_csv.importer` — le MÊME code que l'import du
+    catalogue en administration (`/admin/donnees`), donc les mêmes tolérances
+    (colonnes optionnelles, séparateur, lignes ignorées) et surtout la même
+    clé : la colonne « Code jeu » devient l'`id_exemplaire`. C'est précisément
+    ce qui fait que les QR déjà imprimés fonctionnent ici.
+
+    Import DIFFÉRÉ (dans la fonction) : `app.formation` ne dépend de `scripts`
+    que dans ce cas de figure, et ce module est importé par `routes/admin.py`
+    à chaque démarrage.
+
+    Returns:
+        Le nombre d'exemplaires importés (0 si le fichier est illisible —
+        jamais d'exception propagée : le peuplement retombe alors sur le
+        catalogue fictif plutôt que de laisser une base vide).
+    """
+    from scripts.import_csv import importer
+
+    try:
+        rapport = importer(chemin)
+    # `SystemExit` est volontairement dans la liste : `construire_donnees` le
+    # LÈVE quand les colonnes clés (« Code jeu » / « Nom jeu ») manquent —
+    # comportement adapté à un script en ligne de commande, mais qui, non
+    # rattrapé ici, interromprait le peuplement et rendrait 500 sur le bouton
+    # « Réinitialiser les données de formation ». Il n'hérite pas d'`Exception`.
+    except (Exception, SystemExit) as exc:  # CSV illisible, colonnes absentes…
+        _LOG.warning(
+            "Catalogue de formation : échec de l'import de %s (%s) : repli sur "
+            "le catalogue fictif.", chemin, exc,
+        )
+        return 0
+    return int(rapport.get("exemplaires") or 0)
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +305,26 @@ def noms_jeux_formation(n: int) -> list[str]:
     return choisis
 
 
+def _noms_en_base(conn: sqlite3.Connection, n: int) -> list[str]:
+    """
+    `n` noms de titres (au plus) tirés au hasard du catalogue DÉJÀ peuplé de
+    l'instance courante — ce qui rend les tournois et le programme cohérents
+    avec le catalogue, qu'il soit importé ou fictif.
+
+    Repli sur `noms_jeux_formation` si le catalogue est vide ou anormalement
+    court : `peupler_tournoi` a besoin de 7 noms DISTINCTS, sans quoi deux
+    tournois deviendraient indiscernables une fois affichés.
+    """
+    noms = [
+        ligne[0] for ligne in
+        conn.execute("SELECT nom FROM titres").fetchall()
+        if ligne[0]
+    ]
+    if len(noms) < 7:
+        return noms_jeux_formation(n)
+    return random.sample(noms, min(len(noms), n))
+
+
 def _date_locale_dans(minutes: int) -> str | None:
     """Horodatage UTC ISO correspondant à « maintenant + `minutes` » (heure locale)."""
     dt = datetime.now(FUSEAU_LOCAL) + timedelta(minutes=minutes)
@@ -216,24 +341,9 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dict:
-    """
-    Vide puis repeuple la base de PRÊT avec des jeux (noms réels tirés du
-    catalogue) et quelques prêts (en cours et terminés).
-
-    Args:
-        noms: liste de noms de jeux à utiliser (au moins `NB_JEUX`). Si None,
-            elle est tirée par `noms_jeux_formation`.
-
-    Returns:
-        Résumé {"jeux": n, "prets_en_cours": n, "prets_termines": n}.
-    """
-    _vider_base_pret(conn)
-
-    if noms is None:
-        noms = noms_jeux_formation(NB_JEUX)
-
-    ids_exemplaires = []
+def _creer_jeux_fictifs(conn: sqlite3.Connection, noms: list[str]) -> list[str]:
+    """Crée `NB_JEUX` fiches fictives (ids auto-générés) ; renvoie leurs ids."""
+    ids = []
     for nom in noms[:NB_JEUX]:
         resultat = services.creer_jeu(
             conn, nom,
@@ -242,9 +352,63 @@ def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dic
             descriptif=("Fiche FICTIVE créée par le mode formation — sans "
                         "rapport avec le vrai exemplaire du même nom."),
         )
-        ids_exemplaires.append(resultat["id_exemplaire"])
+        ids.append(resultat["id_exemplaire"])
+    return ids
 
-    prets_termines = _peupler_prets_dates(conn, ids_exemplaires)
+
+def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dict:
+    """
+    Vide puis repeuple la base de PRÊT avec un catalogue et quelques prêts
+    (en cours et terminés).
+
+    DEUX SOURCES DE CATALOGUE, dans cet ordre :
+      1. le CSV de `FORMATION_CATALOGUE_CSV` s'il est exploitable — copie du
+         vrai catalogue, VRAIS `id_exemplaire`, donc les QR déjà imprimés
+         ouvrent bien la boîte attendue sur cette instance (voir « CATALOGUE »
+         en tête de module) ;
+      2. sinon `NB_JEUX` fiches fictives aux ids auto-générés (comportement
+         historique, strictement inchangé).
+    Le CSV PRIME sur l'argument `noms`, qui ne sert plus qu'au repli.
+
+    Args:
+        noms: liste de noms de jeux à utiliser pour le repli fictif (au moins
+            `NB_JEUX`). Si None, elle est tirée par `noms_jeux_formation`.
+
+    Returns:
+        Résumé {"jeux": n, "prets_en_cours": n, "prets_termines": n,
+        "catalogue": "csv"|"fictif"} — `catalogue` dit d'où viennent les jeux,
+        pour que la ligne de commande et le message d'administration puissent
+        l'annoncer plutôt que de laisser deviner.
+    """
+    _vider_base_pret(conn)
+
+    ids_exemplaires: list[str] = []
+    source = "fictif"
+
+    if (chemin_csv := _chemin_catalogue_csv()) is not None:
+        # L'import ouvre sa PROPRE connexion (même base : celle de l'instance
+        # courante). Sans risque de verrou : `_vider_base_pret` vient de
+        # committer, `conn` n'a donc aucune transaction ouverte, et la lecture
+        # ci-dessous verra les lignes committées par l'import.
+        if _importer_catalogue_csv(chemin_csv):
+            ids_exemplaires = [
+                ligne[0] for ligne in
+                conn.execute("SELECT id_exemplaire FROM exemplaires").fetchall()
+            ]
+            source = "csv"
+
+    if not ids_exemplaires:
+        if noms is None:
+            noms = noms_jeux_formation(NB_JEUX)
+        ids_exemplaires = _creer_jeux_fictifs(conn, noms)
+
+    # Les prêts fictifs ne portent que sur un ÉCHANTILLON du catalogue (au plus
+    # `NB_JEUX` boîtes) : avec le vrai catalogue (~700 boîtes), en prêter une
+    # par ligne donnerait des statistiques absurdes (700 prêts en 5 h). Les
+    # chiffres de démonstration restent ainsi les mêmes quelle que soit la
+    # source du catalogue.
+    ids_prets = random.sample(ids_exemplaires, min(len(ids_exemplaires), NB_JEUX))
+    prets_en_cours, prets_termines = _peupler_prets_dates(conn, ids_prets)
 
     # Date de l'événement = AUJOURD'HUI. Sans ce réglage, la frise de la page
     # d'accueil et la page /programme restent VIDES quoi qu'on y saisisse
@@ -258,8 +422,9 @@ def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dic
 
     return {
         "jeux": len(ids_exemplaires),
-        "prets_en_cours": NB_PRETS_EN_COURS,
+        "prets_en_cours": prets_en_cours,
         "prets_termines": prets_termines,
+        "catalogue": source,
     }
 
 
@@ -268,7 +433,9 @@ def _iso_utc(dt: datetime) -> str:
     return dt.replace(microsecond=0).isoformat()
 
 
-def _peupler_prets_dates(conn: sqlite3.Connection, ids_exemplaires: list[str]) -> int:
+def _peupler_prets_dates(
+    conn: sqlite3.Connection, ids_exemplaires: list[str]
+) -> tuple[int, int]:
     """
     Insère des prêts DATÉS pour simuler un événement en cours depuis plusieurs
     heures : quelques dizaines de prêts terminés aux durées variées (~15 min à
@@ -282,7 +449,10 @@ def _peupler_prets_dates(conn: sqlite3.Connection, ids_exemplaires: list[str]) -
     exemplaire n'est à la fois sorti et porteur d'un historique qui chevauche.
 
     Returns:
-        Le nombre de prêts TERMINÉS créés.
+        (prêts en cours, prêts terminés) RÉELLEMENT créés — le premier vaut
+        `NB_PRETS_EN_COURS` dès que le catalogue est assez grand, mais pas si
+        on lui donne moins de boîtes que ça (petit CSV de test) : le résumé
+        affiché à l'administration annoncerait alors un chiffre faux.
     """
     maintenant_utc = datetime.now(timezone.utc).replace(microsecond=0)
     debut_evenement = maintenant_utc - timedelta(hours=DUREE_EVENEMENT_H)
@@ -322,7 +492,7 @@ def _peupler_prets_dates(conn: sqlite3.Connection, ids_exemplaires: list[str]) -
         )
 
     conn.commit()
-    return len(a_prêter)
+    return len(en_cours), len(a_prêter)
 
 
 # ---------------------------------------------------------------------------
@@ -587,11 +757,14 @@ def peupler() -> dict:
     l'instance courante (selon les variables d'environnement actives).
     Idempotent au sens fort. Renvoie un résumé fusionné.
     """
-    noms = noms_jeux_formation(NB_JEUX)
-
     conn_pret = pret_db.get_connection()
     try:
-        resume = peupler_pret(conn_pret, noms)
+        resume = peupler_pret(conn_pret)
+        # Les tournois et les éléments de programme portent des noms de JEUX :
+        # on les tire du catalogue tel qu'il vient d'être peuplé, quelle qu'en
+        # soit la source. Un seul chemin, donc jamais un tournoi « Catan » sur
+        # un site de formation dont le catalogue est celui de l'association.
+        noms = _noms_en_base(conn_pret, NB_JEUX)
     finally:
         conn_pret.close()
 
@@ -620,7 +793,12 @@ if __name__ == "__main__":
     planning_db.init_db()
     resume = peupler()
     print("Données de formation (re)créées :")
-    print(f"  - {resume['jeux']} jeux (noms tirés du catalogue) "
+    if resume["catalogue"] == "csv":
+        origine = ("catalogue importé de FORMATION_CATALOGUE_CSV — vrais "
+                   "identifiants, les QR imprimés fonctionnent")
+    else:
+        origine = "jeux fictifs, noms tirés du catalogue si accessible"
+    print(f"  - {resume['jeux']} jeux ({origine}) "
           f"({resume['prets_en_cours']} prêtés, {resume['prets_termines']} rendus)")
     print(f"  - {resume['tournois']} tournois d'exemple "
           f"({resume['inscrits']} inscrits au total)")

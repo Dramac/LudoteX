@@ -1393,11 +1393,17 @@ def formation_reinitialiser(request: Request):
     # en ligne de commande (`python -m app.formation`, au déploiement) n'a pas
     # de requête et n'a aucune raison d'écrire ici.
     journal.journaliser(request, "admin", "formation_reinitialisee")
+    # Origine du catalogue annoncée explicitement : c'est le seul retour visible
+    # qui distingue « le CSV du vrai catalogue a bien été repris » (les QR
+    # imprimés fonctionnent) d'un repli silencieux sur des jeux fictifs (ils ne
+    # fonctionneront pas). Voir app/formation.py, section « CATALOGUE ».
+    origine = ("copie du vrai catalogue"
+               if resume["catalogue"] == "csv" else "jeux fictifs")
     message = (
         "succes",
-        f"Données de formation réinitialisées : {resume['jeux']} jeux, "
-        f"{resume['tournois']} tournois d'exemple et un planning bénévole "
-        f"prérempli ({resume['benevoles']} bénévoles).",
+        f"Données de formation réinitialisées : {resume['jeux']} jeux "
+        f"({origine}), {resume['tournois']} tournois d'exemple et un planning "
+        f"bénévole prérempli ({resume['benevoles']} bénévoles).",
     )
     return _rendre_dashboard(request, message)
 

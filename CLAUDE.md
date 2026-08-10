@@ -2548,6 +2548,61 @@ dans le test pour qu'on ne la « corrige » pas un jour par réflexe.
 existants). **Suite globale : 834 tests verts.** Raccord noté dans `docs/idees-evolutions.md` §6.3 : le
 carnet constituera une section du futur rapport d'édition.
 
+**CATALOGUE DU SITE DE FORMATION IMPORTÉ D'UN CSV (`FORMATION_CATALOGUE_CSV`) :
+FAIT** (2026-08-10). Retour de la première session de formation en conditions
+réelles : liens d'activation du site de FORMATION envoyés aux bénévoles, vraies
+boîtes en main, aucun scan n'aboutissait. Diagnostic vérifié dans le code avant
+de coder quoi que ce soit — **le scanner n'était pas en cause** :
+`scanner.js::extraireId` isole l'id par `texte.match(/\/jeu\/([^/?#]+)/)`, sans
+jamais regarder le domaine, donc un QR de production scanné depuis `/scanner`
+du site de formation ouvrait bien `/pret/<id>` **de l'instance de formation** ;
+c'est cet id qui n'existait pas dans sa base (60 jeux fictifs aux ids
+auto-générés `A…`), d'où « boîte inconnue ». **Décision Simon** parmi trois
+options : **instantané CSV**, pas de lecture croisée entre instances — un
+fichier déposé à la main, rafraîchi quand le bureau le décide.
+`app/formation.py` : `_chemin_catalogue_csv` (variable absente/vide → `None`
+sans un mot ; renseignée mais fichier introuvable → **avertissement sur
+`uvicorn.error` puis repli**, sans quoi le seul symptôme serait un catalogue de
+60 jeux là où on en attendait 700) et `_importer_catalogue_csv`, qui **réutilise
+`scripts.import_csv.importer`** — le même code que `/admin/donnees`, donc la
+même clé « Code jeu » → `id_exemplaire`, ce qui est toute la raison d'être du
+dispositif. ⚠️ Son `except` attrape `(Exception, SystemExit)` : `construire_donnees`
+**lève `SystemExit`** quand les colonnes clés manquent (correct pour un script
+en ligne de commande), et `SystemExit` n'hérite pas d'`Exception` — non
+rattrapé, un CSV mal formé rendait 500 sur le bouton « Réinitialiser les données
+de formation » (test dédié, vérifié en retirant `SystemExit`). Les prêts
+d'exemple portent sur un **échantillon** de `NB_JEUX` boîtes au plus (en prêter
+une par ligne du vrai catalogue donnerait 700 prêts en 5 h) : les statistiques
+de démonstration sont donc les mêmes quelle que soit la source. Corollaires :
+`_peupler_prets_dates` renvoie désormais **(en cours, terminés) RÉELLEMENT
+créés** — avec un catalogue plus petit que `NB_PRETS_EN_COURS`, le résumé
+affichait un chiffre faux ; `peupler()` tire les noms de jeux des `titres`
+**réellement en base** après peuplement (`_noms_en_base`, repli sur
+`noms_jeux_formation` sous 7 titres distincts, seuil de `peupler_tournoi`), un
+seul chemin au lieu de deux ; le résumé porte une clé **`catalogue`**
+(`csv`/`fictif`) reprise dans le message d'administration (« 703 jeux (copie du
+vrai catalogue) ») et dans la sortie CLI — seul retour visible distinguant un
+import réussi d'un repli silencieux. **Écart signalé, non corrigé** (ce serait
+le couplage refusé) : `install.sh` ne pose jamais `FORMATION_SOURCE_DB` et le
+repli `data/pret-jeux.db` n'existe pas sur le VPS — le tirage de « noms réels »
+y est donc **inopérant depuis toujours** ; documenté dans
+`docs/mode-formation.md`, avec au passage la correction du chemin erroné qui y
+figurait (`app.db` → `pret-jeux.db`). **NON TRAITÉ, décision Simon** : le repli
+« appareil photo natif » (documenté dans `/aide`) ouvre l'URL inscrite dans le
+QR, donc la PRODUCTION — aucun réglage côté formation ne peut l'intercepter ;
+consigne et planche de QR d'entraînement écartées pour l'instant, le risque est
+écrit en tête d'`app/formation.py` et dans `docs/mode-formation.md`. **7 tests
+ajoutés** (`tests/test_formation.py`), chacun vérifié en injectant sa régression,
+dont celui qui porte le besoin : un QR de production (`https://<prod>/jeu/00472`)
+dont l'id est extrait avec l'expression de `scanner.js` ouvre bien la boîte sur
+l'instance de formation. **1 test adapté en connaissance de cause** (égalité
+exacte du résumé, clé `catalogue` ajoutée). **Suite globale : 841 tests verts.**
+Vérifié en exécutant réellement `python -m app.formation` sur des bases jetables
+dans les trois configurations (CSV valide, aucune variable, chemin faux) puis en
+interrogeant `/jeu/00472` et `/pret/00472` par TestClient. Wiki :
+`Mode-Formation.md` (section « Scanner de vraies boîtes pendant une formation »,
+dont l'avertissement sur l'appareil photo).
+
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
 points 1→8 déjà réalisés).

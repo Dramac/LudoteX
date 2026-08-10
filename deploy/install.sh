@@ -532,6 +532,13 @@ JOURNAL_CONSOLE=0
 BASE_URL="https://$DOMAINE_FORMATION"
 NOM_ASSOCIATION="$NOM_ASSOCIATION"
 APP_ENV=production
+# Catalogue recopié dans la base de formation, à la place des jeux fictifs.
+# Décommentez cette ligne APRÈS avoir déposé le fichier (export du catalogue
+# depuis « Données & sauvegarde » de la production), puis redémarrez le service
+# et réinitialisez les données de formation. Sans lui, une vraie boîte scannée
+# pendant une formation affiche « boîte inconnue » : les QR imprimés portent
+# les identifiants du vrai catalogue. Voir docs/mode-formation.md.
+# FORMATION_CATALOGUE_CSV="$DATA_DIR_FORMATION/catalogue.csv"
 EOF
     chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FORMATION"
     chmod 600 "$ENV_FORMATION"
@@ -581,6 +588,8 @@ EOF
 
     FORMATION_URL_FINALE="https://$DOMAINE_FORMATION"
     info "Site de formation prêt : $FORMATION_URL_FINALE"
+    info "Pour que les QR déjà imprimés fonctionnent aussi sur ce site, voir"
+    info "  la section « Faire fonctionner les QR imprimés » de docs/mode-formation.md."
 else
     info "Site de formation non installé. Réalisable plus tard, voir docs/mode-formation.md."
     FORMATION_URL_FINALE=""
