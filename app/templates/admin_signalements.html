@@ -83,6 +83,13 @@
     <a class="lien" href="/admin/signalements">Tout effacer</a>
   </div>
   {% endif %}
+
+  {# Exports réservés à cette page (§7) : jamais depuis /stats, qui est
+     publique. Ils emportent la vue courante, filtres compris. #}
+  <p>
+    <a class="bouton-filtrer" href="{{ url_export_xlsx }}">Exporter en Excel</a>
+    <a class="bouton-filtrer" href="{{ url_export_pdf }}">Liste imprimable (PDF)</a>
+  </p>
 </section>
 
 <section class="carte">

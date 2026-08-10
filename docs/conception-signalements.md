@@ -297,6 +297,20 @@ quelle. Soit on la réutilise et on la renomme (deux appelants), soit on écrit
 une fonction dédiée. Le PDF, lui, demande une petite fonction propre :
 `construire_pdf` est spécifique aux statistiques (période, sections cochables).
 
+**Tranché le 2026-08-10 (Simon), au moment d'écrire le lot 3 :** renommage en
+`exports.tableau_xlsx(entetes, lignes, titre_feuille="Feuille")`. Le constat
+qui a emporté la décision est que la fonction n'avait **qu'un seul appelant en
+production et aucun en test** — le renommage ne coûtait donc presque rien — et
+que sa seule partie non générique, le titre de feuille codé en dur, aurait
+intitulé « Catalogue » le classeur des signalements, sous les yeux du bureau à
+l'ouverture du fichier. Le titre devient un paramètre. La raison est répétée en
+docstring, à l'endroit où on se posera la question.
+
+Le PDF suit l'analyse d'origine : fonction propre `exports.signalements_pdf`
+(A4 **paysage**, sept colonnes dont deux de texte libre), une quinzaine de
+lignes de style recopiées assumées plutôt qu'un paramètre de plus sur
+`construire_pdf`.
+
 ## 8. Cas limites — jamais bloquant
 
 | Situation | Comportement |

@@ -22,7 +22,7 @@ def _libelle_metrique(metrique: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Export du CATALOGUE (une ligne par exemplaire) — CSV et Excel
+# Tableaux simples — CSV et Excel (catalogue, carnet de maintenance…)
 # ---------------------------------------------------------------------------
 def catalogue_csv(entetes: list[str], lignes: list[dict]) -> bytes:
     """
@@ -42,14 +42,26 @@ def catalogue_csv(entetes: list[str], lignes: list[dict]) -> bytes:
     return buf.getvalue().encode("utf-8-sig")
 
 
-def catalogue_xlsx(entetes: list[str], lignes: list[dict]) -> bytes:
-    """Sérialise le catalogue en classeur Excel (une feuille « Catalogue »)."""
+def tableau_xlsx(entetes: list[str], lignes: list[dict],
+                 titre_feuille: str = "Feuille") -> bytes:
+    """
+    Sérialise un tableau simple (en-têtes en gras + lignes) en classeur Excel
+    d'une seule feuille. `lignes` est une liste de dicts dont les clés sont
+    les en-têtes ; une clé absente donne une cellule vide.
+
+    ANCIENNEMENT `catalogue_xlsx`. Renommée au lot 3 du carnet de maintenance
+    (2026-08-10), quand elle a pris son second appelant : la fonction était
+    déjà entièrement générique, seul son NOM disait l'appelant plutôt que ce
+    qu'elle fait — et le titre de feuille, codé en dur, aurait intitulé
+    « Catalogue » le classeur des signalements, sous les yeux du bureau.
+    Deux appelants aujourd'hui, tous deux dans routes/admin.py.
+    """
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Catalogue"
+    ws.title = titre_feuille
     for col, entete in enumerate(entetes, start=1):
         cell = ws.cell(row=1, column=col, value=entete)
         cell.font = Font(bold=True)
@@ -243,5 +255,92 @@ def construire_pdf(data: dict, periode_txt: str,
         else:
             elements.append(Paragraph("Aucun prêt sur la période.", styles["Normal"]))
 
+    doc.build(elements)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Carnet de maintenance — PDF (docs/conception-signalements.md §7)
+#
+# Fonction PROPRE, et pas un paramètre de plus sur `construire_pdf` : cette
+# dernière est spécifique aux statistiques (période, sections cochables,
+# palmarès), et l'étendre reviendrait à y faire cohabiter deux documents qui
+# n'ont ni la même source ni le même lecteur. Seul le style de tableau est
+# commun, une quinzaine de lignes recopiées assumées.
+#
+# Ce document ne sort QUE de /admin/signalements, derrière le mot de passe :
+# il nomme des boîtes abîmées et peut porter du texte libre (§7).
+# ---------------------------------------------------------------------------
+def signalements_pdf(lignes: list[dict], filtre_txt: str) -> bytes:
+    """
+    Construit la liste imprimable des signalements — celle qu'on emporte au
+    local pour réparer.
+
+    Args:
+        lignes: signalements tels que ramenés par `services.lister_signalements`.
+        filtre_txt: libellé lisible du filtre actif (« à traiter », …).
+
+    Returns:
+        Le contenu binaire du fichier .pdf.
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
+                                    TableStyle)
+
+    styles = getSampleStyleSheet()
+    # Le détail libre et le nom du jeu doivent pouvoir passer à la ligne dans
+    # leur cellule : sans Paragraph, reportlab déborde de la colonne.
+    cellule = ParagraphStyle("cellule", parent=styles["Normal"], fontSize=8, leading=10)
+    # `TEXTCOLOR` d'un TableStyle ne s'applique PAS au contenu d'un Paragraph :
+    # sans ce style, les en-têtes resteraient noirs sur le fond violet.
+    entete = ParagraphStyle("entete", parent=cellule,
+                            textColor=colors.white, fontName="Helvetica-Bold")
+
+    buf = BytesIO()
+    # Paysage : sept colonnes, dont deux de texte libre.
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            title="Carnet de maintenance",
+                            topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+                            leftMargin=1.2 * cm, rightMargin=1.2 * cm)
+    elements = [
+        Paragraph(f"Carnet de maintenance — {NOM_ASSOCIATION}", styles["Title"]),
+        Paragraph(f"Signalements : {filtre_txt}", styles["Normal"]),
+        Spacer(1, 0.4 * cm),
+    ]
+
+    if not lignes:
+        elements.append(Paragraph("Aucun signalement.", styles["Normal"]))
+        doc.build(elements)
+        return buf.getvalue()
+
+    entetes = ["Jeu", "Boîte", "Catégorie", "Détail", "Signalé le", "Salle", "Local"]
+    donnees = [[Paragraph(e, entete) for e in entetes]]
+    for l in lignes:
+        donnees.append([
+            Paragraph(l.get("jeu_nom") or "", cellule),
+            Paragraph(str(l.get("id_exemplaire") or ""), cellule),
+            Paragraph(l.get("categorie_nom") or "", cellule),
+            Paragraph(l.get("texte") or "", cellule),
+            Paragraph(l.get("cree_local") or "", cellule),
+            Paragraph(l.get("emplacement_evenement") or "", cellule),
+            Paragraph(l.get("emplacement_local_nom") or "", cellule),
+        ])
+
+    table = Table(
+        donnees, repeatRows=1,
+        colWidths=[6 * cm, 2 * cm, 3.5 * cm, 8 * cm, 3 * cm, 2.6 * cm, 2.6 * cm],
+    )
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f0fa")]),
+    ]))
+    elements.append(table)
     doc.build(elements)
     return buf.getvalue()

@@ -562,7 +562,7 @@ def donnees_export_xlsx(request: Request):
     finally:
         conn.close()
     return Response(
-        content=exports.catalogue_xlsx(entetes, lignes),
+        content=exports.tableau_xlsx(entetes, lignes, "Catalogue"),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="catalogue.xlsx"'},
     )
@@ -2052,6 +2052,9 @@ def signalements_page(request: Request, etat: str = "ouverts",
             "id_categorie": id_categorie, "nb_ouverts": nb_ouverts,
             "chips": chips, "filtres_actifs": bool(chips),
             "message": msg,
+            # Les exports emportent la vue courante, filtres compris.
+            "url_export_xlsx": _url_export_signalements("xlsx", etat_n, id_categorie),
+            "url_export_pdf": _url_export_signalements("pdf", etat_n, id_categorie),
         },
     )
 
@@ -2077,6 +2080,111 @@ def signalement_traiter(request: Request, id_signalement: int,
     return RedirectResponse(
         _url_signalements(etat_n, _entier_ou_none(categorie), "Signalement marqué traité."),
         status_code=303,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Exports du carnet de maintenance — Excel et PDF (§7)
+#
+# Depuis CETTE page uniquement, derrière le mot de passe. Surtout pas depuis
+# /stats, qui est PUBLIQUE : cette liste nomme des boîtes abîmées et peut
+# porter du texte libre saisi au comptoir. La faire sortir par une route
+# publique, fût-ce derrière une case à cocher, répéterait l'écart corrigé par
+# la fiche D5 sur le numéro de pochette.
+#
+# Les deux exports respectent les FILTRES actifs : on emporte au local la
+# liste qu'on a sous les yeux, pas une autre.
+# ---------------------------------------------------------------------------
+EN_TETES_SIGNALEMENTS = [
+    "Jeu", "Boîte", "Catégorie", "Détail", "Signalé le", "Traité le",
+    "Emplacement salle", "Emplacement local",
+]
+
+
+def _url_export_signalements(format_: str, etat: str, id_categorie: int | None) -> str:
+    from urllib.parse import urlencode
+
+    params: dict = {"etat": etat}
+    if id_categorie is not None:
+        params["categorie"] = id_categorie
+    return f"/admin/signalements/export.{format_}?" + urlencode(params)
+
+
+def _signalements_filtres(etat: str, categorie: str | None):
+    """
+    Relit la liste avec les filtres de la requête (mêmes règles que l'écran :
+    valeur inconnue ignorée, jamais d'erreur) et l'enrichit des dates locales.
+
+    Returns:
+        (lignes, etat_normalisé, libellé lisible du filtre).
+    """
+    from app.routes.catalogue import _entier_ou_none
+
+    etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
+    id_categorie = _entier_ou_none(categorie)
+    conn = get_connection()
+    try:
+        categories = services.lister_categories_signalement(conn)
+        if id_categorie is not None and not any(
+            c["id_categorie"] == id_categorie for c in categories
+        ):
+            id_categorie = None
+        lignes = services.lister_signalements(conn, etat_n, id_categorie)
+    finally:
+        conn.close()
+
+    for l in lignes:
+        # Heure LOCALE dans un document destiné à être lu et imprimé : l'ISO
+        # UTC de la base n'a pas sa place sous les yeux du bureau.
+        l["cree_local"] = services.format_local(l["cree_le"])
+        l["traite_local"] = services.format_local(l["traite_le"]) if l["traite_le"] else ""
+
+    filtre_txt = _LIBELLES_ETAT_SIGNALEMENT[etat_n]
+    if id_categorie is not None:
+        nom = next((c["nom"] for c in categories if c["id_categorie"] == id_categorie), None)
+        if nom:
+            filtre_txt += f" — catégorie « {nom} »"
+    return lignes, etat_n, filtre_txt
+
+
+@router.get("/signalements/export.xlsx")
+def signalements_export_xlsx(request: Request, etat: str = "ouverts",
+                             categorie: str | None = None):
+    """Télécharge le carnet de maintenance au format Excel (filtres respectés)."""
+    if (garde := _garde(request)):
+        return garde
+    lignes, _etat, _filtre = _signalements_filtres(etat, categorie)
+    donnees = [
+        {
+            "Jeu": l["jeu_nom"],
+            "Boîte": l["id_exemplaire"],
+            "Catégorie": l["categorie_nom"] or "",
+            "Détail": l["texte"] or "",
+            "Signalé le": l["cree_local"],
+            "Traité le": l["traite_local"],
+            "Emplacement salle": l["emplacement_evenement"] or "",
+            "Emplacement local": l["emplacement_local_nom"] or "",
+        }
+        for l in lignes
+    ]
+    return Response(
+        content=exports.tableau_xlsx(EN_TETES_SIGNALEMENTS, donnees, "Signalements"),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="signalements.xlsx"'},
+    )
+
+
+@router.get("/signalements/export.pdf")
+def signalements_export_pdf(request: Request, etat: str = "ouverts",
+                            categorie: str | None = None):
+    """Télécharge la liste imprimable des signalements (filtres respectés)."""
+    if (garde := _garde(request)):
+        return garde
+    lignes, _etat, filtre_txt = _signalements_filtres(etat, categorie)
+    return Response(
+        content=exports.signalements_pdf(lignes, filtre_txt),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="signalements.pdf"'},
     )
 
 
