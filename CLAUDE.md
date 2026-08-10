@@ -2508,12 +2508,45 @@ renseigné » ont été **vérifiés en injectant leur régression**. **52 tests
 dédiés** (`tests/test_signalements_admin.py`). **Suite globale : 827 tests
 verts.**
 
-⚠️ **Reste le lot 4** : actions au vocabulaire fermé (`signalement_cree`,
-`signalement_traite`, `categorie_signalement_creee`/`_modifiee`/`_supprimee`),
-points d'appel **dans les routes** — aucun `journaliser()` n'a été posé par les
-lots 1 à 3, y compris sur le CRUD des catégories —, extension du garde-fou
-`tests/test_journal_interdits.py` au texte libre, wiki et proposition de montée
-de version **mineure**.
+**Carnet de maintenance — LOT 4 (journal, garde-fou, wiki) : FAIT**
+(2026-08-10). Cinq actions au vocabulaire fermé (`signalement_cree`,
+`signalement_traite`, `categorie_signalement_creee`/`_modifiee`/`_supprimee`) ;
+archivage, réactivation et réordonnancement d'une catégorie restent **hors
+journal**, décision du §10 reprise des types de programme et désormais tenue
+par un test dédié (sans quoi l'absence redeviendrait un oubli).
+**Écart assumé avec le §10 de la note, arbitré avec Simon** : celui-ci place le
+libellé de catégorie dans `detail`, or `journaliser()` ne conserve `detail` que
+lorsque `ok` est faux (format arrêté au §3 de `docs/conception-journal.md`) — la
+catégorie aurait donc disparu de toutes les lignes RÉUSSIES, précisément celles
+qu'on relit. Elle rejoint `objet` à côté du nom du jeu (« Catan — Pièce
+manquante »), exactement comme le bilan chiffré de `planning_genere` ; `detail`
+reste le motif d'un refus. Deux précautions déjà éprouvées ailleurs :
+`POST /pret/{id}/signaler` journalise **aussi les refus** (catégorie manquante
+ou archivée entre l'affichage et l'envoi — une surprise qu'on cherche après
+coup, §2.3), et « Marquer traité » **n'écrit rien** sur un second appui ou un
+identifiant inconnu, `traiter_signalement` étant idempotent — une ligne
+« traité » affirmerait sinon un fait qui n'a pas eu lieu (patron de « annonce
+effacée »). Nouveau service `get_signalement` (le journal doit nommer le jeu,
+que la table `signalements` ne porte pas, et lire `traite_le` avant d'écrire) ;
+il ne ramène délibérément **pas** `texte`.
+**Garde-fou d'interdiction étendu** (`tests/test_journal_interdits.py`) : le
+scénario joue désormais deux envois de signalement — un **refusé**, un accepté —
+portant chacun un détail libre volontairement distinctif, puis la clôture du
+signalement côté administration. Nouveau test dédié vérifiant que les lignes du
+carnet disent bien le jeu ET la catégorie, et qu'aucun **fragment** du texte
+libre n'apparaît nulle part (la recherche de la chaîne entière manquerait une
+fuite tronquée à 120 caractères). **Chaque assertion a été vérifiée en
+injectant la fuite qu'elle attrape**, puis en la retirant : texte libre dans
+`objet`, texte libre dans `detail` sur la branche de refus, fuite **tronquée**
+à 20 caractères, point d'appel supprimé (non-vacuité), garde d'idempotence
+retirée, journalisation ajoutée sur l'archivage. Aucune fuite réelle trouvée.
+Le libellé de CATÉGORIE reste journalisé : c'est la réserve assumée du §3,
+point 2, depuis que les catégories sont configurables — écrite noir sur blanc
+dans le test pour qu'on ne la « corrige » pas un jour par réflexe.
+**7 tests ajoutés** (6 dans `test_journal_appels.py`, 1 dans
+`test_journal_interdits.py`, plus les assertions étendues des tests
+existants). **Suite globale : 834 tests verts.** Raccord noté dans `docs/idees-evolutions.md` §6.3 : le
+carnet constituera une section du futur rapport d'édition.
 
 Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
 prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
