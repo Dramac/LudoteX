@@ -1826,6 +1826,133 @@ def programme_types_descendre(request: Request, id_type: int):
     return RedirectResponse("/admin/programme-types", status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Carnet de maintenance : CRUD de la liste des CATÉGORIES de signalement
+# (docs/conception-signalements.md §2). Patron EXACT du rangement et des types
+# de programme ci-dessus — mêmes actions, même style de table, message en
+# query string. Ces catégories vivent dans la base de PRÊT (`get_connection`),
+# comme les emplacements de rangement.
+#
+# La consigne affichée sur cet écran (« cette liste est lue au comptoir ») n'est
+# pas décorative : l'objection consignée au §2 de la note contre une liste
+# ouverte porte sur l'enflure, qu'on ne peut freiner qu'en la rappelant à
+# l'endroit exact où l'on ajoute une entrée.
+# ---------------------------------------------------------------------------
+def _page_categories_signalement(request: Request, message: str | None = None):
+    conn = get_connection()
+    try:
+        categories = services.lister_categories_signalement(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_categories_signalement.html",
+        {"categories": categories, "message": message},
+    )
+
+
+@router.get("/categories-signalement")
+def categories_signalement_page(request: Request):
+    """Écran dédié : liste des catégories proposées au bénévole qui signale."""
+    if (garde := _garde(request)):
+        return garde
+    return _page_categories_signalement(request, request.query_params.get("msg"))
+
+
+@router.post("/categories-signalement")
+def categories_signalement_creer(request: Request, nom: str = Form("")):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        cree = services.creer_categorie_signalement(conn, nom)
+    finally:
+        conn.close()
+    msg = "Catégorie ajoutée." if cree is not None else "Nom manquant : rien n'a été ajouté."
+    return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/categories-signalement/{id_categorie:int}/renommer")
+def categories_signalement_renommer(request: Request, id_categorie: int, nom: str = Form("")):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        ok = services.renommer_categorie_signalement(conn, id_categorie, nom)
+    finally:
+        conn.close()
+    # Renommer se répercute sur tout l'historique (référence, pas libellé
+    # recopié — §4 de la note) : corriger une faute de frappe ne coupe pas la
+    # liste en deux.
+    msg = "Catégorie renommée." if ok else "Nom manquant : rien n'a été modifié."
+    return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/categories-signalement/{id_categorie:int}/archiver")
+def categories_signalement_archiver(request: Request, id_categorie: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.archiver_categorie_signalement(conn, id_categorie)
+    finally:
+        conn.close()
+    msg = "Catégorie archivée — elle n'est plus proposée au comptoir."
+    return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/categories-signalement/{id_categorie:int}/reactiver")
+def categories_signalement_reactiver(request: Request, id_categorie: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.reactiver_categorie_signalement(conn, id_categorie)
+    finally:
+        conn.close()
+    return RedirectResponse(
+        "/admin/categories-signalement?msg=" + quote("Catégorie réactivée."), status_code=303
+    )
+
+
+@router.post("/categories-signalement/{id_categorie:int}/supprimer")
+def categories_signalement_supprimer(request: Request, id_categorie: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        ok = services.supprimer_categorie_signalement(conn, id_categorie)
+    finally:
+        conn.close()
+    msg = (
+        "Catégorie supprimée définitivement." if ok else
+        "Suppression refusée : des signalements y sont encore rattachés."
+    )
+    return RedirectResponse("/admin/categories-signalement?msg=" + quote(msg), status_code=303)
+
+
+@router.post("/categories-signalement/{id_categorie:int}/monter")
+def categories_signalement_monter(request: Request, id_categorie: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.deplacer_categorie_signalement(conn, id_categorie, "haut")
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/categories-signalement", status_code=303)
+
+
+@router.post("/categories-signalement/{id_categorie:int}/descendre")
+def categories_signalement_descendre(request: Request, id_categorie: int):
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        services.deplacer_categorie_signalement(conn, id_categorie, "bas")
+    finally:
+        conn.close()
+    return RedirectResponse("/admin/categories-signalement", status_code=303)
+
 
 # ---------------------------------------------------------------------------
 # « Ranger les jeux » (§13, addendum post-phase 1) : affectation en lot par

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block titre %}Catégories de signalement — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{#
+  CRUD des catégories du carnet de maintenance
+  (docs/conception-signalements.md §2). Transposition du gabarit
+  admin_programme_types.html, sans la colonne « Icône ».
+#}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Catégories de signalement</h1>
+  <p class="stats-note">
+    La liste proposée au bénévole qui signale un problème sur une boîte.
+    Renommer se répercute automatiquement sur tous les signalements concernés,
+    y compris ceux déjà traités. Archiver retire la catégorie du formulaire du
+    comptoir (réversible) sans toucher aux signalements déjà saisis ; la
+    suppression définitive n'est proposée que si plus aucun signalement n'y est
+    rattaché.
+  </p>
+  {% if message %}
+    <p class="resultat resultat-ok">{{ message }}</p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Nom</th>
+        <th>Statut</th>
+        <th>Signalements</th>
+        <th>Ordre</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in categories %}
+      <tr>
+        <td>
+          <form method="post" action="/admin/categories-signalement/{{ c.id_categorie }}/renommer"
+                class="rangement-form-inline">
+            <input type="text" name="nom" value="{{ c.nom }}" required>
+            <button type="submit" class="bouton-filtrer">Renommer</button>
+          </form>
+        </td>
+        <td>
+          {% if c.actif %}
+            <span class="badge-ok">Active</span>
+          {% else %}
+            <span class="badge-attention">Archivée</span>
+          {% endif %}
+        </td>
+        <td>{{ c.usage_count }} {{ pluriel(c.usage_count, 'signalement', 'signalements') }}</td>
+        <td class="rangement-ordre">
+          <form method="post" action="/admin/categories-signalement/{{ c.id_categorie }}/monter"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer" title="Monter dans la liste">▲</button>
+          </form>
+          <form method="post" action="/admin/categories-signalement/{{ c.id_categorie }}/descendre"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer" title="Descendre dans la liste">▼</button>
+          </form>
+        </td>
+        <td class="rangement-actions">
+          {% if c.actif %}
+          <form method="post" action="/admin/categories-signalement/{{ c.id_categorie }}/archiver"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer">Archiver</button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/categories-signalement/{{ c.id_categorie }}/reactiver"
+                class="rangement-form-inline">
+            <button type="submit" class="bouton-filtrer">Réactiver</button>
+          </form>
+          {% endif %}
+          {% if c.usage_count == 0 %}
+          <form method="post" action="/admin/categories-signalement/{{ c.id_categorie }}/supprimer"
+                class="rangement-form-inline"
+                onsubmit="return confirm('Supprimer définitivement « {{ c.nom }} » ? Cette action est irréversible.');">
+            <button type="submit" class="bouton-filtrer">Supprimer</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/admin/categories-signalement" class="recherche-form">
+    <div class="champ">
+      <label for="nom-nouveau">Ajouter une catégorie</label>
+      <input type="text" id="nom-nouveau" name="nom" placeholder="ex. Jeton manquant" required>
+    </div>
+    {# La consigne vit ici, à l'endroit exact où l'on ajoute une entrée : une
+       liste qui enfle est lue en diagonale, et un bénévole qui doit choisir
+       entre quinze entrées entre deux visiteurs signalera moins (§2). #}
+    <p class="stats-note">
+      Cette liste est lue au comptoir, en pleine journée, entre deux visiteurs.
+      Quelques entrées courtes valent mieux qu'une liste complète : archivez
+      celles qui ne servent plus.
+    </p>
+    <p><button type="submit" class="bouton bouton-principal">Ajouter</button></p>
+  </form>
+</section>
+
+<p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
+{% endblock %}
