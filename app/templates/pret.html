@@ -10,6 +10,25 @@
   </section>
 {% else %}
 
+  {# --- Signalements ouverts (docs/conception-signalements.md §6) ---
+     Visible DÈS L'OUVERTURE de l'écran, AVANT toute action : c'est avant de
+     tendre la boîte qu'il faut prévenir, pas seulement dans la confirmation
+     qui suit un retour. Ne JAMAIS conditionner à `resultat` (piège 1 du lot
+     2 de l'implémentation) — contrairement à l'encart de rangement plus bas,
+     qui ne concerne que le retour. Le signalement ne bloque jamais le prêt :
+     aucun bouton n'est masqué, aucune confirmation supplémentaire. #}
+  {% if signalements_ouverts %}
+    <section class="resultat resultat-attention">
+      <p class="resultat-libelle">⚠️ Signalements en cours sur cette boîte</p>
+      {% for s in signalements_ouverts %}
+        <p>
+          <strong>{{ s.categorie_nom or "Signalement" }}</strong>{% if s.texte %} — {{ s.texte }}{% endif %}
+          <br><span class="stats-note">{{ s.cree_le | dt_local }}</span>
+        </p>
+      {% endfor %}
+    </section>
+  {% endif %}
+
   {# --- Bandeau de résultat après une action --- #}
   {% if resultat %}
     {% if resultat.type == "prete" %}
@@ -82,6 +101,10 @@
         <p>Un autre bénévole enregistrait une opération au même moment.
            <strong>Rien n'a été enregistré.</strong> Appuyez à nouveau sur le bouton.</p>
       </section>
+    {% elif resultat.type == "signale" %}
+      <section class="resultat resultat-info">
+        <p>Signalement envoyé. Merci !</p>
+      </section>
     {% endif %}
     {% if emplacement_rangement %}
       <section class="resultat resultat-info">
@@ -141,6 +164,12 @@
       <a class="lien" href="/scanner">Scanner le jeu suivant</a>
       &nbsp;·&nbsp;
       {% endif %}
+      {# Signalement (docs/conception-signalements.md §5) : lien PERMANENT,
+         quel que soit l'état de la boîte — sortie, sortie tournoi ou
+         disponible (les trois branches ci-dessus rejoignent ce pied commun).
+         N'écrit rien, ouvre un écran. #}
+      <a class="lien" href="/pret/{{ info.id_exemplaire }}/signaler">⚠️ Signaler un problème</a>
+      &nbsp;·&nbsp;
       <a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a>
     </p>
   </section>

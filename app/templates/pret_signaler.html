@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titre %}{{ info.nom }} — Signaler un problème — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Signaler un problème</h1>
+  <p class="stats-note">{{ info.nom }} — boîte {{ info.id_exemplaire }}</p>
+
+  {# Rattrapage sans perte de saisie (docs/conception-signalements.md §8) :
+     catégorie absente, inconnue ou archivée entre l'affichage et l'envoi. #}
+  {% if erreur %}
+    <div class="resultat resultat-attention"><p>{{ erreur }}</p></div>
+  {% endif %}
+
+  <form method="post" action="/pret/{{ info.id_exemplaire }}/signaler">
+    <p><strong>Que faut-il signaler&nbsp;?</strong></p>
+    {% for c in categories %}
+      <label class="case">
+        <input type="radio" name="id_categorie" value="{{ c.id_categorie }}"
+               {{ 'checked' if id_categorie_saisi == c.id_categorie }} required>
+        {{ c.nom }}
+      </label>
+    {% endfor %}
+
+    <label class="champ">
+      Détail (facultatif)
+      <textarea name="texte" rows="3" maxlength="{{ longueur_max_texte }}">{{ texte_saisi }}</textarea>
+    </label>
+    <p class="stats-note">Décrivez la boîte, jamais une personne.</p>
+
+    <button type="submit" class="bouton bouton-principal">Envoyer le signalement</button>
+  </form>
+
+  <p class="lien-fiche">
+    <a class="lien" href="/pret/{{ info.id_exemplaire }}">← Retour à la boîte</a>
+  </p>
+</section>
+{% endblock %}

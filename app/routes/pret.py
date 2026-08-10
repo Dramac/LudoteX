@@ -34,12 +34,21 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
         n'a pas bougé, seul le jeu associé change.
     {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
         rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
+    {"type": "signale"}                                    signalement envoyé
 
 TRANSFERT DE POCHETTE (docs/conception-transfert-pochette.md)
 ---------------------------------------------------------------
 Quatre routes dédiées, à la suite de celles-ci (« Rendre » puis « Prêter »
 sans jamais faire ressortir la pièce d'identité de son casier). Voir leurs
 docstrings pour le détail de chaque écran.
+
+CARNET DE MAINTENANCE (docs/conception-signalements.md)
+---------------------------------------------------------
+Deux routes dédiées, à la suite du transfert : `GET .../signaler` ouvre un
+écran (rien n'est encore écrit), `POST .../signaler` enregistre. Le lien est
+PERMANENT en pied de carte (les trois états de la boîte), et le bandeau
+d'alerte listant les signalements ouverts se voit AVANT toute action — voir
+`_rendu()`, qui le calcule sans condition sur `resultat`.
 """
 
 import sqlite3
@@ -159,6 +168,12 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
             emplacement_rangement = None
             if info and resultat and resultat.get("type") in ("rendu", "rendu_tournoi"):
                 emplacement_rangement = services.emplacement_actuel(conn, id_exemplaire)
+        # Signalements ouverts (docs/conception-signalements.md §6) : calculés
+        # SANS CONDITION sur `resultat`, contrairement à l'emplacement de
+        # rangement ci-dessus — le bandeau doit se voir dès l'ouverture de
+        # l'écran (GET), AVANT toute action, pas seulement dans la confirmation
+        # qui suit un retour (piège 1 du lot 2 de l'implémentation).
+        signalements_ouverts = services.signalements_ouverts(conn, id_exemplaire) if info else []
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -166,7 +181,8 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
         "pret.html",
         {"id_exemplaire": id_exemplaire, "info": info,
          "pret_actuel": pret_actuel, "resultat": resultat,
-         "emplacement_rangement": emplacement_rangement},
+         "emplacement_rangement": emplacement_rangement,
+         "signalements_ouverts": signalements_ouverts},
         status_code=status if info else 404,
     )
 
@@ -542,3 +558,82 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
          "rendu_nom": info["nom"], "meme_boite": resultat["meme_boite"]},
         emplacement_rangement=emplacement_rendu,
     )
+
+
+# ===========================================================================
+# CARNET DE MAINTENANCE (docs/conception-signalements.md)
+# ===========================================================================
+@router.get("/{id_exemplaire}/signaler")
+def signaler_ecran(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """
+    Écran de signalement (§5 de la note) : catégories ACTIVES uniquement, en
+    boutons radio empilés. RIEN n'est encore écrit — c'est le bouton « Envoyer
+    le signalement » ci-dessous qui déclenche le POST.
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return _rendu(request, id_exemplaire)  # 404, patron existant
+        categories = services.categories_signalement_actives(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "pret_signaler.html",
+        {"id_exemplaire": id_exemplaire, "info": info, "categories": categories,
+         "longueur_max_texte": services.LONGUEUR_MAX_TEXTE_SIGNALEMENT,
+         "erreur": None, "id_categorie_saisi": None, "texte_saisi": ""},
+    )
+
+
+@router.post("/{id_exemplaire}/signaler")
+async def signaler_confirmer(request: Request, id_exemplaire: str,
+                              _=Depends(exiger_jeton)):
+    """
+    Enregistre le signalement (POST). Ne bloque JAMAIS le prêt (§6 de la
+    note) : cette route n'a aucun effet sur les autres actions de l'écran,
+    elle ne fait qu'ajouter une ligne au carnet de maintenance.
+
+    Catégorie absente, inconnue ou archivée (URL forgée, ou catégorie
+    archivée par le bureau entre l'affichage et l'envoi) : le formulaire est
+    RÉAFFICHÉ avec un message et la saisie CONSERVÉE — jamais un formulaire
+    vierge (patron du correctif de la collecte planning, lot B de sécurité,
+    voir `planning/routes.py::collecte_post`). La validation relit la liste
+    des catégories actives, elle ne fait jamais confiance à ce que le
+    formulaire a envoyé (§8 de la note).
+    """
+    form = await request.form()
+    texte = form.get("texte", "")
+    id_categorie_brut = (form.get("id_categorie") or "").strip()
+
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return _rendu(request, id_exemplaire)  # 404, patron existant
+        categories = services.categories_signalement_actives(conn)
+        actives = {c["id_categorie"] for c in categories}
+
+        id_categorie = int(id_categorie_brut) if id_categorie_brut.isdigit() else None
+        erreur = None
+        if id_categorie is None:
+            erreur = "Choisissez une catégorie avant d'envoyer."
+        elif id_categorie not in actives:
+            erreur = "Cette catégorie n'est plus disponible. Choisissez-en une autre."
+
+        if erreur:
+            return templates.TemplateResponse(
+                request, "pret_signaler.html",
+                {"id_exemplaire": id_exemplaire, "info": info, "categories": categories,
+                 "longueur_max_texte": services.LONGUEUR_MAX_TEXTE_SIGNALEMENT,
+                 "erreur": erreur, "id_categorie_saisi": id_categorie,
+                 "texte_saisi": texte},
+                status_code=400,
+            )
+
+        # `creer_signalement` borne le texte à l'enregistrement, sans jamais
+        # refuser (§4/§8 de la note) : rien de plus à valider ici.
+        services.creer_signalement(conn, id_exemplaire, id_categorie, texte)
+    finally:
+        conn.close()
+    return _rendu(request, id_exemplaire, {"type": "signale"})
