@@ -106,6 +106,17 @@ ACTIONS = {
     # Transfert de pochette (docs/conception-transfert-pochette.md §9) :
     # rendre une boîte et en prêter une autre sans déplacer la pochette.
     "transfert",
+    # --- Carnet de maintenance (docs/conception-signalements.md §10) --------
+    # Le geste bénévole et sa clôture par le bureau. Le CRUD des catégories
+    # relève, lui, de la configuration : mêmes trois verbes que les types de
+    # programme, et comme eux l'archivage, la réactivation et le
+    # réordonnancement restent HORS journal — ce sont des ajustements de
+    # présentation, pas des faits qu'on cherche après coup.
+    "signalement_cree",
+    "signalement_traite",
+    "categorie_signalement_creee",
+    "categorie_signalement_modifiee",
+    "categorie_signalement_supprimee",
 }
 
 # Longueurs de troncature (§3.3) : assainissement obligatoire, pas défensif.
