@@ -123,6 +123,35 @@ def _journaliser_transfert(request: Request, info_rendu: dict, info_nouveau: dic
     )
 
 
+def _journaliser_signalement(request: Request, info: dict, categorie_nom: str | None,
+                             *, ok: bool = True, detail: str | None = None) -> None:
+    """
+    Une ligne pour un signalement du carnet de maintenance
+    (docs/conception-signalements.md §10).
+
+    ⚠️ JAMAIS LE TEXTE LIBRE. C'est le seul endroit de l'application de prêt
+    par lequel une donnée personnelle peut entrer (§3 de la note) : la ligne
+    porte le nom du jeu et le libellé de la catégorie, rien d'autre. Le
+    garde-fou `tests/test_journal_interdits.py` le vérifie sur un texte
+    volontairement distinctif.
+
+    LA CATÉGORIE VA DANS `objet`, PAS DANS `detail`, contrairement à la
+    lettre du §10 de la note : `journaliser()` ne conserve `detail` que
+    lorsque `ok` est faux (format arrêté au §3 de
+    docs/conception-journal.md), la catégorie disparaîtrait donc de toutes
+    les lignes réussies — précisément celles qu'on relit. Même arbitrage que
+    pour `planning_genere`, dont le bilan chiffré a rejoint `objet` pour
+    cette raison. `detail` reste ce à quoi il sert : le motif d'un refus.
+    """
+    objet = info.get("nom")
+    if categorie_nom:
+        objet = f"{objet} — {categorie_nom}"
+    journal.journaliser(
+        request, "pret", "signalement_cree",
+        objet=objet, ref=info.get("reference_titre"), ok=ok, detail=detail,
+    )
+
+
 # Sentinelle distinguant « calculer l'emplacement automatiquement » (défaut,
 # tous les appelants historiques) de « ne rien calculer, la valeur est déjà
 # connue » — cas du transfert, qui doit afficher l'emplacement de LA BOÎTE
@@ -616,13 +645,17 @@ async def signaler_confirmer(request: Request, id_exemplaire: str,
 
         id_categorie = int(id_categorie_brut) if id_categorie_brut.isdigit() else None
         erreur = None
+        motif = None
         if id_categorie is None:
             erreur = "Choisissez une catégorie avant d'envoyer."
+            motif = "categorie_manquante"
         elif id_categorie not in actives:
             erreur = "Cette catégorie n'est plus disponible. Choisissez-en une autre."
+            motif = "categorie_indisponible"
 
+        refus = None
         if erreur:
-            return templates.TemplateResponse(
+            refus = templates.TemplateResponse(
                 request, "pret_signaler.html",
                 {"id_exemplaire": id_exemplaire, "info": info, "categories": categories,
                  "longueur_max_texte": services.LONGUEUR_MAX_TEXTE_SIGNALEMENT,
@@ -630,10 +663,23 @@ async def signaler_confirmer(request: Request, id_exemplaire: str,
                  "texte_saisi": texte},
                 status_code=400,
             )
-
-        # `creer_signalement` borne le texte à l'enregistrement, sans jamais
-        # refuser (§4/§8 de la note) : rien de plus à valider ici.
-        services.creer_signalement(conn, id_exemplaire, id_categorie, texte)
+            categorie_nom = None
+        else:
+            # `creer_signalement` borne le texte à l'enregistrement, sans jamais
+            # refuser (§4/§8 de la note) : rien de plus à valider ici.
+            services.creer_signalement(conn, id_exemplaire, id_categorie, texte)
+            categorie_nom = next(
+                (c["nom"] for c in categories if c["id_categorie"] == id_categorie), None
+            )
     finally:
         conn.close()
-    return _rendu(request, id_exemplaire, {"type": "signale"})
+    # Journalisé APRÈS la fermeture de la connexion, comme les quatre actions
+    # de prêt ci-dessus (`journaliser` ouvre la sienne pour déterminer `qui`).
+    # Le refus est journalisé au même titre que le succès : une catégorie
+    # archivée entre l'affichage et l'envoi est exactement le genre de surprise
+    # qu'on cherche après coup (docs/conception-journal.md §2.3).
+    _journaliser_signalement(request, info, categorie_nom,
+                             ok=refus is None, detail=motif)
+    return refus if refus is not None else _rendu(
+        request, id_exemplaire, {"type": "signale"}
+    )
