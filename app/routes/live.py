@@ -16,6 +16,7 @@ Comme partout dans le projet, AUCUNE logique métier ici : on délègue à
 `app.services` (prêt) et `app.tournoi.services` (tournois), on assemble, on rend.
 """
 
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
@@ -65,6 +66,23 @@ CLE_ALERTE_DELAI_MAX = "alerte_tournoi_delai_max"
 DELAI_MIN_DEFAUT = 15
 DELAI_MAX_DEFAUT = 90
 JETONS_ALERTE = ("jeu", "minutes", "heure", "lieu")
+# Borne haute des deux délais, en minutes (24 h) : au-delà, le bureau s'est
+# trompé d'unité. Refusée à l'enregistrement (/admin/ecran-salle), jamais à la
+# lecture — `alerte_tournoi` reste défensif quoi qu'il trouve en base.
+DELAI_BORNE_MAX = 1440
+# Texte PROPOSÉ sous le champ en administration, repris en un clic. Ce n'est
+# pas un défaut : tant que le bureau n'a rien enregistré, aucune alerte
+# n'apparaît (D10). Une mise à jour ne doit jamais faire surgir toute seule,
+# sur l'écran de la salle, une phrase que personne n'a relue.
+MESSAGE_ALERTE_PROPOSE = (
+    "Le tournoi de {jeu} commence dans {minutes} minutes — merci de rapporter "
+    "tous les exemplaires au stand de prêt."
+)
+# Un jeton = une paire d'accolades et ce qu'elles contiennent. Une accolade
+# SOLITAIRE n'est volontairement pas reconnue : elle ne casse rien à
+# l'affichage (voir `formater_alerte`) et refuser un texte pour cela serait
+# incompréhensible côté bureau.
+_MOTIF_JETON = re.compile(r"\{[^{}]*\}")
 
 # ---------------------------------------------------------------------------
 # Panneaux affichables, réglables depuis /admin/ecran-salle
@@ -214,18 +232,41 @@ def formater_alerte(modele: str, tournoi: dict, minutes: int) -> str:
     return texte
 
 
-def alerte_tournoi(conn, conn_tournoi) -> str | None:
+def jetons_inconnus(modele: str) -> list[str]:
     """
-    Message d'alerte « rapportez les exemplaires » actuellement affichable sur
-    /live, ou None si le modèle n'est pas configuré (D10) ou si aucun tournoi
-    ne qualifie. Calcul de lecture, comme `annonce_active` : aucune écriture
-    en base. Lit les trois réglages dans la base de PRÊT (`conn`), appelle
-    `tournoi_a_annoncer` sur la base des TOURNOIS (`conn_tournoi`) — le pont
-    entre les deux bases se fait ici, dans la route, jamais dans un service
-    (précédent : `routes/tournoi.py::_inscription_au_comptoir`).
+    Les jetons du modèle qui ne font pas partie du vocabulaire fermé
+    `JETONS_ALERTE`, dans l'ordre d'apparition et sans doublon.
 
-    `/admin/ecran-salle` (lot 2) importera cette fonction pour son aperçu, au
-    même titre qu'il importe déjà `annonce_active`.
+    Sert au REFUS à l'enregistrement (D9) : un `{jouer}` ou un `{Jeu}` mal
+    orthographié s'afficherait tel quel en salle, entre accolades, sans que
+    personne ne comprenne pourquoi. Le vocabulaire n'a qu'un domicile, ici,
+    à côté de `formater_alerte` qui le consomme.
+
+    La casse compte : `{Jeu}` est bien signalé comme inconnu, puisque
+    `formater_alerte` ne le substituerait pas.
+    """
+    connus = {"{" + jeton + "}" for jeton in JETONS_ALERTE}
+    trouves: list[str] = []
+    for jeton in _MOTIF_JETON.findall(modele or ""):
+        if jeton not in connus and jeton not in trouves:
+            trouves.append(jeton)
+    return trouves
+
+
+def alerte_tournoi_detaillee(conn, conn_tournoi) -> tuple[str, str] | None:
+    """
+    Comme `alerte_tournoi`, mais renvoie aussi l'HEURE LOCALE À LAQUELLE LE
+    BANDEAU SE LIBÈRE — c'est-à-dire l'heure de début du tournoi annoncé,
+    puisque la fenêtre d'affichage est `[H - délai, H[` (D5).
+
+    Cette heure n'a qu'un seul consommateur, `/admin/ecran-salle`, et une
+    seule raison d'être : quand une alerte occupe le bandeau alors qu'une
+    annonce du bureau est enregistrée, l'écran d'administration doit dire à
+    quelle heure l'annonce reprendra. Sans cela, un membre du bureau conclut
+    que son annonce a été perdue — c'est la contrepartie explicite de D8.
+
+    Returns:
+        `(texte de l'alerte, heure de reprise "HH:MM")`, ou None.
     """
     modele = services.lire_parametre(conn, CLE_ALERTE_MESSAGE, None)
     if not modele:
@@ -244,7 +285,25 @@ def alerte_tournoi(conn, conn_tournoi) -> str | None:
     if resultat is None:
         return None
     tournoi, minutes = resultat
-    return formater_alerte(modele, tournoi, minutes)
+    return formater_alerte(modele, tournoi, minutes), _heure_locale(tournoi["date_heure"])
+
+
+def alerte_tournoi(conn, conn_tournoi) -> str | None:
+    """
+    Message d'alerte « rapportez les exemplaires » actuellement affichable sur
+    /live, ou None si le modèle n'est pas configuré (D10) ou si aucun tournoi
+    ne qualifie. Calcul de lecture, comme `annonce_active` : aucune écriture
+    en base. Lit les trois réglages dans la base de PRÊT (`conn`), appelle
+    `tournoi_a_annoncer` sur la base des TOURNOIS (`conn_tournoi`) — le pont
+    entre les deux bases se fait ici, dans la route, jamais dans un service
+    (précédent : `routes/tournoi.py::_inscription_au_comptoir`).
+
+    Le calcul vit dans `alerte_tournoi_detaillee`, qui rend en plus l'heure de
+    reprise du bandeau : un seul domicile, deux façons de le lire selon qu'on
+    projette l'écran (ici) ou qu'on le règle (/admin/ecran-salle).
+    """
+    detail = alerte_tournoi_detaillee(conn, conn_tournoi)
+    return detail[0] if detail else None
 
 
 def _collecter_donnees() -> dict:
