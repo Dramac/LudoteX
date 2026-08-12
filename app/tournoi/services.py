@@ -367,6 +367,56 @@ def tournois_imminents(
     return imminents
 
 
+def tournoi_a_annoncer(
+    conn: sqlite3.Connection, delai_mini: int, delai_maxi: int
+) -> tuple[dict, int] | None:
+    """
+    Le tournoi à annoncer sur /live (« rapportez les exemplaires », voir
+    docs/conception-alerte-tournoi.md), ou None si aucun ne qualifie.
+
+    S'appuie sur `tournois_imminents(conn, delai_maxi)` — la fenêtre la plus
+    large possible — plutôt que de réécrire une requête, PUIS filtre par phase :
+    `tournois_imminents` n'exclut que les brouillons et les tournois sans date,
+    pas les tournois déjà lancés ou terminés (piège identifié dans la note).
+    Seule la phase `a_venir` alerte (D7) : un tournoi lancé n'a plus besoin
+    qu'on lui rapporte des boîtes.
+
+    Pour chaque candidat, le délai de rapatriement propre vaut
+    `max(delai_mini, min(2 * duree_min, delai_maxi))`, ou `delai_mini` si
+    `duree_min` est absent ou nul (D3/D4). Reste défensif si `delai_maxi` <
+    `delai_mini` (retombe sur `delai_mini` plutôt que de planter — la
+    validation stricte se fait à l'enregistrement, en administration).
+
+    Un seul tournoi annoncé à la fois : le plus proche parmi ceux dont les
+    minutes restantes (arrondi supérieur, jamais négatif) sont <= son délai
+    propre (D6).
+
+    Returns:
+        `(tournoi, minutes)` — le tournoi (dict) et les minutes restantes avant
+        son début — ou None si aucun tournoi ne qualifie.
+    """
+    if delai_maxi < delai_mini:
+        delai_maxi = delai_mini
+    maintenant_dt = datetime.now(FUSEAU_UTC)
+    meilleur: tuple[dict, int] | None = None
+    for t in tournois_imminents(conn, delai_maxi):
+        if phase(t["etat"]) != "a_venir":
+            continue
+        try:
+            dt = datetime.fromisoformat(t["date_heure"])
+        except (ValueError, TypeError):
+            continue
+        reste = dt - maintenant_dt
+        minutes = max(0, -(-int(reste.total_seconds()) // 60))  # arrondi sup.
+        duree = t["duree_min"] or 0
+        delai = max(delai_mini, min(2 * duree, delai_maxi)) if duree else delai_mini
+        if minutes > delai:
+            continue
+        if meilleur is None or minutes < meilleur[1]:
+            meilleur = (t, minutes)
+    return meilleur
+
+
 # ===========================================================================
 # Inscriptions / participants
 # ===========================================================================
