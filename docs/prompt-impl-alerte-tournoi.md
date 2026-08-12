@@ -88,6 +88,29 @@ par `textContent`).
    est absente, `/live` n'affiche rien. Ne pas « aider » en écrivant une phrase
    par défaut dans la base.
 
+### Prompt
+
+> Tu reprends le projet LudoteX. Lis `CLAUDE.md` et
+> `docs/conception-alerte-tournoi.md` (en entier — elle est courte).
+>
+> Objet de cette session : le **lot 1** de
+> `docs/prompt-impl-alerte-tournoi.md` — le calcul de l'alerte, son affichage
+> sur `/live`, et les tests. **Ne touche pas à l'administration** : c'est le
+> lot 2.
+>
+> Le patron à recopier est `live.annonce_active()` : calcul à la lecture, aucune
+> écriture en base, clé absente du JSON quand il n'y a rien à dire, texte injecté
+> par `textContent`. Réutilise `tournois_imminents` et `_heure_locale` plutôt que
+> d'écrire une requête ou un formatage de plus.
+>
+> Attention à deux choses que la note signale et que le code confirme :
+> `tournois_imminents` ne filtre ni `lance` ni `termine`, et `str.format` est
+> inutilisable sur un texte saisi par le bureau (une accolade solitaire ferait
+> planter `/live`) — substitue jeton par jeton.
+>
+> Un commit par point traité, message en français, sans emoji. Termine par le
+> total de la suite de tests.
+
 ---
 
 ## Lot 2 — Administration, cohabitation, journal, wiki · modèle : **Opus**
@@ -172,28 +195,3 @@ transposer.
 >
 > Termine par une proposition de montée de version (sans l'appliquer) et le total
 > de la suite de tests.
-
----
-
-## Prompt du lot 1
-
-> Tu reprends le projet LudoteX. Lis `CLAUDE.md` et
-> `docs/conception-alerte-tournoi.md` (en entier — elle est courte).
->
-> Objet de cette session : le **lot 1** de
-> `docs/prompt-impl-alerte-tournoi.md` — le calcul de l'alerte, son affichage
-> sur `/live`, et les tests. **Ne touche pas à l'administration** : c'est le
-> lot 2.
->
-> Le patron à recopier est `live.annonce_active()` : calcul à la lecture, aucune
-> écriture en base, clé absente du JSON quand il n'y a rien à dire, texte injecté
-> par `textContent`. Réutilise `tournois_imminents` et `_heure_locale` plutôt que
-> d'écrire une requête ou un formatage de plus.
->
-> Attention à deux choses que la note signale et que le code confirme :
-> `tournois_imminents` ne filtre ni `lance` ni `termine`, et `str.format` est
-> inutilisable sur un texte saisi par le bureau (une accolade solitaire ferait
-> planter `/live`) — substitue jeton par jeton.
->
-> Un commit par point traité, message en français, sans emoji. Termine par le
-> total de la suite de tests.
