@@ -12,8 +12,10 @@ Trois niveaux, du plus isolé au plus intégré :
    (réglages en base de prêt, tournois en base séparée), jusqu'au JSON exposé
    à l'écran de salle. Patron `client` de `tests/test_transfert_routes.py`.
 
-Administration (validation des réglages à l'enregistrement, aperçu, journal,
-cohabitation signalée en admin) : hors périmètre, reportée au lot 2.
+4. `/admin/ecran-salle` — les réglages du bureau (lot 2) : validation à
+   l'enregistrement, aperçu de ce qui est réellement projeté, et cohabitation
+   avec l'annonce libre. Le journal a son domicile habituel
+   (`tests/test_journal_appels.py`).
 """
 
 import sqlite3
@@ -328,3 +330,214 @@ def test_module_tournois_desactive_aucune_alerte(client, tmp_path, monkeypatch):
     _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Catan")
 
     assert "alerte_tournoi" not in client.get("/live/data").json()
+
+
+# ===========================================================================
+# 5. Administration — /admin/ecran-salle (lot 2)
+# ===========================================================================
+# Les réglages n'ont PAS de page à eux : ils rejoignent l'écran de salle, dont
+# ils sont les voisins naturels. Ils ont en revanche leur propre formulaire
+# (POST /admin/ecran-salle/alerte), pour deux raisons vérifiées ici : les
+# quatre cases à cocher du formulaire d'annonce ne sont pas transmises quand
+# elles sont décochées, et un refus d'alerte ne doit jamais refuser au passage
+# une annonce qui, elle, était bonne.
+MOT_DE_PASSE = "secret-admin-alerte"
+
+
+@pytest.fixture
+def admin(client, monkeypatch):
+    """Le client de la section 4, avec une session administrateur ouverte."""
+    monkeypatch.setenv("ADMIN_PASSWORD", MOT_DE_PASSE)
+    client.post("/admin/login", data={"mot_de_passe": MOT_DE_PASSE})
+    return client
+
+
+def _enregistrer_alerte(admin, message="", mini="", maxi=""):
+    return admin.post("/admin/ecran-salle/alerte",
+                      data={"alerte_message": message,
+                            "alerte_delai_min": mini, "alerte_delai_max": maxi})
+
+
+def _reglage(cle):
+    from app import db as pret_db
+
+    conn = pret_db.get_connection()
+    try:
+        return app_services.lire_parametre(conn, cle, None)
+    finally:
+        conn.close()
+
+
+# --- Garde et présence des champs ---
+def test_alerte_route_protegee_par_la_garde_admin(client):
+    r = client.post("/admin/ecran-salle/alerte", data={"alerte_message": "x"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin"
+    assert _reglage(live.CLE_ALERTE_MESSAGE) is None
+
+
+def test_ecran_salle_porte_les_trois_champs_et_les_jetons(admin):
+    page = admin.get("/admin/ecran-salle")
+    assert page.status_code == 200
+    for champ in ("alerte_message", "alerte_delai_min", "alerte_delai_max"):
+        assert f'name="{champ}"' in page.text
+    # La liste des jetons acceptés est affichée sous le champ, sinon le refus
+    # d'un jeton inconnu serait la seule façon de les découvrir.
+    for jeton in ("{jeu}", "{minutes}", "{heure}", "{lieu}"):
+        assert jeton in page.text
+    # Texte proposé, repris en un clic — mais jamais enregistré d'office (D10).
+    assert live.MESSAGE_ALERTE_PROPOSE in page.text
+    assert _reglage(live.CLE_ALERTE_MESSAGE) is None
+
+
+# --- Enregistrement et extinction ---
+def test_enregistrement_complet_puis_extinction(admin, tmp_path, monkeypatch):
+    r = _enregistrer_alerte(admin, live.MESSAGE_ALERTE_PROPOSE, "20", "120")
+    assert "Alerte enregistrée" in r.text and "20" in r.text and "120" in r.text
+    assert _reglage(live.CLE_ALERTE_DELAI_MIN) == "20"
+    assert _reglage(live.CLE_ALERTE_DELAI_MAX) == "120"
+
+    _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Catan")
+    assert "Catan" in admin.get("/live/data").json()["alerte_tournoi"]
+
+    # Message vidé = alerte éteinte : pas d'interrupteur de plus (D10).
+    r2 = _enregistrer_alerte(admin, "", "20", "120")
+    assert "Alerte éteinte" in r2.text
+    assert "alerte_tournoi" not in admin.get("/live/data").json()
+
+
+def test_message_espaces_normalises_et_borne_a_200(admin):
+    _enregistrer_alerte(admin, "  Rapportez   les    boîtes  ")
+    assert _reglage(live.CLE_ALERTE_MESSAGE) == "Rapportez les boîtes"
+    _enregistrer_alerte(admin, "x" * 300)
+    assert len(_reglage(live.CLE_ALERTE_MESSAGE)) == 200
+
+
+# --- Refus : le libellé doit dire lequel, et ne jamais perdre la saisie ---
+def test_jeton_inconnu_refuse_en_nommant_le_jeton_et_les_jetons_acceptes(admin):
+    saisie = "Le tournoi de {jouer} commence dans {minutes} minutes."
+    r = _enregistrer_alerte(admin, saisie)
+    assert r.status_code == 200
+    # 1. le jeton fautif est nommé...
+    assert "{jouer}" in r.text
+    # 2. ...et les jetons acceptés listés, sinon le bureau devine.
+    for jeton in ("{jeu}", "{minutes}", "{heure}", "{lieu}"):
+        assert jeton in r.text
+    # 3. rien n'est enregistré...
+    assert _reglage(live.CLE_ALERTE_MESSAGE) is None
+    # 4. ...mais la saisie est réaffichée telle quelle : il n'y a qu'à corriger.
+    assert saisie in r.text
+
+
+def test_deux_jetons_inconnus_sont_tous_les_deux_nommes(admin):
+    r = _enregistrer_alerte(admin, "{jouer} et {Jeu} dans {minutes} min")
+    # La casse compte : {Jeu} ne serait pas substitué non plus.
+    assert "{jouer}" in r.text and "{Jeu}" in r.text
+    # Pluriel du libellé (l'apostrophe est échappée par Jinja dans un message
+    # venu de la route, d'où l'assertion sur le fragment sans apostrophe).
+    assert "existent pas" in r.text
+    assert _reglage(live.CLE_ALERTE_MESSAGE) is None
+
+
+def test_accolade_solitaire_acceptee(admin):
+    # Elle ne casse rien à l'affichage (voir formater_alerte) : refuser un
+    # texte pour cela serait incompréhensible côté bureau.
+    r = _enregistrer_alerte(admin, "Rendez-vous { au stand, {jeu} commence")
+    assert "Alerte enregistrée" in r.text
+    assert _reglage(live.CLE_ALERTE_MESSAGE) == "Rendez-vous { au stand, {jeu} commence"
+
+
+def test_maxi_inferieur_a_mini_refuse(admin):
+    r = _enregistrer_alerte(admin, "{jeu} !", "60", "30")
+    assert "inférieur" in r.text
+    assert _reglage(live.CLE_ALERTE_MESSAGE) is None
+    assert _reglage(live.CLE_ALERTE_DELAI_MIN) is None
+    # La saisie est conservée, y compris les deux délais fautifs.
+    assert 'value="60"' in r.text and 'value="30"' in r.text
+
+
+def test_delais_hors_bornes_refuses(admin):
+    r = _enregistrer_alerte(admin, "{jeu} !", "15", "2000")
+    assert "1440" in r.text
+    assert _reglage(live.CLE_ALERTE_DELAI_MAX) is None
+
+    r2 = _enregistrer_alerte(admin, "{jeu} !", "-5", "90")
+    assert "1440" in r2.text
+    assert _reglage(live.CLE_ALERTE_DELAI_MIN) is None
+
+
+def test_delai_non_numerique_refuse_sans_perdre_la_saisie(admin):
+    r = _enregistrer_alerte(admin, "{jeu} !", "une heure", "90")
+    assert "minutes" in r.text and "chiffres" in r.text
+    assert _reglage(live.CLE_ALERTE_MESSAGE) is None
+    assert "{jeu} !" in r.text
+
+
+def test_delais_vides_retombent_sur_les_defauts_du_code(admin):
+    _enregistrer_alerte(admin, "{jeu} !")
+    assert _reglage(live.CLE_ALERTE_DELAI_MIN) == str(live.DELAI_MIN_DEFAUT)
+    assert _reglage(live.CLE_ALERTE_DELAI_MAX) == str(live.DELAI_MAX_DEFAUT)
+
+
+# --- Aperçu et cohabitation avec l'annonce libre (D8) ---
+def test_apercu_montre_le_message_formate_et_non_le_modele(admin, tmp_path, monkeypatch):
+    _enregistrer_alerte(admin, "Rapportez {jeu} au stand !")
+    _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Dixit")
+    page = admin.get("/admin/ecran-salle")
+    assert "Rapportez Dixit au stand !" in page.text
+
+
+def test_cohabitation_signalee_avec_l_heure_de_reprise(admin, tmp_path, monkeypatch):
+    """
+    Le libellé qui empêche de croire qu'une annonce a été perdue : quand une
+    alerte occupe le bandeau, l'écran d'administration doit dire jusqu'à
+    quelle heure, et que l'annonce reprendra ensuite (contrepartie de D8).
+    """
+    from datetime import datetime as _dt
+
+    debut = _dt.now(FUSEAU_UTC) + timedelta(minutes=5)
+    admin.post("/admin/ecran-salle",
+               data={"annonce": "Tombola à 15 h", "annonce_duree": "",
+                     "panneau_chiffres": "1", "panneau_tournois": "1",
+                     "panneau_programme": "1", "panneau_mouvements": "1"})
+    _enregistrer_alerte(admin, "Rapportez {jeu} !")
+    _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Catan",
+                              date_heure=debut.isoformat())
+
+    page = admin.get("/admin/ecran-salle")
+    assert "occupe le bandeau" in page.text
+    assert live._heure_locale(debut.isoformat()) in page.text   # heure LOCALE
+    assert "n'est pas perdue" in page.text
+    assert "Tombola à 15 h" in page.text
+    # Les deux réglages coexistent en base : rien n'a été effacé.
+    assert _reglage(live.CLE_ANNONCE) == "Tombola à 15 h"
+
+
+def test_sans_alerte_l_apercu_reste_celui_de_l_annonce(admin):
+    admin.post("/admin/ecran-salle",
+               data={"annonce": "Tombola à 15 h", "annonce_duree": "",
+                     "panneau_chiffres": "1"})
+    page = admin.get("/admin/ecran-salle")
+    assert "Tombola à 15 h" in page.text
+    assert "occupe le bandeau" not in page.text
+
+
+# --- Les deux formulaires sont indépendants (raison d'être du second POST) ---
+def test_enregistrer_l_annonce_ne_touche_pas_a_l_alerte(admin):
+    _enregistrer_alerte(admin, "Rapportez {jeu} !", "20", "120")
+    admin.post("/admin/ecran-salle",
+               data={"annonce": "Tombola", "annonce_duree": "",
+                     "panneau_chiffres": "1"})
+    assert _reglage(live.CLE_ALERTE_MESSAGE) == "Rapportez {jeu} !"
+    assert _reglage(live.CLE_ALERTE_DELAI_MIN) == "20"
+
+
+def test_enregistrer_l_alerte_ne_touche_ni_a_l_annonce_ni_aux_panneaux(admin):
+    admin.post("/admin/ecran-salle",
+               data={"annonce": "Tombola", "annonce_duree": "",
+                     "panneau_chiffres": "1", "panneau_mouvements": "1"})
+    _enregistrer_alerte(admin, "Rapportez {jeu} !")
+    assert _reglage(live.CLE_ANNONCE) == "Tombola"
+    panneaux = admin.get("/live/data").json()["panneaux"]
+    assert panneaux["chiffres"] is True and panneaux["mouvements"] is True
+    assert panneaux["tournois"] is False and panneaux["programme"] is False

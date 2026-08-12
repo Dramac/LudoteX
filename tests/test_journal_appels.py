@@ -393,6 +393,59 @@ def test_annonce_longue_tronquee_a_120_caracteres(client, _journal_isole):
 
 
 # ===========================================================================
+# Écran de salle — alerte « rapportez les exemplaires » avant un tournoi
+# ===========================================================================
+def _poster_alerte(client, message="", mini="", maxi=""):
+    return client.post("/admin/ecran-salle/alerte",
+                       data={"alerte_message": message,
+                             "alerte_delai_min": mini, "alerte_delai_max": maxi})
+
+
+def test_alerte_posee_puis_effacee(client, _journal_isole):
+    _connexion(client)
+
+    _poster_alerte(client, "Rapportez {jeu} au stand !")
+    posee = _derniere(_journal_isole, "alerte_posee")
+    assert posee["module"] == "live" and posee["objet"] == "Rapportez {jeu} au stand !"
+
+    _poster_alerte(client, "")
+    effacee = _derniere(_journal_isole, "alerte_effacee")
+    assert effacee["module"] == "live" and effacee["objet"] == "Rapportez {jeu} au stand !"
+
+
+def test_delais_seuls_ne_produisent_aucune_ligne_sur_le_message(client, _journal_isole):
+    """
+    Les trois réglages voyagent dans le même formulaire : sans lecture de la
+    valeur précédente, ajuster un délai produirait une ligne « alerte posée »
+    identique à la précédente. Le défaut exact déjà rencontré sur cette page
+    avec l'annonce et les panneaux.
+    """
+    _connexion(client)
+    _poster_alerte(client, "Rapportez {jeu} !", "15", "90")
+    assert len(_actions(_journal_isole, "alerte_posee")) == 1
+
+    _poster_alerte(client, "Rapportez {jeu} !", "20", "120")
+    assert len(_actions(_journal_isole, "alerte_posee")) == 1
+    assert _actions(_journal_isole, "alerte_effacee") == []
+
+
+def test_alerte_jamais_effacee_quand_il_n_y_en_avait_pas(client, _journal_isole):
+    _connexion(client)
+    _poster_alerte(client, "", "15", "90")
+    assert _actions(_journal_isole, "alerte_effacee") == []
+    assert _actions(_journal_isole, "alerte_posee") == []
+
+
+def test_alerte_refusee_n_ecrit_rien(client, _journal_isole):
+    """Un enregistrement refusé n'écrit rien en base : il n'a donc rien à
+    écrire au journal non plus (l'affichage, lui, n'est jamais journalisé —
+    c'est un calcul de lecture, décision D11)."""
+    _connexion(client)
+    _poster_alerte(client, "Rapportez {jouer} !")
+    assert _actions(_journal_isole, "alerte_posee") == []
+
+
+# ===========================================================================
 # Date de l'événement
 # ===========================================================================
 def test_evenement_date_journalisee_et_date_invalide_en_echec(client, _journal_isole):
