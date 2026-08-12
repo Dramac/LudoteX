@@ -38,6 +38,8 @@
       --bordure: #334155;
       --annonce-fond: #b45309;   /* ambre soutenu, distinct du reste de la palette */
       --annonce-texte: #fff7ed;
+      --alerte-fond: #b91c1c;    /* rouge, distinct de l'ambre de l'annonce (D8) */
+      --alerte-texte: #fef2f2;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
@@ -153,6 +155,32 @@
     /* 200 caractères tiennent en deux lignes à cette largeur ; au-delà, on
        borne plutôt que de laisser l'annonce manger la carte des chiffres. */
     .bandeau-annonce span[id] {
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* --- Bandeau d'alerte tournoi (« rapportez les exemplaires »), piloté
+       depuis /admin/ecran-salle — voir docs/conception-alerte-tournoi.md.
+       Même patron que l'annonce libre (masqué par défaut, ne décale jamais la
+       mise en page), couleur et pictogramme PROPRES pour qu'un coup d'œil
+       suffise à distinguer une consigne minutée d'une information du bureau.
+       L'alerte l'emporte sur l'annonce libre quand les deux sont présentes
+       (D8) : une seule bande visible, jamais les deux empilées — voir
+       rendreBandeauInfo() plus bas. */
+    .bandeau-alerte {
+      flex: 0 0 auto;
+      display: none;   /* affiché en JS seulement quand une alerte est active */
+      background: var(--alerte-fond);
+      color: var(--alerte-texte);
+      border-radius: 0.8vw;
+      padding: 0.8vw 1.4vw;
+      font-size: 1.45em;
+      font-weight: 700;
+      align-items: baseline;
+      gap: 0.7em;
+    }
+    .bandeau-alerte .puce-alerte { font-size: 1.2em; }
+    .bandeau-alerte span[id] {
       display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -335,6 +363,9 @@
 
     <section class="zone zone-haute" id="zone-haute">
       <div class="bloc-info" id="bloc-info">
+        <section class="bandeau-alerte" id="bandeau-alerte-tournoi">
+          <span class="puce-alerte">⏰</span><span id="alerte-tournoi-texte"></span>
+        </section>
         <section class="bandeau-annonce" id="bandeau-annonce">
           <span class="puce-annonce">📣</span><span id="annonce-texte"></span>
         </section>
@@ -554,6 +585,29 @@
       }
     }
 
+    function rendreAlerteTournoi(texte) {
+      // Même patron que rendreAnnonce : apparition/disparition sans
+      // rechargement, textContent uniquement (jamais innerHTML) — le message
+      // vient d'une saisie libre en admin (voir formater_alerte, qui substitue
+      // les jetons sans jamais lever d'exception sur une saisie bancale).
+      const el = document.getElementById("bandeau-alerte-tournoi");
+      if (texte) {
+        document.getElementById("alerte-tournoi-texte").textContent = texte;
+        el.style.display = "flex";
+      } else {
+        el.style.display = "none";
+      }
+    }
+
+    function rendreBandeauInfo(alerteTexte, annonceTexte) {
+      // L'alerte tournoi l'emporte sur l'annonce libre quand les deux sont
+      // présentes (D8) : une seule bande visible à la fois, jamais les deux
+      // empilées. L'annonce du bureau reprend d'elle-même dès que l'alerte
+      // s'efface (fenêtre expirée ou tournoi lancé) : rien à faire côté admin.
+      rendreAlerteTournoi(alerteTexte);
+      rendreAnnonce(alerteTexte ? null : annonceTexte);
+    }
+
     function afficher(id, visible, mode) {
       const el = document.getElementById(id);
       if (el) el.style.display = visible ? (mode || "block") : "none";
@@ -571,7 +625,7 @@
         document.getElementById("titre").textContent = d.titre;
         document.title = d.titre + " — Tableau de bord";
       }
-      rendreAnnonce(d.annonce);
+      rendreBandeauInfo(d.alerte_tournoi, d.annonce);
 
       // --- Barre de chiffres ---
       afficher("barre-chiffres", !!p.chiffres, "flex");
@@ -608,7 +662,7 @@
       const montreTournois = !!p.tournois && (tournois.length > 0 || aVenir.length > 0);
       const montreProgramme = !!p.programme && animations.length > 0;
       const montreMouvements = !!p.mouvements;
-      const montreInfo = !!p.chiffres || !!d.annonce;
+      const montreInfo = !!p.chiffres || !!d.annonce || !!d.alerte_tournoi;
 
       afficher("bloc-info", montreInfo, "flex");
       afficher("panneau-mouvements", montreMouvements, "flex");
