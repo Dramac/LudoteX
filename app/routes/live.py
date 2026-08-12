@@ -52,6 +52,20 @@ NB_MOUVEMENTS = 8
 CLE_ANNONCE = "live_annonce"
 CLE_ANNONCE_EXPIRE = "live_annonce_expire"
 
+# Alerte tournoi « rapportez les exemplaires » (docs/conception-alerte-tournoi.md).
+# Calcul à la lecture, aucune écriture en base : exactement le patron de
+# l'annonce libre ci-dessus. Les deux délais ont un défaut CODE (pas une ligne
+# écrite en base au démarrage) : une base existante se comporte comme s'ils y
+# étaient déjà. Le modèle de message, lui, n'a AUCUN défaut implicite (D10) :
+# tant que le bureau n'a rien saisi, `alerte_tournoi` ci-dessous renvoie
+# toujours None.
+CLE_ALERTE_MESSAGE = "alerte_tournoi_message"
+CLE_ALERTE_DELAI_MIN = "alerte_tournoi_delai_min"
+CLE_ALERTE_DELAI_MAX = "alerte_tournoi_delai_max"
+DELAI_MIN_DEFAUT = 15
+DELAI_MAX_DEFAUT = 90
+JETONS_ALERTE = ("jeu", "minutes", "heure", "lieu")
+
 # ---------------------------------------------------------------------------
 # Panneaux affichables, réglables depuis /admin/ecran-salle
 # ---------------------------------------------------------------------------
@@ -177,6 +191,62 @@ def _minutes_avant(date_heure_utc: str | None) -> int | None:
     return max(0, minutes)
 
 
+def formater_alerte(modele: str, tournoi: dict, minutes: int) -> str:
+    """
+    Substitue les jetons `{jeu}`, `{minutes}`, `{heure}`, `{lieu}` dans
+    `modele`, JETON PAR JETON — jamais `str.format` : une accolade solitaire
+    dans un texte saisi par le bureau ferait lever `KeyError`/`ValueError` en
+    pleine page `/live`, alors qu'un texte bancal doit s'afficher tel quel
+    (*ne jamais bloquer* prime). `{jeu}` retombe sur l'intitulé du tournoi
+    quand le champ jeu est vide (tournois créés avant le formulaire à deux
+    champs) ; `{heure}` passe par `_heure_locale`, comme partout ailleurs sur
+    cet écran, pour ne jamais afficher l'heure UTC stockée en base.
+    """
+    valeurs = {
+        "{jeu}": tournoi["jeu"] or tournoi["nom"],
+        "{minutes}": str(minutes),
+        "{heure}": _heure_locale(tournoi["date_heure"]),
+        "{lieu}": tournoi["emplacement"] or "",
+    }
+    texte = modele
+    for jeton, valeur in valeurs.items():
+        texte = texte.replace(jeton, valeur)
+    return texte
+
+
+def alerte_tournoi(conn, conn_tournoi) -> str | None:
+    """
+    Message d'alerte « rapportez les exemplaires » actuellement affichable sur
+    /live, ou None si le modèle n'est pas configuré (D10) ou si aucun tournoi
+    ne qualifie. Calcul de lecture, comme `annonce_active` : aucune écriture
+    en base. Lit les trois réglages dans la base de PRÊT (`conn`), appelle
+    `tournoi_a_annoncer` sur la base des TOURNOIS (`conn_tournoi`) — le pont
+    entre les deux bases se fait ici, dans la route, jamais dans un service
+    (précédent : `routes/tournoi.py::_inscription_au_comptoir`).
+
+    `/admin/ecran-salle` (lot 2) importera cette fonction pour son aperçu, au
+    même titre qu'il importe déjà `annonce_active`.
+    """
+    modele = services.lire_parametre(conn, CLE_ALERTE_MESSAGE, None)
+    if not modele:
+        return None
+    try:
+        delai_mini = int(services.lire_parametre(
+            conn, CLE_ALERTE_DELAI_MIN, str(DELAI_MIN_DEFAUT)))
+    except (TypeError, ValueError):
+        delai_mini = DELAI_MIN_DEFAUT  # réglage corrompu : jamais bloquant
+    try:
+        delai_maxi = int(services.lire_parametre(
+            conn, CLE_ALERTE_DELAI_MAX, str(DELAI_MAX_DEFAUT)))
+    except (TypeError, ValueError):
+        delai_maxi = DELAI_MAX_DEFAUT
+    resultat = tournoi_services.tournoi_a_annoncer(conn_tournoi, delai_mini, delai_maxi)
+    if resultat is None:
+        return None
+    tournoi, minutes = resultat
+    return formater_alerte(modele, tournoi, minutes)
+
+
 def _collecter_donnees() -> dict:
     """
     Rassemble toutes les données du tableau de bord (partagé par la page et
@@ -269,6 +339,26 @@ def _collecter_donnees() -> dict:
             for t in imminents
         ]
 
+    # --- Alerte tournoi « rapportez les exemplaires » (D1 : bandeau distinct,
+    # pas un panneau désactivable) ---
+    # Indépendante des réglages d'affichage ci-dessus, mais nécessite les deux
+    # bases en même temps (réglages en base de prêt, tournoi en base des
+    # tournois) : deux connexions courtes, dédiées, plutôt que d'étirer la
+    # durée de vie de `conn` ouverte plus haut. Soumise à la même précédence
+    # de module que le panneau tournois (voir `panneaux_actifs`) : un module
+    # désactivé n'a plus de tournois à annoncer.
+    alerte = None
+    conn = get_connection()
+    try:
+        if lire_etat_module(conn, "tournois") != "desactive":
+            conn_t = get_tournoi_connection()
+            try:
+                alerte = alerte_tournoi(conn, conn_t)
+            finally:
+                conn_t.close()
+    finally:
+        conn.close()
+
     resultat = {
         "titre": titre,
         "panneaux": panneaux,
@@ -299,6 +389,12 @@ def _collecter_donnees() -> dict:
     # valeur absente, cf. rangement) : le bandeau de /live se fie à sa présence.
     if annonce:
         resultat["annonce"] = annonce
+    # Même règle pour l'alerte tournoi : absente du JSON quand il n'y a rien à
+    # dire. Les deux clés peuvent cohabiter dans le JSON (chacune calculée
+    # indépendamment) — c'est au gabarit de trancher laquelle des deux bandes
+    # s'affiche (D8 : l'alerte l'emporte, une seule bande visible).
+    if alerte:
+        resultat["alerte_tournoi"] = alerte
     return resultat
 
 
