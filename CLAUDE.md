@@ -2080,6 +2080,70 @@ sans répétition, garde-fou sur les intitulés de formation). **Suite globale :
 Non traité, signalé : les intitulés du module Programme (« Initiation à X »
 avec le type « Initiation ») présentent la même redondance en plus discret.
 
+**ALERTE « RAPPORTEZ LES EXEMPLAIRES » AVANT UN TOURNOI — LOT 2 (réglages,
+cohabitation, journal) : FAIT** (2026-08-12, conception
+`docs/conception-alerte-tournoi.md`, découpage
+`docs/prompt-impl-alerte-tournoi.md`). Suite du lot 1 (calcul + bandeau sur
+`/live`, déjà commité). Trois commits.
+**Aucune page d'administration créée** : le message, le délai plancher et le
+délai plafond s'installent sous l'annonce de `/admin/ecran-salle`, avec la
+liste des jetons acceptés et le texte proposé du §4 reprenable en un clic
+(bouton « Utiliser ce texte », modèle transporté en attribut de données —
+rien à échapper à la main). **Formulaire SÉPARÉ, même page**
+(`POST /admin/ecran-salle/alerte`) : **écart assumé** avec le prompt, qui
+prévoyait un seul POST (consigné en §10 de la note, avec les trois autres).
+Le formulaire d'annonce porte quatre **cases à cocher**, qu'un navigateur ne
+transmet pas décochées — tout fondre en un envoi aurait fait qu'enregistrer
+un délai rejoue les panneaux et réciproquement, défaut que cette page a
+**déjà payé une fois** (« Effacer l'annonce » éteignait les panneaux, corrigé
+par des champs cachés) ; et l'alerte est le **premier réglage de cet écran
+qui peut être refusé**, or refuser une alerte mal saisie ne doit pas refuser
+au passage une annonce qui, elle, était bonne. Deux tests verrouillent cette
+indépendance dans les deux sens.
+**Les deux libellés qui font le lot.** (1) *Jeton inconnu* : le message le
+NOMME (« Le jeton {jouer} n'existe pas : il resterait affiché tel quel sur
+l'écran de la salle »), liste les quatre jetons acceptés, dit que rien n'a
+été enregistré, et **la saisie est réaffichée telle qu'elle a été tapée** —
+`_page_ecran_salle(..., saisie_alerte=…)` rejoue la saisie plutôt que la base.
+Pluriel géré (deux jetons fautifs sont tous deux nommés) ; la **casse compte**
+(`{Jeu}` est refusé, il ne serait pas substitué) ; une **accolade solitaire
+est acceptée** (elle ne casse rien à l'affichage, la refuser serait
+incompréhensible côté bureau). Même traitement pour les délais : non
+numériques, hors `[0, 1440]`, maximum < minimum. (2) *Cohabitation* :
+l'aperçu montre l'alerte (variante rouge `.apercu-alerte-salle` du composant
+`.apercu-annonce-salle`, teinte de `--alerte-fond` sur `/live`) PUIS écrit
+« Une alerte de tournoi occupe le bandeau jusqu'à 14:30 ; votre annonce
+(« … ») **n'est pas perdue** et reprendra ensuite toute seule ». L'heure vient
+de **`live.alerte_tournoi_detaillee`** (nouveau), qui rend `(texte, heure de
+reprise locale)` — l'heure de début du tournoi, la fenêtre étant `[H − délai,
+H[` ; `alerte_tournoi` délègue, signature du lot 1 inchangée.
+**Validation** : `live.jetons_inconnus` (domicile du vocabulaire fermé, à côté
+de `formater_alerte`), `DELAI_BORNE_MAX = 1440`, `MESSAGE_ALERTE_PROPOSE`.
+**Aperçu** calculé avec la même fonction que `/live`, **précédence de module
+comprise** (module tournois désactivé ⇒ aucune alerte), et tout est **relu en
+base après écriture** : l'aperçu doit dire la salle, pas le réglage. Les trois
+points d'entrée de la page partagent désormais `_page_ecran_salle` (patron
+`_page_donnees` / `_rendre_dashboard`).
+**Journal** : `alerte_posee` / `alerte_effacee` (module `live`), **deux
+actions** sur le patron exact de l'annonce libre plutôt qu'une seule comme le
+demandait le prompt — « éteinte » doit dire quel message a été retiré. Écrites
+**seulement si le modèle change** (lecture avant écriture) : les trois
+réglages voyagent dans le même formulaire, ajuster un délai produirait sinon
+une ligne identique à la précédente. **Les deux délais ne sont pas
+journalisés** (entiers sans texte à relire) et **l'affichage ne l'est jamais**
+(calcul de lecture, D11).
+**Non traité, signalé** (§10.4 de la note) : la carte Supervision rappelle une
+annonce active sans savoir qu'une alerte peut l'occuper — sa ligne reste vraie
+sur le réglage, pas sur ce que la salle montre à l'instant ; la corriger
+suppose d'ouvrir la base des tournois depuis `app/supervision.py`, qui ne
+connaît que celle du prêt.
+**20 tests ajoutés** (16 en section 5 de `tests/test_alerte_tournoi.py`, 4
+dans `tests/test_journal_appels.py`). **Suite globale : 912 tests verts.**
+Wiki : `Module-Ecran-Salle` (nouvelle section « Rappeler de rapporter les jeux
+avant un tournoi » + 4 entrées de « Si ça ne marche pas »), `Module-Tournois`
+(la durée d'un tournoi fixe le moment du rappel), `Avant-pendant-apres`
+(écrire le rappel avant l'événement), `Journal-Activite`, `Guide-Admin`.
+
 ⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
 listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
 donc PAS être « corrigées dans le même commit que le code », contrairement à

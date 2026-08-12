@@ -193,3 +193,39 @@ un réglage de la base de prêt depuis une route du module tournois.
   premier événement, une fois qu'on saura si l'écran de salle suffit.
 - **Rotation de slides sur `/live`** (fiche 5.1) : la vraie réponse structurelle
   à la concurrence entre bandeaux, hors de ce chantier.
+
+---
+
+## 10. Écarts de mise en œuvre (lot 2, 2026-08-12)
+
+Section ajoutée après coup ; elle ne réécrit rien de ce qui précède.
+
+1. **Formulaire séparé sur la même page.** Le prompt d'implémentation
+   prévoyait d'étendre le POST existant de `/admin/ecran-salle`. Les trois
+   réglages ont finalement leur propre formulaire (`POST
+   /admin/ecran-salle/alerte`), sur le même écran — aucune page n'est créée,
+   la §5 est respectée. Deux raisons : le formulaire d'annonce porte quatre
+   **cases à cocher**, qu'un navigateur ne transmet pas quand elles sont
+   décochées (cette page a déjà payé ce défaut une fois : « Effacer
+   l'annonce » éteignait les panneaux au passage) ; et l'alerte est le
+   premier réglage de cet écran qui peut être **refusé**, or refuser une
+   alerte mal saisie ne doit pas refuser au passage une annonce qui, elle,
+   était bonne.
+2. **Deux actions de journal, pas une.** Le prompt en demandait une ; le
+   patron exact de l'annonce libre, qu'il désigne par ailleurs comme
+   référence, en compte deux (`annonce_posee` / `annonce_effacee`). D'où
+   `alerte_posee` / `alerte_effacee` : « éteinte » doit dire quel message a
+   été retiré. Les **deux délais ne sont pas journalisés** (deux entiers sans
+   texte à relire, visibles sur la page), et le message ne l'est que s'il
+   **change** — sinon ajuster un délai écrirait une ligne identique à la
+   précédente.
+3. **Refus des délais non numériques.** Non prévu au §7, qui ne borne que
+   l'intervalle : une saisie non numérique est refusée avec un message clair
+   plutôt que silencieusement remplacée par la valeur par défaut. La lecture,
+   elle, reste défensive (`alerte_tournoi` retombe sur les défauts du code).
+4. **Non traité, signalé.** La carte « Supervision » (`/admin/supervision` et
+   le tableau de bord) rappelle une annonce active sans savoir qu'une alerte
+   peut l'occuper : sa ligne reste donc vraie sur le réglage, mais pas sur ce
+   que la salle affiche à l'instant. Corriger cela suppose d'ouvrir la base
+   des tournois depuis `app/supervision.py`, qui ne connaît aujourd'hui que
+   celle du prêt. L'écran qui porte le réglage, lui, dit la vérité complète.
