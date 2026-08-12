@@ -6,8 +6,8 @@
   <h1>Écran de salle</h1>
   <p class="stats-note">
     Réglages du <strong>tableau de bord projeté en salle</strong>
-    (<a class="lien" href="/live">/live</a>) : l'annonce du moment et les
-    panneaux affichés.
+    (<a class="lien" href="/live">/live</a>) : les panneaux affichés, l'annonce
+    du moment, et le rappel automatique avant un tournoi (plus bas).
   </p>
 
   {# Le titre n'est plus un réglage de cette page : il vaut le nom de
@@ -25,8 +25,27 @@
     </p>
   {% endif %}
 
-  {% if annonce_affichee %}
+  {% if alerte_affichee or annonce_affichee %}
     <p class="stats-note">Aperçu de ce qui est affiché en salle en ce moment :</p>
+  {% endif %}
+  {# L'alerte de tournoi l'emporte sur l'annonce : une seule bande est visible
+     en salle (décision D8). L'aperçu doit donc montrer l'alerte, PUIS dire ce
+     qu'il advient de l'annonce — sans cette phrase et son heure de reprise, un
+     membre du bureau conclut que son annonce a été perdue. #}
+  {% if alerte_affichee %}
+    <div class="apercu-annonce-salle apercu-alerte-salle">
+      <span class="apercu-annonce-puce">⏰</span>
+      <span>{{ alerte_affichee }}</span>
+    </div>
+    {% if annonce_affichee %}
+      <p class="stats-note">
+        Une alerte de tournoi occupe le bandeau
+        {% if alerte_reprise %}jusqu'à {{ alerte_reprise }}{% endif %} ; votre
+        annonce (« {{ annonce_affichee }} ») <strong>n'est pas perdue</strong>
+        et reprendra ensuite toute seule, sans rien à faire.
+      </p>
+    {% endif %}
+  {% elif annonce_affichee %}
     <div class="apercu-annonce-salle">
       <span class="apercu-annonce-puce">📣</span>
       <span>{{ annonce_affichee }}</span>
@@ -129,6 +148,66 @@
     </form>
   {% endif %}
 
+</section>
+
+<section class="carte">
+  <h2>Alerte avant un tournoi</h2>
+  <p class="stats-note">
+    Peu avant le début d'un tournoi, l'écran de salle peut afficher un rappel
+    demandant de <strong>rapporter les exemplaires du jeu au stand de prêt</strong>.
+    Le message apparaît et disparaît tout seul : il s'efface à l'heure de début
+    du tournoi, il n'y a rien à couper après coup. Seuls les tournois
+    <strong>ouverts aux inscriptions</strong> déclenchent une alerte, et un seul
+    à la fois — le plus proche.
+  </p>
+  <p class="stats-note">
+    Pendant qu'une alerte est affichée, elle <strong>prend la place de
+    l'annonce</strong> ci-dessus : l'écran de salle ne montre qu'une bande à la
+    fois, pour rester lisible de loin. L'annonce revient d'elle-même dès que
+    l'alerte s'efface.
+  </p>
+
+  <form method="post" action="/admin/ecran-salle/alerte" class="recherche-form">
+    <div class="champ">
+      <label for="alerte_message">Message de l'alerte</label>
+      <textarea id="alerte_message" name="alerte_message" maxlength="200" rows="3"
+                placeholder="Laissez vide pour n'afficher aucune alerte.">{{ alerte.message }}</textarea>
+      <p class="stats-note">200 caractères maximum.
+        <strong>Laissez ce champ vide pour éteindre l'alerte</strong> : il n'y a
+        pas d'autre interrupteur.</p>
+      <p class="stats-note">
+        Ces mots sont remplacés automatiquement au moment de l'affichage :
+        {% for jeton in jetons_alerte %}<code>{{ jeton }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+        — respectivement le nom du jeu, le nombre de minutes restantes (recalculé
+        en permanence), l'heure de début et le lieu du tournoi. Tout autre mot
+        entre accolades est refusé à l'enregistrement.
+      </p>
+      <p class="stats-note">Texte proposé : « {{ message_propose }} »</p>
+      <p class="duree-rapide">
+        <button type="button" class="bouton-filtrer" id="alerte-texte-propose"
+                data-modele="{{ message_propose }}">Utiliser ce texte</button>
+      </p>
+    </div>
+
+    <div class="champ">
+      <label for="alerte_delai_min">Afficher au plus tôt (minutes avant le tournoi)</label>
+      <input type="number" id="alerte_delai_min" name="alerte_delai_min"
+             min="0" max="1440" value="{{ alerte.delai_min }}">
+      <label for="alerte_delai_max">Afficher au plus tard (minutes avant le tournoi)</label>
+      <input type="number" id="alerte_delai_max" name="alerte_delai_max"
+             min="0" max="1440" value="{{ alerte.delai_max }}">
+      <p class="stats-note">
+        L'alerte s'affiche <strong>deux fois la durée du tournoi</strong> avant
+        son début — une heure avant un tournoi de 30 minutes. Ces deux bornes
+        encadrent ce calcul : jamais moins que la première, jamais plus que la
+        seconde. Un tournoi dont la durée n'est pas renseignée utilise la borne
+        la plus courte.
+      </p>
+    </div>
+
+    <button type="submit" class="bouton bouton-principal">Enregistrer l'alerte</button>
+  </form>
+
   <p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
 </section>
 
@@ -141,5 +220,15 @@
       document.getElementById("annonce_duree").value = bouton.dataset.min;
     });
   });
+
+  // Reprend le texte proposé pour l'alerte de tournoi en un clic. Le modèle
+  // voyage dans un attribut de données (échappé par le gabarit) plutôt que
+  // dans le script : rien à échapper à la main.
+  var proposeAlerte = document.getElementById("alerte-texte-propose");
+  if (proposeAlerte) {
+    proposeAlerte.addEventListener("click", function () {
+      document.getElementById("alerte_message").value = proposeAlerte.dataset.modele;
+    });
+  }
 </script>
 {% endblock %}

@@ -70,6 +70,14 @@ ACTIONS = {
     "rangement_lot_applique",
     "annonce_posee",
     "annonce_effacee",
+    # Alerte « rapportez les exemplaires » avant un tournoi
+    # (docs/conception-alerte-tournoi.md, D11) : seul l'ENREGISTREMENT du
+    # modèle de message est journalisé — son affichage en salle est un calcul
+    # de lecture, pas un événement, et les deux délais sont des entiers sans
+    # texte à relire. Deux actions plutôt qu'une, patron exact de l'annonce
+    # libre ci-dessus : « éteinte » doit dire quel message a été retiré.
+    "alerte_posee",
+    "alerte_effacee",
     "evenement_date_modifiee",
     "evenement_nom_modifie",
     "inscription_tournoi_modifiee",

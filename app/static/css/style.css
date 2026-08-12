@@ -235,6 +235,10 @@ summary:focus-visible,
   margin: 8px 0;
 }
 .apercu-annonce-salle .apercu-annonce-puce { font-size: 1.1em; }
+/* Variante « alerte de tournoi » du même aperçu : le rouge de
+   `--alerte-fond` dans live.html, pour qu'un coup d'oeil suffise à
+   distinguer la consigne minutée de l'information du bureau. */
+.apercu-annonce-salle.apercu-alerte-salle { background: #b91c1c; color: #fef2f2; }
 
 /* Boutons de durée rapide sous le champ "annonce_duree" (point I). */
 .duree-rapide { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }

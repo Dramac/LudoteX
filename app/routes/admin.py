@@ -1210,14 +1210,46 @@ def _annonce_expiree(annonce: str | None, expire_iso: str | None) -> bool:
         return False
 
 
-@router.get("/ecran-salle")
-def ecran_salle_formulaire(request: Request):
-    """Réglage du titre et de l'annonce affichés sur l'écran de salle (/live)."""
-    if (garde := _garde(request)):
-        return garde
+def _reglages_alerte(conn) -> dict:
+    """
+    Les trois réglages de l'alerte tournoi tels qu'ils sont en base, avec les
+    délais par défaut du code quand rien n'a été écrit (le modèle de message,
+    lui, n'a aucun défaut : vide = alerte éteinte, décision D10).
+    """
     from app.routes.live import (
-        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, annonce_active,
-        panneaux_actifs, reglages_panneaux, titre_ecran,
+        CLE_ALERTE_DELAI_MAX, CLE_ALERTE_DELAI_MIN, CLE_ALERTE_MESSAGE,
+        DELAI_MAX_DEFAUT, DELAI_MIN_DEFAUT,
+    )
+
+    return {
+        "message": services.lire_parametre(conn, CLE_ALERTE_MESSAGE, None) or "",
+        "delai_min": services.lire_parametre(
+            conn, CLE_ALERTE_DELAI_MIN, str(DELAI_MIN_DEFAUT)),
+        "delai_max": services.lire_parametre(
+            conn, CLE_ALERTE_DELAI_MAX, str(DELAI_MAX_DEFAUT)),
+    }
+
+
+def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None = None):
+    """
+    Rendu commun de /admin/ecran-salle : la page a maintenant trois points
+    d'entrée (l'affichage, l'enregistrement de l'annonce et des panneaux,
+    celui de l'alerte tournoi) pour un seul écran. Patron de `_page_donnees`
+    et de `_rendre_dashboard`, qui ont réglé la même triplication.
+
+    Tout est RELU en base après écriture : l'aperçu doit montrer ce qui est
+    réellement projeté en salle, pas ce qu'on croit venir d'écrire.
+
+    `saisie_alerte` n'est renseigné que lorsqu'un enregistrement d'alerte a été
+    REFUSÉ : le formulaire réaffiche alors la saisie du bureau plutôt que la
+    valeur en base — sans quoi le texte à corriger serait perdu, ce qui est
+    exactement ce qu'un refus ne doit jamais faire.
+    """
+    from app.modules import lire_etat_module
+    from app.routes.live import (
+        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, JETONS_ALERTE, MESSAGE_ALERTE_PROPOSE,
+        alerte_tournoi_detaillee, annonce_active, panneaux_actifs,
+        reglages_panneaux, titre_ecran,
     )
 
     conn = get_connection()
@@ -1237,8 +1269,23 @@ def ecran_salle_formulaire(request: Request):
         # l'expiration), pas le paramètre brut ci-dessus (qui reste rempli
         # même après expiration, pour rester rappelable).
         annonce_affichee = annonce_active(conn)
+        alerte = _reglages_alerte(conn)
+        # Même chose pour l'alerte tournoi, précédence de module comprise : un
+        # module tournois désactivé n'a plus de tournoi à annoncer, et /live se
+        # comporte déjà ainsi. L'aperçu doit dire la salle, pas le réglage.
+        detail_alerte = None
+        if lire_etat_module(conn, "tournois") != "desactive":
+            conn_t = get_tournoi_connection()
+            try:
+                detail_alerte = alerte_tournoi_detaillee(conn, conn_t)
+            finally:
+                conn_t.close()
     finally:
         conn.close()
+
+    if saisie_alerte is not None:
+        alerte = saisie_alerte
+
     return templates.TemplateResponse(
         request, "admin_live.html",
         {"titre": titre,
@@ -1247,8 +1294,24 @@ def ecran_salle_formulaire(request: Request):
          "annonce_affichee": annonce_affichee,
          "annonce_expiree": _annonce_expiree(annonce, annonce_expire_iso),
          "panneaux": panneaux, "panneaux_reels": panneaux_reels,
-         "message": None},
+         "alerte": alerte,
+         "alerte_affichee": detail_alerte[0] if detail_alerte else None,
+         # Heure à laquelle le bandeau se libère : l'annonce du bureau reprend
+         # alors d'elle-même. C'est la seule information qui empêche de croire
+         # qu'une annonce a été perdue (contrepartie de D8).
+         "alerte_reprise": detail_alerte[1] if detail_alerte else None,
+         "jetons_alerte": ["{" + jeton + "}" for jeton in JETONS_ALERTE],
+         "message_propose": MESSAGE_ALERTE_PROPOSE,
+         "message": message},
     )
+
+
+@router.get("/ecran-salle")
+def ecran_salle_formulaire(request: Request):
+    """Réglages de l'écran de salle (/live) : annonce, panneaux, alerte tournoi."""
+    if (garde := _garde(request)):
+        return garde
+    return _page_ecran_salle(request)
 
 
 @router.post("/ecran-salle")
@@ -1272,13 +1335,13 @@ def ecran_salle_enregistrer(
 
     Le TITRE ne se règle plus ici : il vaut le nom de l'événement (voir
     `live.titre_ecran`). Cette page ne l'affiche qu'à titre indicatif.
+
+    L'ALERTE TOURNOI a son propre formulaire (voir `ecran_salle_alerte`) :
+    cette route n'y touche jamais.
     """
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import (
-        CLES_PANNEAUX, CLE_ANNONCE, CLE_ANNONCE_EXPIRE,
-        annonce_active, panneaux_actifs, reglages_panneaux, titre_ecran,
-    )
+    from app.routes.live import CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLES_PANNEAUX
 
     saisie_annonce = " ".join(annonce.split())[:200]
 
@@ -1297,10 +1360,10 @@ def ecran_salle_enregistrer(
     )
 
     # Cases à cocher : une case décochée n'est pas transmise par le navigateur,
-    # d'où la lecture par présence. Les deux formulaires de la page envoient
-    # TOUJOURS les quatre cases (le mini-formulaire « Effacer l'annonce » les
-    # rejoue en champs cachés) : effacer une annonce ne doit jamais éteindre
-    # silencieusement les panneaux.
+    # d'où la lecture par présence. Les deux formulaires qui atteignent CETTE
+    # route envoient TOUJOURS les quatre cases (le mini-formulaire « Effacer
+    # l'annonce » les rejoue en champs cachés) : effacer une annonce ne doit
+    # jamais éteindre silencieusement les panneaux.
     choix_panneaux = {
         "chiffres": bool(panneau_chiffres),
         "tournois": bool(panneau_tournois),
@@ -1319,11 +1382,6 @@ def ecran_salle_enregistrer(
         services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
         for nom, cle in CLES_PANNEAUX.items():
             services.ecrire_parametre(conn, cle, "1" if choix_panneaux[nom] else "0")
-        # Aperçu (point C), calculé sur l'état qu'on vient d'écrire.
-        annonce_affichee = annonce_active(conn)
-        panneaux = reglages_panneaux(conn)
-        panneaux_reels = panneaux_actifs(conn)
-        titre = titre_ecran(conn)
     finally:
         conn.close()
 
@@ -1353,16 +1411,132 @@ def ecran_salle_enregistrer(
     else:
         message = ("succes", partie_annonce)
 
-    return templates.TemplateResponse(
-        request, "admin_live.html",
-        {"titre": titre,
-         "annonce": saisie_annonce, "annonce_duree": _minutes_restantes(expire_iso),
-         "annonce_expire_iso": expire_iso if saisie_annonce else None,
-         "annonce_affichee": annonce_affichee,
-         "annonce_expiree": _annonce_expiree(saisie_annonce, expire_iso),
-         "panneaux": panneaux, "panneaux_reels": panneaux_reels,
-         "message": message},
+    return _page_ecran_salle(request, message=message)
+
+
+@router.post("/ecran-salle/alerte")
+def ecran_salle_alerte(
+    request: Request,
+    alerte_message: str = Form(""),
+    alerte_delai_min: str = Form(""),
+    alerte_delai_max: str = Form(""),
+):
+    """
+    Enregistre l'alerte « rapportez les exemplaires » avant un tournoi (les
+    trois réglages du §4 de docs/conception-alerte-tournoi.md).
+
+    FORMULAIRE SÉPARÉ, MÊME PAGE — délibéré, et contraire à la lettre du
+    prompt d'implémentation, qui prévoyait un seul POST. Deux raisons :
+    1. le formulaire du dessus porte quatre CASES À COCHER, qu'un navigateur
+       ne transmet pas quand elles sont décochées. Tout fondre en un seul
+       envoi ferait qu'enregistrer un délai rejoue les panneaux, et
+       qu'enregistrer les panneaux rejoue le modèle de message. Cette page a
+       déjà payé ce défaut une fois (« Effacer l'annonce » éteignait les
+       panneaux au passage, corrigé depuis par des champs cachés) : trois
+       champs de plus l'auraient multiplié ;
+    2. l'alerte est le premier réglage de cette page qui peut être REFUSÉ
+       (jeton inconnu, délais incohérents). Refuser une alerte mal saisie ne
+       doit pas refuser au passage une annonce qui, elle, était bonne.
+    Aucune page d'administration n'est créée pour autant : les réglages
+    restent voisins, sur le même écran, sous les yeux.
+
+    Message vide = alerte éteinte (D10) : pas d'interrupteur de plus.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.live import (
+        CLE_ALERTE_DELAI_MAX, CLE_ALERTE_DELAI_MIN, CLE_ALERTE_MESSAGE,
+        DELAI_BORNE_MAX, DELAI_MAX_DEFAUT, DELAI_MIN_DEFAUT,
+        JETONS_ALERTE, jetons_inconnus,
     )
+
+    # Même traitement que l'annonce : espaces normalisés, 200 caractères.
+    saisie = " ".join(alerte_message.split())[:200]
+    saisie_brute = {"message": saisie,
+                    "delai_min": alerte_delai_min.strip(),
+                    "delai_max": alerte_delai_max.strip()}
+
+    def _refus(texte: str):
+        """
+        Un refus ne perd JAMAIS la saisie : la page est réaffichée avec le
+        texte tel qu'il a été tapé, il n'y a qu'à corriger et renvoyer.
+        """
+        return _page_ecran_salle(request, message=("attention", texte),
+                                 saisie_alerte=saisie_brute)
+
+    liste_jetons = ", ".join("{" + jeton + "}" for jeton in JETONS_ALERTE)
+
+    inconnus = jetons_inconnus(saisie)
+    if inconnus:
+        if len(inconnus) == 1:
+            constat = (f"Le jeton {inconnus[0]} n'existe pas : il resterait "
+                       "affiché tel quel sur l'écran de la salle.")
+        else:
+            constat = (f"Les jetons {', '.join(inconnus)} n'existent pas : ils "
+                       "resteraient affichés tels quels sur l'écran de la salle.")
+        return _refus(
+            f"{constat} Jetons acceptés : {liste_jetons}. Rien n'a été "
+            "enregistré — votre texte est conservé ci-dessous, corrigez "
+            f"{services.pluriel(len(inconnus), 'le jeton', 'les jetons')} et "
+            "enregistrez à nouveau."
+        )
+
+    def _entier(valeur: str, defaut: int) -> int | None:
+        """Champ vide => valeur par défaut du code ; saisie non numérique => None."""
+        texte = (valeur or "").strip()
+        if not texte:
+            return defaut
+        try:
+            return int(texte)
+        except ValueError:
+            return None
+
+    mini = _entier(alerte_delai_min, DELAI_MIN_DEFAUT)
+    maxi = _entier(alerte_delai_max, DELAI_MAX_DEFAUT)
+    if mini is None or maxi is None:
+        return _refus("Les deux délais s'expriment en minutes, en chiffres "
+                      "(par exemple 15 et 90). Rien n'a été enregistré — "
+                      "votre saisie est conservée ci-dessous.")
+    if not 0 <= mini <= DELAI_BORNE_MAX or not 0 <= maxi <= DELAI_BORNE_MAX:
+        return _refus(f"Les deux délais doivent être compris entre 0 et "
+                      f"{DELAI_BORNE_MAX} minutes (24 heures). Rien n'a été "
+                      "enregistré — votre saisie est conservée ci-dessous.")
+    if maxi < mini:
+        return _refus(f"Le délai maximum ({maxi} min) est inférieur au délai "
+                      f"minimum ({mini} min) : l'alerte n'aurait aucune fenêtre "
+                      "pour s'afficher. Rien n'a été enregistré — votre saisie "
+                      "est conservée ci-dessous.")
+
+    conn = get_connection()
+    try:
+        # Lu AVANT écriture, comme pour l'annonce et pour le nom de
+        # l'événement : les trois réglages voyagent dans le même formulaire,
+        # écrire une ligne de journal à chaque envoi produirait une « alerte
+        # posée » identique à la précédente dès qu'on ajuste un délai.
+        precedent = services.lire_parametre(conn, CLE_ALERTE_MESSAGE, None) or ""
+        services.ecrire_parametre(conn, CLE_ALERTE_MESSAGE, saisie or None)
+        services.ecrire_parametre(conn, CLE_ALERTE_DELAI_MIN, str(mini))
+        services.ecrire_parametre(conn, CLE_ALERTE_DELAI_MAX, str(maxi))
+    finally:
+        conn.close()
+
+    # Journal (D11) : l'AFFICHAGE de l'alerte n'est jamais journalisé (c'est
+    # un calcul de lecture, pas un événement) ; seul l'enregistrement du
+    # modèle l'est, et seulement s'il a changé. Les deux délais ne le sont
+    # pas : deux entiers sans texte à relire, dont la valeur est de toute
+    # façon visible sur cette page.
+    if saisie and saisie != precedent:
+        journal.journaliser(request, "live", "alerte_posee", objet=saisie)
+    elif not saisie and precedent:
+        journal.journaliser(request, "live", "alerte_effacee", objet=precedent)
+
+    if saisie:
+        texte = (f"Alerte enregistrée : elle s'affichera en salle entre {mini} "
+                 f"et {maxi} minutes avant le début d'un tournoi, selon sa durée.")
+    else:
+        texte = ("Alerte éteinte : plus aucun rappel de tournoi ne s'affichera "
+                 "sur l'écran de la salle.")
+    return _page_ecran_salle(request, message=("succes", texte))
 
 
 @router.post("/cloturer-prets")
