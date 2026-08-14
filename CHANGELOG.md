@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.10.0 — 2026-08-14
+
+- L'**écran de salle** prévient désormais tout seul avant chaque tournoi : « Le tournoi de Catan commence dans 42 minutes — merci de rapporter tous les exemplaires au stand de prêt. » Le nombre de minutes se recalcule en permanence, et le message s'efface de lui-même à l'heure de début : personne n'a rien à déclencher ni à retirer le jour J.
+- Le message s'écrit **une fois pour toutes** avant l'événement, dans Administration → **Écran de salle**, avec un texte tout prêt à reprendre en un clic. Quatre mots y sont remplacés automatiquement au moment de l'affichage : le nom du jeu, les minutes restantes, l'heure de début et le lieu. Tant que le champ est vide, aucun rappel n'apparaît — c'est aussi comme cela qu'on l'éteint.
+- Le moment d'apparition suit la **durée du tournoi** : deux fois la durée avant le début, encadré par deux bornes réglables (15 et 90 minutes sans y toucher). Un tournoi dont la durée n'est pas renseignée déclenche le rappel au dernier moment.
+- Un seul rappel à la fois, celui du tournoi **le plus proche**, et seulement pour les tournois ouverts aux inscriptions : un écran lu de loin porte une consigne, pas deux.
+- Pendant qu'un rappel est affiché, il **prend la place de l'annonce** du bureau. L'écran de réglage le dit noir sur blanc, avec l'heure à laquelle l'annonce reprendra : elle revient toute seule, il n'y a rien à refaire.
+- Une faute de frappe dans le message est **refusée en nommant le mot fautif**, avec la liste des mots acceptés — et sans jamais perdre le texte déjà saisi.
+
 ## 1.9.0 — 2026-08-10
 
 - Un jeu **rendu moins d'une minute après avoir été prêté** n'est plus compté comme un prêt : c'est presque toujours une mauvaise boîte scannée, ou un visiteur qui se ravise pendant qu'on lui prend sa pièce d'identité. Ces cas apparaissent désormais à part, sous le libellé **erreurs de prêt**, sur la page des statistiques.
