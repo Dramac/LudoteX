@@ -169,8 +169,12 @@ def test_apropos_page(client):
     r = client.get("/apropos")
     assert r.status_code == 200
     assert "À propos" in r.text
-    assert "contact@ludotex.fr" in r.text
     assert "GPLv3" in r.text
+    # L'adresse de contact et le texte de présentation sont désormais des
+    # RÉGLAGES d'administration : sans valeur enregistrée, leurs sections
+    # n'apparaissent pas du tout. Le mécanisme est testé dans
+    # tests/test_apropos_reglages.py — jamais une adresse en dur ici.
+    assert "mailto:" not in r.text
     # Topo des accès par niveau (visiteur / bénévole / admin).
     assert "Visiteur" in r.text
     assert "Bénévole" in r.text

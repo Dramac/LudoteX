@@ -1059,26 +1059,39 @@ def journal_telecharger(request: Request):
     )
 
 
-def _page_identite(request: Request, saisie: str | None, message):
+def _page_identite(request: Request, saisies: dict, message, status_code: int = 200):
     """
     Rendu commun aux deux points d'entrée de « Identité de l'association ».
 
-    `saisie` est la valeur STOCKÉE (ou celle que le bureau vient de taper), pas
-    le nom effectivement affiché : le champ ne doit JAMAIS être prérempli avec
-    le repli. La page /admin/ecran-salle a déjà payé cette erreur — son champ
-    « Titre » prérempli avec la valeur par défaut se figeait en réglage
-    explicite au premier enregistrement, après quoi plus rien ne pouvait le
-    remplacer (voir `live.titre_ecran`). Ici, un champ vide veut dire « je n'ai
-    rien réglé, prends le repli », et il doit continuer à le vouloir dire.
+    `saisies` porte les quatre valeurs STOCKÉES (ou celles que le bureau vient
+    de taper), et non les valeurs effectivement affichées par le site : un champ
+    ne doit JAMAIS être prérempli avec son repli. La page /admin/ecran-salle a
+    déjà payé cette erreur — son champ « Titre » prérempli avec la valeur par
+    défaut se figeait en réglage explicite au premier enregistrement, après quoi
+    plus rien ne pouvait le remplacer (voir `live.titre_ecran`). Ici, un champ
+    vide veut dire « je n'ai rien réglé, prends le repli », et il doit continuer
+    à le vouloir dire — pour le nom comme pour l'URL du dépôt.
+
+    `status_code` vaut 400 quand un champ a été refusé : la page est alors
+    RÉAFFICHÉE AVEC TOUT CE QUI A ÉTÉ TAPÉ, y compris dans les champs valides.
+    Un refus ne doit jamais faire retaper le reste du formulaire.
     """
-    from app.config import NOM_ASSOCIATION
+    from app.config import DEPOT_URL, NOM_ASSOCIATION
 
     return templates.TemplateResponse(
         request, "admin_identite.html",
-        {"nom_association_saisi": saisie,
+        {"nom_association_saisi": saisies.get("nom"),
+         "presentation_saisie": saisies.get("presentation"),
+         "contact_saisi": saisies.get("contact"),
+         "depot_url_saisi": saisies.get("depot_url"),
          "nom_par_defaut": NOM_ASSOCIATION,
+         "depot_par_defaut": DEPOT_URL,
          "longueur_max": services.LONGUEUR_NOM_ASSOCIATION,
+         "longueur_presentation": services.LONGUEUR_PRESENTATION_ASSOCIATION,
+         "longueur_contact": services.LONGUEUR_CONTACT_ASSOCIATION,
+         "longueur_depot": services.LONGUEUR_DEPOT_ASSOCIATION,
          "message": message},
+        status_code=status_code,
     )
 
 
@@ -1092,56 +1105,166 @@ def identite_formulaire(request: Request):
     change à chaque édition. Les mêler ferait relire chaque année un réglage
     qui n'a aucune raison de bouger.
 
-    Les lots suivants ajouteront ici le texte de présentation de « À propos »,
-    l'adresse de contact et l'URL du dépôt — trois autres données ÉDITORIALES,
-    aujourd'hui écrites en dur.
+    Quatre réglages, tous ÉDITORIAUX : le nom, le texte de présentation et
+    l'adresse de contact de la page « À propos », et l'URL du dépôt du code
+    source. Le logo suivra, dans un lot à part : un envoi de fichier est une
+    surface d'attaque à lui seul.
     """
     if (garde := _garde(request)):
         return garde
     conn = get_connection()
     try:
-        saisie = services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM)
+        saisies = {
+            "nom": services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM),
+            "presentation": services.lire_parametre(
+                conn, services.CLE_ASSOCIATION_PRESENTATION),
+            "contact": services.lire_parametre(
+                conn, services.CLE_ASSOCIATION_CONTACT),
+            "depot_url": services.lire_parametre(
+                conn, services.CLE_ASSOCIATION_DEPOT),
+        }
     finally:
         conn.close()
-    return _page_identite(request, saisie, None)
+    return _page_identite(request, saisies, None)
 
 
 @router.post("/identite")
-def identite_enregistrer(request: Request, nom_association: str = Form("")):
+def identite_enregistrer(
+    request: Request,
+    nom_association: str = Form(""),
+    presentation: str = Form(""),
+    contact: str = Form(""),
+    depot_url: str = Form(""),
+):
     """
-    Enregistre (ou efface si vide) le nom de l'association.
+    Enregistre (ou efface si vide) les quatre réglages d'identité.
 
-    Le nom est en saisie libre, simplement normalisée et bornée : ce champ ne
-    peut donc JAMAIS mettre le formulaire en échec. Vidé, la clé est effacée et
-    l'affichage retombe sur le repli (`NOM_ASSOCIATION` du `.env`, puis
-    « LudoteX ») — jamais sur un nom vide.
+    Le nom et la présentation sont en saisie libre, simplement normalisés et
+    bornés : ces deux champs ne peuvent donc JAMAIS mettre le formulaire en
+    échec. Les DEUX AUTRES, si — et c'est une mesure de sécurité, pas une
+    exigence de forme : l'URL du dépôt atterrit dans un `href` et l'adresse de
+    contact dans un `mailto:`, les deux seuls champs de cet écran qui entrent
+    dans un attribut d'URL. Un `javascript:` saisi ici deviendrait sinon un
+    script exécuté chez chaque visiteur de la page « À propos ».
 
-    Journalisé SEULEMENT si la valeur change réellement, comme sur
+    Un refus n'enregistre RIEN — même patron que la date invalide de
+    /admin/evenement, qui refuse aussi le nom plutôt que de l'enregistrer en
+    silence et de laisser croire que tout est passé — et réaffiche le
+    formulaire avec TOUT ce qui a été tapé : le bureau corrige le champ fautif,
+    il ne retape pas les trois autres.
+
+    Vidé, chaque champ efface sa clé : le nom et l'URL du dépôt retombent sur
+    leur repli (`.env`, puis le littéral d'app/config.py), la présentation et le
+    contact font disparaître leur section de la page « À propos ».
+
+    Chaque clé n'est journalisée que si elle CHANGE réellement, comme sur
     /admin/evenement : sans cela, réenregistrer la page sans rien toucher
-    produirait une ligne affirmant une modification qui n'a pas eu lieu.
+    produirait quatre lignes affirmant des modifications qui n'ont pas eu lieu.
     """
     if (garde := _garde(request)):
         return garde
-    saisie = " ".join(nom_association.split())[:services.LONGUEUR_NOM_ASSOCIATION]
+
+    saisie_nom = " ".join(nom_association.split())[:services.LONGUEUR_NOM_ASSOCIATION]
+    # Multi-ligne : on uniformise les fins de ligne (un navigateur poste du
+    # CRLF) et on rogne les blancs de bord, sans toucher aux lignes vides
+    # INTÉRIEURES — ce sont elles qui séparent les paragraphes.
+    saisie_presentation = (
+        presentation.replace("\r\n", "\n").replace("\r", "\n").strip()
+        [:services.LONGUEUR_PRESENTATION_ASSOCIATION]
+    )
+    saisie_contact = services.normaliser_contact_association(contact)
+    saisie_depot = services.normaliser_depot_url(depot_url)
+
+    # Une saisie non vide qui ressort normalisée à None a été REFUSÉE ; une
+    # saisie vide, elle, veut simplement dire « efface ».
+    refus = []
+    if contact.strip() and saisie_contact is None:
+        refus.append(("association_contact_modifie", "contact_invalide",
+                      "Adresse de contact invalide (attendu : une adresse "
+                      "e-mail, par exemple contact@mon-asso.fr)."))
+    if depot_url.strip() and saisie_depot is None:
+        refus.append(("association_depot_modifie", "url_invalide",
+                      "Adresse du dépôt invalide (elle doit commencer par "
+                      "http:// ou https://)."))
+    if refus:
+        for action, detail, _ in refus:
+            journal.journaliser(request, "admin", action, ok=False, detail=detail)
+        return _page_identite(
+            request,
+            # Ce qui a été TAPÉ, pas ce qui a été retenu : rien ne se perd.
+            {"nom": saisie_nom or None,
+             "presentation": saisie_presentation or None,
+             "contact": contact.strip() or None,
+             "depot_url": depot_url.strip() or None},
+            ("erreur", " ".join(m for _, _, m in refus)),
+            status_code=400,
+        )
+
     conn = get_connection()
     try:
-        # Lu AVANT écriture : sert uniquement à savoir si quelque chose a changé.
-        precedent = services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM)
-        services.ecrire_parametre(conn, services.CLE_ASSOCIATION_NOM, saisie or None)
+        # Lus AVANT écriture : servent uniquement à savoir ce qui a changé.
+        nom_precedent = services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM)
+        presentation_precedente = services.lire_parametre(
+            conn, services.CLE_ASSOCIATION_PRESENTATION)
+        contact_precedent = services.lire_parametre(
+            conn, services.CLE_ASSOCIATION_CONTACT)
+        depot_precedent = services.lire_parametre(conn, services.CLE_ASSOCIATION_DEPOT)
+        services.ecrire_parametre(
+            conn, services.CLE_ASSOCIATION_NOM, saisie_nom or None)
+        services.ecrire_parametre(
+            conn, services.CLE_ASSOCIATION_PRESENTATION, saisie_presentation or None)
+        services.ecrire_parametre(
+            conn, services.CLE_ASSOCIATION_CONTACT, saisie_contact)
+        services.ecrire_parametre(
+            conn, services.CLE_ASSOCIATION_DEPOT, saisie_depot)
     finally:
         conn.close()
 
     # Le nom d'une association n'est pas une donnée personnelle : il part tel
     # quel en `objet` (le journal le tronque à 120 caractères, il est borné à 80).
-    if (saisie or None) != precedent:
+    if (saisie_nom or None) != nom_precedent:
         journal.journaliser(
-            request, "admin", "association_nom_modifie", objet=saisie or "effacé",
+            request, "admin", "association_nom_modifie", objet=saisie_nom or "effacé",
+        )
+    # La présentation et le contact, EUX, ne partent pas en clair : une adresse
+    # e-mail est une donnée personnelle dès qu'elle désigne quelqu'un, et le
+    # journal est conçu pour n'en contenir aucune. Voir app/journal.py.
+    if (saisie_presentation or None) != presentation_precedente:
+        journal.journaliser(
+            request, "admin", "association_presentation_modifiee",
+            objet="renseignée" if saisie_presentation else "effacée",
+        )
+    if saisie_contact != contact_precedent:
+        journal.journaliser(
+            request, "admin", "association_contact_modifie",
+            objet="renseigné" if saisie_contact else "effacé",
+        )
+    if saisie_depot != depot_precedent:
+        journal.journaliser(
+            request, "admin", "association_depot_modifie",
+            objet=saisie_depot or "effacée",
         )
 
-    message = ("succes",
-               "Nom enregistré." if saisie
-               else "Nom effacé — le nom par défaut est de nouveau affiché.")
-    return _page_identite(request, saisie or None, message)
+    partie_nom = ("Nom enregistré." if saisie_nom
+                  else "Nom effacé — le nom par défaut est de nouveau affiché.")
+    partie_presentation = (
+        "Présentation enregistrée." if saisie_presentation
+        else "Présentation effacée — la section « L'association » n'apparaît plus.")
+    partie_contact = (
+        "Contact enregistré." if saisie_contact
+        else "Contact effacé — la section « Contact » n'apparaît plus.")
+    partie_depot = (
+        "Adresse du dépôt enregistrée." if saisie_depot
+        else "Adresse du dépôt effacée — l'adresse par défaut est de nouveau utilisée.")
+    return _page_identite(
+        request,
+        {"nom": saisie_nom or None,
+         "presentation": saisie_presentation or None,
+         "contact": saisie_contact,
+         "depot_url": saisie_depot},
+        ("succes", f"{partie_nom} {partie_presentation} "
+                   f"{partie_contact} {partie_depot}"),
+    )
 
 
 @router.get("/evenement")

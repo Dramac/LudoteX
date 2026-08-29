@@ -81,8 +81,19 @@ ACTIONS = {
     "evenement_date_modifiee",
     "evenement_nom_modifie",
     # Identité de l'association (/admin/identite) : le nom du déploiement,
-    # distinct du nom de l'ÉDITION ci-dessus.
+    # distinct du nom de l'ÉDITION ci-dessus, et les trois réglages qui
+    # alimentent la page « À propos ».
+    #
+    # `objet` NE PORTE PAS la valeur pour la présentation et le contact, à la
+    # différence des noms ci-dessus : une adresse e-mail est une donnée
+    # PERSONNELLE dès qu'elle désigne quelqu'un, et le journal est conçu pour
+    # n'en contenir aucune (voir docs/conception-journal.md). Ces deux lignes
+    # ne disent donc que « renseigné » ou « effacé ». L'URL d'un dépôt public
+    # n'est pas une donnée personnelle : elle part telle quelle.
     "association_nom_modifie",
+    "association_presentation_modifiee",
+    "association_contact_modifie",
+    "association_depot_modifie",
     "inscription_tournoi_modifiee",
     "planning_purge",
     "formation_reinitialisee",

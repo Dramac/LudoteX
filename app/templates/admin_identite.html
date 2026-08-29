@@ -5,7 +5,9 @@
 <section class="carte">
   <h1>Identité de l'association</h1>
   <p class="stats-note">
-    Qui utilise cette application. Ces réglages se font <strong>une fois</strong>,
+    Qui utilise cette application, et ce qu'en dit la page
+    <a class="lien" href="/apropos">À propos</a>. Ces réglages se font
+    <strong>une fois</strong>,
     à l'installation, et ne changent pas d'une édition à l'autre — contrairement
     au <a class="lien" href="/admin/evenement">nom de l'événement</a>, qui change
     chaque année.
@@ -30,6 +32,53 @@
         d'agenda et le message de partage de l'accès bénévole.
         <strong>Laissez vide</strong> pour revenir au nom par défaut
         (« {{ nom_par_defaut }} »).
+      </small>
+    </div>
+
+    <div class="champ">
+      <label for="presentation">Présentation de l'association</label>
+      <textarea id="presentation" name="presentation" rows="6"
+                maxlength="{{ longueur_presentation }}"
+                placeholder="Qui vous êtes, ce que vous organisez, ce à quoi sert cet événement.">{{ presentation_saisie or '' }}</textarea>
+      <small class="stats-note">
+        {{ longueur_presentation }} caractères au plus. Affiché sur la page
+        « À propos », dans la section « L'association ». Laissez une
+        <strong>ligne vide</strong> entre deux paragraphes. Le texte s'affiche
+        tel quel : ni gras, ni liens, ni mise en forme.
+        <strong>Laissez vide</strong> pour que cette section n'apparaisse pas
+        du tout.
+      </small>
+    </div>
+
+    <div class="champ">
+      <label for="contact">Adresse de contact</label>
+      <input type="email" id="contact" name="contact"
+             maxlength="{{ longueur_contact }}"
+             value="{{ contact_saisi or '' }}"
+             placeholder="contact@mon-asso.fr">
+      <small class="stats-note">
+        Adresse e-mail affichée sur la page « À propos », dans la section
+        « Contact », sur laquelle les visiteurs peuvent cliquer pour vous
+        écrire. <strong>Laissez vide</strong> pour que cette section
+        n'apparaisse pas du tout.
+      </small>
+    </div>
+
+    <div class="champ">
+      <label for="depot_url">Adresse du code source</label>
+      <input type="url" id="depot_url" name="depot_url"
+             maxlength="{{ longueur_depot }}"
+             value="{{ depot_url_saisi or '' }}"
+             placeholder="https://…">
+      <small class="stats-note">
+        Cette application est un logiciel libre : sa licence impose que les
+        personnes qui l'utilisent puissent accéder à son code. L'adresse
+        ci-dessous est celle du lien « code source » de la page « À propos ».
+        À changer <strong>seulement</strong> si vous publiez votre propre
+        version modifiée. Elle doit commencer par <code>http://</code> ou
+        <code>https://</code>.
+        <strong>Laissez vide</strong> pour revenir à l'adresse par défaut
+        ({{ depot_par_defaut }}).
       </small>
     </div>
 

@@ -110,14 +110,51 @@ def rangement_aide(request: Request):
 
 @router.get("/apropos")
 def apropos(request: Request):
-    """Page « À propos » (publique) : association, objet du site, contact,
-    crédits, auteur, licence et version. Contenu statique, sans base de
-    données ni jeton requis."""
+    """
+    Page « À propos » (publique) : association, objet du site, contact,
+    crédits, auteur, licence et version. Sans jeton requis.
+
+    Trois de ces contenus sont des RÉGLAGES et non du texte en dur (présentation
+    de l'association, adresse de contact, URL du dépôt du code) : cette page
+    n'est donc plus statique, elle ouvre UNE connexion de prêt et lit les trois
+    valeurs d'un coup. Une seule connexion, et non trois lectures successives :
+    ce sont trois lignes de la même table.
+
+    Ces valeurs ne passent PAS par le context processor d'app/templating.py, à
+    la différence du nom de l'association : tout ce qui y passe est injecté dans
+    le rendu de TOUTES les pages, page d'erreur 500 comprise, et elles ne
+    servent qu'ici.
+
+    LA PAGE RÉPOND MÊME SI LA BASE EST INDISPONIBLE. C'est la seule page qui
+    porte la licence, le crédit d'auteur et le lien vers le code source : elle
+    doit rester lisible quand le reste du site ne l'est plus. Une lecture qui
+    échoue retombe donc sur « aucun réglage » — sections masquées, URL du dépôt
+    par repli — plutôt que sur une erreur 500.
+    """
+    from app.config import DEPOT_URL
+
+    presentation = None
+    contact = None
+    depot_url = DEPOT_URL
+    try:
+        conn = get_connection()
+        try:
+            presentation = services.lire_presentation_association(conn)
+            contact = services.lire_contact_association(conn)
+            depot_url = services.lire_depot_url(conn)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 - repli volontairement total, voir docstring
+        pass
+
     return templates.TemplateResponse(
         request, "apropos.html",
         {"version": APP_VERSION,
          "nouveautes": nouveautes_recentes(),
-         "depot_url": "https://github.com/Dramac/LudoteX"},
+         "presentation": services.paragraphes(presentation),
+         "contact": contact,
+         "depot_url": depot_url,
+         "lien_versions": services.lien_journal_versions(depot_url)},
     )
 
 

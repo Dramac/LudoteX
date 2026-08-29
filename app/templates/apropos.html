@@ -6,11 +6,12 @@
   <h1>À propos</h1>
   <p class="dispo-titre">D'où vient cette application, et à qui elle s'adresse.</p>
 
+  {% if presentation %}
   <h2>L'association</h2>
-  <p><strong>{{ nom_association }}</strong> est une association qui organise
-     chaque année un événement de prêt de jeux de société, avec un parc d'environ
-     700 jeux. Sa mission : faire découvrir et partager le jeu de société au plus
-     grand nombre, le temps d'un événement convivial.</p>
+  {% for paragraphe in presentation %}
+  <p>{{ paragraphe }}</p>
+  {% endfor %}
+  {% endif %}
 
   <h2>À quoi sert ce site</h2>
   <p>Cette application remplace la feuille de prêt papier par un système
@@ -82,13 +83,19 @@
      numéro de pochette) — utile pour comprendre ce qui s'est passé en cas
      d'anomalie.</p>
 
+  {% if contact %}
   <h2>Contact</h2>
   <p>Pour toute question sur l'association ou l'application, plus d'informations
-     par e-mail : <a class="lien" href="mailto:contact@ludotex.fr">contact@ludotex.fr</a>.</p>
+     par e-mail : <a class="lien" href="mailto:{{ contact }}">{{ contact }}</a>.</p>
+  {% endif %}
 
   <h2>Crédits</h2>
-  <p>Application conçue et développée par <strong>Simon</strong>, pour
-     l'association {{ nom_association }}.</p>
+  <p>Cette application est un logiciel libre, conçu et développé par
+     <strong>Simon</strong>. Elle est mise à la disposition de toute
+     association qui souhaite l'utiliser.</p>
+  <p>Ce site-ci est déployé et exploité par <strong>{{ nom_association }}</strong>,
+     seule responsable de son contenu et des données qui y circulent : l'auteur
+     du logiciel n'intervient pas dans son exploitation.</p>
 
   <h2>Licence et code source</h2>
   <p>Le code de cette application est disponible sur
@@ -109,7 +116,9 @@
     {% endfor %}
   </ul>
   {% endif %}
+  {% if lien_versions %}
   <p>Historique complet des versions :
-     <a class="lien" href="{{ depot_url }}/blob/main/CHANGELOG.md">journal des versions</a>.</p>
+     <a class="lien" href="{{ lien_versions }}">journal des versions</a>.</p>
+  {% endif %}
 </section>
 {% endblock %}

@@ -1,6 +1,6 @@
 """
-Configuration partagée légère : repli du nom de l'association, et bascules du
-MODE FORMATION et du JOURNAL D'ACTIVITÉ.
+Configuration partagée légère : replis du nom de l'association et de l'URL du
+dépôt, et bascules du MODE FORMATION et du JOURNAL D'ACTIVITÉ.
 
 NOM DE L'ASSOCIATION — CE MODULE N'EN EST PLUS LE DOMICILE
 ----------------------------------------------------------
@@ -26,6 +26,24 @@ peut la poser dès l'installation, avant tout passage en administration.
 
 Le défaut est « LudoteX », le nom du logiciel : une association qui vient de
 l'installer voit un nom neutre et juste, jamais celui d'une autre association.
+
+URL DU DÉPÔT DU CODE SOURCE
+---------------------------
+Même statut que le nom de l'association, et pour la même raison : c'est une
+donnée ÉDITORIALE, réglable depuis ``/admin/identite``, qui vit en base.
+
+    valeur en base  ->  DEPOT_URL (.env)  ->  "https://github.com/Dramac/LudoteX"
+
+``DEPOT_URL`` ci-dessous n'est donc, lui aussi, qu'un REPLI DE SECOND RANG. Le
+dernier repli est ce littéral, et il n'a QUE ce domicile.
+
+Cette valeur ne peut jamais être vide : elle atterrit dans le ``href`` du lien
+« code source » de la page « À propos », et la GPL veut qu'un utilisateur
+puisse atteindre la source de la version qu'il fait tourner. D'où le
+``.strip() or`` : une variable présente mais VIDE (``DEPOT_URL=`` dans un
+`.env` recopié depuis `.env.example`) doit retomber sur le littéral, ce que le
+seul défaut d'``os.getenv`` ne fait pas — il ne s'applique qu'à une variable
+ABSENTE. Même précaution sur ``NOM_ASSOCIATION``, pour la même raison.
 
 MODE FORMATION
 --------------
@@ -69,7 +87,15 @@ load_dotenv()
 
 # Repli de SECOND RANG du nom de l'association : la valeur réglée en
 # administration (base) l'emporte. Voir la docstring du module.
-NOM_ASSOCIATION = os.getenv("NOM_ASSOCIATION", "LudoteX")
+# `.strip() or` et non le seul défaut d'`os.getenv` : `.env.example` livre la
+# ligne `NOM_ASSOCIATION=` vide, et une variable présente mais vide rendrait
+# une chaîne vide — donc un bandeau et un titre d'onglet sans nom.
+NOM_ASSOCIATION = os.getenv("NOM_ASSOCIATION", "").strip() or "LudoteX"
+
+# Repli de SECOND RANG de l'URL du dépôt du code source, et DOMICILE UNIQUE du
+# dernier repli de la cascade. Voir la docstring du module.
+DEPOT_URL = (os.getenv("DEPOT_URL", "").strip()
+             or "https://github.com/Dramac/LudoteX")
 
 # Bascule mode formation : "1"/"true"/"on" (insensible à la casse) -> actif.
 # Toute autre valeur (y compris absente) -> inactif, comportement inchangé.

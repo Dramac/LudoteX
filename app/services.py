@@ -1679,6 +1679,192 @@ def nom_association() -> str:
         return NOM_ASSOCIATION
 
 
+# ---------------------------------------------------------------------------
+# Les trois autres réglages d'identité : présentation, contact, URL du dépôt
+# ---------------------------------------------------------------------------
+# Mêmes clés, même domicile et même patron de lecture que le nom ci-dessus.
+# Ils ne servent qu'à la page « À propos » (route `/apropos`), qui les lit sur
+# UNE connexion : ils n'ont donc pas de variante sans `conn`, et surtout ils ne
+# passent PAS par le context processor d'app/templating.py — tout ce qui y
+# passe est injecté dans le rendu de TOUTES les pages, page d'erreur 500
+# comprise, pour trois valeurs utiles à une seule.
+#
+# TROIS COMPORTEMENTS DIFFÉRENTS EN L'ABSENCE DE VALEUR, et c'est délibéré :
+#
+# - `presentation` et `contact` peuvent valoir None, comme `nom_evenement` et
+#   non comme `nom_association` : rien à afficher signifie qu'on n'affiche
+#   rien, section et titre compris (règle « ne jamais afficher une valeur
+#   absente », déjà appliquée au rangement et à l'annonce de l'écran de salle).
+#   Aucun repli n'aurait de sens : la mission d'une association et son adresse
+#   de contact ne se devinent pas.
+# - `depot_url` ne vaut JAMAIS None. La GPL veut qu'un utilisateur puisse
+#   atteindre la source de la version qu'il fait tourner : ce lien doit
+#   toujours mener quelque part. Cascade base -> DEPOT_URL (.env) -> littéral
+#   d'app/config.py, seul domicile de ce dernier repli.
+CLE_ASSOCIATION_PRESENTATION = "asso_presentation"
+CLE_ASSOCIATION_CONTACT = "asso_contact"
+CLE_ASSOCIATION_DEPOT = "asso_depot_url"
+
+# Bornes de saisie. La présentation est un paragraphe de présentation, pas une
+# page : de quoi écrire une quinzaine de lignes. Le contact est une adresse
+# e-mail (255 caractères au maximum selon la RFC, mais une adresse réelle
+# d'association en fait bien moins). L'URL d'un dépôt tient très largement en
+# 200 caractères.
+LONGUEUR_PRESENTATION_ASSOCIATION = 1500
+LONGUEUR_CONTACT_ASSOCIATION = 120
+LONGUEUR_DEPOT_ASSOCIATION = 200
+
+
+def lire_presentation_association(conn: sqlite3.Connection) -> str | None:
+    """
+    Texte de présentation de l'association, ou None s'il n'a jamais été saisi.
+
+    None (et non un texte de repli) : la page « À propos » masque alors la
+    section entière, titre compris.
+    """
+    return lire_parametre(conn, CLE_ASSOCIATION_PRESENTATION)
+
+
+def lire_contact_association(conn: sqlite3.Connection) -> str | None:
+    """
+    Adresse de contact de l'association, ou None si elle n'a jamais été saisie.
+
+    Même règle que la présentation : absente, la section « Contact » de la page
+    « À propos » disparaît en entier.
+    """
+    return lire_parametre(conn, CLE_ASSOCIATION_CONTACT)
+
+
+def lire_depot_url(conn: sqlite3.Connection) -> str:
+    """
+    URL du dépôt du code source. Ne renvoie jamais None ni une chaîne vide.
+
+    Cascade : valeur en base -> variable d'environnement DEPOT_URL -> l'URL du
+    dépôt d'origine (`app.config.DEPOT_URL`, seul domicile de ce littéral).
+
+    Import fait DANS la fonction, comme pour `lire_nom_association` : la valeur
+    est relue à chaque appel (un test qui la remplace est donc pris en compte)
+    et aucun cycle d'import ne peut naître de ce sens de dépendance.
+    """
+    from app.config import DEPOT_URL
+
+    return lire_parametre(conn, CLE_ASSOCIATION_DEPOT) or DEPOT_URL
+
+
+def paragraphes(texte: str | None) -> list[str]:
+    """
+    Découpe un texte saisi en administration en blocs de paragraphes.
+
+    Le gabarit émet un `<p>` par bloc et Jinja en ÉCHAPPE le contenu : c'est ce
+    qui permet d'offrir un texte multi-ligne sans jamais accepter de HTML. Pas
+    de `|safe`, pas de markdown, aucune balise interprétée — un `<b>` saisi ici
+    s'affiche tel quel, comme du texte.
+
+    Séparateur : la ligne vide, convention universelle du texte brut. Les sauts
+    de ligne simples sont conservés à l'intérieur d'un bloc (le gabarit ne les
+    rend pas visibles, mais ils ne cassent rien) ; les blocs vides sont ignorés,
+    si bien que trois lignes vides d'affilée ne produisent pas de paragraphe
+    fantôme. Texte absent ou entièrement blanc -> liste vide, ce que l'appelant
+    interprète comme « rien à afficher ».
+    """
+    if not texte:
+        return []
+    blocs = re.split(r"\n\s*\n", texte.replace("\r\n", "\n").replace("\r", "\n"))
+    return [bloc.strip() for bloc in blocs if bloc.strip()]
+
+
+def normaliser_contact_association(saisie: str) -> str | None:
+    """
+    Normalise une adresse de contact, ou None si elle ne ressemble pas à une
+    adresse e-mail.
+
+    POURQUOI UN CONTRÔLE ICI. Cette valeur atterrit dans un `mailto:` de la
+    page « À propos ». On ne cherche pas à valider une adresse au sens de la
+    RFC 5322 — c'est un puits sans fond, et une adresse syntaxiquement parfaite
+    peut très bien ne pas exister : on refuse ce qui ne PEUT PAS être une
+    adresse, pour qu'un bureau qui se trompe de champ le voie tout de suite
+    plutôt que de publier un lien mort.
+
+    Normalisation : espaces de bord retirés, et refus s'il reste un espace ou un
+    saut de ligne À L'INTÉRIEUR (une adresse n'en contient pas, et un blanc dans
+    un attribut d'URL est exactement ce qui sert à en sortir). Exigences :
+    exactement un `@`, quelque chose de part et d'autre, et un point dans la
+    partie domaine. La casse est laissée telle quelle : la partie locale d'une
+    adresse est, formellement, sensible à la casse.
+
+    Renvoie None pour une saisie vide comme pour une saisie invalide : c'est
+    l'APPELANT qui distingue les deux (une saisie vide veut dire « efface »,
+    voir la route POST /admin/identite).
+    """
+    valeur = saisie.strip()
+    if not valeur:
+        return None
+    if any(c.isspace() for c in valeur):
+        return None
+    if valeur.count("@") != 1:
+        return None
+    locale, _, domaine = valeur.partition("@")
+    if not locale or not domaine or "." not in domaine:
+        return None
+    if domaine.startswith(".") or domaine.endswith("."):
+        return None
+    return valeur[:LONGUEUR_CONTACT_ASSOCIATION]
+
+
+def normaliser_depot_url(saisie: str) -> str | None:
+    """
+    Normalise l'URL du dépôt, ou None si son schéma n'est pas `http://` ou
+    `https://`.
+
+    POURQUOI CE CONTRÔLE EST UNE MESURE DE SÉCURITÉ, et pas une coquetterie :
+    cette valeur atterrit telle quelle dans un `href`. Sans ce filtre, un
+    `javascript:...` saisi depuis l'administration deviendrait un script
+    exécuté chez chaque visiteur de la page « À propos » — Jinja échappe le
+    CONTENU d'un attribut, il ne juge pas du schéma d'une URL. Les autres
+    schémas dangereux (`data:`, `vbscript:`) tombent par la même règle : on
+    n'énumère pas ce qui est interdit, on n'autorise que deux schémas.
+
+    Renvoie None pour une saisie vide comme pour un schéma refusé : c'est
+    l'APPELANT qui distingue les deux (une saisie vide veut dire « efface,
+    reprends le repli »).
+    """
+    valeur = saisie.strip()
+    if not valeur:
+        return None
+    if any(c.isspace() for c in valeur):
+        return None
+    if not re.match(r"^https?://\S", valeur, re.IGNORECASE):
+        return None
+    return valeur[:LONGUEUR_DEPOT_ASSOCIATION]
+
+
+def lien_journal_versions(depot_url: str) -> str | None:
+    """
+    Lien vers le CHANGELOG du dépôt, ou None si l'URL n'est pas un dépôt GitHub.
+
+    `<dépôt>/blob/main/CHANGELOG.md` est une forme d'URL propre à GitHub. Tant
+    que l'adresse du dépôt était en dur, la construire était sans risque ; elle
+    est désormais réglable et peut désigner une autre forge (GitLab utilise
+    `/-/blob/`, Gitea `/src/branch/`, un dépôt auto-hébergé fait ce qu'il veut),
+    où ce lien mènerait à une page d'erreur SANS que personne s'en aperçoive.
+
+    Retenu : n'afficher ce lien que si l'on sait le construire, c'est-à-dire
+    sur github.com, et l'omettre sinon. Le lien vers le dépôt lui-même, lui,
+    reste toujours affiché — c'est celui qu'exige la GPL, et le journal des
+    versions se trouve depuis la page d'accueil du dépôt. Les alternatives
+    écartées sont discutées dans interne/comptes-rendus/lot2-apropos.md.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        hote = (urlparse(depot_url).hostname or "").lower()
+    except ValueError:  # URL non analysable (IPv6 malformée, port illégal…)
+        return None
+    if hote not in ("github.com", "www.github.com"):
+        return None
+    return f"{depot_url.rstrip('/')}/blob/main/CHANGELOG.md"
+
+
 # ===========================================================================
 # Identité de l'événement (nom + date), réglée depuis /admin/evenement
 # ===========================================================================
