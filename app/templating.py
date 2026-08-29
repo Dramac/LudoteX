@@ -97,8 +97,9 @@ templates.env.globals["rangement_visible"] = services.rangement_visible
 templates.env.globals["rangement_actif"] = services.rangement_actif
 
 # Nom de l'événement en cours (« Festival du Jeu 2026 »), réglé depuis
-# /admin/evenement — à ne pas confondre avec `nom_association`, qui vient du
-# .env et ne change pas d'une édition à l'autre. Vaut None tant qu'il n'a pas
+# /admin/evenement — à ne pas confondre avec `nom_association`, réglé depuis
+# /admin/identite (repli .env) et qui, lui, ne change pas d'une édition à
+# l'autre. Vaut None tant qu'il n'a pas
 # été renseigné : les gabarits doivent donc TOUJOURS le tester avant de
 # l'afficher ({% if nom_evenement() %}), pour ne jamais montrer un rappel vide.
 # Ouvre sa propre connexion, comme `rangement_visible`/`rangement_actif` (seule
