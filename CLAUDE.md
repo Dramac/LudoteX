@@ -414,6 +414,40 @@ tunnel différente à chaque lancement**, donc incompatible avec des QR
 imprimés à l'avance — réservés au déploiement définitif sur domaine fixe).
 `lancer.py`/`lancer.vbs`/`lancer.bat` **versionnés** (pas dans `.gitignore`).
 
+**Lanceur local — trois correctifs après un échec réel sous macOS (2026-08-29) :
+FAIT.** `python3 lancer.py` (venv non activé) échouait sur « L'application n'a
+pas démarré à temps », sans le moindre indice. Cause : `demarrer_uvicorn`
+lançait le sous-processus avec `sys.executable`, en s'appuyant sur une garantie
+qui n'existe que sous Windows (`lancer.vbs`/`lancer.bat` appellent
+explicitement le python du venv) ; avec le python système, uvicorn mourait
+aussitôt. (1) **Relance dans le venv** (`relancer_dans_le_venv`, `os.execv`
+depuis `__main__`) plutôt que la seule correction du sous-processus : ce script
+importe lui-même `app.etiquettes` (donc `qrcode`/`pillow`) pour le QR de sa
+page, l'échec n'aurait été que repoussé. `dans_le_venv_du_projet` compare
+`sys.prefix` au dossier `.venv` et **surtout pas** des chemins résolus —
+`.venv/bin/python` étant un lien vers l'interpréteur de base, `resolve()` rend
+les deux indistinguables. Marqueur d'environnement contre la boucle ; tampons
+vidés avant `execv`, qui ne le fait pas (constaté : le message de relance
+disparaissait sur un stdout redirigé). `demarrer_uvicorn` passe par
+`python_a_utiliser()`. (2) **Sortie d'uvicorn dans un fichier**
+(`data/uvicorn-lancer.log`, `data/uvicorn-formation-lancer.log`, écrasés à
+chaque démarrage) au lieu de `subprocess.DEVNULL` : c'était la redirection, et
+non l'absence de fenêtre, qui masquait l'erreur — le remède affiché
+(« relancer via la console ») n'y donnait donc pas accès non plus. Le message
+d'échec cite le **chemin complet** du journal et en affiche la fin ;
+`_afficher_erreur` gagne un paramètre `detail` rendu dans un `<pre>` et
+**échappe** tout (une trace Python contient `<module>`, `<frozen …>`).
+(3) **Message adapté à la plateforme** (`lanceur_de_la_plateforme`) : les deux
+occurrences de « lancer.bat » en dur — échec d'uvicorn ET échec du tunnel —
+désignaient un fichier Windows inexistant ailleurs. Nouveau **`lancer.command`**
+(pendant macOS du `.bat`, versionné, bit d'exécution posé). Non couvert par
+pytest (`lancer.py` n'est pas importé par l'application) : vérifié en
+reproduisant la panne puis le correctif sur une copie jetable du dépôt, dans
+les quatre cas (python système, python du venv, uvicorn en échec réel,
+échappement de la trace dans la page HTML). `docs/lancement-local.md` réécrit
+en conséquence (titre plus « (Windows) », section « Si l'application n'a pas
+démarré à temps »).
+
 **Saisie manuelle de secours sur le scanner (idée 2.4) : FAIT.** Sous la zone
 caméra de `/scanner`, un petit formulaire GET (« Saisie manuelle » →
 `GET /scanner/saisie?code=…`, `routes/scanner.py`) permet de TAPER le code de la

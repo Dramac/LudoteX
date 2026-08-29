@@ -1,9 +1,15 @@
 """
 Lanceur autonome de LudoteX — pour un démarrage SANS ligne de commande.
 
-Pensé pour les bénévoles (Windows, pas de compétence technique) : double-cliquer
-sur `lancer.vbs` (silencieux, pas de fenêtre console) ou `lancer.bat` (avec
-console, utile pour le débogage) suffit à tout démarrer.
+Pensé pour les bénévoles (pas de compétence technique) : un double-clic suffit à
+tout démarrer.
+
+  - Windows : `lancer.vbs` (silencieux, pas de fenêtre console) ou `lancer.bat`
+    (avec console, utile pour le débogage) ;
+  - macOS   : `lancer.command` ;
+  - ailleurs, ou en ligne de commande : `python lancer.py` avec n'importe quel
+    interpréteur — le script se remet de lui-même dans le venv du projet s'il
+    n'y est pas (voir `relancer_dans_le_venv`).
 
 CE QUE FAIT CE SCRIPT, DANS L'ORDRE
 ------------------------------------
@@ -50,6 +56,7 @@ voir `docs/lancement-local.md`.
 from __future__ import annotations
 
 import base64
+import html
 import io
 import json
 import os
@@ -82,6 +89,20 @@ BASES_FORMATION = {
 
 URL_TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
+# Sortie d'erreur des sous-processus uvicorn. Elle partait autrefois dans
+# subprocess.DEVNULL : quand uvicorn refusait de démarrer, il ne restait que
+# « l'application n'a pas démarré à temps », sans le moindre indice — et le
+# remède proposé (relancer via la console) n'y donnait pas accès non plus,
+# puisque c'est cette redirection, et non la fenêtre, qui masquait l'erreur.
+JOURNAUX_UVICORN = {
+    "uvicorn": DOSSIER_DATA / "uvicorn-lancer.log",
+    "uvicorn_formation": DOSSIER_DATA / "uvicorn-formation-lancer.log",
+}
+
+# Marqueur posé avant de se relancer avec l'interpréteur du venv, pour qu'un
+# venv cassé provoque un message clair et non une boucle de relances.
+MARQUEUR_RELANCE = "LUDOTEX_LANCEUR_RELANCE"
+
 # --- État partagé entre threads (uvicorn / cloudflared / serveur de contrôle) ---
 etat: dict[str, object] = {
     "uvicorn_ok": False,
@@ -111,6 +132,74 @@ def chemin_python_venv() -> Path | None:
     else:
         candidat = BASE_DIR / ".venv" / "bin" / "python"
     return candidat if candidat.exists() else None
+
+
+def dans_le_venv_du_projet() -> bool:
+    """
+    True si l'interpréteur courant est bien celui du venv du projet.
+
+    On compare `sys.prefix` au dossier `.venv`, et surtout PAS les chemins
+    d'interpréteurs résolus : `.venv/bin/python` est un lien symbolique vers
+    l'interpréteur de base (Homebrew, python.org…), si bien qu'un
+    `Path(sys.executable).resolve()` rendrait le Python système et celui du
+    venv indistinguables — exactement le cas qu'il s'agit de détecter.
+    """
+    return Path(sys.prefix) == (BASE_DIR / ".venv")
+
+
+def relancer_dans_le_venv(arguments: list[str]) -> None:
+    """
+    Se relance avec l'interpréteur du venv si l'on n'y est pas déjà.
+
+    POURQUOI CE DÉTOUR PLUTÔT QUE DE SEULEMENT CORRIGER LE SOUS-PROCESSUS
+    ---------------------------------------------------------------------
+    Sous Windows, `lancer.vbs` et `lancer.bat` appellent explicitement
+    `.venv\Scripts\python[w].exe` : l'interpréteur courant EST celui du venv,
+    et tout le fichier reposait sur cette garantie. Elle ne tient pas dès qu'on
+    lance le script à la main — `python3 lancer.py` sous macOS ou Linux, venv
+    non activé. Uvicorn était alors démarré avec le Python système, qui n'a ni
+    `fastapi` ni `uvicorn` : le sous-processus mourait aussitôt, le port ne
+    s'ouvrait jamais, et le lanceur concluait au bout de 30 s que
+    « l'application n'a pas démarré à temps ».
+
+    Ne corriger que l'interpréteur du sous-processus ne suffirait pas : ce
+    script importe lui aussi des dépendances du projet (`app.etiquettes`, donc
+    `qrcode` et `pillow`) pour dessiner le QR de la page du lanceur. L'échec
+    serait simplement repoussé plus loin, sous la forme d'une trace brute.
+    On repart donc du bon interpréteur, une fois pour toutes.
+
+    `os.execv` REMPLACE le processus courant : rien n'est exécuté après lui.
+    Le marqueur d'environnement interdit une seconde relance — un venv présent
+    mais cassé (dépendances non installées) doit produire un message clair, pas
+    une boucle.
+    """
+    if dans_le_venv_du_projet() or os.environ.get(MARQUEUR_RELANCE):
+        return
+    python_venv = chemin_python_venv()
+    if python_venv is None:
+        return  # absence signalée par verifier_prerequis(), avec un vrai message
+    print("Relance avec l'interpréteur du projet :", python_venv)
+    # `os.execv` remplace l'image du processus SANS vider les tampons de Python.
+    # Sur un stdout redirigé (bloc-bufferisé), la ligne ci-dessus serait perdue
+    # — constaté en test : le lanceur semblait n'avoir rien dit.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.environ[MARQUEUR_RELANCE] = "1"
+    os.execv(str(python_venv), [str(python_venv), str(Path(__file__).resolve()),
+                                *arguments])
+
+
+def python_a_utiliser() -> str:
+    """
+    L'interpréteur avec lequel démarrer uvicorn.
+
+    Après `relancer_dans_le_venv`, `sys.executable` est déjà le bon ; ce repli
+    explicite couvre le cas où la relance n'a pas pu avoir lieu (marqueur déjà
+    posé) et évite surtout de réinstaller silencieusement l'hypothèse qui a
+    causé la panne.
+    """
+    python_venv = chemin_python_venv()
+    return str(python_venv) if python_venv else sys.executable
 
 
 def trouver_cloudflared() -> str | None:
@@ -184,16 +273,41 @@ def _attendre_port(port: int, timeout: float) -> bool:
     return False
 
 
+def journal_uvicorn(cle: str) -> Path:
+    """Fichier où est recopiée la sortie du sous-processus uvicorn `cle`."""
+    return JOURNAUX_UVICORN.get(cle, DOSSIER_DATA / f"{cle}-lancer.log")
+
+
+def dernieres_lignes(chemin: Path, nombre: int = 15) -> str:
+    """
+    Les `nombre` dernières lignes non vides d'un journal, ou "" s'il est
+    illisible ou vide. Ne lève jamais : c'est un confort de diagnostic, il ne
+    doit pas devenir une seconde panne par-dessus la première.
+    """
+    try:
+        lignes = [l.rstrip() for l in
+                  chemin.read_text(encoding="utf-8", errors="replace").splitlines()
+                  if l.strip()]
+    except OSError:
+        return ""
+    return "\n".join(lignes[-nombre:])
+
+
 def demarrer_uvicorn(cle: str = "uvicorn", port: int = PORT_APP,
                      env_extra: dict[str, str] | None = None) -> None:
     """
     Lance uvicorn en sous-processus, caché, et le range sous la clé `cle` de
     `processus` (pour qu'`arreter_tout` le termine aussi).
 
-    `sys.executable` est déjà l'interpréteur du venv du projet (garanti par
-    lancer.vbs / lancer.bat, qui invoquent explicitement
-    `.venv\\Scripts\\python[w].exe lancer.py`). `cwd=BASE_DIR` assure que
-    `load_dotenv()` (dans app/db.py) retrouve le `.env` à la racine.
+    L'interpréteur vient de `python_a_utiliser()`, JAMAIS de `sys.executable` :
+    voir `relancer_dans_le_venv` pour ce que cette hypothèse-là a coûté.
+    `cwd=BASE_DIR` assure que `load_dotenv()` (dans app/db.py) retrouve le
+    `.env` à la racine.
+
+    La sortie d'erreur va dans un FICHIER (`JOURNAUX_UVICORN`) et non dans
+    `subprocess.DEVNULL` : c'est la seule trace disponible quand uvicorn
+    refuse de démarrer, et `main()` en cite les dernières lignes dans son
+    message d'échec.
 
     `env_extra` (optionnel) surcharge des variables d'environnement pour ce
     seul processus — utilisé pour l'instance de formation (MODE_FORMATION=1 +
@@ -207,12 +321,22 @@ def demarrer_uvicorn(cle: str = "uvicorn", port: int = PORT_APP,
 
     env = {**os.environ, **env_extra} if env_extra else None
 
+    # Le journal est remis à zéro à chaque démarrage : on veut la cause de
+    # CETTE tentative, pas un historique à faire défiler. Si le fichier ne peut
+    # pas être ouvert (dossier absent, disque plein), on retombe sur l'ancien
+    # comportement plutôt que d'empêcher le démarrage — ne jamais bloquer.
+    try:
+        DOSSIER_DATA.mkdir(parents=True, exist_ok=True)
+        sortie = open(journal_uvicorn(cle), "w", encoding="utf-8")
+    except OSError:
+        sortie = subprocess.DEVNULL
+
     processus[cle] = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app.main:app",
+        [python_a_utiliser(), "-m", "uvicorn", "app.main:app",
          "--host", HOTE, "--port", str(port)],
         cwd=str(BASE_DIR),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=sortie,
+        stderr=subprocess.STDOUT,
         env=env,
         **kwargs,
     )
@@ -453,10 +577,14 @@ _PAGE_ERREUR = """<!DOCTYPE html>
     justify-content: center; background: #fff; color: #1a1a1a;
     font-family: -apple-system, "Segoe UI", Arial, sans-serif; padding: 24px;
   }
-  .carte { max-width: 540px; }
+  .carte { max-width: 640px; }
   h1 { color: #d5342a; font-size: 1.3rem; }
   li { margin: .6rem 0; }
   code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
+  pre {
+    background: #f5f5f5; border-left: 4px solid #d5342a; padding: 12px;
+    overflow-x: auto; font-size: .8rem; line-height: 1.45; white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
@@ -464,6 +592,7 @@ _PAGE_ERREUR = """<!DOCTYPE html>
     <h1>Impossible de démarrer LudoteX</h1>
     <p>Le lanceur a rencontré un problème :</p>
     <ul>__ITEMS__</ul>
+    __DETAIL__
     <p>Voir <code>docs/lancement-local.md</code> pour l'installation des prérequis.</p>
   </div>
 </body>
@@ -521,12 +650,25 @@ def ecrire_page_lanceur(url: str) -> Path:
     return ecrire_temp_html(html, prefixe="lancer-ludotex-")
 
 
-def _afficher_erreur(problemes: list[str]) -> None:
+def _afficher_erreur(problemes: list[str], detail: str = "") -> None:
+    """
+    Affiche les problèmes dans la console ET dans une page HTML.
+
+    `detail` est un extrait brut (la fin du journal d'uvicorn) rendu dans un
+    bloc à part. Tout est échappé : une trace Python contient couramment des
+    fragments comme `<module>`, que le navigateur prendrait pour du balisage.
+    """
     for p in problemes:
         print("ERREUR :", p)
-    items = "".join(f"<li>{p}</li>" for p in problemes)
+    if detail:
+        print("--- Détail (fin du journal) ---")
+        print(detail)
+    items = "".join(f"<li>{html.escape(p)}</li>" for p in problemes)
+    bloc = (f"<p>Détail technique (fin du journal) :</p>"
+            f"<pre>{html.escape(detail)}</pre>") if detail else ""
     chemin = ecrire_temp_html(
-        _PAGE_ERREUR.replace("__ITEMS__", items), prefixe="lancer-ludotex-erreur-"
+        _PAGE_ERREUR.replace("__ITEMS__", items).replace("__DETAIL__", bloc),
+        prefixe="lancer-ludotex-erreur-",
     )
     webbrowser.open(chemin.as_uri())
 
@@ -534,6 +676,45 @@ def _afficher_erreur(problemes: list[str]) -> None:
 # =====================================================================
 # Orchestration
 # =====================================================================
+
+def lanceur_de_la_plateforme() -> str:
+    """
+    Comment relancer LudoteX sur CETTE machine, en clair.
+
+    Le message d'échec citait « lancer.bat » en dur, un fichier Windows :
+    sous macOS et Linux, il désignait quelque chose qui n'existe pas — et
+    envoyait donc chercher la solution du mauvais côté.
+    """
+    if sys.platform == "win32":
+        return "lancer.bat"
+    if sys.platform == "darwin":
+        return "lancer.command"
+    return ".venv/bin/python lancer.py"
+
+
+def _echec_demarrage(cle: str, quoi: str) -> tuple[list[str], str]:
+    """
+    Le message d'échec d'un uvicorn qui n'a pas ouvert son port, et l'extrait
+    de journal qui l'accompagne.
+
+    Le CHEMIN COMPLET du journal est cité : c'est ce qu'on copie-colle pour
+    demander de l'aide, et un chemin relatif obligerait à deviner depuis quel
+    dossier le lire.
+    """
+    chemin = journal_uvicorn(cle)
+    fin = dernieres_lignes(chemin)
+    messages = [f"{quoi} n'a pas démarré à temps."]
+    if fin:
+        messages.append(f"Le détail de l'erreur est ci-dessous, et le journal "
+                        f"complet dans : {chemin}")
+    else:
+        messages.append(
+            f"Aucun détail n'a pu être enregistré (journal attendu : {chemin}). "
+            f"Relancer avec {lanceur_de_la_plateforme()} pour voir les messages "
+            f"dans la console."
+        )
+    return messages, fin
+
 
 def demarrer_instance_formation() -> bool:
     """
@@ -550,7 +731,13 @@ def demarrer_instance_formation() -> bool:
     print("Démarrage du site de formation (uvicorn)…")
     demarrer_uvicorn("uvicorn_formation", PORT_FORMATION, env_formation())
     if not _attendre_port(PORT_FORMATION, timeout=30):
-        print("Le site de formation n'a pas démarré à temps.")
+        # Non bloquant pour l'instance normale : on informe, on continue.
+        messages, detail = _echec_demarrage("uvicorn_formation",
+                                            "Le site de formation")
+        for ligne in messages:
+            print("ERREUR :", ligne)
+        if detail:
+            print(detail)
         return False
 
     url_formation = f"http://localhost:{PORT_FORMATION}"
@@ -583,10 +770,8 @@ def main(formation: bool = False) -> None:
     print("Démarrage de l'application (uvicorn)…")
     demarrer_uvicorn("uvicorn", PORT_APP, env_normale)
     if not _attendre_port(PORT_APP, timeout=30):
-        _afficher_erreur([
-            "L'application n'a pas démarré à temps. Relancer via lancer.bat "
-            "pour voir le détail de l'erreur dans la console."
-        ])
+        messages, detail = _echec_demarrage("uvicorn", "L'application")
+        _afficher_erreur(messages, detail)
         arreter_tout()
         return
     with _verrou:
@@ -609,8 +794,9 @@ def main(formation: bool = False) -> None:
     if not url:
         _afficher_erreur([
             "Le tunnel Cloudflare n'a pas fourni d'URL publique dans le délai "
-            "imparti. Vérifier la connexion internet, ou relancer via "
-            "lancer.bat pour voir le détail de l'erreur dans la console."
+            "imparti. Vérifier la connexion internet, ou relancer avec "
+            f"{lanceur_de_la_plateforme()} pour voir le détail de l'erreur "
+            "dans la console."
         ])
         arreter_tout()
         return
@@ -648,4 +834,7 @@ if __name__ == "__main__":
         print("  --formation    démarre EN PLUS le site de formation "
               "(port 8100, bases jetables)")
         sys.exit(0)
+    # AVANT toute autre chose : si l'on n'est pas dans le venv du projet, on s'y
+    # remet (voir `relancer_dans_le_venv`). `os.execv` ne rend pas la main.
+    relancer_dans_le_venv(args)
     main(formation="--formation" in args)

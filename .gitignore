@@ -20,6 +20,10 @@ qr/
 # --- Page HTML temporaire générée par lancer.py (lanceur local) ---
 lancer-ludotex-*.html
 
+# --- Sortie des sous-processus uvicorn démarrés par lancer.py ---
+data/uvicorn-lancer.log
+data/uvicorn-formation-lancer.log
+
 # --- Sauvegardes de la base (générées sur le serveur) ---
 sauvegardes/
 

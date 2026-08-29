@@ -1,7 +1,9 @@
-# Lancement local sans ligne de commande (Windows)
+# Lancement local sans ligne de commande
 
 Ce mode de lancement sert à tester ou faire fonctionner LudoteX **sur un poste
-Windows de l'association**, sans terminal, en double-cliquant sur un fichier.
+de l'association**, sans terminal, en double-cliquant sur un fichier. Il vise
+d'abord Windows, mais fonctionne aussi sous macOS (`lancer.command`) et depuis
+un terminal sur n'importe quel système.
 Il ouvre un tunnel HTTPS public (Cloudflare) au-dessus de l'application locale
 — nécessaire pour que le scanner caméra fonctionne depuis un smartphone
 (`getUserMedia` exige un contexte sécurisé HTTPS).
@@ -56,9 +58,34 @@ Pour un déploiement permanent sur un vrai serveur, voir plutôt
   fonctionne pas comme prévu : la console reste visible et affiche les
   messages (démarrage d'uvicorn, URL du tunnel, erreurs éventuelles).
 
+- **Sous macOS**, double-cliquer sur **`lancer.command`** : c'est le pendant de
+  `lancer.bat`, le Terminal s'ouvre et reste visible. Si le double-clic ouvre
+  le fichier dans un éditeur au lieu de l'exécuter, son bit d'exécution a été
+  perdu ; le remettre une fois, dans le Terminal : `chmod +x lancer.command`.
+
+- **Depuis un terminal**, sur n'importe quel système : `python lancer.py`.
+  Peu importe l'interpréteur employé — le lanceur se remet de lui-même dans le
+  `.venv` du projet s'il n'y est pas, et l'annonce (« Relance avec
+  l'interpréteur du projet : … »).
+
 - Pour arrêter : cliquer sur **« Arrêter LudoteX »** dans la page ouverte
-  (confirmation demandée), ou fermer la console si lancé via `lancer.bat`
-  (Ctrl+C). Le site de formation, s'il a été lancé, s'arrête en même temps.
+  (confirmation demandée), ou fermer la console si lancé via `lancer.bat` /
+  `lancer.command` (Ctrl+C). Le site de formation, s'il a été lancé, s'arrête
+  en même temps.
+
+### Si l'application « n'a pas démarré à temps »
+
+Le lanceur attend 30 secondes qu'uvicorn ouvre son port. Passé ce délai, il
+affiche la **fin de l'erreur** et le **chemin complet** du journal, à recopier
+tel quel :
+
+```
+data/uvicorn-lancer.log             (application)
+data/uvicorn-formation-lancer.log   (site de formation)
+```
+
+Ce journal est écrasé à chaque démarrage : il contient toujours la cause de la
+dernière tentative, jamais un historique à faire défiler.
 
 ## Lancer aussi le site de formation (`--formation`)
 
@@ -67,13 +94,12 @@ plus une **seconde instance** en mode formation (bandeau + filigrane, bases
 jetables). Depuis un terminal, à la racine du projet :
 
 ```
-.venv\Scripts\python.exe lancer.py --formation
+python lancer.py --formation
 ```
 
-(ou, si le venv est activé : `python lancer.py --formation`. Sous macOS/Linux :
-`.venv/bin/python lancer.py --formation`.)
-
-On peut aussi créer un raccourci Windows vers `lancer.bat --formation`.
+N'importe quel interpréteur convient : le lanceur bascule seul sur celui du
+`.venv`. On peut aussi créer un raccourci Windows vers `lancer.bat --formation`,
+ou lancer `./lancer.command --formation` sous macOS.
 
 Cela démarre, **en plus** de l'application normale :
 
@@ -91,6 +117,9 @@ formation (ou supprimer les fichiers `data/formation-*.db`).
 
 ## Ce que fait `lancer.py`
 
+0. Se relance avec l'interpréteur du `.venv` du projet s'il n'y est pas déjà
+   (une seule fois : un `.venv` présent mais incomplet donne un message clair,
+   pas une boucle).
 1. Vérifie que `.venv` et `cloudflared` sont bien présents, et que les ports
    8000 (application) et 8001 (contrôle) sont libres — sinon ouvre une page
    d'erreur claire et s'arrête.
@@ -110,7 +139,7 @@ formation (ou supprimer les fichiers `data/formation-*.db`).
   `docs/deploiement.md`). En attendant, scanner le QR affiché sur l'écran du
   lanceur, ou utiliser le lien partagé aux bénévoles pour l'activation
   (`/admin/jeton`).
-- Le poste Windows doit rester allumé et connecté à Internet pendant toute la
-  durée d'utilisation (le tunnel et l'application tournent dessus).
+- Le poste doit rester allumé et connecté à Internet pendant toute la durée
+  d'utilisation (le tunnel et l'application tournent dessus).
 - Fermer LudoteX (bouton « Arrêter ») avant d'éteindre le poste, pour une
   coupure propre.
