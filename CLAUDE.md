@@ -3072,3 +3072,92 @@ cp .env.example .env        # éditer le jeton, le chemin base, le domaine
 python -m app.db            # initialise la base SQLite
 uvicorn app.main:app --reload
 ```
+
+## Ouverture publique de LudoteX — arbitrages (2026-08-29)
+
+Marche à suivre détaillée : `docs/note-ouverture-publique.md`. Cette section ne
+porte que les **décisions** ; elle prime sur la note en cas de divergence.
+
+**1. Cible.** LudoteX devient un outil réutilisable par d'autres associations :
+dépôt public lisible, page vitrine indexable, produit sans marque d'association.
+Le dépôt `Dramac/LudoteX` et son wiki sont **déjà publics**.
+
+**2. Le nom de l'association est une donnée de configuration.** Aucune mention
+de « LudoteX » ne doit subsister dans le code, les docs, le
+wiki, les captures ni la vitrine. Seules exceptions : le `.env` de notre
+instance, et la ligne de copyright de `LICENSE` — **en attente d'arbitrage du
+bureau** (titularité des droits : ne pas y toucher sans réponse).
+
+**3. Paramétrage : l'identité en base, l'infrastructure en `.env`.**
+
+- **Administrable** (table `parametres` de la base de prêt, écran admin dédié,
+  sur le modèle de `/admin/evenement` qui existe déjà) : nom de l'association,
+  texte de présentation de la page « À propos », adresse de contact, URL du
+  dépôt (aujourd'hui en dur dans `app/routes/catalogue.py`), logo. Ce sont des
+  données **éditoriales** : elles changent sans redéploiement et un bureau non
+  technicien doit pouvoir les corriger seul.
+- **Reste dans `.env`** : `BASE_URL` (figée par les QR imprimés),
+  `MODE_FORMATION`, `FORMATION_URL`, chemins des bases et du journal, secrets.
+  Un réglage qui engage l'infrastructure ou la sécurité ne descend pas dans une
+  interface web.
+- **Contrainte technique à traiter dès le premier lot** : `nom_association` est
+  aujourd'hui un **global Jinja posé à l'import** (`app/templating.py`) depuis
+  une constante de `app/config.py`. Le passer en base impose une lecture par
+  requête. Les modules `planning` et `tournoi` l'utilisent aussi (en-têtes
+  `.ics`) alors que leurs bases sont indépendantes : la lecture doit passer par
+  **un seul accesseur** (`app/identite.py` : cache en mémoire invalidé à
+  l'écriture, repli `.env` puis valeur neutre), jamais par un accès direct à la
+  base de prêt depuis un autre module. La règle « trois bases indépendantes »
+  n'est pas rompue : ce qui est partagé est une **fonction d'affichage**, pas un
+  schéma.
+- **La page « À propos » ne devient pas éditable en entier** : l'essentiel y est
+  de la documentation produit, identique pour tout déploiement. Seuls le
+  paragraphe « L'association », le contact et les crédits sont paramétrables.
+  Texte brut échappé par Jinja, **jamais de HTML libre saisi en admin**.
+- **Logo** : un envoi de fichier depuis l'admin est une nouvelle surface
+  d'attaque (type, taille, nom de fichier, écrasement). À traiter comme un lot à
+  part, pas en même temps que les champs texte.
+
+**4. Tri de `docs/`.** Le dépôt public garde ce qui permet d'installer,
+d'exploiter, de comprendre et de contribuer : `specification.md` (fait foi),
+`guide-developpeur.md`, `deploiement.md`, `lancement-local.md`,
+`mode-formation.md`, `vocabulaire.md`, `versioning.md`, `ui-composants.md`,
+`protocole-stress-test.md`, et les `conception-*.md` des modules **livrés**.
+Sortent du dépôt : prompts d'implémentation, `budget.md`, présentation au CA,
+audits datés, `plan-action-securite.md`, études d'hébergement, notes d'idées et
+d'évolutions, veille, cadrages du wiki, `bonne-pratique.md`.
+
+*Motif du refus de tout sortir : un dépôt GPLv3 sans document de conception
+n'est pas reprenable. Pour un tiers, l'absence de documentation technique est le
+premier motif d'abandon d'une reprise.* À noter : **25 des 53 fichiers de
+`docs/` ne sont déjà pas versionnés** — le tri est à moitié fait.
+
+**5. Les notes internes vivent en local, hors Git, mais sauvegardées.** Dossier
+`interne/` ajouté à `.gitignore`, inclus dans la sauvegarde habituelle de la
+machine. Conséquence assumée : pas d'historique fin ni de diff sur ces
+documents.
+
+**6. Historique : une réécriture complète, une seule fois, maintenant.**
+`git filter-repo` pour (a) purger les chemins internes de tout l'historique et
+(b) remplacer le nom de l'association dans le contenu des fichiers **et** dans
+les messages de commit (`--replace-text` + `--replace-message`). Un seul
+`push --force`, exécuté par Simon.
+
+Ordre impératif : **neutralisation terminée et commitée → puis réécriture → puis
+force-push.** Préalables : arbre de travail propre (31 fichiers modifiés en
+attente au 2026-08-29), vérifier les forks sur la page GitHub, et faire une
+copie du dépôt avant. **À exécuter par Simon dans son terminal**, pas via
+l'assistant : `filter-repo` doit supprimer des fichiers dans `.git`, ce que le
+montage utilisé par l'assistant interdit. Le wiki est un dépôt distinct : même
+opération, et ses 12 captures sont à refaire **avant**.
+
+**7. Vitrine.** Page statique, dépôt séparé `ludotex-site`, GitHub Pages, CNAME
+vers un **autre sous-domaine** que `ludotex.nicaro.eu` — cette URL est figée par
+les QR déjà imprimés.
+
+**8. Méthode de travail à partir d'ici.** Un fil « chantier » par lot, ouvert
+depuis un **prompt autonome** rédigé dans le fil centralisateur. Chaque prompt
+rappelle l'objectif, les fichiers à lire d'abord, les contraintes du projet, la
+définition de fini (suite verte, wiki à jour, un commit en français) et ne
+couvre qu'**un seul commit**. Le registre des lots vit sur disque
+(`interne/chantiers.md`), pas dans la mémoire d'une conversation.
