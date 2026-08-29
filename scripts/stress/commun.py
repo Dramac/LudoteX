@@ -91,6 +91,11 @@ _MOTIFS = [
     ("rendu", re.compile(r"pochette-num--retour")),
     ("deja_sorti", re.compile(r"était déjà sorti")),
     ("deja_disponible", re.compile(r"était déjà disponible")),
+    # Conflit d'accès simultané rattrapé par la route (correctif du 2026-08-02) :
+    # la transaction a été annulée, RIEN n'a été enregistré, le bénévole
+    # réappuie. Ce n'est pas une erreur, mais sa fréquence est un indicateur :
+    # au rythme de 8 bénévoles elle devrait être nulle ou presque.
+    ("occupe", re.compile(r"Rien n'a été enregistré")),
     ("tournoi_sorti", re.compile(r"Sorti pour un tournoi")),
     ("rendu_tournoi", re.compile(r"Retour de tournoi enregistré")),
 ]

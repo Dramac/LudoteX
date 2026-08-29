@@ -150,7 +150,7 @@ async def benevole(
                     type_resultat, num = lire_resultat(reponse.text)
                     etat.mesures.resultats[f"rendre: {type_resultat}"] += 1
                     await etat.rendre(num if num is not None else sorties.get(boite))
-                    if type_resultat not in ("rendu", "rendu_tournoi"):
+                    if type_resultat not in ("rendu", "rendu_tournoi", "occupe"):
                         etat.mesures.incident(
                             f"retour inattendu sur « {boite} » : {type_resultat}"
                         )
@@ -167,7 +167,9 @@ async def benevole(
                     if type_resultat == "prete":
                         await etat.prendre(num, boite)
                         sorties[boite] = num
-                    elif type_resultat != "deja_sorti":
+                    # `occupe` = conflit d'accès rattrapé, rien enregistré : ce
+                    # n'est pas un incident, mais on le compte (voir le rapport).
+                    elif type_resultat not in ("deja_sorti", "occupe"):
                         etat.mesures.incident(
                             f"prêt inattendu sur « {boite} » : {type_resultat}"
                         )

@@ -15,7 +15,8 @@ Les invariants vérifiés découlent directement des règles métier
     I4  un prêt ouvert au public porte toujours un numéro de pochette ;
     I5  un prêt clos ne porte plus de numéro de pochette (décision D5) ;
     I6  aucune date de retour antérieure à la date de sortie ;
-    I7  intégrité SQLite et clés étrangères.
+    I7  intégrité SQLite et clés étrangères ;
+    I8  les index UNIQUE du correctif de concurrence sont bien en place.
 
 Lecture SEULE : ce script ne modifie jamais rien.
 
@@ -165,6 +166,33 @@ def i7_integrite(conn) -> list[str]:
     return problemes
 
 
+# Filets de sécurité posés par le correctif du 2026-08-02
+# (models.SCHEMA_INDEXES_UNIQUES). Leur création peut ÉCHOUER en silence — par
+# conception : `db._creer_index_uniques` avertit au journal et laisse
+# l'application démarrer, car lever à cet endroit casserait aussi bien un
+# démarrage qu'une restauration de sauvegarde en pleine soirée. Conséquence :
+# une base peut tourner sans garde-fou sans que rien ne le rappelle. D'où ce
+# contrôle.
+INDEX_ATTENDUS = ("idx_prets_un_seul_ouvert", "idx_pochettes_un_seul_pret")
+
+
+def i8_filets(conn) -> list[str]:
+    presents = {
+        ligne[0]
+        for ligne in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+        )
+    }
+    return [
+        f"le filet « {nom} » est absent : soit la base est antérieure au "
+        "correctif du 2026-08-02, soit sa création a été refusée au démarrage "
+        "parce que la base contenait déjà une incohérence (voir I1/I2 "
+        "ci-dessus, et le journal du service)"
+        for nom in INDEX_ATTENDUS
+        if nom not in presents
+    ]
+
+
 CONTROLES = [
     ("I1  deux prêts ouverts sur la même boîte", i1_prets_doubles),
     ("I2  numéro de pochette attribué deux fois", i2_pochettes_partagees),
@@ -173,6 +201,7 @@ CONTROLES = [
     ("I5  numéro conservé après clôture (D5)", i5_pochette_apres_cloture),
     ("I6  retour antérieur à la sortie", i6_dates),
     ("I7  intégrité SQLite et clés étrangères", i7_integrite),
+    ("I8  filets de sécurité (index UNIQUE) en place", i8_filets),
 ]
 
 

@@ -222,10 +222,21 @@ def verdict(bilan: Bilan) -> int:
         return 1
     print(
         "  ✓ Aucune anomalie observée sur cet échantillon.\n"
-        "    Attention : la fenêtre de course est de l'ordre de la milliseconde.\n"
-        "    Ne rien voir ne prouve pas qu'elle n'existe pas — relancer avec\n"
-        "    --manches 100, et depuis une machine à faible latence du serveur\n"
-        "    (tirs plus serrés = course plus probable)."
+        "\n"
+        "    Depuis le correctif du 2026-08-02, c'est le résultat ATTENDU : ce\n"
+        "    script est devenu un test de non-régression, à rejouer après chaque\n"
+        "    mise à jour touchant au prêt. Attendu au scénario A : autant de\n"
+        "    numéros que de tireurs, tous distincts. Au scénario B : exactement\n"
+        "    un prêt ouvert, les autres en « déjà sorti ».\n"
+        "\n"
+        "    Vérifie aussi que le filet est bien en place — il peut ne pas avoir\n"
+        "    été posé sans que rien ne le dise à l'écran :\n"
+        "        python -m scripts.stress.coherence <base>   (contrôle I8)\n"
+        "\n"
+        "    Sur une version ANTÉRIEURE au correctif, ne rien voir ne prouverait\n"
+        "    rien : la fenêtre se compte en millisecondes et la latence réseau\n"
+        "    disperse les tirs. Relancer alors avec --manches 100, au plus près\n"
+        "    du serveur."
     )
     return 0
 

@@ -255,8 +255,8 @@ serveur : le but est de mesurer ce que voit un téléphone, réseau compris.
 | Script | Rôle |
 |---|---|
 | `charge.py` | Simule bénévoles, visiteurs, écran de salle. Mesure les temps de réponse, relève les incidents. |
-| `course.py` | Provoque volontairement les accès simultanés du § 2 et dit s'ils cassent quelque chose. |
-| `coherence.py` | Contrôle 7 invariants directement dans la base SQLite. Lecture seule. À lancer sur le serveur. |
+| `course.py` | Provoque volontairement les accès simultanés du § 2 et dit s'ils cassent quelque chose. Depuis le correctif du § 2.4, c'est le test de non-régression du prêt. |
+| `coherence.py` | Contrôle 8 invariants directement dans la base SQLite, dont la présence des index UNIQUE (I8). Lecture seule. À lancer sur le serveur. |
 | `mesures.sh` | Échantillonne CPU, mémoire, disque, WAL et journal du service pendant la séance. À lancer sur le serveur. |
 
 ### 3.3 Préparatifs
@@ -297,13 +297,33 @@ arrière-plan pour la phase 4 et 30 minutes à plusieurs pour la phase 5.
    python -m scripts.stress.coherence /var/lib/ludotex-formation/pret-jeux.db
    ```
 
-   Les 7 invariants doivent être verts. Si non, le reste du protocole est sans
-   objet : la base part déjà bancale.
+   Les **8** invariants doivent être verts. Si non, le reste du protocole est
+   sans objet : la base part déjà bancale.
+
+   Le 8ᵉ est né du correctif du § 2.4 : il vérifie que les deux index UNIQUE
+   sont réellement posés. Ils peuvent manquer **sans que rien ne le signale à
+   l'écran**, `db._creer_index_uniques` étant conçu pour avertir et laisser
+   démarrer (§ 2.4, point 2). Si I8 est rouge, l'application tourne sans son
+   filet.
+
+4. Regarder le journal du démarrage, seul endroit où cet avertissement
+   apparaît :
+
+   ```bash
+   journalctl -u ludotex-formation --since "10 min ago" | grep -i "filet de sécurité"
+   ```
+
+   Rien = tout va bien.
 
 ### Phase 1 — Accès simultanés (20 min, seul)
 
 C'est la phase la plus importante. Elle répond à « peut-on perdre une pièce
 d'identité ? ».
+
+Depuis le correctif du § 2.4, **elle a changé de nature** : ce n'est plus une
+recherche de défaut, c'est un **test de non-régression** — le premier à
+rejouer après toute mise à jour touchant au prêt, et le seul qui vérifie le
+correctif sur la machine réelle plutôt qu'en pytest.
 
 ```bash
 python -m scripts.stress.course --url "$CIBLE" --jeton "$JETON" \
@@ -319,15 +339,28 @@ python -m scripts.stress.course --url "$CIBLE" --jeton "$JETON" \
 python -m scripts.stress.coherence /var/lib/ludotex-formation/pret-jeux.db
 ```
 
-> **Lire le résultat.** Le script conclut lui-même. Attention à la logique du
-> test : ne rien trouver ne prouve pas que le défaut n'existe pas, la fenêtre
-> se compte en millisecondes. Trouver quelque chose, en revanche, prouve qu'il
-> existe. En cas de résultat négatif, relancer avec `--manches 100`.
+> **Lire le résultat.** Le script conclut lui-même, mais vérifier le détail
+> plutôt que le seul verdict :
+>
+> - scénario A — **autant de numéros que de tireurs, tous distincts**, à
+>   chaque manche. Un verdict vert avec moins de numéros que de tireurs
+>   signalerait des prêts refusés, pas une course évitée ;
+> - scénario B — **exactement un `prete`**, les autres en `deja_sorti` ;
+> - **`occupe` : attendu à zéro.** C'est le message de conflit ajouté par le
+>   correctif. Sa présence n'est pas une anomalie (rien n'a été enregistré, la
+>   reprise est en un tap) mais elle indique que le verrou d'écriture a été
+>   disputé plus de 15 s — ce qui, à huit bénévoles, ne devrait jamais arriver.
+>   Quelques `occupe` dans une salve de 8 = à comprendre ; en phase 2 = un vrai
+>   sujet.
+>
+> Si une anomalie réapparaît, c'est une **régression** : voir § 6.1.
 
 **Refaire ensuite la même chose sur une table de pochettes vide**, c'est-à-dire
 juste après une réinitialisation des données de formation et sans avoir prêté
-quoi que ce soit : c'est la configuration de l'ouverture de soirée, celle qui
-produit des erreurs 500 plutôt que des doublons silencieux.
+quoi que ce soit. C'est la configuration de l'ouverture de soirée, celle qui
+produisait des erreurs 500 avant correctif (branche `MAX + 1`, § 2.1) — le
+chemin de code est différent, il se teste donc à part. Attendu : les numéros
+1 à 8, zéro 500.
 
 ### Phase 2 — Charge nominale, puis pointe (45 min, seul)
 
@@ -356,10 +389,30 @@ Le profil « pointe » inclut un export PDF des statistiques toutes les dix
 minutes : c'est la requête la plus lourde du site, et il est utile de savoir ce
 que les bénévoles ressentent pendant qu'elle s'exécute.
 
+> **Nouveauté depuis le correctif.** Les écritures de prêt sont désormais
+> **sérialisées** : `BEGIN IMMEDIATE` fait que deux opérations concurrentes
+> s'attendent au lieu de se marcher dessus. Cette phase est donc la seule à
+> pouvoir en mesurer le coût réel, sur des rafales soutenues plutôt que sur des
+> salves isolées. Deux choses à lire dans le rapport, en plus des seuils
+> habituels :
+>
+> - la **médiane et le p99 de `POST preter`** — si le p99 s'écarte franchement
+>   de la médiane alors que le CPU reste bas, c'est de l'attente de verrou, pas
+>   de la charge ;
+> - le **nombre de `occupe`** dans « Résultats métier » : attendu à zéro. Il
+>   compte les fois où le verrou n'a pas été obtenu en 15 s
+>   (`db.TIMEOUT_ECRITURE_S`).
+>
+> Les transactions durent une fraction de milliseconde : à ce rythme, l'attente
+> doit rester invisible. Si elle ne l'est pas, c'est un résultat en soi.
+
 ### Phase 3 — Où ça casse (20 min, seul)
 
 Chercher le point de rupture, non pour le corriger, mais pour connaître la
-marge :
+marge. Cette phase a gagné en intérêt depuis que les écritures se sérialisent :
+elle situe le nombre de bénévoles simultanés à partir duquel la file d'attente
+devient perceptible, puis celui où le délai de 15 s est dépassé et où les
+`occupe` apparaissent.
 
 ```bash
 for n in 8 16 32 64; do
@@ -404,6 +457,14 @@ réelles. Chacun sur son téléphone, jeton de formation activé :
    numéros de pochette affichés à l'écran de chacun. Recommencer dix fois,
    avec des boîtes différentes puis avec la même boîte. C'est le § 2 rejoué à
    la main, dans les conditions du stand.
+
+   Depuis le correctif, l'intérêt n'est plus de reproduire le défaut — trois
+   personnes ne synchronisent pas à la milliseconde, le script le fait bien
+   mieux. Ce qu'on regarde ici, c'est **ce que voient les bénévoles quand ça se
+   produit** : sur la même boîte, un seul doit obtenir un numéro et les autres
+   lire « Cet exemplaire était déjà sorti », message qu'il faut vérifier
+   compréhensible sans explication. Et si « Rien n'a été enregistré » apparaît,
+   vérifier que la personne comprend qu'elle doit réappuyer.
 2. **Le scan en rafale.** Chacun scanne dix boîtes d'affilée, en même temps que
    les autres. Chronométrer le temps entre le scan et l'affichage du numéro.
 3. **Le réseau qui flanche.** Passer un téléphone en mode avion pendant qu'une
@@ -423,9 +484,11 @@ qu'une erreur technique le soir de l'événement.
 
 | Indicateur | Attendu | Où le lire |
 |---|---|---|
-| Invariants de la base | **7/7 verts**, en toute circonstance | `coherence.py` |
+| Invariants de la base | **8/8 verts**, en toute circonstance | `coherence.py` |
+| Index UNIQUE en place (I8) | **présents** — sinon le filet est absent | `coherence.py`, journal du service |
 | Numéro de pochette attribué deux fois | **zéro**, y compris phase 1 | `course.py`, `coherence.py` |
 | Prêts multiples sur une boîte | **zéro** | `course.py`, `coherence.py` |
+| Résultats `occupe` (conflit d'accès) | **zéro** jusqu'au profil « pointe » | « Résultats métier » de `charge.py`, verdict de `course.py` |
 | Erreurs HTTP 5xx | **zéro** | rapport de `charge.py` |
 | `POST preter` — médiane | < 300 ms | rapport de `charge.py` |
 | `POST preter` — p90 | < 800 ms | rapport de `charge.py` |
@@ -435,8 +498,11 @@ qu'une erreur technique le soir de l'événement.
 | Fichiers WAL | < 10 Mo, redescendent | `coherence.py`, `mesures.sh` |
 | Espace disque libre | > 1 Go à tout moment | `mesures.sh` |
 
-Une ligne rouge sur les quatre premières est **bloquante** : elle touche
-l'intégrité des données. Les autres sont des indicateurs de confort, à arbitrer.
+Une ligne rouge sur les quatre premières, ou sur « Erreurs HTTP 5xx », est
+**bloquante** : elle touche l'intégrité des données. « `occupe` » est à part —
+rien n'est abîmé quand ce message apparaît, mais à huit bénévoles il ne devrait
+jamais se montrer, donc sa présence est un signal à comprendre avant
+l'événement. Les autres lignes sont des indicateurs de confort, à arbitrer.
 
 ---
 
@@ -469,7 +535,44 @@ Ces correctifs touchent le cœur métier : ils méritent leur propre session,
 avec des tests dédiés (une salve de prêts concurrents dans la suite pytest,
 sur le modèle de `course.py` mais en process unique).
 
-### 6.2 Si les temps de réponse décrochent
+### 6.2 Si une anomalie réapparaît malgré le correctif
+
+Ce n'est plus une découverte, c'est une **régression**, et l'ordre du
+diagnostic compte : commencer par vérifier que la protection est bien là avant
+de soupçonner qu'elle est insuffisante.
+
+1. **I8 est-il vert ?** Si les index UNIQUE manquent, la première question
+   n'est pas « pourquoi le doublon ? » mais « pourquoi le filet n'est-il pas
+   posé ? ». Le journal du service au démarrage porte la réponse.
+2. **La base est-elle antérieure au correctif ?** Une restauration de
+   sauvegarde ancienne rejoue bien `init_db()` (volet 3 de D5), mais si la base
+   restaurée contenait déjà une incohérence, la création des index a été
+   refusée — silencieusement pour l'utilisateur, avec un avertissement au
+   journal. C'est le scénario le plus probable en pratique.
+3. **Un chemin d'écriture a-t-il échappé à `services.transaction` ?** Le § 2.4
+   liste les cinq fonctions couvertes. Une écriture ajoutée depuis, ou un accès
+   direct à `prets`/`pochettes` ailleurs, sortirait de la protection.
+4. **Le module est-il celui qu'on croit ?** Le § 2.4 signale que le reste du
+   module tournois, le planning et le programme n'ont pas été audités.
+
+### 6.3 Si des « occupe » apparaissent
+
+Le message « Rien n'a été enregistré » signifie que le verrou d'écriture n'a
+pas été obtenu en 15 s, ou qu'un index a refusé un doublon. Aucune donnée n'est
+abîmée, et le bénévole réappuie — mais à l'échelle de cet événement, ce message
+ne devrait pas exister.
+
+Regarder d'abord si une écriture longue tient le verrou : un import de
+catalogue, une restauration de sauvegarde, une clôture de tous les prêts. Ces
+opérations-là sont légitimement lentes, et il est utile de savoir qu'elles
+bloquent le stand pendant qu'elles tournent — c'est une consigne d'exploitation
+(« ne pas importer le catalogue pendant l'événement »), pas forcément un
+correctif.
+
+Si aucune écriture longue n'était en cours, c'est que la contention vient du
+prêt lui-même, et le § 6.4 s'applique.
+
+### 6.4 Si les temps de réponse décrochent
 
 Regarder d'abord **où** : si c'est `GET /catalogue` et `GET /stats` mais pas
 `POST preter`, le stand n'est pas gêné et le sujet peut attendre. Le VPS n'est
@@ -480,7 +583,7 @@ sessions admin et la limitation de débit vivent en mémoire du processus. En
 ajouter demanderait de déplacer ces deux mécanismes ; ce n'est pas un réglage
 à changer à la légère, et ce n'est pas nécessaire à cette échelle.
 
-### 6.3 Dans tous les cas
+### 6.5 Dans tous les cas
 
 Consigner les chiffres dans ce fichier (§ 8) : la prochaine montée de version
 aura une référence à laquelle se comparer.
@@ -516,35 +619,46 @@ n'importe quel outil.
 ```
 Date : ……………………   Version déployée : ……………   VPS : ……… vCPU / ……… Go RAM
 
-Phase 1 — accès simultanés
-  scénario A (boîtes différentes)   doublons : ………/……… manches
-  scénario A, pochettes vides       erreurs 500 : ………
-  scénario B (même boîte)           prêts multiples : ………/……… manches
-  coherence.py                      invariants verts : ………/7
+Phase 0 — point de départ
+  coherence.py                      invariants verts : ………/8   (I8 : ……)
+  journal « filet de sécurité »     absent / présent : ………
+
+Phase 1 — accès simultanés (non-régression)
+  scénario A (boîtes différentes)   numéros distincts : ………/8 par manche
+                                    doublons : ………/……… manches
+  scénario A, pochettes vides       numéros obtenus ……… → ………   erreurs 500 : ………
+  scénario B (même boîte)           prêts ouverts par salve : ……… (attendu 1)
+  résultats « occupe »              ………  (attendu 0)
+  coherence.py                      invariants verts : ………/8
 
 Phase 2 — nominal (600 s)
   POST preter   méd. ……… ms   p90 ……… ms   p99 ……… ms
   GET catalogue méd. ……… ms   p90 ……… ms
-  erreurs 5xx ………   incidents ………
+  erreurs 5xx ………   incidents ………   « occupe » ………
   CPU pic ……… %   RAM ……… Mo
 
 Phase 2 — pointe (600 s)
   POST preter   méd. ……… ms   p90 ……… ms   p99 ……… ms
+  écart p99/médiane (attente de verrou ?) : ………
   effet d'un export PDF sur les temps de prêt : ………………………………
+  erreurs 5xx ………   « occupe » ………
   CPU pic ……… %   RAM ……… Mo
 
 Phase 3 — rupture
   décrochage (méd. > 1 s) à ……… bénévoles simulés
+  premiers « occupe » à ……… bénévoles simulés
   premières erreurs à ……… bénévoles simulés
 
 Phase 4 — nuit (8 h)
   RAM début ……… Mo   fin ……… Mo
   WAL max ……… Kio    disque libre min ……… Mo
   sauvegarde pendant charge : OK / KO
-  invariants au réveil : ………/7
+  « occupe » pendant la sauvegarde : ………
+  invariants au réveil : ………/8
 
 Phase 5 — terrain (…… personnes)
-  compte à rebours, même boîte      : numéros identiques ? ………
+  compte à rebours, même boîte      : un seul numéro attribué ? ………
+                                      message des autres compris ? ………
   compte à rebours, boîtes ≠        : numéros en double ? ………
   scan → affichage du numéro        : ……… s en moyenne
   coupure réseau                    : message clair ? ………
@@ -565,6 +679,14 @@ Phase 5 — terrain (…… personnes)
 - Il ne teste ni le **module tournois**, ni le **planning bénévole**, ni le
   **programme du week-end** : ces modules n'ont pas d'écriture concurrente
   comparable, et ce ne sont pas eux qui tiennent le stand.
+- **La course sur les inscriptions de tournoi n'est vérifiée que par pytest.**
+  Le § 2.4 la corrige, mais aucun script ne la rejoue en HTTP, et le § 2.4
+  rappelle qu'**aucun index ne peut lui servir de filet** : un plafond de
+  places est un comptage, pas une unicité. La couverture est donc plus mince
+  que côté prêt. Un `course_inscriptions.py` sur le modèle de `course.py`
+  (N inscriptions simultanées sur la dernière place d'un tournoi) reste à
+  écrire si le besoin se confirme — l'enjeu, une chaise en trop, ne le
+  justifiait pas jusqu'ici.
 - La **limitation de débit par IP** (`RATE_LIMIT_PER_MINUTE`) ne s'applique
   qu'à la page d'activation et à la connexion admin, pas aux actions de prêt.
   Tous les bénévoles étant derrière la même IP publique dans la salle, cela
