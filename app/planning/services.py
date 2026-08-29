@@ -29,6 +29,9 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta
 
+# Repli du nom de l'association quand la route ne le transmet pas (voir la
+# docstring d'`ical_planning_benevole`). La valeur qui fait foi est réglée en
+# administration et vit dans la base de PRÊT, que ce module ne connaît pas.
 from app.config import NOM_ASSOCIATION
 from app.planning.models import ETATS, NIVEAUX_PREFERENCE, TYPES_CRENEAU
 from app.services import FUSEAU_UTC, local_vers_utc_iso, maintenant
@@ -1107,22 +1110,31 @@ def _ics_horodatage(dt: datetime) -> str:
     return dt.astimezone(FUSEAU_UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def ical_planning_benevole(conn: sqlite3.Connection, id_benevole: int) -> str | None:
+def ical_planning_benevole(conn: sqlite3.Connection, id_benevole: int,
+                           nom_association: str | None = None) -> str | None:
     """
     Construit le contenu iCalendar (.ics) — multi-VEVENT — de « mon planning »
     pour un bénévole : un événement par affectation (poste ou tâche). Aucune
     donnée personnelle dans le fichier (pas de nom). Renvoie None si le
     bénévole n'a aucune affectation.
+
+    `nom_association` arrive en PARAMÈTRE, renseigné par la route : il se règle
+    depuis /admin/identite et vit dans la base de PRÊT, alors que cette fonction
+    n'a en main que celle du PLANNING. Lui faire ouvrir une seconde base
+    romprait l'indépendance des trois bases, qui est un invariant du projet.
+    Absent, on retombe sur le repli de `app/config.py` — un `.ics` reste ainsi
+    valide même appelé hors requête.
     """
     affectations = planning_du_benevole(conn, id_benevole)
     if not affectations:
         return None
 
+    asso = nom_association or NOM_ASSOCIATION
     dtstamp = _ics_horodatage(datetime.now(FUSEAU_UTC))
     lignes = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        f"PRODID:-//{NOM_ASSOCIATION}//Planning//FR",
+        f"PRODID:-//{asso}//Planning//FR",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
     ]
@@ -1137,7 +1149,7 @@ def ical_planning_benevole(conn: sqlite3.Connection, id_benevole: int) -> str | 
             resume = a["poste"]["nom"]
         else:
             resume = c["libelle"] or "Tâche"
-        description = f"{c['libelle_jour']} — {NOM_ASSOCIATION}"
+        description = f"{c['libelle_jour']} — {asso}"
         lignes += [
             "BEGIN:VEVENT",
             f"UID:planning-{a['id_affectation']}-{_ics_horodatage(debut)}@desjeuxpleinlamanche",

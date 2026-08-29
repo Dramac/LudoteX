@@ -1,21 +1,31 @@
 """
-Configuration partagée légère : nom de l'association affiché dans l'interface,
-et bascule du MODE FORMATION.
+Configuration partagée légère : repli du nom de l'association, et bascules du
+MODE FORMATION et du JOURNAL D'ACTIVITÉ.
 
-POURQUOI UN MODULE DÉDIÉ
-------------------------
-Le nom de l'association apparaît à une quinzaine d'endroits (bandeau, pied de
-page, page « À propos », exports Excel/PDF, fichiers .ics des tournois, écran
-salle, message de partage du jeton…). Le centraliser ici évite les valeurs en
-dur dispersées et permet à un autre déploiement de cette application (autre
-association) de personnaliser l'affichage sans toucher au code.
+NOM DE L'ASSOCIATION — CE MODULE N'EN EST PLUS LE DOMICILE
+----------------------------------------------------------
+Le nom de l'association est une donnée ÉDITORIALE : un bureau non technicien
+doit pouvoir la corriger seul, sans éditer un fichier sur le serveur ni
+redémarrer le service. Elle se règle donc depuis ``/admin/identite`` et vit en
+base, dans la table `parametres` de la base de PRÊT.
 
-CONFIGURATION
--------------
-Lu dans la variable d'environnement ``NOM_ASSOCIATION`` (chargée depuis
-`.env`), avec repli sur le nom historique "LudoteX" si la
-variable est absente — compatibilité avec les déploiements existants qui n'ont
-pas encore cette clé dans leur `.env`.
+Le domicile de la LECTURE est ``app/services.py``, section « Identité de
+l'ASSOCIATION » : le couple ``lire_nom_association(conn)`` / ``nom_association()``,
+sur le patron de l'identité de l'événement. Les gabarits reçoivent la valeur
+par un CONTEXT PROCESSOR (voir app/templating.py), donc ``{{ nom_association }}``
+y reste écrit tel quel.
+
+``NOM_ASSOCIATION`` ci-dessous n'est plus qu'un REPLI DE SECOND RANG dans cette
+cascade :
+
+    valeur en base  ->  NOM_ASSOCIATION (.env)  ->  "LudoteX"
+
+Il reste utile à deux titres : un déploiement existant qui a déjà réglé cette
+variable dans son `.env` ne change pas d'apparence, et ``deploy/install.sh``
+peut la poser dès l'installation, avant tout passage en administration.
+
+Le défaut est « LudoteX », le nom du logiciel : une association qui vient de
+l'installer voit un nom neutre et juste, jamais celui d'une autre association.
 
 MODE FORMATION
 --------------
@@ -57,6 +67,8 @@ from dotenv import load_dotenv
 # app/db.py et app/tournoi/db.py).
 load_dotenv()
 
+# Repli de SECOND RANG du nom de l'association : la valeur réglée en
+# administration (base) l'emporte. Voir la docstring du module.
 NOM_ASSOCIATION = os.getenv("NOM_ASSOCIATION", "LudoteX")
 
 # Bascule mode formation : "1"/"true"/"on" (insensible à la casse) -> actif.

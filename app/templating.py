@@ -23,18 +23,43 @@ Les gabarits se trouvent dans app/templates/ ; tous héritent de base.html.
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
+from starlette.requests import Request
 
 from app import admin_auth, auth, modules, services
-from app.config import FORMATION_URL, MODE_FORMATION, NOM_ASSOCIATION
+from app.config import FORMATION_URL, MODE_FORMATION
 from app.version import APP_VERSION
 
 # Dossier contenant les gabarits HTML (app/templates/).
 BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# Nom de l'association, personnalisable via NOM_ASSOCIATION (.env) — voir
-# app/config.py. Disponible dans TOUS les gabarits : {{ nom_association }}.
-templates.env.globals["nom_association"] = NOM_ASSOCIATION
+
+def _identite(request: Request) -> dict:
+    """
+    Valeurs calculées À CHAQUE RENDU et injectées dans tous les gabarits.
+
+    POURQUOI UN CONTEXT PROCESSOR ET NON UN GLOBAL JINJA
+    ----------------------------------------------------
+    `nom_association` était un global posé à l'import, depuis une constante
+    d'app/config.py : sa valeur était donc figée au démarrage du serveur. Le
+    nom se règle désormais depuis /admin/identite et vit en base (voir
+    app/services.py, section « Identité de l'ASSOCIATION ») : il doit être relu
+    à chaque requête, sans quoi une modification n'apparaîtrait qu'au
+    redémarrage suivant.
+
+    Un context processor est ce qui permet ce changement SANS toucher aux
+    gabarits : `{{ nom_association }}` y reste écrit tel quel — il y est lu dans
+    66 fichiers — au lieu de devenir un appel `{{ nom_association() }}`.
+
+    `services.nom_association()` ne lève jamais et ouvre puis referme sa propre
+    connexion : cette fonction est appelée y compris pendant le rendu de la
+    page d'erreur 500, où la base peut précisément être en cause.
+    """
+    return {"nom_association": services.nom_association()}
+
+
+templates = Jinja2Templates(
+    directory=str(BASE_DIR / "templates"), context_processors=[_identite]
+)
 
 # Mode formation (voir app/config.py + docs/mode-formation.md) : bandeau et
 # filigrane dans base.html, condition du bouton de réinitialisation en admin.

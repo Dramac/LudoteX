@@ -80,6 +80,9 @@ ACTIONS = {
     "alerte_effacee",
     "evenement_date_modifiee",
     "evenement_nom_modifie",
+    # Identité de l'association (/admin/identite) : le nom du déploiement,
+    # distinct du nom de l'ÉDITION ci-dessus.
+    "association_nom_modifie",
     "inscription_tournoi_modifiee",
     "planning_purge",
     "formation_reinitialisee",

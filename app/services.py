@@ -1597,6 +1597,89 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
 
 
 # ===========================================================================
+# Identité de l'ASSOCIATION, réglée depuis /admin/identite
+# ===========================================================================
+# Le nom de l'association (bandeau, pied de page, « À propos », exports, .ics,
+# message de partage du jeton…) était une constante de `app/config.py` lue dans
+# la variable d'environnement NOM_ASSOCIATION, donc figée au démarrage. Pour un
+# bureau non technicien, corriger une faute de frappe supposait d'éditer un
+# fichier sur le serveur et de redémarrer le service. C'est une donnée
+# ÉDITORIALE : elle vit désormais en base, comme le nom de l'événement, et se
+# règle depuis un écran d'administration.
+#
+# Même domicile et même patron de lecture que l'identité de l'événement
+# ci-dessous : le couple `lire_nom_association(conn)` / `nom_association()`.
+# Le projet a déjà payé le motif « lire_parametre recopié partout » ailleurs
+# (double domicile des index uniques, duplication de la logique d'expiration
+# d'annonce).
+#
+# DEUX DIFFÉRENCES avec le nom de l'événement, et elles sont structurantes :
+#
+# 1. `nom_association()` ne renvoie JAMAIS None. Le nom apparaît dans le
+#    <title> de toutes les pages : il faut toujours quelque chose à afficher.
+#    D'où la cascade base -> NOM_ASSOCIATION (.env, repli de second rang, pour
+#    les déploiements qui l'ont déjà réglé là) -> "LudoteX".
+# 2. `nom_association()` ne LÈVE JAMAIS. Elle est appelée à chaque rendu de
+#    page, y compris celui de la page d'erreur 500 (`erreur.html` est un
+#    gabarit comme les autres) : une exception ici transformerait une panne en
+#    boucle d'erreur. Toute lecture qui échoue (base absente, verrouillée,
+#    schéma pas encore créé) retombe silencieusement sur le repli.
+CLE_ASSOCIATION_NOM = "asso_nom"
+
+# Longueur maximale du nom. Même borne que le nom de l'événement : c'est un
+# titre, il doit tenir sur une ligne dans un bandeau et dans un onglet.
+LONGUEUR_NOM_ASSOCIATION = 80
+
+# Le dernier repli de la cascade (« LudoteX ») n'est PAS redéfini ici : c'est la
+# valeur par défaut de `NOM_ASSOCIATION` dans app/config.py, et elle n'a qu'un
+# domicile. Le `from app.config import NOM_ASSOCIATION` est fait DANS les deux
+# fonctions ci-dessous plutôt qu'en tête de module : la valeur est ainsi relue à
+# chaque appel, et aucun cycle d'import ne peut naître de ce sens de dépendance.
+
+
+def lire_nom_association(conn: sqlite3.Connection) -> str:
+    """
+    Nom de l'association, pour les appelants qui ont déjà une connexion de PRÊT.
+
+    Cascade : valeur en base -> variable d'environnement NOM_ASSOCIATION ->
+    "LudoteX". Ne renvoie jamais None ni une chaîne vide.
+    """
+    from app.config import NOM_ASSOCIATION
+
+    return lire_parametre(conn, CLE_ASSOCIATION_NOM) or NOM_ASSOCIATION
+
+
+def nom_association() -> str:
+    """
+    Même valeur que `lire_nom_association`, pour les appelants qui n'ont PAS de
+    connexion de prêt en main : le context processor des gabarits (voir
+    app/templating.py), les exports, et les routes des modules tournois /
+    programme / planning, qui travaillent sur une autre base.
+
+    Même exception délibérée à la convention `conn` en paramètre que
+    `nom_evenement` — et même mise en garde : ne PAS l'appeler depuis un service
+    qui reçoit déjà une connexion, ni depuis un service d'un autre module
+    (l'indépendance des trois bases est un invariant du projet ; c'est la ROUTE
+    qui lit la valeur et la transmet en paramètre).
+
+    NE LÈVE JAMAIS : appelée à chaque rendu de page, y compris celui de la page
+    d'erreur 500. Toute erreur de lecture retombe sur le repli.
+    """
+    from app.config import NOM_ASSOCIATION
+
+    try:
+        from app.db import get_connection
+
+        conn = get_connection()
+        try:
+            return lire_nom_association(conn)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 - repli volontairement total, voir docstring
+        return NOM_ASSOCIATION
+
+
+# ===========================================================================
 # Identité de l'événement (nom + date), réglée depuis /admin/evenement
 # ===========================================================================
 # Deux réglages, deux clés voisines dans `parametres` (base de PRÊT) :

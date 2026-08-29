@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from app.config import NOM_ASSOCIATION
+# Nom de l'association : réglé en administration et lu en base (voir
+# app/services.py, section « Identité de l'ASSOCIATION »). Cette fonction
+# ouvre puis referme sa propre connexion et ne lève jamais — un export ne
+# doit pas échouer parce que le nom n'a pas pu être lu.
+from app.services import nom_association
 
 
 def _libelle_metrique(metrique: str) -> str:
@@ -98,7 +102,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     ws = wb.active
     ws.title = "Synthèse"
     g = data["globales"]
-    ws["A1"] = f"Statistiques de prêt — {NOM_ASSOCIATION}"
+    ws["A1"] = f"Statistiques de prêt — {nom_association()}"
     ws["A1"].font = gras
     ws["A2"] = f"Période : {periode_txt}"
     lignes = [
@@ -206,7 +210,7 @@ def construire_pdf(data: dict, periode_txt: str,
         ]))
         return t
 
-    elements.append(Paragraph(f"Statistiques de prêt — {NOM_ASSOCIATION}",
+    elements.append(Paragraph(f"Statistiques de prêt — {nom_association()}",
                               styles["Title"]))
     elements.append(Paragraph(f"Période : {periode_txt}", styles["Normal"]))
     elements.append(Spacer(1, 0.4 * cm))
@@ -309,7 +313,7 @@ def signalements_pdf(lignes: list[dict], filtre_txt: str) -> bytes:
                             topMargin=1.2 * cm, bottomMargin=1.2 * cm,
                             leftMargin=1.2 * cm, rightMargin=1.2 * cm)
     elements = [
-        Paragraph(f"Carnet de maintenance — {NOM_ASSOCIATION}", styles["Title"]),
+        Paragraph(f"Carnet de maintenance — {nom_association()}", styles["Title"]),
         Paragraph(f"Signalements : {filtre_txt}", styles["Normal"]),
         Spacer(1, 0.4 * cm),
     ]

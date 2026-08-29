@@ -36,7 +36,7 @@ from fastapi.responses import RedirectResponse, Response
 from app import admin_auth, journal
 from app.planning import demo, exports, services
 from app.planning.db import get_connection
-from app.services import FUSEAU_LOCAL
+from app.services import FUSEAU_LOCAL, nom_association
 from app.templating import templates
 
 router = APIRouter(tags=["planning"])
@@ -292,10 +292,16 @@ def mon_planning_ics(code: str = ""):
     tout mon planning à mon agenda ». Public, sans donnée personnelle.
     404 si code invalide ou aucune affectation (jamais d'erreur brute).
     """
+    # Le nom de l'association vit dans la base de PRÊT : c'est la route qui va
+    # le chercher et le transmet, jamais le service (voir
+    # `ical_planning_benevole`).
+    asso = nom_association()
     conn = get_connection()
     try:
         benevole = services.get_benevole_par_code(conn, code) if code else None
-        ics = services.ical_planning_benevole(conn, benevole["id_benevole"]) if benevole else None
+        ics = (services.ical_planning_benevole(
+                   conn, benevole["id_benevole"], nom_association=asso)
+               if benevole else None)
     finally:
         conn.close()
     if ics is None:

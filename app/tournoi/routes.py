@@ -38,6 +38,7 @@ from app.auth import exiger_jeton
 from app.services import (
     inscription_tournoi_reservee,
     local_vers_utc_iso,
+    nom_association,
     nom_evenement,
     pluriel,
 )
@@ -267,12 +268,16 @@ def agenda_ics(request: Request, id_tournoi: int):
     Télécharge l'événement du tournoi au format iCalendar (.ics) — « Ajouter à
     mon agenda ». Public, sans donnée personnelle. 404 si pas de date.
     """
-    # Le nom de l'événement vit dans la base de PRÊT : c'est la route qui va le
-    # chercher et le transmet, jamais le service (voir `ical_tournoi`).
+    # Le nom de l'événement ET celui de l'association vivent dans la base de
+    # PRÊT : c'est la route qui va les chercher et les transmet, jamais le
+    # service (voir `ical_tournoi`).
     nom = nom_evenement()
+    asso = nom_association()
     conn = get_connection()
     try:
-        ics = services.ical_tournoi(conn, id_tournoi, nom_evenement=nom)
+        ics = services.ical_tournoi(
+            conn, id_tournoi, nom_evenement=nom, nom_association=asso
+        )
     finally:
         conn.close()
     if ics is None:

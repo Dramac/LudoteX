@@ -27,6 +27,12 @@ import pytest
 MOT_DE_PASSE = "secret-admin-evenement"
 NOM = "Festival du Jeu 2026"
 
+# Nom d'association attendu dans ces tests : aucun n'écrit la clé `asso_nom`
+# (réglée depuis /admin/identite), la cascade retombe donc sur le repli de
+# app/config.py. Importé plutôt qu'écrit en dur : ce fichier teste le nom de
+# l'ÉVÉNEMENT, il n'a pas à connaître la valeur du nom d'association.
+from app.config import NOM_ASSOCIATION as ASSO  # noqa: E402
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -133,7 +139,7 @@ def test_sans_nom_les_surfaces_publiques_sont_inchangees(client):
     # /live : le titre reste le nom de l'association, et aucun champ nouveau
     # n'apparaît dans les données.
     data = client.get("/live/data").json()
-    assert data["titre"] == "LudoteX"
+    assert data["titre"] == ASSO
 
 
 def test_sans_nom_les_ics_sont_inchanges(client):
@@ -147,10 +153,10 @@ def test_sans_nom_les_ics_sont_inchanges(client):
     id_element = _creer_element(client)
 
     ics_t = client.get(f"/tournoi/{id_tournoi}/agenda.ics").text
-    assert "DESCRIPTION:Tournoi — LudoteX" in ics_t
+    assert f"DESCRIPTION:Tournoi — {ASSO}" in ics_t
 
     ics_p = client.get(f"/programme/{id_element}/agenda.ics").text
-    assert "DESCRIPTION:Programme — LudoteX" in ics_p
+    assert f"DESCRIPTION:Programme — {ASSO}" in ics_p
 
 
 def test_sans_nom_le_service_renvoie_none(client):
@@ -170,7 +176,7 @@ def test_sans_nom_le_service_renvoie_none(client):
 # ---------------------------------------------------------------------------
 def test_titre_live_sans_nom(client):
     """Aucun nom d'événement : le nom de l'association."""
-    assert client.get("/live/data").json()["titre"] == "LudoteX"
+    assert client.get("/live/data").json()["titre"] == ASSO
 
 
 def test_titre_live_est_le_nom_de_l_evenement(client):
@@ -402,7 +408,7 @@ def test_le_nom_apparait_dans_les_deux_ics(client):
     id_element = _creer_element(client)
 
     ics_t = client.get(f"/tournoi/{id_tournoi}/agenda.ics").text
-    assert f"DESCRIPTION:{NOM} — Tournoi — LudoteX" in ics_t
+    assert f"DESCRIPTION:{NOM} — Tournoi — {ASSO}" in ics_t
 
     ics_p = client.get(f"/programme/{id_element}/agenda.ics").text
-    assert f"{NOM} — Programme — LudoteX" in ics_p
+    assert f"{NOM} — Programme — {ASSO}" in ics_p

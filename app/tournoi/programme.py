@@ -23,6 +23,8 @@ import math
 import sqlite3
 from datetime import date, datetime, time, timedelta
 
+# Repli du nom de l'association quand la route ne le transmet pas — même
+# raison que dans `tournoi/services.py` : le réglage vit dans la base de PRÊT.
 from app.config import NOM_ASSOCIATION
 from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant
 from app.tournoi.creneau import (
@@ -380,7 +382,8 @@ def fin_iso(date_heure_iso: str | None, duree_min: int | None) -> str | None:
 # Export iCalendar (.ics) — patron `tournoi.services.ical_tournoi`
 # ===========================================================================
 def ical_element(conn: sqlite3.Connection, id_element: int,
-                 nom_evenement: str | None = None) -> str | None:
+                 nom_evenement: str | None = None,
+                 nom_association: str | None = None) -> str | None:
     """
     Contenu iCalendar (.ics) d'un élément de programme pour « Ajouter à mon
     agenda ». Aucune donnée personnelle. None si introuvable ou sans date.
@@ -389,6 +392,11 @@ def ical_element(conn: sqlite3.Connection, id_element: int,
     (voir sa docstring) : le réglage vit dans la base de PRÊT, ce module ne
     connaît que celle des TOURNOIS, et c'est la route qui fait le lien. Absent,
     la description est exactement ce qu'elle était.
+
+    `nom_association` arrive lui aussi en paramètre, et pour la MÊME raison :
+    il se règle depuis /admin/identite et vit dans la base de PRÊT. Absent, on
+    retombe sur le repli de `app/config.py` — un `.ics` reste ainsi valide même
+    appelé hors requête.
     """
     e = get_element(conn, id_element)
     if e is None or not e["date_heure"]:
@@ -404,12 +412,13 @@ def ical_element(conn: sqlite3.Connection, id_element: int,
         description.append(e["description"])
     if nom_evenement:
         description.append(nom_evenement)
-    description.append(f"Programme — {NOM_ASSOCIATION}")
+    asso = nom_association or NOM_ASSOCIATION
+    description.append(f"Programme — {asso}")
 
     lignes = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        f"PRODID:-//{NOM_ASSOCIATION}//Programme//FR",
+        f"PRODID:-//{asso}//Programme//FR",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",

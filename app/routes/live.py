@@ -22,7 +22,6 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 
 from app import services
-from app.config import NOM_ASSOCIATION
 from app.db import get_connection
 from app.modules import lire_etat_module
 from app.services import FUSEAU_LOCAL
@@ -123,7 +122,7 @@ def titre_ecran(conn) -> str:
     pas de ligne à lui, la refonte du 06/08 a rendu cette hauteur au contenu
     utile.
     """
-    return services.lire_nom_evenement(conn) or NOM_ASSOCIATION
+    return services.lire_nom_evenement(conn) or services.lire_nom_association(conn)
 
 
 def reglages_panneaux(conn) -> dict[str, bool]:

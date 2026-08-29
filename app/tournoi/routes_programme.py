@@ -52,7 +52,12 @@ from fastapi.responses import RedirectResponse, Response
 from app import journal
 from app.auth import exiger_jeton
 from app.db import get_connection as get_pret_connection
-from app.services import lire_nom_evenement, lire_parametre, local_vers_utc_iso
+from app.services import (
+    lire_nom_evenement,
+    lire_parametre,
+    local_vers_utc_iso,
+    nom_association,
+)
 from app.templating import templates
 from app.tournoi import programme
 from app.tournoi.db import get_connection
@@ -223,12 +228,18 @@ def agenda_ics(request: Request, id_element: int):
     Télécharge l'événement au format iCalendar (.ics) — « Ajouter à mon
     agenda ». Public, sans donnée personnelle. 404 si introuvable ou sans date.
     """
-    # Le nom de l'événement vit dans la base de PRÊT : c'est la route qui va le
-    # chercher et le transmet, jamais le service (voir `ical_element`).
+    # Le nom de l'événement ET celui de l'association vivent dans la base de
+    # PRÊT : c'est la route qui va les chercher et les transmet, jamais le
+    # service (voir `ical_element`). Le nom de l'association n'est pas un
+    # réglage de l'ÉVÉNEMENT : il a son propre accesseur, pas une place dans
+    # `_reglages_evenement`.
     nom = _reglages_evenement()[1]
+    asso = nom_association()
     conn = get_connection()
     try:
-        ics = programme.ical_element(conn, id_element, nom_evenement=nom)
+        ics = programme.ical_element(
+            conn, id_element, nom_evenement=nom, nom_association=asso
+        )
     finally:
         conn.close()
     if ics is None:

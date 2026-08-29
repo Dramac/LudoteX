@@ -27,6 +27,9 @@ import secrets
 import sqlite3
 from datetime import date, datetime, time, timedelta
 
+# Repli du nom de l'association quand la route ne le transmet pas (voir la
+# docstring d'`ical_tournoi`). La valeur qui fait foi est réglée en
+# administration et vit dans la base de PRÊT, que ce module ne connaît pas.
 from app.config import NOM_ASSOCIATION
 from app.services import (  # helpers partagés avec le module de prêt
     FUSEAU_LOCAL,
@@ -1415,7 +1418,8 @@ def _ics_horodatage(dt: datetime) -> str:
 
 
 def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int,
-                 nom_evenement: str | None = None) -> str | None:
+                 nom_evenement: str | None = None,
+                 nom_association: str | None = None) -> str | None:
     """
     Construit le contenu iCalendar (.ics) d'un tournoi pour « Ajouter à mon
     agenda ». Aucune donnée personnelle. Renvoie None si le tournoi est
@@ -1430,6 +1434,11 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int,
     TOURNOIS. Lui faire ouvrir une seconde base romprait l'indépendance des
     trois bases, qui est un invariant du projet. Absent (défaut), la description
     est exactement ce qu'elle était.
+
+    `nom_association` arrive lui aussi en paramètre, et pour la MÊME raison :
+    il se règle depuis /admin/identite et vit dans la base de PRÊT. Absent, on
+    retombe sur le repli de `app/config.py` — un `.ics` reste ainsi valide même
+    appelé hors requête.
     """
     t = get_tournoi(conn, id_tournoi)
     if t is None or not t["date_heure"]:
@@ -1446,12 +1455,13 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int,
         description.append(f"Jeu : {t['jeu']}")
     if nom_evenement:
         description.append(nom_evenement)
-    description.append(f"Tournoi — {NOM_ASSOCIATION}")
+    asso = nom_association or NOM_ASSOCIATION
+    description.append(f"Tournoi — {asso}")
 
     lignes = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        f"PRODID:-//{NOM_ASSOCIATION}//Tournois//FR",
+        f"PRODID:-//{asso}//Tournois//FR",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",

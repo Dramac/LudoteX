@@ -27,7 +27,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app import admin_auth, auth, exports, formation, journal, sauvegarde, services, supervision
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
-from app.config import MODE_FORMATION, NOM_ASSOCIATION
+from app.config import MODE_FORMATION
 from app.db import get_connection
 from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
 from app.templating import templates
@@ -807,6 +807,9 @@ def jeton_page(request: Request):
             services.empreinte_jeton(jeton),
             admin_auth.appareils_admin_ouverts(),
         )
+        # Lu sur la connexion déjà ouverte : le message de partage nomme
+        # l'association, et ce nom se règle depuis /admin/identite.
+        nom_asso = services.lire_nom_association(conn)
     finally:
         conn.close()
 
@@ -823,7 +826,7 @@ def jeton_page(request: Request):
     lien, partage = None, {}
     if jeton:
         lien = f"{_base_url(request)}/acces?jeton={jeton}"
-        message = f"Accès bénévole — {NOM_ASSOCIATION} : {lien}"
+        message = f"Accès bénévole — {nom_asso} : {lien}"
         partage = {
             "whatsapp": "https://wa.me/?text=" + quote(message),
             "mail": ("mailto:?subject=" + quote("Accès bénévole — prêt de jeux")
@@ -1054,6 +1057,91 @@ def journal_telecharger(request: Request):
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="journal.log"'},
     )
+
+
+def _page_identite(request: Request, saisie: str | None, message):
+    """
+    Rendu commun aux deux points d'entrée de « Identité de l'association ».
+
+    `saisie` est la valeur STOCKÉE (ou celle que le bureau vient de taper), pas
+    le nom effectivement affiché : le champ ne doit JAMAIS être prérempli avec
+    le repli. La page /admin/ecran-salle a déjà payé cette erreur — son champ
+    « Titre » prérempli avec la valeur par défaut se figeait en réglage
+    explicite au premier enregistrement, après quoi plus rien ne pouvait le
+    remplacer (voir `live.titre_ecran`). Ici, un champ vide veut dire « je n'ai
+    rien réglé, prends le repli », et il doit continuer à le vouloir dire.
+    """
+    from app.config import NOM_ASSOCIATION
+
+    return templates.TemplateResponse(
+        request, "admin_identite.html",
+        {"nom_association_saisi": saisie,
+         "nom_par_defaut": NOM_ASSOCIATION,
+         "longueur_max": services.LONGUEUR_NOM_ASSOCIATION,
+         "message": message},
+    )
+
+
+@router.get("/identite")
+def identite_formulaire(request: Request):
+    """
+    « Identité de l'association » : qui utilise cette application.
+
+    Écran SÉPARÉ de « Gestion de l'événement », et c'est délibéré : le nom de
+    l'association se règle une fois à l'installation, celui de l'événement
+    change à chaque édition. Les mêler ferait relire chaque année un réglage
+    qui n'a aucune raison de bouger.
+
+    Les lots suivants ajouteront ici le texte de présentation de « À propos »,
+    l'adresse de contact et l'URL du dépôt — trois autres données ÉDITORIALES,
+    aujourd'hui écrites en dur.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        saisie = services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM)
+    finally:
+        conn.close()
+    return _page_identite(request, saisie, None)
+
+
+@router.post("/identite")
+def identite_enregistrer(request: Request, nom_association: str = Form("")):
+    """
+    Enregistre (ou efface si vide) le nom de l'association.
+
+    Le nom est en saisie libre, simplement normalisée et bornée : ce champ ne
+    peut donc JAMAIS mettre le formulaire en échec. Vidé, la clé est effacée et
+    l'affichage retombe sur le repli (`NOM_ASSOCIATION` du `.env`, puis
+    « LudoteX ») — jamais sur un nom vide.
+
+    Journalisé SEULEMENT si la valeur change réellement, comme sur
+    /admin/evenement : sans cela, réenregistrer la page sans rien toucher
+    produirait une ligne affirmant une modification qui n'a pas eu lieu.
+    """
+    if (garde := _garde(request)):
+        return garde
+    saisie = " ".join(nom_association.split())[:services.LONGUEUR_NOM_ASSOCIATION]
+    conn = get_connection()
+    try:
+        # Lu AVANT écriture : sert uniquement à savoir si quelque chose a changé.
+        precedent = services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM)
+        services.ecrire_parametre(conn, services.CLE_ASSOCIATION_NOM, saisie or None)
+    finally:
+        conn.close()
+
+    # Le nom d'une association n'est pas une donnée personnelle : il part tel
+    # quel en `objet` (le journal le tronque à 120 caractères, il est borné à 80).
+    if (saisie or None) != precedent:
+        journal.journaliser(
+            request, "admin", "association_nom_modifie", objet=saisie or "effacé",
+        )
+
+    message = ("succes",
+               "Nom enregistré." if saisie
+               else "Nom effacé — le nom par défaut est de nouveau affiché.")
+    return _page_identite(request, saisie or None, message)
 
 
 @router.get("/evenement")

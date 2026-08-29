@@ -516,9 +516,13 @@ def test_catalogue_sans_parametre_dispo_non_regression(client):
 
 def test_racine_sert_accueil(client):
     # La racine sert désormais la page d'accueil directement (plus de redirection).
+    # Le nom affiché est celui du REPLI (`app.config.NOM_ASSOCIATION`) : la
+    # fixture n'écrit pas la clé `asso_nom`, réglée depuis /admin/identite.
+    from app.config import NOM_ASSOCIATION
+
     r = client.get("/", follow_redirects=False)
     assert r.status_code == 200
-    assert "LudoteX" in r.text
+    assert NOM_ASSOCIATION in r.text
 
 
 def test_stats_page(client, vieillir_prets):
@@ -876,7 +880,9 @@ def test_fiche_publique(client):
     assert "Catan" in r.text
     assert "Disponible" in r.text
     # Q5 : titre d'onglet cohérent avec les autres pages (« <jeu> — asso »).
-    assert "<title>Catan — LudoteX</title>" in r.text
+    from app.config import NOM_ASSOCIATION
+
+    assert f"<title>Catan — {NOM_ASSOCIATION}</title>" in r.text
 
 
 def test_fiche_inconnue(client):
@@ -1536,8 +1542,11 @@ def test_live_titre_configurable(client):
     propriété testée, elle, n'a pas changé : le titre projeté est
     configurable et se répercute sur la page comme sur les données.
     """
-    # Titre par défaut quand rien n'est réglé.
-    assert client.get("/live/data").json()["titre"] == "LudoteX"
+    # Titre par défaut quand rien n'est réglé : le nom de l'association, lui
+    # aussi réduit à son repli tant que /admin/identite n'a rien enregistré.
+    from app.config import NOM_ASSOCIATION
+
+    assert client.get("/live/data").json()["titre"] == NOM_ASSOCIATION
     from app import db, services
 
     conn = db.get_connection()
@@ -2131,19 +2140,23 @@ def test_d1_titre_onglet_se_termine_par_nom_association(client, url):
     debut = r.text.index("<title>") + len("<title>")
     fin = r.text.index("</title>")
     titre = r.text[debut:fin]
-    assert titre.endswith("LudoteX"), f"{url}: {titre!r}"
+    from app.config import NOM_ASSOCIATION
+
+    assert titre.endswith(NOM_ASSOCIATION), f"{url}: {titre!r}"
 
 
 def test_d1_titre_onglet_tournoi_et_planning_avec_objet(client):
     # Familles nécessitant un objet existant (tournoi, planning) : couvertes
     # séparément, la fixture de base n'en crée aucun.
+    from app.config import NOM_ASSOCIATION
+
     r = client.post("/tournoi/nouveau", data={"jeu": "T-D1"}, follow_redirects=False)
     tid = r.headers["location"].split("/")[2]
     for url in (f"/tournoi/{tid}", f"/tournoi/{tid}/gerer"):
         page = client.get(url)
         assert page.status_code == 200, url
         titre = page.text[page.text.index("<title>") + 7:page.text.index("</title>")]
-        assert titre.endswith("LudoteX"), f"{url}: {titre!r}"
+        assert titre.endswith(NOM_ASSOCIATION), f"{url}: {titre!r}"
         assert "Tournois" in titre, f"{url}: {titre!r}"
 
     from app.planning.db import get_connection as get_planning_connection
@@ -2156,5 +2169,5 @@ def test_d1_titre_onglet_tournoi_et_planning_avec_objet(client):
     page = client.get(f"/planning/collecte/{idev}")
     assert page.status_code == 200
     titre = page.text[page.text.index("<title>") + 7:page.text.index("</title>")]
-    assert titre.endswith("LudoteX")
+    assert titre.endswith(NOM_ASSOCIATION)
     assert "Planning" in titre

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titre %}Identité de l'association — Administration — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Identité de l'association</h1>
+  <p class="stats-note">
+    Qui utilise cette application. Ces réglages se font <strong>une fois</strong>,
+    à l'installation, et ne changent pas d'une édition à l'autre — contrairement
+    au <a class="lien" href="/admin/evenement">nom de l'événement</a>, qui change
+    chaque année.
+  </p>
+
+  {% if message %}
+    <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
+      {{ message[1] }}
+    </p>
+  {% endif %}
+
+  <form method="post" action="/admin/identite" class="recherche-form">
+    <div class="champ">
+      <label for="nom_association">Nom de l'association</label>
+      <input type="text" id="nom_association" name="nom_association"
+             maxlength="{{ longueur_max }}"
+             value="{{ nom_association_saisi or '' }}"
+             placeholder="Nom de votre association">
+      <small class="stats-note">
+        {{ longueur_max }} caractères au plus. Affiché dans le bandeau, le pied
+        de page, la page « À propos », les exports de statistiques, les fichiers
+        d'agenda et le message de partage de l'accès bénévole.
+        <strong>Laissez vide</strong> pour revenir au nom par défaut
+        (« {{ nom_par_defaut }} »).
+      </small>
+    </div>
+
+    <button type="submit" class="bouton bouton-principal">Enregistrer</button>
+  </form>
+</section>
+
+<p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
+{% endblock %}
