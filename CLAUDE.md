@@ -3100,16 +3100,20 @@ bureau** (titularité des droits : ne pas y toucher sans réponse).
   `MODE_FORMATION`, `FORMATION_URL`, chemins des bases et du journal, secrets.
   Un réglage qui engage l'infrastructure ou la sécurité ne descend pas dans une
   interface web.
-- **Contrainte technique à traiter dès le premier lot** : `nom_association` est
-  aujourd'hui un **global Jinja posé à l'import** (`app/templating.py`) depuis
-  une constante de `app/config.py`. Le passer en base impose une lecture par
-  requête. Les modules `planning` et `tournoi` l'utilisent aussi (en-têtes
-  `.ics`) alors que leurs bases sont indépendantes : la lecture doit passer par
-  **un seul accesseur** (`app/identite.py` : cache en mémoire invalidé à
-  l'écriture, repli `.env` puis valeur neutre), jamais par un accès direct à la
-  base de prêt depuis un autre module. La règle « trois bases indépendantes »
-  n'est pas rompue : ce qui est partagé est une **fonction d'affichage**, pas un
-  schéma.
+- **Contrainte technique à traiter dès le premier lot** (corrigé après lecture
+  du code — la piste d'un module `app/identite.py` est ABANDONNÉE) :
+  `nom_association` est aujourd'hui un **global Jinja posé à l'import**
+  (`app/templating.py`) depuis une constante de `app/config.py`, et il est lu
+  dans **66 gabarits** (73 occurrences) plus quatre modules Python. Le motif à
+  suivre existe déjà dans `app/services.py`, section « Identité de l'événement »
+  (`lire_nom_evenement(conn)` / `nom_evenement()`) : c'est **là** qu'atterrit
+  l'identité de l'association, pas dans un nouveau module — le projet a déjà un
+  domicile pour ce genre de réglage. Deux règles héritées de ce motif :
+  côté gabarits, un **context processor** (Starlette 0.41.3 le supporte) évite de
+  convertir les 66 gabarits en `{{ nom_association() }}` ; côté `planning` et
+  `tournoi` (en-têtes `.ics`), **c'est la route qui lit et transmet la valeur au
+  service**, jamais le service qui ouvre la base de prêt — l'indépendance des
+  trois bases est un invariant.
 - **La page « À propos » ne devient pas éditable en entier** : l'essentiel y est
   de la documentation produit, identique pour tout déploiement. Seuls le
   paragraphe « L'association », le contact et les crédits sont paramétrables.
