@@ -6,8 +6,9 @@ CE QUE CES TESTS PROTÈGENT
 La session du 2 août 2026 a rendu explicite, sur la base de PRÊT, la patience
 d'un écrivain face au verrou SQLite : `db.TIMEOUT_ECRITURE_S = 15.0`, passée à
 `sqlite3.connect`. Les deux autres bases (tournois, planning) sont restées sur
-le défaut IMPLICITE du module `sqlite3` — 5 s, subi plutôt que choisi. C'est le
-reliquat de ROB-01 (docs/audit-securite-2026-07-24.md).
+le défaut IMPLICITE du module `sqlite3` — 5 s, subi plutôt que choisi : un
+oubli plutôt qu'un choix, personne n'avait harmonisé le délai des trois bases
+avant ce correctif.
 
 L'écart comptait : un tournoi qui remplit ses inscriptions le jour J
 (`tournoi/services.py::inscrire` s'ouvre en `BEGIN IMMEDIATE` depuis le 2 août,

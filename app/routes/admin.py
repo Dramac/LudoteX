@@ -125,8 +125,8 @@ def login(request: Request, mot_de_passe: str = Form("")):
     if not ok:
         # Le SEUL signal aujourd'hui d'une tentative d'intrusion : le compteur
         # de limitation de débit est en mémoire et repart à zéro à chaque
-        # redémarrage (SEC-03 de docs/audit-securite-2026-07-24.md), donc rien
-        # n'en garde trace. Le mot de passe saisi n'est évidemment JAMAIS écrit.
+        # redémarrage, donc rien n'en garde trace. Le mot de passe saisi n'est
+        # évidemment JAMAIS écrit.
         journal.journaliser(
             request, "admin", "connexion_echouee",
             ok=False, detail="mot_de_passe",
