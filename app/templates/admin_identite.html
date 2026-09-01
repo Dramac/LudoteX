@@ -114,6 +114,36 @@
       </small>
     </div>
 
+    <div class="champ">
+      <label for="couleur">Couleur du site</label>
+      <div class="champ-couleur">
+        {# La pastille n'a PAS d'attribut `name` : elle n'est jamais postée.
+           Elle sert à choisir confortablement une couleur et recopie sa valeur
+           dans le champ texte, qui fait foi. Sans JavaScript, elle reste un
+           aperçu de la couleur en vigueur et le champ texte fonctionne seul —
+           c'est lui qui permet de reproduire une couleur de charte au code
+           exact, ce que le sélecteur ne permet pas. #}
+        <input type="color" id="couleur_pastille" value="{{ couleur_effective }}"
+               aria-label="Choisir une couleur au sélecteur"
+               oninput="document.getElementById('couleur').value = this.value">
+        <input type="text" id="couleur" name="couleur" maxlength="7"
+               pattern="#[0-9a-fA-F]{6}" spellcheck="false"
+               placeholder="{{ couleur_par_defaut }}"
+               value="{{ couleur_saisie or '' }}"
+               oninput="if (/^#[0-9a-fA-F]{6}$/.test(this.value)) { document.getElementById('couleur_pastille').value = this.value; }">
+      </div>
+      <small class="stats-note">
+        Couleur du bandeau, des boutons et des aplats de tout le site. Elle
+        s'écrit avec un dièse suivi de six caractères, par exemple
+        <code>{{ couleur_par_defaut }}</code> : c'est la forme donnée par tous
+        les nuanciers, et celle qui permet de reprendre exactement la couleur de
+        votre charte. Les nuances (survol, aplats) et la couleur du texte du
+        bandeau sont <strong>calculées automatiquement</strong> : aucune couleur
+        choisie ne peut rendre le bandeau illisible.
+        <strong>Laissez vide</strong> pour revenir au thème par défaut.
+      </small>
+    </div>
+
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>
 </section>

@@ -383,6 +383,21 @@ summary:focus-visible,
   margin-top: 12px;
 }
 .champ { display: flex; flex-direction: column; gap: 4px; }
+/* Réglage de couleur (/admin/identite) : le sélecteur natif et le code
+   hexadécimal sur une même ligne — deux façons de saisir UNE valeur, pas deux
+   réglages. Le champ texte prend la place restante : c'est lui qui fait foi. */
+.champ-couleur { display: flex; align-items: stretch; gap: 8px; }
+.champ-couleur input[type="color"] {
+  flex: 0 0 auto;
+  width: 52px;
+  min-height: 44px;          /* même cible tactile que les autres champs */
+  padding: 2px;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.champ-couleur input[type="text"] { flex: 1 1 auto; font-family: monospace; }
 .champ label { color: var(--gris); font-size: 0.9rem; }
 .champ input, .champ select {
   padding: 10px;

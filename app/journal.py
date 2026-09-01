@@ -100,6 +100,9 @@ ACTIONS = {
     # « déposé » ou « retiré ». Un refus, lui, part en `ok=False` avec le motif
     # dans `detail` (voir app/logo.py::LogoRefuse).
     "association_logo_modifie",
+    # Couleur de thème réglée depuis /admin/identite. `objet` porte la valeur
+    # (« #2a2724 » ou « effacée ») : un code hexadécimal ne désigne personne.
+    "association_couleur_modifiee",
     "inscription_tournoi_modifiee",
     "planning_purge",
     "formation_reinitialisee",

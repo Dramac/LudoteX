@@ -8,8 +8,11 @@ renommage de masse — ce document fige ce qui existe déjà et sert de guide au
 prochaines retouches.
 
 Toutes les classes vivent dans `app/static/css/style.css` (fichier unique,
-pas de préprocesseur). Les couleurs passent par les variables `:root`
-(`--vert`, `--rouge`, `--orange`, `--gris`, `--bord`, `--texte`).
+pas de préprocesseur). Les couleurs passent par les variables `:root` :
+d'un côté les couleurs de SENS (`--vert`, `--rouge`, `--orange`, `--gris`,
+`--bord`, `--texte`), de l'autre les six variables de la couleur d'IDENTITÉ
+(`--primaire` et ses nuances), réglable par l'association — voir le § 18, qui
+dit lesquelles peuvent porter du texte et lesquelles sont décoratives.
 
 ## 1. Bouton principal — `.bouton.bouton-principal`
 
@@ -45,7 +48,9 @@ retour (voir `.lien` au § 5).
 <button type="submit" class="bouton-filtrer">Filtrer</button>
 ```
 
-Violet, compact (padding 10px 20px, texte 1rem, pas pleine largeur). Pour les
+Couleur d'identité (`--primaire`), compact (padding 10px 20px, texte 1rem,
+pas pleine largeur). Le texte est `--primaire-texte`, calculé, jamais `#fff`
+en dur — voir le § 18. Pour les
 actions **denses/utilitaires** : filtres de recherche, actions d'un écran
 admin (importer, créer un jeu, se connecter, copier un lien/code), boutons
 `type="button"` avec `onclick` (copier-coller). Ne sert jamais de CTA
@@ -341,19 +346,26 @@ sans texte à lire de loin. Trois variantes, trois gestes différents :
 ```html
 <p class="pochette-num">7</p>              <!-- vert  : DÉPOSEZ la PI ici -->
 <p class="pochette-num pochette-num--retour">7</p>     <!-- bleu   : RÉCUPÉREZ la PI ici -->
-<p class="pochette-num pochette-num--transfert">7</p>  <!-- violet : NE TOUCHEZ PAS à la pochette -->
+<p class="pochette-num pochette-num--transfert">7</p>  <!-- identité : NE TOUCHEZ PAS à la pochette -->
 ```
 
 Ajoutée par le **transfert de pochette**
 (`docs/conception-transfert-pochette.md` §8) : rendre une boîte et en prêter
 une autre sans faire ressortir la pièce d'identité de son casier. Réutiliser
 le vert ou le bleu aurait fait faire au bénévole le geste exact que la
-fonctionnalité supprime — d'où une troisième couleur, le violet d'identité du
-site (`#4a148c`, déjà `.bouton-filtrer`, `theme-color`), qui ne porte par
+fonctionnalité supprime — d'où une troisième couleur, celle d'identité du site
+(`--primaire`, déjà `.bouton-filtrer`, `theme-color`), qui ne porte par
 ailleurs aucun sens de dépôt/retrait sur cet écran.
 
+⚠️ **Depuis que cette couleur est réglable** (§ 18), c'est la seule
+signification portée par `--primaire`. Une association qui choisirait un vert
+ou un bleu proches de ceux du prêt et du retour affaiblirait la distinction —
+sans la supprimer, la phrase explicite ci-dessous restant affichée dans tous
+les cas. Le jour où cela se produit, la réponse est de donner à cette variante
+sa propre couleur de sens, pas de restreindre le réglage.
+
 **Règle de choix** : le vert et le bleu se choisissent déjà tout seuls (prêt
-vs retour). Le violet ne s'utilise QUE quand le numéro affiché correspond à
+vs retour). La couleur d'identité ne s'utilise QUE quand le numéro affiché correspond à
 une pochette qui ne bouge pas — à ce jour, uniquement l'écran de résultat du
 transfert (`pret.html`, `resultat.type == "transfert"`). Toujours accompagné
 d'une phrase explicite (« La pièce d'identité reste en place — ne touchez pas
@@ -397,3 +409,71 @@ critère de largeur n'aurait pas retenus. Ils ont été élargis sur demande, la
 lecture à 540 px sur un grand écran ayant été jugée trop contrainte à
 l'usage. Si d'autres pages de lecture suivent un jour, c'est le plafond
 global qu'il faudra rediscuter, pas la liste des exceptions.
+
+---
+
+## 18. Couleur de thème — six variables, une seule saisie
+
+L'association qui déploie LudoteX règle **une** couleur depuis
+`/admin/identite`. Les six variables du `:root` en découlent :
+
+| Variable | Rôle | Peut porter du texte ? |
+|---|---|---|
+| `--primaire` | bandeau, bouton compact, indicateurs de focus, chiffres de statistiques | oui, avec `--primaire-texte` |
+| `--primaire-survol` | survol du bouton compact | oui (même texte) |
+| `--primaire-clair` | **décoratif seulement** : barres de l'histogramme, bordure de survol d'une carte | **non** |
+| `--primaire-fond` | aplats teintés (puces de filtre) | oui, avec `--primaire` |
+| `--primaire-fond-leger` | aplats les plus pâles (aide en ligne, cartes de chiffres) | oui, avec `--texte` ou `--gris` |
+| `--primaire-texte` | texte posé sur `--primaire` — **noir ou blanc, calculé** | — |
+
+**Règle de dérivation** (implémentée dans `app/services.py`, section « Identité
+de l'ASSOCIATION » ; `nuances_theme`) : conversion en HSL, **teinte et
+saturation conservées**, luminosité imposée.
+
+| Nuance | Luminosité | Saturation |
+|---|---|---|
+| `survol` | ± 12 points (− au-dessus de 50 %, voir plus bas) | inchangée |
+| `clair` | 62 % | + 10 points |
+| `fond` | 94 % | + 25 points |
+| `fond_leger` | 97 % | + 25 points |
+
+Quatre décisions à ne pas défaire :
+
+1. **Pas de mélange vers le blanc.** Il vire au gris et perd la teinte — sur
+   l'anthracite `#2a2724`, le fond clair tombait sur `#efeeec` au lieu de
+   `#f5f0eb`. Le supplément de saturation des aplats a la même raison d'être :
+   sans lui, une couleur peu saturée ne se voit plus nulle part ailleurs que
+   sur le bandeau.
+2. **`--primaire-clair` ne porte jamais d'information.** À 62 % de luminosité,
+   son contraste sur blanc tourne autour de 2,5:1, en dessous des 3:1 exigés
+   d'un élément graphique porteur de sens (et loin des 4,5:1 d'un texte). C'est
+   pour cela que les indicateurs de focus utilisent `--primaire`, et que les
+   barres de l'histogramme sont toujours doublées de leur valeur écrite.
+3. **`--primaire-texte` n'est jamais un choix de l'utilisateur.** Noir ou
+   blanc, celui des deux qui contraste le mieux au sens WCAG. Le pire cas de
+   cette règle vaut 4,58:1 : aucune couleur saisie ne peut rendre le bandeau
+   illisible. Ajouter un champ « couleur du texte » romprait cette garantie.
+4. **Le survol s'inverse au-dessus de 50 % de luminosité.** Ajouter 12 points à
+   une couleur déjà très claire donnerait du blanc pur, et le bouton
+   disparaîtrait au survol sur une page blanche. C'est l'ÉCART qui compte, pas
+   son sens.
+
+**Le calcul est fait en Python, jamais en CSS.** Ni `color-mix()`, ni les
+fonctions de couleur récentes : sur un téléphone qui ne les connaît pas, le
+thème perdrait ses nuances sans que personne le sache. Le serveur envoie six
+valeurs hexadécimales dans un `<style>` en ligne de `base.html`, alimenté par
+le context processor d'`app/templating.py`.
+
+**Tant qu'aucune couleur n'est réglée, RIEN n'est injecté** : le `:root` de
+`style.css` fait foi, et le fichier reste en cache. Le thème par défaut
+(anthracite chaud `#2a2724`) est donc écrit à deux endroits — le `:root` et
+`services.COULEUR_ASSOCIATION_DEFAUT`, dont le `<meta name="theme-color">` a
+besoin puisqu'un attribut ne peut pas porter une variable CSS. Un test
+(`tests/test_theme.py`) compare les deux valeurs : elles ne peuvent pas
+diverger en silence.
+
+**Ce qui ne suit PAS le thème, et ne doit pas le suivre** : le bleu des liens
+(`#1a73e8`), le vert / rouge / orange sémantiques, l'orange du mode formation,
+le bleu du mode rangement et le violet des blocs « programme » du planning. Ce
+sont des significations, pas une identité : elles doivent rester les mêmes
+quelle que soit la couleur choisie.

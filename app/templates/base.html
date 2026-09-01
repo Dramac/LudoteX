@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block titre %}{{ nom_association }}{% endblock %}</title>
-  <meta name="theme-color" content="#2a2724">
+  {# Couleur de l'onglet / de la barre système sur mobile. Un attribut
+     `content` ne peut pas porter une variable CSS : la valeur vient donc du
+     context processor (app/templating.py), qui rend la couleur réglée ou, à
+     défaut, celle du `:root` de style.css. #}
+  <meta name="theme-color" content="{{ theme.couleur }}">
   {# Icônes servies par /image/* (app/routes/images.py) et non par /static :
      l'association peut déposer les siennes depuis /admin/identite, et elles
      vivent alors dans data/, hors du dépôt. `logo_v()` change quand l'image
@@ -13,6 +17,15 @@
   <link rel="icon" type="image/png" sizes="512x512" href="/image/favicon-512.png?v={{ logo_v() }}">
   <link rel="apple-touch-icon" href="/image/favicon-192.png?v={{ logo_v() }}">
   <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
+  {# Couleur d'identité réglée depuis /admin/identite : les six variables du
+     thème sont redéfinies ici, APRÈS la feuille de style, pour l'emporter sur
+     le `:root` de style.css. Rien n'est écrit tant qu'aucune couleur n'est
+     réglée — les valeurs du fichier font alors foi, et il reste en cache.
+     Un `<style>` en ligne plutôt qu'une feuille par association : le cache de
+     style.css n'est pas cassé, et il n'y a pas de fichier à produire.
+     Les six valeurs sont calculées côté serveur et validées `#rrggbb`
+     (app/services.py) : rien de ce qui est saisi ne peut sortir de ce bloc. #}
+  {% if theme.style %}<style>{{ theme.style }}</style>{% endif %}
 </head>
 <body{% if mode_formation %} class="mode-formation"{% endif %}{% block body_attrs %}{% endblock %}>
   {# Lien d'évitement (E1, docs/audit-ux-2026-07-18.md) : premier élément

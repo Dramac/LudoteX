@@ -1064,7 +1064,7 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
     """
     Rendu commun aux deux points d'entrée de « Identité de l'association ».
 
-    `saisies` porte les quatre valeurs STOCKÉES (ou celles que le bureau vient
+    `saisies` porte les cinq valeurs STOCKÉES (ou celles que le bureau vient
     de taper), et non les valeurs effectivement affichées par le site : un champ
     ne doit JAMAIS être prérempli avec son repli. La page /admin/ecran-salle a
     déjà payé cette erreur — son champ « Titre » prérempli avec la valeur par
@@ -1076,6 +1076,14 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
     `status_code` vaut 400 quand un champ a été refusé : la page est alors
     RÉAFFICHÉE AVEC TOUT CE QUI A ÉTÉ TAPÉ, y compris dans les champs valides.
     Un refus ne doit jamais faire retaper le reste du formulaire.
+
+    La COULEUR suit exactement la même règle que les autres : le champ montre
+    ce qui est réglé, et reste vide tant que rien ne l'est. Ce que la pastille
+    de couleur affiche à côté, en revanche, est la couleur EFFECTIVE (thème par
+    défaut compris) : un `<input type="color">` ne peut pas être vide, il vaut
+    #000000 quand on ne lui donne rien — ce qui ferait croire au bureau que son
+    site est noir. La pastille n'est pas postée (elle n'a pas d'attribut
+    `name`) : c'est le champ texte qui fait foi.
 
     LE LOGO N'EST PAS DANS `saisies`, ET IL NE PEUT PAS Y ÊTRE : aucun
     navigateur ne laisse préremplir un champ de fichier (ce serait un moyen de
@@ -1096,6 +1104,10 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
          "presentation_saisie": saisies.get("presentation"),
          "contact_saisi": saisies.get("contact"),
          "depot_url_saisi": saisies.get("depot_url"),
+         "couleur_saisie": saisies.get("couleur"),
+         "couleur_effective": (saisies.get("couleur")
+                               or services.COULEUR_ASSOCIATION_DEFAUT),
+         "couleur_par_defaut": services.COULEUR_ASSOCIATION_DEFAUT,
          "nom_par_defaut": NOM_ASSOCIATION,
          "depot_par_defaut": DEPOT_URL,
          "longueur_max": services.LONGUEUR_NOM_ASSOCIATION,
@@ -1117,11 +1129,12 @@ def identite_formulaire(request: Request):
     change à chaque édition. Les mêler ferait relire chaque année un réglage
     qui n'a aucune raison de bouger.
 
-    Cinq réglages, tous ÉDITORIAUX : le nom, le texte de présentation et
+    Six réglages, tous ÉDITORIAUX : le nom, le texte de présentation et
     l'adresse de contact de la page « À propos », l'URL du dépôt du code
-    source, et le LOGO. Les quatre premiers sont du texte et vivent en base
-    (table `parametres`) ; le logo est un fichier et vit dans `data/` — voir
-    `app/logo.py`, qui porte à lui seul tout ce qu'un envoi de fichier exige.
+    source, la COULEUR de thème, et le LOGO. Les cinq premiers sont du texte et
+    vivent en base (table `parametres`) ; le logo est un fichier et vit dans
+    `data/` — voir `app/logo.py`, qui porte à lui seul tout ce qu'un envoi de
+    fichier exige.
     """
     if (garde := _garde(request)):
         return garde
@@ -1135,6 +1148,7 @@ def identite_formulaire(request: Request):
                 conn, services.CLE_ASSOCIATION_CONTACT),
             "depot_url": services.lire_parametre(
                 conn, services.CLE_ASSOCIATION_DEPOT),
+            "couleur": services.lire_couleur_association(conn),
         }
     finally:
         conn.close()
@@ -1148,18 +1162,20 @@ def identite_enregistrer(
     presentation: str = Form(""),
     contact: str = Form(""),
     depot_url: str = Form(""),
+    couleur: str = Form(""),
     logo_fichier: UploadFile | None = File(None),
 ):
     """
-    Enregistre (ou efface si vide) les cinq réglages d'identité.
+    Enregistre (ou efface si vide) les six réglages d'identité.
 
     Le nom et la présentation sont en saisie libre, simplement normalisés et
     bornés : ces deux champs ne peuvent donc JAMAIS mettre le formulaire en
-    échec. Les DEUX AUTRES, si — et c'est une mesure de sécurité, pas une
-    exigence de forme : l'URL du dépôt atterrit dans un `href` et l'adresse de
-    contact dans un `mailto:`, les deux seuls champs de cet écran qui entrent
-    dans un attribut d'URL. Un `javascript:` saisi ici deviendrait sinon un
-    script exécuté chez chaque visiteur de la page « À propos ».
+    échec. Les TROIS AUTRES, si — et c'est une mesure de sécurité, pas une
+    exigence de forme : l'URL du dépôt atterrit dans un `href`, l'adresse de
+    contact dans un `mailto:`, et la couleur dans un `<style>` en ligne. Un
+    `javascript:` saisi ici deviendrait sinon un script exécuté chez chaque
+    visiteur de la page « À propos », et une couleur de forme libre une porte
+    d'entrée dans la feuille de style de toutes les pages.
 
     Un refus n'enregistre RIEN — même patron que la date invalide de
     /admin/evenement, qui refuse aussi le nom plutôt que de l'enregistrer en
@@ -1168,8 +1184,9 @@ def identite_enregistrer(
     il ne retape pas les trois autres.
 
     Vidé, chaque champ efface sa clé : le nom et l'URL du dépôt retombent sur
-    leur repli (`.env`, puis le littéral d'app/config.py), la présentation et le
-    contact font disparaître leur section de la page « À propos ».
+    leur repli (`.env`, puis le littéral d'app/config.py), la couleur revient au
+    thème par défaut (plus rien n'est injecté dans les pages), la présentation
+    et le contact font disparaître leur section de la page « À propos ».
 
     Chaque clé n'est journalisée que si elle CHANGE réellement, comme sur
     /admin/evenement : sans cela, réenregistrer la page sans rien toucher
@@ -1206,6 +1223,7 @@ def identite_enregistrer(
     )
     saisie_contact = services.normaliser_contact_association(contact)
     saisie_depot = services.normaliser_depot_url(depot_url)
+    saisie_couleur = services.normaliser_couleur_association(couleur)
 
     # Une saisie non vide qui ressort normalisée à None a été REFUSÉE ; une
     # saisie vide, elle, veut simplement dire « efface ».
@@ -1218,6 +1236,10 @@ def identite_enregistrer(
         refus.append(("association_depot_modifie", "url_invalide",
                       "Adresse du dépôt invalide (elle doit commencer par "
                       "http:// ou https://)."))
+    if couleur.strip() and saisie_couleur is None:
+        refus.append(("association_couleur_modifiee", "couleur_invalide",
+                      "Couleur invalide (attendu : un code de six caractères "
+                      "précédé d'un dièse, par exemple #2a2724)."))
     # Le fichier, s'il y en a un. `filename` vide = champ laissé vide par le
     # navigateur : ce n'est pas un envoi, et surtout pas un refus.
     contenu_logo = None
@@ -1242,7 +1264,8 @@ def identite_enregistrer(
             {"nom": saisie_nom or None,
              "presentation": saisie_presentation or None,
              "contact": contact.strip() or None,
-             "depot_url": depot_url.strip() or None},
+             "depot_url": depot_url.strip() or None,
+             "couleur": couleur.strip() or None},
             ("erreur", " ".join(m for _, _, m in refus)),
             status_code=400,
         )
@@ -1256,6 +1279,7 @@ def identite_enregistrer(
         contact_precedent = services.lire_parametre(
             conn, services.CLE_ASSOCIATION_CONTACT)
         depot_precedent = services.lire_parametre(conn, services.CLE_ASSOCIATION_DEPOT)
+        couleur_precedente = services.lire_couleur_association(conn)
         services.ecrire_parametre(
             conn, services.CLE_ASSOCIATION_NOM, saisie_nom or None)
         services.ecrire_parametre(
@@ -1264,6 +1288,8 @@ def identite_enregistrer(
             conn, services.CLE_ASSOCIATION_CONTACT, saisie_contact)
         services.ecrire_parametre(
             conn, services.CLE_ASSOCIATION_DEPOT, saisie_depot)
+        services.ecrire_parametre(
+            conn, services.CLE_ASSOCIATION_COULEUR, saisie_couleur)
     finally:
         conn.close()
 
@@ -1291,6 +1317,12 @@ def identite_enregistrer(
             request, "admin", "association_depot_modifie",
             objet=saisie_depot or "effacée",
         )
+    # Un code hexadécimal ne désigne personne : il part tel quel en `objet`.
+    if saisie_couleur != couleur_precedente:
+        journal.journaliser(
+            request, "admin", "association_couleur_modifiee",
+            objet=saisie_couleur or "effacée",
+        )
 
     # Écrit APRÈS les quatre valeurs texte, et seulement si aucun refus n'a
     # eu lieu plus haut : à ce point, le fichier a déjà passé tous les
@@ -1314,15 +1346,20 @@ def identite_enregistrer(
     partie_depot = (
         "Adresse du dépôt enregistrée." if saisie_depot
         else "Adresse du dépôt effacée — l'adresse par défaut est de nouveau utilisée.")
+    partie_couleur = (
+        "Couleur enregistrée." if saisie_couleur
+        else "Couleur effacée — le thème par défaut est de nouveau appliqué.")
     partie_logo = " Logo déposé." if contenu_logo is not None else ""
     return _page_identite(
         request,
         {"nom": saisie_nom or None,
          "presentation": saisie_presentation or None,
          "contact": saisie_contact,
-         "depot_url": saisie_depot},
+         "depot_url": saisie_depot,
+         "couleur": saisie_couleur},
         ("succes", f"{partie_nom} {partie_presentation} "
-                   f"{partie_contact} {partie_depot}{partie_logo}"),
+                   f"{partie_contact} {partie_depot} {partie_couleur}"
+                   f"{partie_logo}"),
     )
 
 
@@ -1361,6 +1398,7 @@ def identite_logo_retirer(request: Request):
                 conn, services.CLE_ASSOCIATION_CONTACT),
             "depot_url": services.lire_parametre(
                 conn, services.CLE_ASSOCIATION_DEPOT),
+            "couleur": services.lire_couleur_association(conn),
         }
     finally:
         conn.close()

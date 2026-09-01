@@ -1865,6 +1865,222 @@ def lien_journal_versions(depot_url: str) -> str | None:
     return f"{depot_url.rstrip('/')}/blob/main/CHANGELOG.md"
 
 
+# ---------------------------------------------------------------------------
+# La couleur de thème
+# ---------------------------------------------------------------------------
+# Même domicile et même patron que les réglages ci-dessus, avec une différence
+# de nature : ce n'est pas un texte que l'on affiche, c'est une valeur qui
+# entre dans la FEUILLE DE STYLE de toutes les pages. Trois conséquences, qui
+# expliquent la forme de ce qui suit.
+#
+# 1. UNE SEULE VALEUR EST SAISIE, LES CINQ AUTRES SONT CALCULÉES. Le thème
+#    compte six variables CSS (voir le `:root` d'app/static/css/style.css).
+#    Demander six couleurs à un bureau non technicien produirait tôt ou tard
+#    un bandeau illisible. La dérivation passe par la teinte et la saturation
+#    (HSL), CONSERVÉES, et impose la seule luminosité : c'est ce qui garde la
+#    couleur choisie reconnaissable dans ses nuances. Le mélange naïf vers le
+#    blanc, lui, est à proscrire — il vire au gris et perd la teinte.
+# 2. LA COULEUR DU TEXTE N'EST JAMAIS UN CHOIX. Noir ou blanc, selon celui qui
+#    contraste le mieux avec la couleur choisie au sens WCAG. C'est ce qui
+#    garantit qu'AUCUNE saisie ne peut rendre le bandeau illisible : le pire
+#    cas possible de cette règle est 4,58:1, au-dessus du minimum de 4,5:1.
+# 3. LE CALCUL EST FAIT ICI, EN PYTHON, PAS EN CSS. `color-mix()` et les
+#    fonctions de couleur récentes feraient le même travail en une ligne, mais
+#    seulement sur un navigateur récent : sur le téléphone d'un bénévole qui ne
+#    l'est pas, le bandeau perdrait ses nuances sans que personne le sache. Le
+#    serveur envoie six valeurs hexadécimales, comprises partout.
+CLE_ASSOCIATION_COULEUR = "asso_couleur"
+
+# Le thème par défaut. SEUL DOMICILE de ce littéral côté Python — la valeur est
+# aussi écrite dans le `:root` d'app/static/css/style.css, qui fait foi tant
+# qu'aucune couleur n'est réglée (rien n'est alors injecté, et le fichier reste
+# en cache). Cette duplication est inévitable — une feuille de style statique ne
+# peut pas lire la base — et elle est VERROUILLÉE PAR UN TEST
+# (tests/test_theme.py) qui compare les deux valeurs.
+COULEUR_ASSOCIATION_DEFAUT = "#2a2724"
+
+# Forme acceptée : exactement `#rrggbb`. Volontairement stricte — ni `#rgb`, ni
+# `rgb(...)`, ni un nom de couleur CSS : cette valeur est écrite dans un
+# `<style>` en ligne, et une forme libre y serait une porte d'entrée. Le refus
+# est visible (message clair, rien d'enregistré), jamais silencieux.
+_MOTIF_COULEUR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def normaliser_couleur_association(saisie: str) -> str | None:
+    """
+    Normalise une couleur saisie, ou None si ce n'est pas un `#rrggbb`.
+
+    Renvoie None pour une saisie vide comme pour une saisie refusée : c'est
+    l'APPELANT qui distingue les deux (une saisie vide veut dire « efface,
+    reprends le thème par défaut »), exactement comme pour le contact et l'URL
+    du dépôt ci-dessus.
+
+    La casse est ramenée en minuscules : `#AABBCC` et `#aabbcc` sont la même
+    couleur, et deux écritures d'une même valeur produiraient sinon une ligne
+    de journal annonçant une modification qui n'en est pas une.
+    """
+    valeur = saisie.strip()
+    if not valeur or not _MOTIF_COULEUR.match(valeur):
+        return None
+    return valeur.lower()
+
+
+def lire_couleur_association(conn: sqlite3.Connection) -> str | None:
+    """
+    Couleur de thème réglée, ou None si aucune ne l'est.
+
+    None, et non `COULEUR_ASSOCIATION_DEFAUT` : « aucune couleur réglée » doit
+    rester distinguable de « la couleur par défaut a été saisie », parce que
+    c'est ce qui décide si l'on injecte quelque chose dans les pages ou non.
+
+    La valeur relue en base repasse par `normaliser_couleur_association`. Ce
+    n'est pas de la méfiance envers la route qui l'a écrite : c'est le point de
+    passage obligé vers un `<style>`, et il ne doit y avoir AUCUN chemin — une
+    restauration de sauvegarde, un import, une écriture directe dans le
+    fichier SQLite — par lequel autre chose qu'un `#rrggbb` en ressorte.
+    """
+    return normaliser_couleur_association(
+        lire_parametre(conn, CLE_ASSOCIATION_COULEUR) or "")
+
+
+def _luminance_relative(couleur: str) -> float:
+    """Luminance relative WCAG d'un `#rrggbb` (0 = noir, 1 = blanc)."""
+    canaux = [int(couleur[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lineaires = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                 for c in canaux]
+    return (0.2126 * lineaires[0] + 0.7152 * lineaires[1] + 0.0722 * lineaires[2])
+
+
+def contraste(couleur_a: str, couleur_b: str) -> float:
+    """
+    Rapport de contraste WCAG entre deux `#rrggbb` (de 1:1 à 21:1).
+
+    Sert à choisir la couleur du texte du bandeau, et à le VÉRIFIER dans les
+    tests : le seuil de 4,5:1 est une promesse faite au guide administrateur
+    (« aucune couleur choisie ne peut rendre le bandeau illisible »), elle doit
+    être contrôlable ailleurs que dans un commentaire.
+    """
+    a, b = _luminance_relative(couleur_a), _luminance_relative(couleur_b)
+    clair, sombre = max(a, b), min(a, b)
+    return (clair + 0.05) / (sombre + 0.05)
+
+
+def couleur_texte_sur(fond: str) -> str:
+    """
+    Noir ou blanc, celui des deux qui contraste le mieux avec `fond`.
+
+    JAMAIS un choix de l'utilisateur : c'est la seule façon de garantir que le
+    bandeau reste lisible quelle que soit la couleur réglée. Le pire cas de
+    cette règle est le point où les deux contrastes s'égalent (luminance
+    relative ≈ 0,179), et il vaut encore 4,58:1 — au-dessus du minimum WCAG AA
+    de 4,5:1. Autrement dit : aucune saisie ne peut faire descendre le bandeau
+    sous le seuil.
+    """
+    if contraste(fond, "#ffffff") >= contraste(fond, "#000000"):
+        return "#ffffff"
+    return "#000000"
+
+
+def nuances_theme(couleur: str) -> dict[str, str]:
+    """
+    Les six valeurs du thème, dérivées de la seule couleur saisie.
+
+    Teinte et saturation CONSERVÉES, luminosité imposée (voir l'en-tête de
+    section) :
+
+    - `survol`     : luminosité + 12 points, ou − 12 points si la couleur est
+      déjà claire (au-dessus de 50 %). L'écart compte plus que son sens : le
+      bouton primaire s'ÉCLAIRCIT au survol, ce qui se voit sur une couleur
+      sombre là où un assombrissement ne se verrait pas — mais sur une couleur
+      très claire, ajouter 12 points donnerait du blanc pur, et le bouton
+      disparaîtrait au survol sur une page blanche. Le sens s'inverse alors ;
+    - `clair`      : luminosité 62 %, saturation + 10 — usage DÉCORATIF
+      seulement (barres de l'histogramme, bordure de survol d'une carte) : à
+      cette luminosité, le contraste sur blanc tourne autour de 2,5:1, en
+      dessous des 3:1 d'un élément porteur d'information ;
+    - `fond`       : luminosité 94 %, saturation + 25 — aplats teintés (puces
+      de filtre) ;
+    - `fond_leger` : luminosité 97 %, même saturation — aplats les plus pâles.
+
+    Le supplément de saturation des trois dernières n'est pas une coquetterie :
+    sans lui, une couleur très désaturée donne des aplats parfaitement gris,
+    et le thème ne se voit plus nulle part ailleurs que sur le bandeau.
+    """
+    import colorsys
+
+    rouge, vert, bleu = (int(couleur[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    teinte, lum, sat = colorsys.rgb_to_hls(rouge, vert, bleu)
+
+    def compose(luminosite: float, supplement_sat: float = 0.0) -> str:
+        r, v, b = colorsys.hls_to_rgb(
+            teinte, min(1.0, luminosite), min(1.0, sat + supplement_sat))
+        return "#%02x%02x%02x" % (round(r * 255), round(v * 255), round(b * 255))
+
+    return {
+        "primaire": couleur,
+        "survol": compose(lum + 0.12 if lum <= 0.5 else lum - 0.12),
+        "clair": compose(0.62, 0.10),
+        "fond": compose(0.94, 0.25),
+        "fond_leger": compose(0.97, 0.25),
+        "texte": couleur_texte_sur(couleur),
+    }
+
+
+def theme_association() -> dict:
+    """
+    Ce qu'il faut au gabarit de base pour habiller TOUTES les pages :
+
+    - `couleur` : la couleur effective, toujours un `#rrggbb` — celle qui part
+      dans le `<meta name="theme-color">`, qui ne peut pas porter une variable
+      CSS et a donc besoin d'une valeur ;
+    - `style`   : le contenu du `<style>` en ligne qui redéfinit les six
+      variables sur `:root`, ou **None** si aucune couleur n'est réglée. None
+      et non le thème par défaut : dans ce cas le `:root` d'app/static/css/
+      style.css fait foi, et n'injecter RIEN évite d'alourdir chaque page d'une
+      redéfinition qui ne changerait rien.
+
+    Sans connexion en paramètre, comme `nom_association` et pour la même raison
+    (seule la requête est disponible au rendu d'un gabarit), et avec la même
+    mise en garde : ne PAS l'appeler depuis un service qui reçoit déjà une
+    connexion, ni depuis un service d'un autre module.
+
+    NE LÈVE JAMAIS : elle est appelée à chaque rendu de page, y compris celui
+    de la page d'erreur 500, où la base peut précisément être en cause. Toute
+    lecture qui échoue retombe sur le thème par défaut, donc sur « rien à
+    injecter » — une page sans couleur d'association vaut mieux qu'une page
+    d'erreur qui ne s'affiche pas.
+    """
+    couleur = None
+    try:
+        from app.db import get_connection
+
+        conn = get_connection()
+        try:
+            couleur = lire_couleur_association(conn)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 - repli volontairement total, voir docstring
+        couleur = None
+
+    if couleur is None:
+        return {"couleur": COULEUR_ASSOCIATION_DEFAUT, "style": None}
+
+    n = nuances_theme(couleur)
+    return {
+        "couleur": couleur,
+        "style": (
+            ":root{"
+            f"--primaire:{n['primaire']};"
+            f"--primaire-survol:{n['survol']};"
+            f"--primaire-clair:{n['clair']};"
+            f"--primaire-fond:{n['fond']};"
+            f"--primaire-fond-leger:{n['fond_leger']};"
+            f"--primaire-texte:{n['texte']}"
+            "}"
+        ),
+    }
+
+
 # ===========================================================================
 # Identité de l'événement (nom + date), réglée depuis /admin/evenement
 # ===========================================================================

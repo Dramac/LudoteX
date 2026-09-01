@@ -53,8 +53,24 @@ def _identite(request: Request) -> dict:
     `services.nom_association()` ne lève jamais et ouvre puis referme sa propre
     connexion : cette fonction est appelée y compris pendant le rendu de la
     page d'erreur 500, où la base peut précisément être en cause.
+
+    POURQUOI LA COULEUR DE THÈME EST ICI, ET PAS LA PRÉSENTATION NI LE CONTACT
+    --------------------------------------------------------------------------
+    Les trois réglages de la page « À propos » sont lus par LA route qui en a
+    besoin (voir app/services.py) : les faire passer ici les injecterait dans
+    le rendu de toutes les pages pour n'en servir qu'une. La couleur, elle, est
+    exactement l'inverse — elle habille le bandeau, les boutons et les aplats
+    de CHAQUE page, y compris celles des modules tournois et planning. C'est le
+    même critère qui a mis `nom_association` ici et laissé `logo_v` en global
+    Jinja appelé par les seuls gabarits qui affichent une image.
+
+    Deux contraintes en découlent, héritées du lot 1 : `theme_association()` ne
+    lève jamais (même raison que ci-dessus), et `theme` devient un nom RÉSERVÉ
+    dans les 66 gabarits — aucun `{% set theme = ... %}` ne doit apparaître
+    ailleurs, il masquerait cette valeur.
     """
-    return {"nom_association": services.nom_association()}
+    return {"nom_association": services.nom_association(),
+            "theme": services.theme_association()}
 
 
 templates = Jinja2Templates(
