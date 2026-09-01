@@ -22,6 +22,8 @@ CARTE DES URL
     /scanner          -> scanner caméra (ouvre /pret/<id>)              [bénévole]
     /pret/<id>        -> écran prêt/retour + actions POST               [bénévole]
     /acces?jeton=...  -> active l'accès bénévole (pose le cookie)
+    /image/logo.png   -> logo (déposé en admin, sinon identité LudoteX) [public]
+    /image/favicon-*  -> icônes d'onglet / écran d'accueil                [public]
     /sante            -> point de santé (supervision)
 
 Lancement (développement) :
@@ -38,7 +40,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import auth, journal
 from app.db import get_connection, init_db
 from app.modules import ModuleDesactive, garde_module
-from app.routes import acces, admin, catalogue, live, pret, scanner, stats
+from app.routes import acces, admin, catalogue, images, live, pret, scanner, stats
 from app.templating import templates
 from app.tournoi import routes as tournoi_routes
 from app.tournoi import routes_programme
@@ -67,6 +69,7 @@ app.include_router(catalogue.router)                                           #
 app.include_router(pret.router)                                                # /pret/<id> + actions     (bénévole, cœur)
 app.include_router(scanner.router)                                             # /scanner                 (bénévole, cœur)
 app.include_router(acces.router)                                               # /acces                   (activation)
+app.include_router(images.router)                                              # /image/*                 (logo + icônes)
 app.include_router(admin.router)                                               # /admin                   (mot de passe)
 app.include_router(stats.router,            dependencies=[garde_module("stats")])      # /stats
 app.include_router(live.router,             dependencies=[garde_module("live")])       # /live, /live/data

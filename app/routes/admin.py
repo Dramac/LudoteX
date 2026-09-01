@@ -25,7 +25,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import admin_auth, auth, exports, formation, journal, sauvegarde, services, supervision
+from app import (admin_auth, auth, exports, formation, journal, logo, sauvegarde,
+                 services, supervision)
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -1075,12 +1076,23 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
     `status_code` vaut 400 quand un champ a été refusé : la page est alors
     RÉAFFICHÉE AVEC TOUT CE QUI A ÉTÉ TAPÉ, y compris dans les champs valides.
     Un refus ne doit jamais faire retaper le reste du formulaire.
+
+    LE LOGO N'EST PAS DANS `saisies`, ET IL NE PEUT PAS Y ÊTRE : aucun
+    navigateur ne laisse préremplir un champ de fichier (ce serait un moyen de
+    faire téléverser un fichier à l'insu de son propriétaire). Ce que la page
+    montre du logo n'est donc pas une saisie conservée mais un ÉTAT — « un logo
+    est déposé » ou non — relu ici à chaque rendu. Conséquence assumée, écrite
+    dans le gabarit : après un refus, le fichier est à resélectionner, alors
+    que les quatre champs texte, eux, sont conservés.
     """
     from app.config import DEPOT_URL, NOM_ASSOCIATION
 
     return templates.TemplateResponse(
         request, "admin_identite.html",
-        {"nom_association_saisi": saisies.get("nom"),
+        {"logo_regle": logo.logo_regle(),
+         "logo_taille_max_mo": logo.TAILLE_MAX_OCTETS // (1024 * 1024),
+         "logo_dimension_max": logo.DIMENSION_MAX,
+         "nom_association_saisi": saisies.get("nom"),
          "presentation_saisie": saisies.get("presentation"),
          "contact_saisi": saisies.get("contact"),
          "depot_url_saisi": saisies.get("depot_url"),
@@ -1105,10 +1117,11 @@ def identite_formulaire(request: Request):
     change à chaque édition. Les mêler ferait relire chaque année un réglage
     qui n'a aucune raison de bouger.
 
-    Quatre réglages, tous ÉDITORIAUX : le nom, le texte de présentation et
-    l'adresse de contact de la page « À propos », et l'URL du dépôt du code
-    source. Le logo suivra, dans un lot à part : un envoi de fichier est une
-    surface d'attaque à lui seul.
+    Cinq réglages, tous ÉDITORIAUX : le nom, le texte de présentation et
+    l'adresse de contact de la page « À propos », l'URL du dépôt du code
+    source, et le LOGO. Les quatre premiers sont du texte et vivent en base
+    (table `parametres`) ; le logo est un fichier et vit dans `data/` — voir
+    `app/logo.py`, qui porte à lui seul tout ce qu'un envoi de fichier exige.
     """
     if (garde := _garde(request)):
         return garde
@@ -1135,9 +1148,10 @@ def identite_enregistrer(
     presentation: str = Form(""),
     contact: str = Form(""),
     depot_url: str = Form(""),
+    logo_fichier: UploadFile | None = File(None),
 ):
     """
-    Enregistre (ou efface si vide) les quatre réglages d'identité.
+    Enregistre (ou efface si vide) les cinq réglages d'identité.
 
     Le nom et la présentation sont en saisie libre, simplement normalisés et
     bornés : ces deux champs ne peuvent donc JAMAIS mettre le formulaire en
@@ -1160,6 +1174,24 @@ def identite_enregistrer(
     Chaque clé n'est journalisée que si elle CHANGE réellement, comme sur
     /admin/evenement : sans cela, réenregistrer la page sans rien toucher
     produirait quatre lignes affirmant des modifications qui n'ont pas eu lieu.
+
+    LE LOGO SUIT LE MÊME PATRON, avec deux particularités :
+
+    - Le formulaire est passé en `multipart/form-data`. Les quatre champs
+      texte continuent de fonctionner exactement comme avant, y compris quand
+      aucun fichier n'est joint : un champ de fichier vide arrive sous la forme
+      d'un `UploadFile` de nom vide, traité ici comme « rien à faire ».
+    - Le fichier est CONTRÔLÉ avant toute écriture, et son refus rejoint ceux
+      des deux champs d'URL : un seul refus, quel qu'il soit, n'enregistre
+      RIEN — ni le logo, ni les quatre valeurs texte. Le contrôle lui-même
+      vit dans `app/logo.py` ; la route ne fait que le déclencher et traduire
+      son refus en message.
+
+    Le retour au logo LudoteX a sa PROPRE route (`/admin/identite/logo/
+    retirer`) et son propre formulaire : un bouton qui supprime des fichiers
+    n'a pas à partager son envoi avec quatre champs texte, où il faudrait
+    ensuite arbitrer entre « retirer » et « déposer » cochés en même temps.
+    Deux gestes distincts, deux actions distinctes.
     """
     if (garde := _garde(request)):
         return garde
@@ -1186,12 +1218,27 @@ def identite_enregistrer(
         refus.append(("association_depot_modifie", "url_invalide",
                       "Adresse du dépôt invalide (elle doit commencer par "
                       "http:// ou https://)."))
+    # Le fichier, s'il y en a un. `filename` vide = champ laissé vide par le
+    # navigateur : ce n'est pas un envoi, et surtout pas un refus.
+    contenu_logo = None
+    if logo_fichier is not None and (logo_fichier.filename or "").strip():
+        try:
+            # Borne de taille D'ABORD, avant que quoi que ce soit ne soit
+            # décodé (voir app/logo.py::lire_borne), puis tous les autres
+            # contrôles. Aucun de ces appels n'écrit quoi que ce soit.
+            contenu_logo = logo.lire_borne(logo_fichier.file)
+            logo.controler(contenu_logo)
+        except logo.LogoRefuse as refuse:
+            refus.append(("association_logo_modifie", refuse.detail, refuse.message))
+            contenu_logo = None
+
     if refus:
         for action, detail, _ in refus:
             journal.journaliser(request, "admin", action, ok=False, detail=detail)
         return _page_identite(
             request,
             # Ce qui a été TAPÉ, pas ce qui a été retenu : rien ne se perd.
+            # (Le fichier, lui, est à resélectionner — voir _page_identite.)
             {"nom": saisie_nom or None,
              "presentation": saisie_presentation or None,
              "contact": contact.strip() or None,
@@ -1245,6 +1292,17 @@ def identite_enregistrer(
             objet=saisie_depot or "effacée",
         )
 
+    # Écrit APRÈS les quatre valeurs texte, et seulement si aucun refus n'a
+    # eu lieu plus haut : à ce point, le fichier a déjà passé tous les
+    # contrôles, il ne reste que l'écriture (atomique, voir app/logo.py).
+    if contenu_logo is not None:
+        logo.enregistrer(contenu_logo)
+        # `objet` ne porte PAS le nom du fichier téléversé : il vient du poste
+        # de la personne qui dépose et peut contenir n'importe quoi, y compris
+        # un prénom. Le journal dit qu'un logo a été déposé, pas lequel.
+        journal.journaliser(request, "admin", "association_logo_modifie",
+                            objet="déposé")
+
     partie_nom = ("Nom enregistré." if saisie_nom
                   else "Nom effacé — le nom par défaut est de nouveau affiché.")
     partie_presentation = (
@@ -1256,6 +1314,7 @@ def identite_enregistrer(
     partie_depot = (
         "Adresse du dépôt enregistrée." if saisie_depot
         else "Adresse du dépôt effacée — l'adresse par défaut est de nouveau utilisée.")
+    partie_logo = " Logo déposé." if contenu_logo is not None else ""
     return _page_identite(
         request,
         {"nom": saisie_nom or None,
@@ -1263,8 +1322,49 @@ def identite_enregistrer(
          "contact": saisie_contact,
          "depot_url": saisie_depot},
         ("succes", f"{partie_nom} {partie_presentation} "
-                   f"{partie_contact} {partie_depot}"),
+                   f"{partie_contact} {partie_depot}{partie_logo}"),
     )
+
+
+@router.post("/identite/logo/retirer")
+def identite_logo_retirer(request: Request):
+    """
+    Retire le logo déposé : retour à l'identité LudoteX versionnée.
+
+    Route SÉPARÉE de l'enregistrement des réglages texte, et formulaire séparé
+    dans le gabarit (voir la docstring d'`identite_enregistrer`). Elle ne
+    touche à aucune valeur de la table `parametres` : le logo n'y est pas, il
+    est fait de trois fichiers de `data/`.
+
+    Idempotente : sans logo déposé, elle n'a rien à supprimer, le dit, et ne
+    journalise rien — il ne s'est rien passé.
+    """
+    if (garde := _garde(request)):
+        return garde
+
+    retire = logo.supprimer()
+    if retire:
+        journal.journaliser(request, "admin", "association_logo_modifie",
+                            objet="retiré")
+        message = ("succes", "Logo retiré : le logo LudoteX est de nouveau "
+                             "affiché sur le site.")
+    else:
+        message = ("succes", "Aucun logo n'était déposé : rien à retirer.")
+
+    conn = get_connection()
+    try:
+        saisies = {
+            "nom": services.lire_parametre(conn, services.CLE_ASSOCIATION_NOM),
+            "presentation": services.lire_parametre(
+                conn, services.CLE_ASSOCIATION_PRESENTATION),
+            "contact": services.lire_parametre(
+                conn, services.CLE_ASSOCIATION_CONTACT),
+            "depot_url": services.lire_parametre(
+                conn, services.CLE_ASSOCIATION_DEPOT),
+        }
+    finally:
+        conn.close()
+    return _page_identite(request, saisies, message)
 
 
 @router.get("/evenement")

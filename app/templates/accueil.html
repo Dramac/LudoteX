@@ -3,7 +3,7 @@
 
 {% block contenu %}
 <section class="carte accueil">
-  <img class="logo-catalogue" src="/static/img/logo_ludotex.jpg"
+  <img class="logo-catalogue" src="/image/logo.png?v={{ logo_v() }}"
        alt="{{ nom_association }}">
   <h1>{{ nom_association }}</h1>
   {% set evenement = nom_evenement() %}

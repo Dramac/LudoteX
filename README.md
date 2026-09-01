@@ -116,13 +116,14 @@ ludotex/
 │   ├── exports.py       # exports Excel / PDF des stats
 │   ├── routes/          # catalogue, pret, scanner, stats, acces, admin
 │   ├── tournoi/         # module Tournois (base, modèles, services, routes séparés)
-│   ├── static/          # CSS, JS du scanner (jsQR local), logo
+│   ├── static/          # CSS, JS du scanner (jsQR local), logo LudoteX servi par défaut
 │   └── templates/       # pages Jinja2 (accueil, fiche, prêt, catalogue, stats, tournois…)
 ├── scripts/
 │   ├── import_csv.py    # import / mise à jour tolérant du catalogue (UPSERT)
 │   └── generate_qr.py   # génération des QR (PNG individuels + planche A4)
 ├── deploy/              # install.sh (installation interactive), systemd, nginx, sauvegarde
-├── data/                # bases SQLite (NON versionnées)
+├── data/                # bases SQLite + logo déposé en admin (NON versionnés)
+├── logo/                # sources de l'identité LudoteX (CC0, voir LICENCE.md)
 ├── docs/                # spécification, conception tournois, déploiement, budget…
 ├── tests/               # test_services, test_routes, test_tournoi (79 tests)
 ├── requirements.txt
@@ -152,6 +153,27 @@ Brief de passation : [docs/brief-handoff.md](docs/brief-handoff.md).
 
 ## Licence
 
-Ce dépôt est publié sous licence **[GNU GPLv3](LICENSE)** : libre de
+**Le code** est publié sous licence **[GNU GPLv3](LICENSE)** : libre de
 réutilisation, modification et redistribution, à condition que toute version
 modifiée et redistribuée reste elle aussi publiée sous GPLv3 (copyleft).
+
+**Le logo** (dossier [`logo/`](logo/), et ses copies servies par l'application
+dans `app/static/img/`) est versé au **domaine public**, sous
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/deed.fr) — et non
+sous GPLv3. Le dessin d'origine a été produit par un outil d'intelligence
+artificielle générative : une image purement générée n'a vraisemblablement
+aucun titulaire de droits, et concéder des droits qu'on n'est pas sûr de
+détenir serait une affirmation de trop. Le détail est dans
+[`logo/LICENCE.md`](logo/LICENCE.md).
+
+**Nom et logo — une demande, pas une obligation.** LudoteX n'est pas une marque
+déposée, et rien ici ne vous interdit juridiquement de les reprendre. Mais si
+vous publiez une version modifiée, **donnez-lui un autre nom et un autre
+logo** : cela évite qu'un utilisateur attribue au projet d'origine un
+comportement, un défaut ou un engagement de support qui ne viennent pas de lui.
+Parler de LudoteX — un article, une présentation, une capture d'écran — est
+naturellement libre.
+
+**Le logo affiché par une instance déployée n'est pas dans ce dépôt** : chaque
+association dépose le sien depuis `/admin/identite`, et il vit dans `data/`.
+Sans dépôt, c'est le logo LudoteX qui s'affiche.

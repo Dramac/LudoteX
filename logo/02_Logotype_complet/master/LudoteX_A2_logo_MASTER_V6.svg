@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 700">
+<title>LudoteX A2 logo MASTER V6</title>
+
+<g id="symbol_A2" transform="translate(80,80) scale(0.45)">
+
+<title>LudoteX A2 symbol MASTER V6</title>
+
+<g id="meeple" fill="#F4C300">
+  <path d="m1199.9 516.23c6.9375-165.09-388.25-245.46-405.37-264.28-8.5312-9.3555 19.801-252.13-194.53-251.95-214.33-0.17969-186.01 242.59-194.54 251.95-17.125 18.816-412.29 99.191-405.36 264.28 6.9102 165.1 216.61 80.305 261.34 128.89 39.121 42.527-183.35 314.75-208.23 487.61-8.1133 56.336 7.7266 67.27 62.48 67.27 99.312 0 194.12-0.058594 281.44-0.058594 39.445 0 53.473-22.668 73.824-53.902 45.047-69.148 99.453-180.29 129.06-180.28 29.594-0.011719 84.012 111.13 129.06 180.27 20.352 31.246 34.367 53.902 73.812 53.902 87.301 0 182.12 0.058593 281.44 0.058593 54.758 0 70.609-10.934 62.484-67.273-24.875-172.86-247.33-445.08-208.23-487.61 44.723-48.574 254.45 36.219 261.34-128.88z" fill-rule="evenodd"/>
+</g>
+
+<!-- Bloc ludothèque repris selon la référence fournie :
+     3 boîtes hautes + une étagère unique + 3 éléments bas -->
+<g id="ludotheque" fill="#FFFFFF">
+
+  <!-- niveau supérieur -->
+  <rect x="360" y="300" width="170" height="260" rx="3"/>
+  <rect x="570" y="390" width="150" height="170" rx="3"/>
+  <rect x="760" y="470" width="95" height="90" rx="3"/>
+
+  <!-- unique étagère -->
+  <rect x="300" y="590" width="600" height="25" rx="2"/>
+
+  <!-- niveau inférieur -->
+  <rect x="360" y="650" width="170" height="240" rx="3"/>
+  <rect x="570" y="650" width="280" height="130" rx="3"/>
+  <rect x="570" y="810" width="280" height="80" rx="3"/>
+
+</g>
+
+<!-- poignées -->
+<g fill="#F4C300">
+  <rect x="415" y="385" width="60" height="14" rx="7"/>
+  <rect x="615" y="460" width="55" height="14" rx="7"/>
+  <rect x="785" y="510" width="35" height="10" rx="5"/>
+  <rect x="420" y="735" width="60" height="14" rx="7"/>
+  <rect x="680" y="700" width="65" height="14" rx="7"/>
+  <rect x="680" y="840" width="65" height="14" rx="7"/>
+</g>
+
+
+</g>
+
+<!-- SOURCE ÉDITABLE. Le mot est du texte vivant : son rendu dépend de la police
+     installée sur la machine qui affiche le fichier. Un SEUL <text>, le X étant un
+     <tspan> : sa position est calculée par le moteur de rendu et ne peut donc plus
+     recouvrir la lettre précédente (défaut des deux <text> à abscisses fixes 700 et
+     1360, corrigé le 2026-09-01).
+     Pour toute diffusion, utiliser les déclinaisons VECTORISÉES de declinaisons/svg/,
+     qui ne dépendent d'aucune police. -->
+<g id="wordmark" font-family="Poppins, Arial, sans-serif" font-size="220" font-weight="600">
+  <text x="700" y="420" fill="#111111">Ludote<tspan fill="#F4C300">X</tspan></text>
+</g>
+
+</svg>

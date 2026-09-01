@@ -19,7 +19,10 @@
     </p>
   {% endif %}
 
-  <form method="post" action="/admin/identite" class="recherche-form">
+  {# enctype OBLIGATOIRE : sans lui, le navigateur poste le seul NOM du
+     fichier, jamais son contenu — et l'envoi du logo échouerait en silence. #}
+  <form method="post" action="/admin/identite" class="recherche-form"
+        enctype="multipart/form-data">
     <div class="champ">
       <label for="nom_association">Nom de l'association</label>
       <input type="text" id="nom_association" name="nom_association"
@@ -82,9 +85,54 @@
       </small>
     </div>
 
+    <div class="champ">
+      <label for="logo_fichier">Logo de l'association</label>
+      <img class="logo-apercu" src="/image/logo.png?v={{ logo_v() }}"
+           alt="Logo actuellement affiché sur le site">
+      <p class="stats-note">
+        {% if logo_regle %}
+          Votre logo est en place : il s'affiche sur la page d'accueil, sur le
+          catalogue, dans l'onglet du navigateur, et sur les étiquettes des
+          boîtes de jeux.
+        {% else %}
+          Aucun logo n'a encore été déposé : c'est le logo du logiciel
+          (LudoteX) qui s'affiche. Les étiquettes des boîtes, elles, restent
+          <strong>sans logo</strong> tant que vous n'avez pas déposé le vôtre.
+        {% endif %}
+      </p>
+      <input type="file" id="logo_fichier" name="logo_fichier"
+             accept="image/png,image/jpeg,image/webp">
+      <small class="stats-note">
+        Formats acceptés : <strong>PNG</strong> (recommandé, il garde les fonds
+        transparents), <strong>JPEG</strong> et <strong>WebP</strong>. Les
+        fichiers <strong>SVG ne sont pas acceptés</strong>, pour des raisons de
+        sécurité. {{ logo_taille_max_mo }} Mo au plus, et
+        {{ logo_dimension_max }} × {{ logo_dimension_max }} pixels au plus. Une
+        image bien plus petite suffit : elle s'affiche en petit format.
+        Un seul dépôt suffit — l'icône de l'onglet est fabriquée
+        automatiquement à partir de la même image.
+      </small>
+    </div>
+
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>
 </section>
+
+{% if logo_regle %}
+<section class="carte">
+  <h2>Revenir au logo LudoteX</h2>
+  <p class="stats-note">
+    Retire votre logo et réaffiche celui du logiciel. Les autres réglages de
+    cette page ne sont pas touchés. Vous pourrez redéposer votre logo à tout
+    moment.
+  </p>
+  {# Formulaire SÉPARÉ, et non un second bouton du formulaire ci-dessus : ce
+     geste ne doit pas enregistrer au passage les quatre champs texte. #}
+  <form method="post" action="/admin/identite/logo/retirer">
+    <button type="submit" class="bouton bouton-secondaire">Revenir au logo LudoteX</button>
+  </form>
+</section>
+{% endif %}
 
 <p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
 {% endblock %}

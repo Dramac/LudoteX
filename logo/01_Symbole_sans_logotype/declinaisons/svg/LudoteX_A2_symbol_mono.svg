@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" role="img" aria-label="LudoteX">
+<title>LudoteX — symbole monochrome</title>
+<!-- Variante monochrome d'une seule couleur, prise dans `currentColor` (donc
+     pilotable en CSS). Les rayonnages sont des DÉCOUPES obtenues par
+     fill-rule="evenodd" sur un tracé unique, et non des formes blanches posées
+     par-dessus : le symbole reste lisible sur n'importe quel fond. Généré à
+     partir de logo/01_Symbole_sans_logotype/master/LudoteX_A2_symbol_MASTER_V6.svg -->
+<path fill="currentColor" fill-rule="evenodd" d="m1199.9 516.23c6.9375-165.09-388.25-245.46-405.37-264.28-8.5312-9.3555 19.801-252.13-194.53-251.95-214.33-0.17969-186.01 242.59-194.54 251.95-17.125 18.816-412.29 99.191-405.36 264.28 6.9102 165.1 216.61 80.305 261.34 128.89 39.121 42.527-183.35 314.75-208.23 487.61-8.1133 56.336 7.7266 67.27 62.48 67.27 99.312 0 194.12-0.058594 281.44-0.058594 39.445 0 53.473-22.668 73.824-53.902 45.047-69.148 99.453-180.29 129.06-180.28 29.594-0.011719 84.012 111.13 129.06 180.27 20.352 31.246 34.367 53.902 73.812 53.902 87.301 0 182.12 0.058593 281.44 0.058593 54.758 0 70.609-10.934 62.484-67.273-24.875-172.86-247.33-445.08-208.23-487.61 44.723-48.574 254.45 36.219 261.34-128.88zM360 300h170v260h-170zM570 390h150v170h-150zM760 470h95v90h-95zM300 590h600v25h-600zM360 650h170v240h-170zM570 650h280v130h-280zM570 810h280v80h-280zM415 385h60v14h-60zM615 460h55v14h-55zM785 510h35v10h-35zM420 735h60v14h-60zM680 700h65v14h-65zM680 840h65v14h-65z"/>
+</svg>

@@ -179,7 +179,9 @@ def main() -> None:
     p.add_argument("--base-url", default=os.getenv("BASE_URL"),
                    help="URL de base (défaut : BASE_URL du .env).")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="Dossier de sortie.")
-    p.add_argument("--logo", type=Path, help="Image du logo (sinon logo_ludotex.jpg).")
+    p.add_argument("--logo", type=Path,
+                   help="Image du logo (sinon le logo déposé dans data/logo.png "
+                        "depuis /admin/identite ; aucun par défaut).")
     p.add_argument("--planche", action="store_true", help="Planche PDF A4 à imprimer.")
     p.add_argument("--grille", default="8x2",
                    help="Disposition planche 'lignesxcolonnes' (défaut 8x2, paysage).")
@@ -191,7 +193,11 @@ def main() -> None:
         raise SystemExit("ERREUR : aucune URL de base. Renseigner BASE_URL dans "
                          ".env ou passer --base-url. L'URL encodée est définitive.")
 
-    # Logo : si --logo est passé, il doit exister ; sinon on tente logo_ludotex.jpg.
+    # Logo : si --logo est passé, il doit exister ; sinon on prend celui que
+    # l'association a déposé depuis /admin/identite (data/logo.png). Faute de
+    # quoi, PAS de logo de repli : l'étiquette dessine son cadre « LOGO ».
+    # Le meeple LudoteX n'est délibérément jamais imprimé sur les boîtes —
+    # voir app/etiquettes.py::charger_logo.
     if args.logo and not args.logo.exists():
         raise SystemExit(f"Logo introuvable : {args.logo}")
     logo = charger_logo(args.logo)
@@ -204,7 +210,8 @@ def main() -> None:
     print(f"URL de base : {args.base_url}")
     if any(s in args.base_url for s in ("example", "localhost", "trycloudflare", "ngrok")):
         print("  (URL de TEST — ne pas utiliser pour le tirage définitif.)")
-    print(f"Logo : {'fourni' if logo else 'PLACEHOLDER (logo_ludotex.jpg absent)'}")
+    print(f"Logo : {'fourni' if logo else 'PLACEHOLDER (aucun logo déposé — '
+                     'le déposer depuis /admin/identite avant le tirage définitif)'}")
 
     n = generer_pngs(exemplaires, args.base_url, args.out, logo, args.simple)
     print(f"{n} étiquette(s) PNG écrites dans : {args.out}/")

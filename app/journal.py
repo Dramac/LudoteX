@@ -94,6 +94,12 @@ ACTIONS = {
     "association_presentation_modifiee",
     "association_contact_modifie",
     "association_depot_modifie",
+    # Logo déposé ou retiré depuis /admin/identite. `objet` ne porte JAMAIS le
+    # nom du fichier téléversé — il vient du poste de la personne qui dépose et
+    # peut contenir un prénom, un nom de client, un chemin — mais seulement
+    # « déposé » ou « retiré ». Un refus, lui, part en `ok=False` avec le motif
+    # dans `detail` (voir app/logo.py::LogoRefuse).
+    "association_logo_modifie",
     "inscription_tournoi_modifiee",
     "planning_purge",
     "formation_reinitialisee",

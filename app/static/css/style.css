@@ -321,6 +321,27 @@ summary:focus-visible,
 /* Catalogue */
 .logo-catalogue { display: block; max-width: 180px; height: auto; margin: 0 auto 12px; }
 
+/* Aperçu du logo sur l'écran d'administration « Identité » : ce qu'un
+   visiteur voit aujourd'hui, à sa taille réelle d'affichage — un aperçu plus
+   grand que le rendu final tromperait sur le résultat. Le damier discret
+   derrière rend visible un fond transparent, qu'un aperçu sur fond blanc
+   ferait passer pour du blanc plein. */
+.logo-apercu {
+  display: block;
+  max-width: 180px;
+  height: auto;
+  margin: 8px 0 12px;
+  padding: 8px;
+  border: 1px solid var(--bord);
+  border-radius: 6px;
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%),
+    linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
 /* Catalogue — recherche / filtres */
 .recherche {
   border: 1px solid var(--bord);

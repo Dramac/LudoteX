@@ -25,7 +25,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from app import admin_auth, auth, modules, services
+from app import admin_auth, auth, logo, modules, services
 from app.config import FORMATION_URL, MODE_FORMATION
 from app.version import APP_VERSION
 
@@ -150,3 +150,14 @@ templates.env.globals["app_version"] = APP_VERSION
 # fichier change), donc le navigateur recharge automatiquement la bonne version.
 _CSS = BASE_DIR / "static" / "css" / "style.css"
 templates.env.globals["static_v"] = int(_CSS.stat().st_mtime) if _CSS.exists() else 0
+
+# Même motif que `static_v`, pour les images d'identité servies par
+# /image/* (voir app/routes/images.py) : {{ logo_v() }} rend la date de
+# modification du fichier effectivement servi.
+#
+# UNE FONCTION, et non une constante comme `static_v` : une feuille de style ne
+# change qu'au déploiement (uvicorn redémarre, la valeur est recalculée), alors
+# qu'un logo se dépose depuis /admin/identite EN COURS DE SERVICE. Une valeur
+# figée à l'import laisserait les navigateurs sur l'ancienne image jusqu'au
+# prochain redémarrage. `version_servie` ne lève jamais (voir sa docstring).
+templates.env.globals["logo_v"] = logo.version_servie

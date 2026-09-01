@@ -924,13 +924,20 @@ def test_admin_login_autofocus(client, monkeypatch):
 
 def test_favicon_carre(client):
     # Q11 : favicons PNG carrés référencés (plus le JPEG d'origine, mal cadré
-    # en petit) et effectivement servis en statique.
+    # en petit) et effectivement servis.
+    #
+    # Les icônes ne sont plus servies par le montage /static mais par la route
+    # /image/* (app/routes/images.py) : une association peut déposer les
+    # siennes depuis /admin/identite, et elles vivent alors dans data/, hors du
+    # dépôt. Le paramètre `?v=` change quand l'image change. Ce qui est
+    # RÉELLEMENT servi par cette route (fichier déposé ou de repli) est couvert
+    # par tests/test_logo.py ; ici on ne vérifie que le référencement.
     r = client.get("/catalogue")
-    assert 'href="/static/img/favicon-192.png"' in r.text
-    assert 'href="/static/img/favicon-512.png"' in r.text
+    assert 'href="/image/favicon-192.png?v=' in r.text
+    assert 'href="/image/favicon-512.png?v=' in r.text
     assert "logo_ludotex.jpg" not in r.text.split("<body", 1)[0]  # plus dans <head>
     for nom in ("favicon-192.png", "favicon-512.png"):
-        rf = client.get(f"/static/img/{nom}")
+        rf = client.get(f"/image/{nom}")
         assert rf.status_code == 200
         assert rf.headers["content-type"] == "image/png"
 

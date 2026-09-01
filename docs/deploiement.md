@@ -142,6 +142,13 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
   l'étape 4 n'est pas faite).
 - `https://jeux.monasso.fr/admin` → se connecter avec le mot de passe défini
   pendant l'installation.
+- **Déposer le logo de l'association** : `/admin/identite` → « Logo de
+  l'association ». Il ne s'installe PAS par copie de fichier sur le serveur —
+  le dossier `app/static/img/` est versionné, un fichier posé là serait écrasé
+  au prochain `git pull`. Le dépôt écrit dans `data/`, à côté des bases, et
+  fabrique du même coup l'icône d'onglet. Tant que rien n'est déposé, c'est le
+  logo du logiciel (LudoteX) qui s'affiche. PNG, JPEG ou WebP ; **pas de SVG**
+  (voir `app/logo.py` pour la raison).
 - Ouvrir sur un smartphone le **lien d'activation bénévole** affiché à la fin
   du script (ou depuis `/admin` → Accès bénévole → partager le lien), puis
   tester un scan depuis `/scanner`.
@@ -183,6 +190,11 @@ sudo -u pretjeux .venv/bin/python -m scripts.generate_qr --planche --grille 8x2
 
 Ou depuis l'espace admin (`/admin/etiquettes`) pour une sélection de jeux à
 la carte.
+
+> **Déposer le logo AVANT ce tirage.** Sans logo déposé (étape 5), les
+> étiquettes portent un cadre « LOGO » vide : c'est délibéré — on n'imprime pas
+> le logo du logiciel sur les boîtes d'une association — mais cela se corrige
+> mal une fois sept cents étiquettes collées.
 
 ## 7. Sauvegarde de la base
 

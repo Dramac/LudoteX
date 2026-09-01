@@ -28,10 +28,6 @@ from PIL import Image, ImageDraw, ImageFont
 NOIR = (0, 0, 0)
 BLANC = (255, 255, 255)
 
-# Logo par défaut : app/static/img/logo_ludotex.jpg (servi aussi sous
-# /static/img/logo_ludotex.jpg par l'application).
-LOGO_DEFAUT = Path(__file__).resolve().parent / "static" / "img" / "logo_ludotex.jpg"
-
 
 def url_fiche(base_url: str, id_exemplaire: str) -> str:
     """
@@ -42,17 +38,47 @@ def url_fiche(base_url: str, id_exemplaire: str) -> str:
     return f"{base_url.rstrip('/')}/jeu/{id_exemplaire}"
 
 
+def chemin_logo_defaut() -> Path | None:
+    """
+    Chemin du logo DÉPOSÉ par l'association (`data/logo.png`), ou None.
+
+    Une FONCTION et non une constante de module : le dossier `data/` se déduit
+    du chemin de la base de prêt, qui est réglable (`DATABASE_PATH`) et que les
+    tests remplacent. Une constante calculée à l'import figerait le chemin du
+    premier processus venu. Le domicile du calcul est `app/logo.py`.
+    """
+    from app.logo import chemin_logo_etiquettes
+
+    return chemin_logo_etiquettes()
+
+
 def charger_logo(chemin: Path | None = None) -> Image.Image | None:
     """
-    Charge le logo de l'association en image RGB, ou None s'il est absent.
+    Charge le logo DÉPOSÉ PAR L'ASSOCIATION, ou None s'il n'y en a pas.
+
+    RÈGLE DIFFÉRENTE DE CELLE DES ÉCRANS, ET C'EST VOULU. Faute de logo réglé,
+    les pages web affichent le meeple LudoteX (`app/static/img/logo.png`) ;
+    ici, on ne renvoie SURTOUT PAS ce fichier — on renvoie None, et l'étiquette
+    dessine son cadre « LOGO » à la place.
+
+    La raison n'est pas technique. Sur un écran, un logo est une décoration
+    dans un coin, que la page suivante remplace. Sur sept cents boîtes, c'est
+    une marque PERMANENTE apposée sur le bien d'une association : y imprimer
+    l'emblème du logiciel qu'elle utilise serait une signature qu'elle n'a pas
+    demandée, et qu'elle ne pourrait plus retirer sans réimprimer tout le
+    tirage. Le cadre « LOGO » se voit, se comprend, et se corrige en déposant
+    le vrai logo depuis /admin/identite AVANT d'imprimer.
+
+    Ne pas « uniformiser » ce comportement avec celui des pages web.
 
     Args:
-        chemin: chemin explicite ; par défaut, LOGO_DEFAUT (racine du dépôt).
+        chemin: chemin explicite (option `--logo` de scripts/generate_qr.py) ;
+            par défaut, le logo déposé dans `data/` s'il existe.
 
     Returns:
         L'image PIL du logo, ou None (un placeholder « LOGO » sera dessiné).
     """
-    chemin = chemin or LOGO_DEFAUT
+    chemin = chemin or chemin_logo_defaut()
     if chemin and Path(chemin).exists():
         return Image.open(chemin).convert("RGB")
     return None
