@@ -3,8 +3,7 @@
 Point d'entrée pour toute personne (ou IA) qui reprend le code. Il donne la vue
 d'ensemble, les conventions, le flux d'une requête et la marche à suivre pour
 étendre le projet. La conception de référence reste `docs/specification.md` ;
-l'état d'avancement vit dans `CLAUDE.md` ; les conseils transverses dans
-`bonne-pratique.md`.
+l'état d'avancement vit dans `CLAUDE.md`.
 
 ## 1. Vue d'ensemble
 
@@ -83,7 +82,8 @@ configuré → **mode ouvert** (dev) avec avertissement au démarrage. Le reste
 
 ## 8. Lancer et tester en local
 
-Voir `bonne-pratique.md` (section « Tester en local ») pour le détail. En bref :
+Pour tester le scanner caméra depuis un smartphone (tunnel HTTPS), voir
+`docs/lancement-local.md`. En bref, pour lancer l'application :
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -110,8 +110,8 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   `routes/catalogue.py`.
 - **Protéger une nouvelle route bénévole** : ajouter
   `_=Depends(exiger_jeton)` à la signature.
-- **Module « prêts longue durée »** (comptes, e-mails) : voir la note dédiée
-  `docs/evolution-prets-longue-duree.md` (cloisonnement + RGPD).
+- **Module « prêts longue durée »** (comptes, e-mails) : chantier non encore
+  spécifié publiquement (cloisonnement + RGPD à traiter comme pour le planning).
 
 ## 10. Pièges connus
 

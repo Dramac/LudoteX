@@ -5,7 +5,7 @@
 développement ; il ne code rien.
 
 À lire avec `docs/conception-tournois.md` (même logique de cloisonnement, de
-module intégré et de RGPD) et `docs/ameliorations-a-prevoir.md`.
+module intégré et de RGPD).
 
 ---
 

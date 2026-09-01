@@ -4,9 +4,8 @@
 document fige le périmètre et les décisions ; il ne code rien.
 
 À lire avec `docs/conception-tournois.md` et `docs/conception-planning.md` (même
-logique de module intégré) et surtout `docs/evolution-prets-longue-duree.md`, qui
-décrit le futur module « prêts longue durée au local » que cette fonctionnalité
-doit préparer sans le bloquer.
+logique de module intégré). Cette fonctionnalité doit aussi préparer, sans le
+bloquer, le futur module « prêts longue durée au local ».
 
 ---
 
@@ -299,7 +298,7 @@ Rappel (déjà tranché plus haut, regroupé ici pour lever l'ambiguïté) :
 **Phase 2 (hors périmètre — le futur module « longue durée au local ») :**
 
 - Bascule opérationnelle du contexte sur `local` et parcours de rerangement hors
-  événement, prêts nominatifs (cf. `docs/evolution-prets-longue-duree.md`).
+  événement, prêts nominatifs.
 - Éventuels : historique des changements d'emplacement, réaffectation en lot lors
   d'un archivage, vue « plan » du local. **Rien de tout ça en phase 1.**
 

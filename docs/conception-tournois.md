@@ -4,9 +4,6 @@
 (qui part en déploiement d'abord). Ce document fige le périmètre et les
 décisions avant tout développement ; il ne code rien.
 
-À lire avec `docs/evolution-prets-longue-duree.md` (même logique de cloisonnement
-et de RGPD) et `docs/ameliorations-a-prevoir.md`.
-
 ---
 
 ## 1. Objectif

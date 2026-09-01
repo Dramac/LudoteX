@@ -1,8 +1,7 @@
 # Idées d'évolutions — exploration libre
 
 Brainstorm sans contrainte de faisabilité (session du 2026-07-15). À trier avec
-le CA : certaines idées iront au backlog (`docs/ameliorations-a-prevoir.md`),
-d'autres à la corbeille. Les chantiers **déjà actés** (double élimination,
+le CA : certaines idées iront au backlog, d'autres à la corbeille. Les chantiers **déjà actés** (double élimination,
 e-mails, sauvegarde externe automatisée, notifications planning) ne sont pas
 repris ici, sauf pour les prolonger.
 
@@ -376,8 +375,7 @@ mise en œuvre quand elle coule de source.
 - **Pertinence = intacte.** `/live/data` est bien public et sans donnée
   personnelle (le n° de pochette en a été délibérément exclu) — l'endpoint est
   donc exposable tel quel. Reste le CORS restreint et l'embed. Seule réserve,
-  inchangée : cela dépend du choix d'hébergement, encore ouvert
-  (`docs/etude-hebergement-brief.md`).
+  inchangée : cela dépend du choix d'hébergement, encore ouvert.
 
 ### 5.4 Flux iCal public de l'événement
 - **Valeur** : tout le programme des tournois en un seul abonnement agenda
@@ -462,8 +460,7 @@ mise en œuvre quand elle coule de source.
   commune.
 
 ### 6.5 Prêts longue durée aux adhérents
-- **Valeur** : faire vivre la ludothèque *entre* les événements (déjà cadré
-  dans `docs/evolution-prets-longue-duree.md`). Change la nature du service —
+- **Valeur** : faire vivre la ludothèque *entre* les événements. Change la nature du service —
   et la donne RGPD — donc décision CA avant tout.
 - **Pertinence = intacte, et précédent RGPD désormais disponible.** Le module
   planning a déjà acté une **rupture assumée** avec le « zéro donnée perso »

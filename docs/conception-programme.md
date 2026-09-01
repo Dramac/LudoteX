@@ -3,8 +3,6 @@
 **Objet :** élément de programme hors tournoi (animation, atelier, initiation,
 temps fort, intervention partenaire), saisi dans l'application et annoncé sur
 l'écran de salle, la page d'accueil et une page publique dédiée.
-**Origine :** `docs/note-intention-ludotex-evolutions-evenement.md` §3, revue
-dans `docs/analyse-note-evolutions-evenement.md` §5.
 **Statut :** conception validée, prête à implémenter. Décisions du §2 arrêtées
 avec Simon le 26 juillet 2026.
 **Base de comparaison :** LudoteX 1.1.0, 410 tests verts.
@@ -68,8 +66,8 @@ initiale (« un nouveau sous-menu de l'interface d'administration ») :
 - **Pas d'héritage de schéma.** Le tournoi n'est **pas** refactorisé en
   spécialisation d'un élément de programme : 17 colonnes de compétition et
   ~150 tests pour zéro bénéfice visible, contre le risque de régression. On
-  mutualise ce qui l'est déjà (frise, `.ics`, helpers de fuseau) et rien de plus
-  — argumentaire complet dans `docs/analyse-note-evolutions-evenement.md` §5.
+  mutualise ce qui l'est déjà (frise, `.ics`, helpers de fuseau) et rien de
+  plus.
 
 ---
 

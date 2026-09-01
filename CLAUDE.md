@@ -235,8 +235,8 @@ public non développeur. Il vit dans le dépôt précisément pour être corrig�
 **dans le même commit** que le code qui le périme — c'est un **dépôt git
 séparé**, à committer à part.
 
-**Le constat qui motive cette règle** (audit du 2026-07-18,
-`docs/guide-utilisateur-cadrage.md` §1) : quatre pages étaient fausses ou
+**Le constat qui motive cette règle** (audit interne du 2026-07-18) : quatre
+pages étaient fausses ou
 incomplètes, non par négligence ponctuelle, mais parce que **rien ne signalait,
 au moment du changement, que la doc devait suivre**.
 
@@ -254,8 +254,7 @@ points, vérifier si une page de `wiki/` le mentionne — et la corriger :
 Ne PAS documenter dans `wiki/` : refactorisations internes, tests, migrations,
 noms de fichiers ou de fonctions. Le wiki ne parle jamais de code.
 
-**Conventions rédactionnelles** (détail dans `docs/guide-utilisateur-cadrage.md`) :
-infinitif pour les gestes, « vous » pour s'adresser au lecteur, jamais de
+**Conventions rédactionnelles** : infinitif pour les gestes, « vous » pour s'adresser au lecteur, jamais de
 tutoiement ; libellés de boutons en gras et identiques à l'écran ; section « Si
 ça ne marche pas » obligatoire sur toute page décrivant une action ; diagrammes
 en **Mermaid** ; captures dans `wiki/images/`, **jamais de numéro de pochette
@@ -308,9 +307,8 @@ Sans ligne de commande : `lancer.command` (macOS), `lancer.bat` (Windows).
 
 ## Ouverture publique de LudoteX — arbitrages
 
-Décisions arrêtées le 2026-08-29 ; **cette section prime** sur
-`docs/note-ouverture-publique.md` en cas de divergence. L'avancement, lui, est
-dans `interne/chantiers.md`.
+Décisions arrêtées le 2026-08-29 ; **cette section fait foi**. L'avancement,
+lui, est dans `interne/chantiers.md`.
 
 **1. Cible.** LudoteX devient un outil réutilisable par d'autres associations :
 dépôt public lisible, page vitrine indexable, produit sans marque d'association.

@@ -6,8 +6,8 @@ automatise la quasi-totalité des étapes ; ce guide explique quoi faire avant,
 pendant et après son exécution.
 
 > Ce guide part du principe que quelqu'un (le bureau, un prestataire...) a
-> déjà souscrit un VPS et un nom de domaine. Le choix de l'hébergeur est
-> traité dans `docs/etude-hebergement.md` / `docs/budget.md`.
+> déjà souscrit un VPS et un nom de domaine. Le choix de l'hébergeur reste à
+> la charge de l'association qui déploie l'application.
 
 ---
 

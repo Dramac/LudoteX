@@ -124,7 +124,7 @@ ludotex/
 ├── deploy/              # install.sh (installation interactive), systemd, nginx, sauvegarde
 ├── data/                # bases SQLite + logo déposé en admin (NON versionnés)
 ├── logo/                # sources de l'identité LudoteX (CC0, voir LICENCE.md)
-├── docs/                # spécification, conception tournois, déploiement, budget…
+├── docs/                # spécification, conception des modules, déploiement, vocabulaire…
 ├── tests/               # test_services, test_routes, test_tournoi (79 tests)
 ├── requirements.txt
 ├── .gitignore
@@ -136,9 +136,8 @@ ludotex/
 La conception fait foi : voir **[docs/specification.md](docs/specification.md)** et
 **[docs/conception-tournois.md](docs/conception-tournois.md)**.
 Déploiement pas à pas : [docs/deploiement.md](docs/deploiement.md).
-Contexte budgétaire et d'hébergement : [docs/budget.md](docs/budget.md),
-[docs/etude-hebergement.md](docs/etude-hebergement.md).
-Brief de passation : [docs/brief-handoff.md](docs/brief-handoff.md).
+Index complet de la documentation technique, et ordre de lecture pour reprendre
+le projet : [docs/README.md](docs/README.md).
 
 ## Sécurité
 
