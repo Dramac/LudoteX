@@ -9,6 +9,14 @@
 
   {% if message %}<p class="resultat resultat-attention">{{ message }}</p>{% endif %}
 
+  {% if not logo_regle %}
+    <p class="resultat resultat-info">
+      Aucun logo n'est déposé : les étiquettes imprimeront le <strong>meeple LudoteX</strong>
+      par défaut. <a class="lien" href="/admin/identite">Déposer le logo de l'association</a>
+      avant d'imprimer ce tirage.
+    </p>
+  {% endif %}
+
   <p class="stats-note">
     Les QR encoderont l'adresse : <code>{{ base_url }}/jeu/&lt;id&gt;</code>.
     Pour le tirage <strong>définitif</strong>, cette adresse doit être le domaine final.

@@ -1045,6 +1045,10 @@ def test_admin_etiquettes_lot(client, monkeypatch):
 
     page = client.get("/admin/etiquettes")
     assert page.status_code == 200 and "Imprimer des étiquettes" in page.text
+    # Lot 3c : sans logo déposé, un rappel explicite (le cadre « LOGO » a
+    # disparu des étiquettes elles-mêmes — voir app/etiquettes.py::charger_logo).
+    assert "meeple LudoteX" in page.text
+    assert 'href="/admin/identite"' in page.text
 
     # Sélection vide -> message, jamais d'erreur.
     vide = client.post("/admin/etiquettes/pdf", data={})
@@ -1061,6 +1065,33 @@ def test_admin_etiquettes_lot(client, monkeypatch):
     big = client.post("/admin/etiquettes/pdf",
                       data={"references": "CATAN", "marge_gauche": "300"})
     assert big.status_code == 200 and "marges" in big.text.lower()
+
+
+def test_admin_etiquettes_alerte_disparait_avec_un_logo_depose(client, monkeypatch):
+    """
+    Suite de test_admin_etiquettes_lot : le rappel n'a de sens QUE tant que
+    rien n'est déposé (`app.logo.logo_regle`, même fonction que sur
+    /admin/identite).
+    """
+    import io
+
+    from PIL import Image
+
+    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+
+    tampon = io.BytesIO()
+    Image.new("RGB", (100, 100), (10, 20, 30)).save(tampon, format="PNG")
+    client.post(
+        "/admin/identite",
+        data={"nom_association": "", "presentation": "", "contact": "",
+              "depot_url": "", "couleur": ""},
+        files={"logo_fichier": ("logo.png", tampon.getvalue(), "image/png")},
+    )
+
+    page = client.get("/admin/etiquettes")
+    assert page.status_code == 200
+    assert "meeple LudoteX" not in page.text
 
 
 def test_admin_supervision(client, monkeypatch):

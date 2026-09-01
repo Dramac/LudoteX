@@ -366,7 +366,12 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
     return templates.TemplateResponse(
         request, "admin_etiquettes.html",
         {"jeux": jeux, "categories": categories, "filtre": filtre,
-         "base_url": _base_url(request), "message": message},
+         "base_url": _base_url(request), "message": message,
+         # Lot 3c : le cadre « LOGO » a disparu des étiquettes (voir
+         # app/etiquettes.py::charger_logo) — le signal qu'il portait déménage
+         # ici, seul endroit où il peut encore être lu et corrigé avant
+         # d'imprimer un tirage entier.
+         "logo_regle": logo.logo_regle()},
     )
 
 

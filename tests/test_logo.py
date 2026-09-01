@@ -16,11 +16,16 @@ Ce que ce fichier vérifie, et pourquoi c'est ce qui compte :
 4. **Le nom de fichier du client n'entre dans aucun chemin.** Les trois noms de
    sortie sont fixes ; c'est ce qui rend la traversée de répertoire impossible
    plutôt que « filtrée ».
-5. **Sans réglage**, les pages servent le logo LudoteX versionné — et les
-   ÉTIQUETTES, elles, ne servent rien du tout : elles dessinent leur cadre
-   « LOGO ». Cette asymétrie est délibérée (voir `app.etiquettes.charger_logo`)
-   et un test la verrouille, faute de quoi quelqu'un « l'uniformisera ».
+5. **Sans réglage**, les pages ET les étiquettes servent le meeple LudoteX
+   par défaut (`app.etiquettes.charger_logo`) — dans deux fichiers versionnés
+   DISTINCTS (couleur pour l'écran, monochrome pour le papier). Le test des
+   étiquettes vit dans `tests/test_logo.py` ; l'aplatissement sur fond blanc
+   d'un logo à canal alpha (lot 3c) est vérifié séparément (point 7).
 6. **La route d'image reste debout** quand `data/` est illisible.
+7. **Un logo à fond transparent ne devient jamais un rectangle noir** sur une
+   étiquette (lot 3c) : `Image.convert("RGB")` seul ignore l'alpha et garde des
+   canaux RVB souvent noirs sous la transparence — corrigé par un
+   aplatissement explicite sur fond blanc.
 
 Tous les tests écrivent dans le `data/` d'un dossier temporaire : le dossier
 est déduit du parent de la base de prêt (voir `app.logo.dossier_regle`), que la
@@ -364,16 +369,22 @@ def test_sans_reglage_les_pages_servent_le_logo_versionne(client, bases):
     assert reponse.content == logo.chemin_versionne("logo.png").read_bytes()
 
 
-def test_sans_reglage_les_etiquettes_dessinent_le_placeholder(client, bases):
+def test_sans_reglage_les_etiquettes_prennent_le_meeple_par_defaut(client, bases):
     """
-    RÈGLE DIFFÉRENTE DE CELLE DE L'ÉCRAN, ET C'EST LE POINT. Sur sept cents
-    boîtes, un logo est une marque permanente apposée sur le bien d'une
-    association : on n'y imprime pas l'emblème du logiciel faute de mieux.
-    Voir `app.etiquettes.charger_logo`.
+    RÈGLE QUI A CHANGÉ AU LOT 3c. Jusqu'ici, faute de logo réglé, les
+    étiquettes ne recevaient RIEN (`charger_logo() is None`) et dessinaient un
+    cadre placeholder « LOGO ». Ce cadre a disparu : le vrai choix n'était pas
+    « le meeple ou rien », mais « le meeple ou un cadre imprimé en sept cents
+    exemplaires » — voir `app.etiquettes.charger_logo`. `charger_logo()` ne
+    renvoie donc plus jamais None.
     """
-    from app.etiquettes import charger_logo
+    from app.etiquettes import _MEEPLE_DEFAUT, charger_logo
 
-    assert charger_logo() is None
+    image = charger_logo()
+    assert image is not None
+    assert image.mode == "RGB"
+    with Image.open(_MEEPLE_DEFAUT) as meeple:
+        assert image.size == meeple.size
 
 
 def test_avec_reglage_les_etiquettes_prennent_le_logo_depose(client, bases):
@@ -517,3 +528,47 @@ def test_le_depot_exige_une_session_admin(client, bases):
     )
     assert reponse.status_code == 303
     assert not (bases / "logo.png").exists()
+
+
+# ---------------------------------------------------------------------------
+# 7. TRANSPARENCE — un logo à fond transparent n'imprime jamais de noir (3c)
+# ---------------------------------------------------------------------------
+def test_un_logo_depose_a_fond_transparent_ne_produit_pas_de_noir(client, bases):
+    """
+    `Image.open(...).convert("RGB")` SEUL rend NOIRS les pixels transparents
+    d'un PNG RVBA — pas théorique, `app/static/img/logo.png` (et le meeple par
+    défaut) en sont eux-mêmes. Le logo déposé est reconstruit en RGBA par
+    `app.logo.enregistrer` avant d'être écrit (fond conservé) : on dépose donc
+    une image RGBA à fond entièrement transparent et on vérifie que
+    `charger_logo()` en tire une image dont les coins sont BLANCS, pas noirs.
+    """
+    from app.etiquettes import charger_logo
+
+    tampon = io.BytesIO()
+    # Carré opaque au centre sur un fond entièrement transparent.
+    im = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
+    for x in range(60, 140):
+        for y in range(60, 140):
+            im.putpixel((x, y), (10, 10, 10, 255))
+    im.save(tampon, format="PNG")
+
+    _poster(client, fichier=tampon.getvalue())
+
+    image = charger_logo()
+    assert image.mode == "RGB"
+    for coin in ((0, 0), (image.width - 1, 0), (0, image.height - 1),
+                (image.width - 1, image.height - 1)):
+        assert image.getpixel(coin) == (255, 255, 255), coin
+    # Le carré opaque, lui, est resté sombre : l'aplatissement ne délave pas
+    # ce qui n'était pas transparent.
+    assert image.getpixel((image.width // 2, image.height // 2))[0] < 30
+
+
+def test_le_meeple_par_defaut_ne_produit_pas_de_noir(client, bases):
+    """Même vérification sur le repli — le meeple par défaut est lui aussi RVBA."""
+    from app.etiquettes import charger_logo
+
+    image = charger_logo()
+    for coin in ((0, 0), (image.width - 1, 0), (0, image.height - 1),
+                (image.width - 1, image.height - 1)):
+        assert image.getpixel(coin) == (255, 255, 255), coin

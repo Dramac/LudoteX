@@ -28,6 +28,16 @@ from PIL import Image, ImageDraw, ImageFont
 NOIR = (0, 0, 0)
 BLANC = (255, 255, 255)
 
+# Meeple LudoteX en noir, imprimé sur l'étiquette quand l'association n'a
+# déposé aucun logo — voir `charger_logo`. Fichier VERSIONNÉ, copié depuis
+# `logo/01_Symbole_sans_logotype/png/512/LudoteX_A2_symbol_mono_noir_512px.png`
+# (même duplication assumée que les fichiers listés dans app/logo.py :
+# `logo/` est l'atelier, `app/static/img/` est ce que l'application sert).
+# Un fichier DISTINCT de `app/static/img/logo.png` : celui-ci sert l'écran en
+# couleur, celui-ci sert le papier — une seule encre, jamais de dégradé ni de
+# nuance perdue à l'impression.
+_MEEPLE_DEFAUT = Path(__file__).resolve().parent / "static" / "img" / "logo-etiquette-defaut.png"
+
 
 def url_fiche(base_url: str, id_exemplaire: str) -> str:
     """
@@ -52,36 +62,64 @@ def chemin_logo_defaut() -> Path | None:
     return chemin_logo_etiquettes()
 
 
-def charger_logo(chemin: Path | None = None) -> Image.Image | None:
+def _aplati_sur_blanc(image: Image.Image) -> Image.Image:
     """
-    Charge le logo DÉPOSÉ PAR L'ASSOCIATION, ou None s'il n'y en a pas.
+    Compose `image` sur un fond blanc en tenant compte du canal alpha, puis
+    renvoie une image RGB.
 
-    RÈGLE DIFFÉRENTE DE CELLE DES ÉCRANS, ET C'EST VOULU. Faute de logo réglé,
-    les pages web affichent le meeple LudoteX (`app/static/img/logo.png`) ;
-    ici, on ne renvoie SURTOUT PAS ce fichier — on renvoie None, et l'étiquette
-    dessine son cadre « LOGO » à la place.
+    `Image.open(...).convert("RGB")` SEUL ignore la transparence : Pillow garde
+    les canaux RVB bruts sous les pixels transparents, souvent noirs. Sur une
+    étiquette imprimée en noir et blanc, un logo à fond transparent
+    ressortirait donc entouré d'un rectangle noir — pas théorique :
+    `app/static/img/logo.png` est lui-même un PNG RVBA, et le meeple par
+    défaut ci-dessous aussi. Convertir en RGBA PUIS composer sur du blanc en
+    utilisant le canal alpha comme masque est la seule façon d'obtenir un fond
+    réellement blanc, que l'image de départ ait ou non une transparence (sans
+    canal alpha, `.convert("RGBA")` en ajoute un opaque à 255 partout : le
+    résultat est alors identique à un simple `.convert("RGB")`).
+    """
+    rgba = image.convert("RGBA")
+    fond = Image.new("RGB", rgba.size, BLANC)
+    fond.paste(rgba, mask=rgba.split()[-1])
+    return fond
 
-    La raison n'est pas technique. Sur un écran, un logo est une décoration
-    dans un coin, que la page suivante remplace. Sur sept cents boîtes, c'est
-    une marque PERMANENTE apposée sur le bien d'une association : y imprimer
-    l'emblème du logiciel qu'elle utilise serait une signature qu'elle n'a pas
-    demandée, et qu'elle ne pourrait plus retirer sans réimprimer tout le
-    tirage. Le cadre « LOGO » se voit, se comprend, et se corrige en déposant
-    le vrai logo depuis /admin/identite AVANT d'imprimer.
 
-    Ne pas « uniformiser » ce comportement avec celui des pages web.
+def charger_logo(chemin: Path | None = None) -> Image.Image:
+    """
+    Charge le logo à imprimer sur l'étiquette : celui DÉPOSÉ PAR L'ASSOCIATION
+    s'il existe, sinon le meeple LudoteX par défaut (`_MEEPLE_DEFAUT`).
+
+    CE RAISONNEMENT A CHANGÉ AU LOT 3c — LA VERSION PRÉCÉDENTE RENVOYAIT NONE.
+    L'ancien argument (sur sept cents boîtes, un logo est une marque
+    PERMANENTE apposée sur le bien d'une association : imprimer l'emblème du
+    logiciel qu'elle utilise serait une signature qu'elle n'a pas demandée)
+    comparait les mauvaises choses. Le vrai choix n'est pas « le meeple ou
+    rien », c'est « le meeple ou un cadre imprimé contenant le mot LOGO » — un
+    marqueur de développement transformé en encre permanente sur tout un
+    tirage. Entre les deux, le meeple gagne largement.
+
+    Le SIGNAL que portait l'ancien cadre (« pense à déposer ton logo avant
+    d'imprimer ») n'a pas disparu : il a déménagé de l'étiquette vers l'écran
+    de génération (`/admin/etiquettes`, voir `app.logo.logo_regle`), où il peut
+    encore être lu et corrigé — un cadre sur sept cents boîtes déjà imprimées
+    ne peut plus l'être.
+
+    Ne pas réintroduire de branche « None -> cadre placeholder » ici ni dans
+    `image_etiquette`/`planche_pdf` : c'est précisément ce que ce lot retire.
 
     Args:
         chemin: chemin explicite (option `--logo` de scripts/generate_qr.py) ;
             par défaut, le logo déposé dans `data/` s'il existe.
 
     Returns:
-        L'image PIL du logo, ou None (un placeholder « LOGO » sera dessiné).
+        L'image PIL du logo, prête à imprimer (RGB, fond blanc même si la
+        source a un canal alpha — voir `_aplati_sur_blanc`). Ne renvoie JAMAIS
+        None.
     """
     chemin = chemin or chemin_logo_defaut()
     if chemin and Path(chemin).exists():
-        return Image.open(chemin).convert("RGB")
-    return None
+        return _aplati_sur_blanc(Image.open(chemin))
+    return _aplati_sur_blanc(Image.open(_MEEPLE_DEFAUT))
 
 
 def code_classement(ex: dict) -> str:
@@ -178,19 +216,26 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     """
     Compose l'étiquette complète d'un exemplaire (format paysage).
 
-    QR à gauche ; à droite : logo (ou placeholder), cercle gommette, nom du jeu,
-    et code de classement. Le numéro de base n'est pas affiché (il est dans le
-    QR). Dimensionnement dynamique pour qu'un nom long ne déborde pas.
+    QR à gauche ; à droite : logo, cercle gommette, nom du jeu, et code de
+    classement. Le numéro de base n'est pas affiché (il est dans le QR).
+    Dimensionnement dynamique pour qu'un nom long ne déborde pas.
+
+    Il n'existe plus de cadre placeholder « LOGO » depuis le lot 3c — voir
+    `charger_logo` pour le raisonnement.
 
     Args:
         url: URL encodée dans le QR (voir url_fiche).
         ex: dict avec au moins `nom` + les champs de code_classement.
-        logo: image du logo, ou None (placeholder « LOGO »).
+        logo: image du logo à imprimer, ou None pour reprendre le repli de
+            `charger_logo()` (le logo déposé par l'association, sinon le
+            meeple LudoteX par défaut).
         box: taille de module du QR.
 
     Returns:
         Une image PIL RGB prête à enregistrer/placer.
     """
+    if logo is None:
+        logo = charger_logo()
     qr = image_qr_nu(url, box)
     pad, gap = 18, 22
     panel_w = 400
@@ -201,7 +246,6 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     f_nom = _police(24)
     f_classif = _police(24)
     f_small = _police(13)
-    f_logo = _police(30)
 
     # Mesure préalable (sur une image jetable) pour calculer la hauteur finale
     # en fonction du nombre de lignes du nom, et éviter tout débordement.
@@ -223,16 +267,11 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     px = pad + qr.width + gap          # bord gauche du panneau de droite
     panel_cx = px + panel_w // 2
 
-    # Logo (ou cadre placeholder « LOGO / (asso) »).
-    if logo is not None:
-        vignette = logo.copy()
-        vignette.thumbnail((logo_w, logo_h))
-        img.paste(vignette, (px + (logo_w - vignette.width) // 2,
-                             pad + (logo_h - vignette.height) // 2))
-    else:
-        d.rectangle([px, pad, px + logo_w, pad + logo_h], outline=NOIR, width=3)
-        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 - 18, "LOGO", f_logo)
-        _texte_centre(d, px + logo_w // 2, pad + logo_h // 2 + 18, "(asso)", f_small)
+    # Logo : jamais None ici (voir la docstring), toujours une vignette.
+    vignette = logo.copy()
+    vignette.thumbnail((logo_w, logo_h))
+    img.paste(vignette, (px + (logo_w - vignette.width) // 2,
+                         pad + (logo_h - vignette.height) // 2))
 
     # Gommette : cercle réservé en haut à droite.
     gx0 = W - pad - gom_d
@@ -275,7 +314,10 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
     Args:
         exemplaires: liste de dicts (nom + champs de code_classement + id).
         base_url: base de l'URL encodée dans le QR.
-        logo: image PIL du logo, ou None.
+        logo: image PIL du logo, ou None pour reprendre le repli de
+            `charger_logo()` — résolu UNE SEULE FOIS ici, pas à chaque
+            étiquette : sur sept cents exemplaires, relire le fichier à chaque
+            tour de boucle serait un aller-retour disque inutile.
         lignes, colonnes: disposition de la grille (≥ 1).
         marge_*_mm: marges de page en millimètres.
 
@@ -292,6 +334,9 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
     from reportlab.lib.units import mm
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
+
+    if logo is None:
+        logo = charger_logo()
 
     if lignes < 1 or colonnes < 1:
         raise ValueError("Le nombre de lignes et de colonnes doit être ≥ 1.")
