@@ -2781,8 +2781,12 @@ def signalements_export_pdf(request: Request, etat: str = "ouverts",
     if (garde := _garde(request)):
         return garde
     lignes, _etat, filtre_txt = _signalements_filtres(etat, categorie)
+    # Couleur d'identité (lot 3c) : la ROUTE la lit et la transmet — voir la
+    # note en tête d'app/exports.py. `theme_association()` ne lève jamais et
+    # renvoie toujours un `#rrggbb` effectif (l'anthracite par défaut).
+    couleur = services.theme_association()["couleur"]
     return Response(
-        content=exports.signalements_pdf(lignes, filtre_txt),
+        content=exports.signalements_pdf(lignes, filtre_txt, couleur),
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="signalements.pdf"'},
     )

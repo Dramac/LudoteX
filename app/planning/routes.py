@@ -36,7 +36,7 @@ from fastapi.responses import RedirectResponse, Response
 from app import admin_auth, journal
 from app.planning import demo, exports, services
 from app.planning.db import get_connection
-from app.services import FUSEAU_LOCAL, nom_association
+from app.services import FUSEAU_LOCAL, nom_association, theme_association
 from app.templating import templates
 
 router = APIRouter(tags=["planning"])
@@ -786,7 +786,12 @@ def admin_export_pdf(request: Request, ev: int):
         grille = services.construire_grille(conn, ev)
     finally:
         conn.close()
-    contenu = exports.construire_pdf(grille, evenement["nom"] if evenement else "Planning")
+    # Couleur d'identité (lot 3c) : lue et transmise par la ROUTE, jamais par
+    # un service du planning — invariant du projet, voir la note en tête
+    # d'app/planning/exports.py. `theme_association()` ne lève jamais.
+    couleur = theme_association()["couleur"]
+    contenu = exports.construire_pdf(
+        grille, evenement["nom"] if evenement else "Planning", couleur)
     return Response(
         content=contenu, media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="planning.pdf"'},

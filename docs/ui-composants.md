@@ -477,3 +477,29 @@ diverger en silence.
 le bleu du mode rangement et le violet des blocs « programme » du planning. Ce
 sont des significations, pas une identité : elles doivent rester les mêmes
 quelle que soit la couleur choisie.
+
+**La dérivation vaut aussi pour les exports PDF (lot 3c).** `app/exports.py`
+(statistiques, carnet de maintenance) et `app/planning/exports.py`
+(planning bénévole) dessinaient leurs tableaux en violet `#4a148c` codé en
+dur, dans SIX endroits au total, répartis dans ces deux fichiers — les mêmes
+règles s'y appliquent désormais :
+
+- deux couleurs suffisent : le fond d'en-tête (`couleur`, la couleur
+  d'identité elle-même) et le fond des lignes alternées (sa nuance « fond »,
+  `nuances_theme(couleur)["fond"]`) ;
+- la couleur du texte d'en-tête suit la luminance (`couleur_texte_sur`),
+  jamais `colors.white` en dur — sinon un en-tête devient illisible sur une
+  couleur d'identité claire ;
+- **aucune fonction d'export n'ouvre de connexion.** `construire_pdf` et
+  `signalements_pdf` reçoivent la couleur en PARAMÈTRE (défaut explicite :
+  l'anthracite), lue et transmise par la ROUTE — pour `app/planning/exports.py`
+  ce n'est pas un confort mais un invariant : le module planning ne doit
+  jamais ouvrir la base de prêt ;
+- les exports **Excel** n'ont toujours AUCUNE couleur (seulement du gras) et
+  n'en reçoivent pas : un classeur se retravaille, il n'a pas à porter une
+  charte.
+
+**Les étiquettes QR, elles, ne suivent JAMAIS la couleur** — elles restent en
+noir et blanc, y compris le logo (voir `app.etiquettes.charger_logo`) :
+imprimées à plusieurs centaines d'exemplaires, la couleur y coûte de l'encre
+sans rien apporter, et le contraste du QR prime sur la décoration.

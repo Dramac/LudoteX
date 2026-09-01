@@ -18,7 +18,18 @@ from io import BytesIO
 # app/services.py, section « Identité de l'ASSOCIATION »). Cette fonction
 # ouvre puis referme sa propre connexion et ne lève jamais — un export ne
 # doit pas échouer parce que le nom n'a pas pu être lu.
-from app.services import nom_association
+#
+# Couleur d'identité (lot 3c) : contrairement au nom ci-dessus, ELLE N'EST PAS
+# LUE ICI. `construire_pdf` et `signalements_pdf` la reçoivent en PARAMÈTRE,
+# lue et transmise par la ROUTE (app/routes/stats.py, app/routes/admin.py) —
+# un choix de conception, pas une contrainte de base (les deux vivent dans la
+# base de prêt, comme `nom_association`) : ça garde les fonctions d'export
+# testables sans jamais toucher au réglage global. `couleur_texte_sur` et
+# `nuances_theme` sont des calculs purs (aucun accès disque) : les importer
+# ici n'ouvre rien. `COULEUR_ASSOCIATION_DEFAUT` est le seul domicile du
+# littéral par défaut (voir app/services.py) — il n'est jamais recopié.
+from app.services import (COULEUR_ASSOCIATION_DEFAUT, couleur_texte_sur,
+                          nom_association, nuances_theme)
 
 
 def _libelle_metrique(metrique: str) -> str:
@@ -168,7 +179,8 @@ SECTIONS_PDF = ("synthese", "plus", "moins", "detail")
 
 
 def construire_pdf(data: dict, periode_txt: str,
-                   sections: "set[str] | None" = None) -> bytes:
+                   sections: "set[str] | None" = None,
+                   couleur: str = COULEUR_ASSOCIATION_DEFAUT) -> bytes:
     """
     Construit un PDF de bilan, avec sections au choix.
 
@@ -180,6 +192,10 @@ def construire_pdf(data: dict, periode_txt: str,
         periode_txt: libellé lisible de la période.
         sections: ensemble des sections à inclure parmi SECTIONS_PDF
             ("synthese", "plus", "moins", "detail"). None = toutes.
+        couleur: couleur d'identité de l'association (`#rrggbb`), lue et
+            transmise par la route — voir la note en tête de ce fichier.
+            Défaut explicite (l'anthracite) : un appel qui l'oublie produit un
+            PDF cohérent, jamais une exception.
 
     Returns:
         Le contenu binaire du fichier .pdf.
@@ -199,14 +215,22 @@ def construire_pdf(data: dict, periode_txt: str,
                             topMargin=1.5 * cm, bottomMargin=1.5 * cm)
     elements = []
 
+    # Deux couleurs suffisent (voir docs/ui-composants.md § 18) : le fond
+    # d'en-tête (la couleur d'identité elle-même) et le fond des lignes
+    # alternées (sa nuance « fond »). La couleur du texte d'en-tête suit la
+    # luminance, comme le bandeau du site — jamais `colors.white` en dur, qui
+    # deviendrait illisible sur une couleur d'identité claire.
+    couleur_texte = couleur_texte_sur(couleur)
+    couleur_fond = nuances_theme(couleur)["fond"]
+
     def tableau(entetes, lignes, largeurs):
         t = Table([entetes] + lignes, colWidths=largeurs, repeatRows=1)
         t.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(couleur)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor(couleur_texte)),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
             ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f0fa")]),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(couleur_fond)]),
         ]))
         return t
 
@@ -278,7 +302,8 @@ def construire_pdf(data: dict, periode_txt: str,
 # Ce document ne sort QUE de /admin/signalements, derrière le mot de passe :
 # il nomme des boîtes abîmées et peut porter du texte libre (§7).
 # ---------------------------------------------------------------------------
-def signalements_pdf(lignes: list[dict], filtre_txt: str) -> bytes:
+def signalements_pdf(lignes: list[dict], filtre_txt: str,
+                     couleur: str = COULEUR_ASSOCIATION_DEFAUT) -> bytes:
     """
     Construit la liste imprimable des signalements — celle qu'on emporte au
     local pour réparer.
@@ -286,6 +311,9 @@ def signalements_pdf(lignes: list[dict], filtre_txt: str) -> bytes:
     Args:
         lignes: signalements tels que ramenés par `services.lister_signalements`.
         filtre_txt: libellé lisible du filtre actif (« à traiter », …).
+        couleur: couleur d'identité de l'association (`#rrggbb`), lue et
+            transmise par la route. Défaut explicite (l'anthracite) : un appel
+            qui l'oublie produit un PDF cohérent, jamais une exception.
 
     Returns:
         Le contenu binaire du fichier .pdf.
@@ -301,10 +329,16 @@ def signalements_pdf(lignes: list[dict], filtre_txt: str) -> bytes:
     # Le détail libre et le nom du jeu doivent pouvoir passer à la ligne dans
     # leur cellule : sans Paragraph, reportlab déborde de la colonne.
     cellule = ParagraphStyle("cellule", parent=styles["Normal"], fontSize=8, leading=10)
-    # `TEXTCOLOR` d'un TableStyle ne s'applique PAS au contenu d'un Paragraph :
-    # sans ce style, les en-têtes resteraient noirs sur le fond violet.
+    # Deux couleurs suffisent (voir construire_pdf ci-dessus et docs/
+    # ui-composants.md § 18) : le fond d'en-tête et le fond des lignes
+    # alternées. `TEXTCOLOR` d'un TableStyle ne s'applique PAS au contenu d'un
+    # Paragraph : sans ce style dédié, les en-têtes resteraient noirs sur le
+    # fond de la couleur d'identité.
+    couleur_texte = couleur_texte_sur(couleur)
+    couleur_fond = nuances_theme(couleur)["fond"]
     entete = ParagraphStyle("entete", parent=cellule,
-                            textColor=colors.white, fontName="Helvetica-Bold")
+                            textColor=colors.HexColor(couleur_texte),
+                            fontName="Helvetica-Bold")
 
     buf = BytesIO()
     # Paysage : sept colonnes, dont deux de texte libre.
@@ -341,12 +375,12 @@ def signalements_pdf(lignes: list[dict], filtre_txt: str) -> bytes:
         colWidths=[6 * cm, 2 * cm, 3.5 * cm, 8 * cm, 3 * cm, 2.6 * cm, 2.6 * cm],
     )
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(couleur)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor(couleur_texte)),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f0fa")]),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(couleur_fond)]),
     ]))
     elements.append(table)
     doc.build(elements)

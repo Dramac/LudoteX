@@ -16,7 +16,15 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from app.services import format_local
+# `format_local` et les trois noms d'identité ci-dessous sont des calculs purs
+# (aucun accès disque) : les importer ici n'ouvre PAS la base de prêt — ça ne
+# romprait pas l'indépendance des trois bases. La couleur elle-même, en
+# revanche, N'EST PAS LUE ICI : `construire_pdf` la reçoit en PARAMÈTRE, lue et
+# transmise par la route (app/planning/routes.py) — pour ce module ce n'est
+# pas un confort mais un invariant, aucun service du planning n'ouvre la base
+# de prêt (voir CLAUDE.md, section « Ouverture publique de LudoteX »).
+from app.services import (COULEUR_ASSOCIATION_DEFAUT, couleur_texte_sur,
+                          format_local, nuances_theme)
 
 
 def _heure(iso_utc: str | None) -> str:
@@ -108,10 +116,19 @@ def construire_xlsx(grille: dict, nom_evenement: str) -> bytes:
     return buf.getvalue()
 
 
-def construire_pdf(grille: dict, nom_evenement: str) -> bytes:
+def construire_pdf(grille: dict, nom_evenement: str,
+                   couleur: str = COULEUR_ASSOCIATION_DEFAUT) -> bytes:
     """
     Construit un PDF A4 paysage : un tableau par jour (créneaux × postes), plus
     un tableau des tâches ponctuelles. Pensé pour l'impression / l'affichage.
+
+    Args:
+        grille: voir services.construire_grille.
+        nom_evenement: nom de l'édition, déjà résolu par la route.
+        couleur: couleur d'identité de l'association (`#rrggbb`), lue et
+            transmise par la route — voir la note en tête de ce fichier.
+            Défaut explicite (l'anthracite) : un appel qui l'oublie produit un
+            PDF cohérent, jamais une exception.
     """
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -137,14 +154,22 @@ def construire_pdf(grille: dict, nom_evenement: str) -> bytes:
     larg_horaire = 3.0
     larg_poste = (largeur_totale - larg_horaire) / max(1, len(postes))
 
+    # Deux couleurs suffisent (voir app/exports.py::construire_pdf et docs/
+    # ui-composants.md § 18) : le fond d'en-tête (la couleur d'identité) et le
+    # fond des lignes alternées (sa nuance « fond »). La couleur du texte suit
+    # la luminance — jamais `colors.white` en dur, illisible sur une couleur
+    # d'identité claire.
+    couleur_texte = couleur_texte_sur(couleur)
+    couleur_fond = nuances_theme(couleur)["fond"]
+
     def style_tableau(nb_lignes):
         return TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(couleur)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor(couleur_texte)),
             ("FONTSIZE", (0, 0), (-1, -1), 7),
             ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f0fa")]),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor(couleur_fond)]),
         ])
 
     for jour in grille["jours"]:

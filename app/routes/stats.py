@@ -133,7 +133,11 @@ def export_pdf(request: Request, tri: str = "total", debut: str | None = None,
     sections = set(request.query_params.getlist("sections")) or {"synthese", "plus", "moins"}
     sections &= set(exports.SECTIONS_PDF)  # ne garder que les sections connues
     data, periode = _exporter(tri, debut, fin)
-    contenu = exports.construire_pdf(data, periode, sections)
+    # Couleur d'identité (lot 3c) : la ROUTE la lit et la transmet — voir la
+    # note en tête d'app/exports.py. `theme_association()` ne lève jamais et
+    # renvoie toujours un `#rrggbb` effectif (l'anthracite par défaut).
+    couleur = services.theme_association()["couleur"]
+    contenu = exports.construire_pdf(data, periode, sections, couleur)
     return Response(
         content=contenu,
         media_type="application/pdf",
