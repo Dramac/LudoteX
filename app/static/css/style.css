@@ -1,4 +1,18 @@
 :root {
+  /* Couleur d'IDENTITÉ (thème). Ces six variables sont les seules que l'écran
+     d'administration « Identité » peut redéfinir : elles portent l'identité de
+     l'association qui déploie, pas une signification.
+     Ne thématiser NI le bleu des liens (#1a73e8), NI le vert / rouge / orange
+     ci-dessous, NI le violet des blocs « programme » du planning : ce sont des
+     significations (dépôt, erreur, attention, catégorie d'animation), elles
+     doivent rester identiques quelle que soit la couleur choisie. */
+  --primaire: #4a148c;
+  --primaire-survol: #661cc2;   /* teinte et saturation conservées, L + 12 points */
+  --primaire-clair: #7e57c2;
+  --primaire-fond: #ede7f6;
+  --primaire-fond-leger: #f8f6fb;
+  --primaire-texte: #fff;       /* texte posé sur --primaire */
+
   --vert: #1f7a3d;
   --vert-clair: #e6f4ea;
   --rouge: #b3261e;
@@ -30,11 +44,11 @@ body {
 }
 
 .bandeau {
-  background: #4a148c;
+  background: var(--primaire);
   padding: 12px 16px;
 }
 .bandeau-titre {
-  color: #fff;
+  color: var(--primaire-texte);
   font-weight: 700;
   font-size: 1.1rem;
   text-decoration: none;
@@ -46,7 +60,7 @@ body {
 .menu-benevole a:hover { text-decoration: underline; }
 /* Sur le bandeau violet, les liens passent en blanc. */
 .bandeau .menu-benevole { margin-top: 8px; }
-.bandeau .menu-benevole a { color: #fff; opacity: 0.95; }
+.bandeau .menu-benevole a { color: var(--primaire-texte); opacity: 0.95; }
 
 /* Menu du bandeau : replié par défaut (mobile-first — le menu à plat prenait
    jusqu'à 3 lignes au-dessus du contenu sur petit écran, ex. iPhone 13 mini).
@@ -61,12 +75,12 @@ body {
 .menu-bandeau { border: none; }
 .menu-bandeau > summary {
   cursor: pointer;
-  color: #fff;
+  color: var(--primaire-texte);
   font-weight: 700;
   margin-top: 8px;
   list-style: revert;
 }
-.menu-bandeau > summary::marker { color: #fff; }
+.menu-bandeau > summary::marker { color: var(--primaire-texte); }
 .menu-bandeau-large { display: none; }
 @media (min-width: 640px) {
   .menu-bandeau { display: none; }
@@ -158,7 +172,7 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
   color: var(--texte);
   padding: 10px 16px;
   border-radius: 8px;
-  border: 2px solid #7e57c2;
+  border: 2px solid var(--primaire-clair);
   text-decoration: none;
   font-weight: 600;
 }
@@ -174,14 +188,14 @@ select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid #7e57c2;
+  outline: 3px solid var(--primaire-clair);
   outline-offset: 2px;
   border-radius: 6px;
 }
 /* Champs de saisie : liseré violet au focus (souris comme clavier). */
 .champ input:focus,
 .champ select:focus,
-.champ textarea:focus { border-color: #7e57c2; }
+.champ textarea:focus { border-color: var(--primaire-clair); }
 
 /* Retour visuel à l'appui sur les boutons et puces. */
 .bouton, .bouton-filtrer, .chip-filtre { transition: filter .12s ease, transform .06s ease; }
@@ -209,12 +223,12 @@ summary:focus-visible,
   border-radius: 8px;
   padding: 8px 12px;
   margin: 12px 0;
-  background: #f8f6fb;
+  background: var(--primaire-fond-leger);
 }
 .aide-inline > summary {
   cursor: pointer;
   font-weight: 600;
-  color: #4a148c;
+  color: var(--primaire);
   transition: color .12s ease;
 }
 .aide-inline p:last-child { margin-bottom: 0; }
@@ -293,7 +307,7 @@ summary:focus-visible,
    NE TOUCHEZ PAS À LA POCHETTE. Réutilise le violet d'identité du site
    (déjà .bouton-filtrer, theme-color) qui ne porte par ailleurs aucun sens
    de dépôt/retrait sur cet écran — voir docs/ui-composants.md §16. */
-.pochette-num--transfert { color: #4a148c; }
+.pochette-num--transfert { color: var(--primaire); }
 .resultat-consigne { margin: 0; font-weight: 600; }
 
 /* Code personnel (fiche D4, docs/audit-ux-2026-07-18.md) : code de
@@ -352,7 +366,7 @@ summary:focus-visible,
 .recherche > summary {
   cursor: pointer;
   font-weight: 600;
-  color: #4a148c;
+  color: var(--primaire);
 }
 .recherche-form {
   display: grid;
@@ -370,8 +384,8 @@ summary:focus-visible,
 }
 .recherche-actions { display: flex; align-items: center; gap: 16px; }
 .bouton-filtrer {
-  background: #4a148c;
-  color: #fff;
+  background: var(--primaire);
+  color: var(--primaire-texte);
   border: none;
   border-radius: 12px;
   padding: 10px 20px;
@@ -444,7 +458,7 @@ summary:focus-visible,
 .filtres-actifs .fa-label { color: var(--gris); font-size: .9rem; }
 .chip-filtre {
   display: inline-flex; align-items: center; gap: 6px;
-  background: #ede7f6; color: #4a148c;
+  background: var(--primaire-fond); color: var(--primaire);
   border-radius: 999px; padding: 4px 12px;
   font-size: .85rem; font-weight: 600; text-decoration: none;
   transition: background .15s ease;
@@ -454,8 +468,8 @@ summary:focus-visible,
 
 /* Statistiques */
 .stats-chiffres { display: flex; flex-wrap: wrap; gap: 16px; }
-.chiffre { flex: 1; min-width: 120px; text-align: center; background: #f8f6fb; border-radius: 10px; padding: 14px; }
-.chiffre-val { display: block; font-size: 1.8rem; font-weight: 800; color: #4a148c; }
+.chiffre { flex: 1; min-width: 120px; text-align: center; background: var(--primaire-fond-leger); border-radius: 10px; padding: 14px; }
+.chiffre-val { display: block; font-size: 1.8rem; font-weight: 800; color: var(--primaire); }
 .chiffre-lib { color: var(--gris); font-size: 0.85rem; }
 .stats-bascule { color: var(--gris); }
 .palmares { margin: 8px 0 20px; padding-left: 24px; }
@@ -466,7 +480,7 @@ summary:focus-visible,
 .histo { list-style: none; margin: 0; padding: 0; }
 .histo-ligne { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 .histo-label { flex-shrink: 0; width: 84px; font-size: 0.85rem; color: var(--gris); }
-.histo-barre { height: 16px; background: #7e57c2; border-radius: 4px; min-width: 2px; }
+.histo-barre { height: 16px; background: var(--primaire-clair); border-radius: 4px; min-width: 2px; }
 .histo-val { font-size: 0.85rem; font-weight: 600; }
 .stats-note { color: #6b7075; font-size: 0.8rem; }
 /* Rappel du nom de l'événement sous un titre de page (accueil, programme,
@@ -688,7 +702,7 @@ summary:focus-visible,
 .grille-params { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
 .grille-params label { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; color: var(--gris); }
 .grille-params input { padding: 6px 8px; border: 1px solid var(--bord); border-radius: 6px; }
-.compteur { font-weight: 700; color: #4a148c; margin: 10px 0; }
+.compteur { font-weight: 700; color: var(--primaire); margin: 10px 0; }
 .filtre-cat { margin-bottom: 12px; }
 .select-actions { display: flex; gap: 12px; margin-bottom: 8px; }
 .lien-bouton { background: none; border: none; color: #1a73e8; font-weight: 600; cursor: pointer; padding: 0; }
@@ -898,8 +912,9 @@ button.lien {
 /* ---------------------------------------------------------------------
    MODE FORMATION (voir app/config.py + docs/mode-formation.md)
    Bandeau fixe très visible + filigrane diagonal en fond, uniquement quand
-   MODE_FORMATION=1. Couleur volontairement différente du bandeau habituel
-   (#4a148c) pour ne jamais confondre les deux instances au premier coup d'œil.
+   MODE_FORMATION=1. Couleur volontairement différente du bandeau
+   habituel (--primaire) pour ne jamais confondre les deux instances au premier
+   coup d'œil.
    ------------------------------------------------------------------- */
 .formation-bandeau {
   background: #e65100;
