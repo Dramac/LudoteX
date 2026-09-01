@@ -318,9 +318,14 @@ Le dépôt `Dramac/LudoteX` et son wiki sont **déjà publics**.
 
 **2. Le nom de l'association est une donnée de configuration.** Aucune mention de
 « LudoteX » ne doit subsister dans le code, les docs, le wiki,
-les captures ni la vitrine. Seules exceptions : le `.env` de notre instance, et
-la ligne de copyright de `LICENSE` — **en attente d'arbitrage du bureau**
-(titularité des droits : ne pas y toucher sans réponse).
+les captures ni la vitrine. **Seule exception : le `.env` de notre instance.**
+
+*Titularité des droits — tranchée le 2026-09-01.* Simon est **seul titulaire**
+des droits d'auteur sur le code, indépendamment de l'association : le travail a
+été réalisé bénévolement, et le bénévolat n'emporte aucune cession automatique.
+`LICENSE` a été corrigée en conséquence (nom du programme « LudoteX »,
+« Copyright (C) 2026 Simon »). Il n'y a donc plus aucune exception à la règle
+ci-dessus, et le lot 7 — la réécriture d'historique — n'est plus bloqué.
 
 **3. Paramétrage : l'identité en base, l'infrastructure en `.env`.** *Appliqué
 aux lots 1 à 3c.*
