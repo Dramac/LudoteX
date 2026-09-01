@@ -1,2796 +1,29 @@
 # CLAUDE.md — Contexte projet pour l'assistant
 
-> **Le projet s'appelle désormais LudoteX** (anciennement `pret-jeux`).
+> **Le projet s'appelle LudoteX** (anciennement `pret-jeux`).
 > Dépôt GitHub : `https://github.com/Dramac/LudoteX`
 > Ce nom évoque « ludique », « technique » et fait écho à LaTeX.
 > L'utiliser dans tous les messages, commentaires, titres et documents.
 
-Fichier de contexte relu à chaque session de développement. Le tenir à jour
-à la fin de chaque étape. La **conception fait foi dans `docs/specification.md`** ;
-ce fichier en est un résumé opérationnel, pas une source concurrente.
-
-## État du projet (passage de relais)
-
-**Brique de prêt : COMPLÈTE** — séquence §6 (points 1→10) faite, plus les
-évolutions backlog (tournoi côté prêt, durées, jeux sortis, clôture, expiration
-du jeton, menus, page d'aide), la gestion d'erreur (page 500 + logs) et les
-artefacts de déploiement (`deploy/` + `docs/deploiement.md`). 37 tests verts.
-Reste, côté Simon : exécuter le déploiement VPS (**script d'installation prêt,
-voir plus bas**), et imprimer les QR une fois le domaine figé.
-
-**Module TOURNOIS — SOCLE de la phase 1 : FAIT.** Sous-paquet `app/tournoi/`
-(`models.py`, `db.py`, `services.py`, `routes.py`) + gabarits `tournoi_*.html`,
-sur une **base SQLite séparée** `data/tournoi.db` (var. `.env`
-`TOURNOI_DATABASE_PATH`, init au démarrage dans `main.py`, **mêmes jeton bénévole
-+ mot de passe admin**). Trois tables (`tournois`, `inscriptions`, `rencontres` —
-cette dernière créée d'avance pour les modes de scoring). Réalisé : CRUD bénévole
-(créer/éditer/supprimer avec **double confirmation**), machine à états
-`brouillon↔inscriptions(+termine)`, **inscription publique** (pseudo + **code de
-désinscription** affiché à l'écran ; **e-mail jamais stocké**, champ non utilisé
-en phase 1 par décision — envoi reporté en phase 2), désinscription par code,
-gestion manuelle des participants, liste publique + page de suivi. Liens
-`/tournois` ajoutés au menu bénévole et au pied de page. Helpers dates réutilisés
-de `app/services.py`. **12 tests dédiés** (`tests/test_tournoi.py`), suite
-globale **49 tests verts**.
-
-**Mode de scoring HIGH SCORE : FAIT.** `services.lancer_tournoi(conn, id, mode)`
-(transition `inscriptions→lance` + `mode_scoring`, refus si 0 participant /
-mauvais état / mode inconnu) + init high score = **une ligne `rencontres` par
-participant** (`participant_a`=joueur, `score_a`=points, `ronde` NULL).
-`lignes_high_score` (création paresseuse des lignes manquantes, ex. participant
-ajouté après lancement), `enregistrer_scores_high_score`, `classement_high_score`
-(tri décroissant, **ex æquo en ranking sportif** 1-2-2-4, scores manquants en
-fin sans rang). Routes bénévole `POST /tournoi/{id}/lancer` (menu de modes) et
-`GET|POST /tournoi/{id}/scores` ; **classement public** sur la page de suivi dès
-`lance`/`termine`. Gabarit `tournoi_scores.html`, `tournoi_gerer.html` (lancement
-+ lien scores) et `tournoi_detail.html` (classement) mis à jour.
-`MODES_SCORING` = {`high_score`} pour l'instant. **Suite globale : 57 tests verts.**
-
-**Mode de scoring RONDE SUISSE : FAIT.** Colonne `tournois.nb_rondes` (schéma +
-migration `app/tournoi/db.py`). `lancer_tournoi(conn, id, mode, nb_rondes)` gère
-le suisse (refus si < 2 participants → `pas_assez`, ou `nb_rondes` manquant) et
-génère la ronde 1. Barème `POINTS_VICTOIRE=1 / NUL=0,5 / BYE=1`. Algorithme
-(`services`) : `points_suisse`, `_adversaires_passes`, `_ont_eu_un_bye`,
-`_apparier` (glouton, tri par points décroissants, **évite les revanches** avec
-repli si inévitable), `_generer_ronde_suisse` (**bye au moins bien classé sans
-bye antérieur**, victoire auto), `ronde_courante`/`ronde_complete`,
-`enregistrer_resultats_suisse` (résultat ∈ {a,b,nul} ; byes non modifiables),
-`generer_ronde_suivante` (refus si ronde incomplète/terminée),
-`classement_suisse` (ranking sportif). Routes bénévole : lancement avec
-`nb_rondes`, `GET /tournoi/{id}/rondes` (écran rondes), `POST .../rondes/{r}/resultats`,
-`POST .../rondes/suivante`. Gabarit `tournoi_rondes.html` ; `tournoi_detail.html`
-affiche classement + rondes en lecture publique ; `tournoi_gerer.html` adapté.
-**Suite globale : 64 tests verts** (cas limites vérifiés : revanche forcée si
-rondes > round-robin, rotation des byes).
-
-**Mode de scoring ÉLIMINATION DIRECTE : FAIT.** Arbre à élimination simple dans
-`rencontres` (`ronde`=n° de tour, B NULL=bye victoire auto, resultat 'a'/'b').
-`lancer_tournoi(..., "elimination")` (refus si < 2 → `pas_assez`) : seeding par
-ordre d'inscription vers la **puissance de 2 supérieure**, byes aux mieux classés
-et **répartis** via `_ordre_places` (seeding standard 1-8-4-5-2-7-3-6…),
-`nb_rondes` = nombre de tours déduit (`_nb_tours_elimination`). Fonctions :
-`_generer_premier_tour_elimination`, `_gagnants_du_tour`, `generer_tour_suivant`
-(apparie les vainqueurs ; refus si incomplet/terminé), `vainqueur`, `nom_tour`
-(Finale/Demi-finales/Quarts…), `arbre`. Routes bénévole : lancement,
-`GET /tournoi/{id}/arbre`, `POST .../arbre/{tour}/resultats` (vainqueur a/b, pas
-de nul), `POST .../arbre/suivant`. Gabarit `tournoi_arbre.html` ; page publique
-affiche l'arbre + le vainqueur. **Suite globale : 71 tests verts.**
-
-**Mode de scoring ROUND ROBIN (championnat) : FAIT.** `"round_robin"` ajouté à
-`MODES_SCORING`. `lancer_tournoi(..., "round_robin")` (refus si < 3 →
-`pas_assez`, BO3 compatible) génère **toutes les rondes d'emblée** via la
-**méthode des cercles** (`_generer_round_robin` : un joueur fixe, les autres
-tournent ; joueur « fantôme » None si impair → repos parfaitement équilibrés, un
-par joueur). `nb_rondes` = n-1 (pair) ou n (impair). Barème/points identiques au
-suisse (réutilise `points_suisse`) ; `classement_round_robin` délègue à
-`classement_suisse`. **Saisie via l'écran des rondes existant** (routes
-`/tournoi/{id}/rondes*` étendues à `round_robin` ; pas de « ronde suivante »
-puisque tout est généré au lancement). Affichage public : classement + **tableau
-croisé des confrontations** (`table_confrontations` : V/N/D ou score BO3,
-ordonné par classement ; gabarit `tournoi_detail.html`, styles `.rr-*`).
-**Suite globale : 156 tests verts.**
-
-**Tournois PAR ÉQUIPES : FAIT.** Colonnes `tournois.par_equipes` (0/1) +
-`tournois.taille_equipe`, et `inscriptions.membres` (liste JSON) — schéma +
-migrations `app/tournoi/db.py`. Principe : **une équipe = un participant** (le
-`pseudo` porte le nom d'équipe), donc appariements et modes de scoring INCHANGÉS
-(compatible avec les 4 modes). `creer_tournoi`/`modifier_tournoi`/
-`dupliquer_tournoi` gèrent les 2 champs ; `inscrire(conn,id,pseudo,membres)`
-valide EXACTEMENT `taille_equipe` membres non vides (→ `equipe_incomplete`),
-`ajouter_participant` (bénévole) reste permissif. `_nettoyer_membres`,
-`parse_membres`, `lister_inscriptions` ajoute `membres_liste`. Routes :
-inscription/ajout passent en `async` et collectent `membre_<n>`
-(`_membres_du_formulaire`) ; création/édition lisent `par_equipes`/`taille_equipe`.
-Gabarits : `tournoi_form.html` (case + taille), `tournoi_inscription.html` (nom
-d'équipe + N champs membres), `tournoi_gerer.html` (membres sous chaque équipe,
-ajout adapté). **Code de désinscription par équipe** ; **affichage public = nom
-d'équipe seul** (membres visibles seulement côté bénévole). Décisions Simon :
-tous modes, taille configurable à la création, code par équipe, membres non
-publics. **Suite globale : 164 tests verts.**
-
-**Option BO3 (best of 3) : FONCTIONNELLE.** Choisie **au lancement** (plus à la
-création : `bo3` retiré du formulaire), via `lancer_tournoi(..., bo3=True)` —
-n'a d'effet que pour suisse/élimination. Quand activée, la saisie d'une rencontre
-se fait en **manches gagnées** A–B (`score_a`/`score_b`) et le vainqueur est
-déduit (`_resultat_depuis_manches` : égalité = `nul` en suisse, pas de vainqueur
-en élimination ; `enregistrer_manches`). Les écrans rondes/arbre affichent deux
-champs `ma_<id>`/`mb_<id>` au lieu du sélecteur ; le score « 2–1 » apparaît dans
-le suivi public. Sans BO3, saisie « vainqueur » inchangée. **77 tests verts.**
-
-**Planning public (vue 2 jours) : FAIT.** Sur la page d'accueil (`/`,
-`accueil.html`). Date de l'événement réglée en admin (`GET|POST /admin/evenement`,
-clé `parametres.evenement_date` dans la base de PRÊT ; helpers
-`services.lire_parametre`/`ecrire_parametre`). La frise couvre ce jour + le
-lendemain. `tournoi.services.planning(conn, jours)` : tournois non-brouillon
-groupés par jour local, **couloirs calculés par chevauchement**
-(`_calculer_couloirs`, partition d'intervalles), coordonnées de grille (slots de
-`SLOT_MIN`=30 min, durée par défaut `DUREE_DEFAUT_MIN`=60), étiquettes d'heures,
-`label_jour` (FR). Rendu **hybride sans JS** : CSS grid (gouttière d'heures +
-couloirs en colonnes) sur grand écran, agenda empilé chronologique sous 640 px
-(styles `.planning-*`). La section n'apparaît que si la fenêtre contient des
-tournois. **84 tests verts.**
-
-**« Ajouter à mon agenda » (.ics) : FAIT.** `services.ical_tournoi(conn, id)`
-génère un VEVENT iCalendar (début UTC, fin = durée ou défaut 60, titre, jeu en
-description, lieu ; échappement RFC 5545 ; None sans date). Route publique
-`GET /tournoi/{id}/agenda.ics` (`text/calendar`, attachment ; 404 sans date).
-Bouton « 📅 Ajouter à mon agenda » sur la confirmation d'inscription et la page
-du tournoi (si date). Aucune donnée perso. **89 tests verts.**
-
-**Champ « âge » (info, texte libre) : FAIT.** Colonne `tournois.age` TEXT (schéma
-+ migration `app/tournoi/db.py`), propagée à `creer_tournoi`/`modifier_tournoi`/
-`dupliquer_tournoi`, au formulaire création/édition et à l'affichage (page
-publique, gestion, duplication). Indication libre type « 10+ », « tout public ».
-
-**Ouverture groupée du jour : FAIT.** `services.ouvrir_tournois_du_jour(conn,
-jour)` passe en 'inscriptions' tous les tournois EN BROUILLON datés ce jour-là
-(heure locale ; ignore autres jours / sans date / déjà ouverts). Route bénévole
-`POST /tournoi/ouvrir-aujourdhui` + bouton « Ouvrir tous les tournois du jour »
-(avec confirmation JS) sur `/tournois`, message de retour. Gain de temps le jour
-de l'événement.
-
-**Dupliquer un tournoi (programmer à plusieurs horaires) : FAIT.**
-`services.dupliquer_tournoi(conn, id, date_heure)` recopie nom/jeu/durée/places/
-emplacement/inscription_en_ligne dans une **copie indépendante** repartant en
-brouillon (sans inscrit, sans mode/BO3/rondes ; seul l'horaire change). Routes
-bénévole `GET|POST /tournoi/{id}/dupliquer` (formulaire minimal : nouvel
-horaire), gabarit `tournoi_dupliquer.html`, lien « Dupliquer à un autre horaire »
-sur l'écran de gestion. Pour plusieurs créneaux : dupliquer autant de fois.
-**92 tests verts.**
-
-**Aide dédiée** : page publique `GET /tournoi/aide` (`tournoi_aide.html`, mode
-d'emploi : cycle d'un tournoi, inscription/RGPD, les 3 modes + saisie, suppression),
-liée depuis `/tournois` (bénévole) et l'écran de gestion.
-
-**Page d'accueil publique : FAIT.** `GET /` ne redirige plus vers `/catalogue`
-mais sert `accueil.html` (route dans `routes/catalogue.py`) : liens vers les
-outils publics (catalogue, tournois), rappel du **nombre de jeux disponibles au
-prêt** (`services.compter_exemplaires_disponibles` → total/dispo, tous motifs) et
-**tournois imminents** (`tournoi.services.tournois_imminents`, fenêtre 1 h :
-publiés, non-brouillon, début entre maintenant et +60 min). Le titre du bandeau
-pointe désormais vers `/`. **Suite globale : 79 tests verts.**
-
-**Tableau de bord temps réel `/live` (écran salle 16:9) : FAIT.** Page PUBLIQUE
-en lecture seule (aucune action, aucun jeton) destinée à un projecteur/TV.
-`routes/live.py` : `GET /live` (gabarit `live.html`, plein cadre, grandes
-polices, fort contraste, autonome — CSS/JS inline, aucune dépendance externe) +
-`GET /live/data` (JSON). La page s'auto-rafraîchit par **polling AJAX** toutes
-les 10 s (pas de rechargement). Affiche : jeux sortis / disponibles / total,
-nombre de tournois en cours, tournois en cours (`lance`), prochains tournois sur
-2 h, et le flux des 10 derniers prêts/retours. **SÉCURITÉ : aucune mention du
-numéro de pochette** (rattaché à une pièce d'identité) sur cet écran public — ni
-carte « pochettes », ni numéro dans le flux. Nouveau service (réutilisé, pas de
-logique dupliquée) : `services.derniers_mouvements` (fusion sorties/retours triée
-par instant, sans n° de pochette). Lien « Écran salle » au pied de page.
-**2 tests** (route 200 + endpoint données, dont l'absence de pochette).
-**Suite globale : 99 tests verts.**
-
-**PHASE 1 COMPLÈTE** (tournois + inscription + suivi + high score + ronde suisse
-+ élimination directe). Reste la **phase 2** : double élimination (looser
-bracket), affinements BO3 (manches), e-mails robustes (envoi du code), sauvegarde
-externe automatisée. Points CA encore ouverts : voir §11 de
-`docs/conception-tournois.md`.
-
-**Module PLANNING BÉNÉVOLE — SOCLE (data + logique) : FAIT.** Cadré dans
-`docs/conception-planning.md` (remplace le tableur Excel du bureau ; collecte des
-souhaits → préremplissage dégrossi → validation admin → publication). Sous-paquet
-`app/planning/` (`models.py`, `db.py`, `services.py`) sur une **base SQLite
-séparée** `data/planning.db` (var. `.env` `PLANNING_DATABASE_PATH`). **8 tables**
-(`evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`,
-`preferences`, `affectations`). RGPD : **rupture assumée** avec le « zéro donnée
-perso » du prêt (noms + contact + dispos stockés), base séparée à finalité unique,
-`purger_evenement`. Réalisé : machine à états `collecte→brouillon→publie` ; trame
-admin (postes, créneaux poste/tâche, besoins par case, `dupliquer_trame`) ;
-collecte (`enregistrer_souhaits` : dispos + préférences **prefere/ok/si_vraiment/
-surtout_pas** + plafond d'heures `max_heures`, édition par `code_modif`) ;
-**préremplissage GLOUTON dégrossi** (`prefiller`) respectant les contraintes
-DURES (disponibilité, surtout_pas, plafond d'heures, pas deux postes en même
-temps) et **laissant les trous** ; grille (`construire_grille`), couverture
-(`analyser_couverture`), « mon planning » (`planning_du_benevole`), verrouillage
-de cases. Créneaux stockés en UTC ISO (durée déduite), helpers de fuseau
-réutilisés.
-
-**Module PLANNING BÉNÉVOLE — ROUTES & ÉCRANS : FAIT.** `app/planning/routes.py`
-branché dans `app/main.py` (init au démarrage + routeur). PUBLIC : `/planning`
-(grille publiée en lecture seule + lien collecte si une édition est en collecte),
-`/planning/collecte/{ev}` (formulaire de souhaits : dispos cochées par jour,
-préférences 4 niveaux en radios, plafond d'heures ; ré-édition par `?code=`),
-`/planning/collecte/{ev}/merci` (affiche le code), `/planning/mon?code=` (mon
-planning). ADMIN (mot de passe, garde `_garde` comme `routes/admin.py`) :
-`/planning/admin` (liste + création + **bouton démo**), `/planning/admin/{ev}`
-(écran tout-en-un : trame postes/créneaux, matrice de besoins, préremplissage,
-**grille éditable** avec ajout/retrait/verrou par case, transitions d'état,
-purge) + exports `export.xlsx`/`export.pdf`. Exports dans `app/planning/exports.py`
-(Excel une feuille/jour façon tableur ; PDF A4 paysage imprimable), filtre Jinja
-`heure_local` ajouté. CSS préfixé **`pl-*`** (évite la collision avec la frise
-`planning-*` des tournois). Démo `app/planning/demo.py` (reproduit le tableur du
-bureau : 6 postes, créneaux samedi/dimanche, tâches, ~28 bénévoles fictifs,
-préremplissage laissant 3 trous réalistes, publication + jumeau resté en
-collecte) ; lançable aussi via `python -m app.planning.demo`. Liens « Planning »
-au menu bénévole, au pied de page et au dashboard admin. **17 tests planning**
-(13 services + 4 routes via TestClient, dont démo + exports), fixtures de
-`test_routes.py`/`test_tournoi.py` étendues à `PLANNING_DATABASE_PATH`.
-
-**Planning — aide + largeur d'écran : FAIT.** Page publique `GET /planning/aide`
-(`planning_aide.html` : cycle collecte→brouillon→publié, déclaration des
-souhaits, sens des 4 niveaux de préférence, fonctionnement du préremplissage
-dégrossi, note RGPD), liée depuis `/planning`, `/planning/admin` et l'écran de
-gestion. Correctif d'affichage : `.contenu` est limité à 540 px (mobile-first),
-ce qui bridait la grille sur ordinateur (scroll horizontal) ; ajout d'un bloc
-Jinja `conteneur_extra` dans `base.html` + classe `.contenu-large`
-(`max-width: min(1180px, 96vw)`) appliquée aux pages grille (`planning_public`,
-`planning_gerer`). **Généralisé** ensuite aux autres écrans à tableaux larges
-(même cause, le 540px global) : `stats`, `tournoi_arbre`, `tournoi_rondes`,
-`tournoi_scores`, `tournoi_detail`. Les pages de lecture/formulaires (catalogue,
-fiche, prêt, formulaires admin, collecte) restent **volontairement étroites**
-(mobile-first, confort de lecture). Suite globale **117 tests verts.**
-
-**Planning — PHASE 2 (qualité du préremplissage) : continuité + équité FAIT.**
-`prefiller` enrichi (mêmes contraintes dures) : à préférence égale, l'arbitrage
-se fait sur une **charge effective** = heures déjà affectées (équité, le moins
-chargé d'abord) MOINS un **rabais de continuité** `CONTINUITE_BONUS_H` (=2 h)
-accordé au bénévole déjà sur le **même poste à un créneau CONTIGU** (fin d'un =
-début de l'autre, comparaison ISO UTC ; carte `adjacents`). La continuité
-l'emporte à charge comparable, l'équité reprend le dessus si un autre est
-nettement moins chargé (écart > rabais). Suivi par `place_sur`
-(bénévole → {(créneau, poste)}). **3 tests dédiés** (continuité sur créneaux
-contigus, équité si non contigus, équité prime si écart > rabais). Démo : 96/99
-couvert, heures réparties 4–12 h. Suite globale **120 tests verts.** RESTE
-phase 2 : prise en compte de l'expérience (postes « expérience » ; nécessite de
-collecter qui est expérimenté), équité encore plus fine, notifications/PDF
-individuel.
-
-**Planning — PHASE 2 (pilotage + grille d'ajustement SANS JS) : FAIT.**
-Déroulé cible gravé dans `docs/conception-planning.md` (compte admin = bureau ;
-pas de date limite : boutons explicites). Écran de gestion : **« Fermer le
-questionnaire »** (collecte→brouillon, avec confirmation) puis **« Générer le
-planning »** (préremplissage). **Édition « au clic » rendue côté serveur**
-(POST classiques, aucun JS lourd) : chaque case de la grille est un lien vers
-`GET /planning/admin/{ev}/case/{cr}/{poste}` (`planning_case.html`) qui permet
-de **remplacer** un bénévole (`remplacer_affectation` : même case, verrou
-conservé), ajouter, retirer, verrouiller — toutes ces actions acceptent un champ
-`retour` pour revenir à la page de la case (`_retour` redirige si l'URL commence
-par `/planning/`). L'horaire de chaque ligne est un lien vers
-`GET|POST /planning/admin/{ev}/creneau/{cr}/editer` (`planning_creneau.html`,
-`modifier_creneau` : jour/début/fin → la durée en découle ; bornes invalidées
-refusées). **Couleurs par ÉTAT de case** (CSS pur `pl-etat-*`) : grisé / trou
-(rouge) / partiel (orange) / complet (vert) / surcharge (bleu). Filtre Jinja
-`dt_input` (UTC→`datetime-local`). Drag'n'drop renvoyé à plus tard (assumé).
-**Expérience abandonnée** : case retirée de l'UI, colonne `demande_experience`
-conservée au schéma mais non exposée/exploitée. Helpers ajoutés : `get_creneau`,
-`get_affectation`, `affectations_de_case`. **7 nouveaux tests** (remplacement,
-durée, pages d'édition, redirection `retour`). Suite globale **124 tests verts.**
-
-**Planning — correctif « une personne par créneau » : FAIT.** Bug : l'ajout/
-remplacement manuel passait par `affecter()` qui ne refusait qu'un doublon
-EXACT (même créneau+poste+bénévole), permettant de placer quelqu'un sur deux
-postes du même créneau (le préremplissage, lui, l'évitait via son suivi
-`occupe`). Désormais `affecter()` REFUSE si le bénévole a déjà une affectation
-sur ce créneau (quel que soit le poste) ; `remplacer_affectation()` vérifie le
-conflit **avant** de supprimer l'ancienne (sinon perte de la case). La page de
-case exclut des propositions les bénévoles déjà occupés sur le créneau et affiche
-un message si l'action est refusée. **2 tests** ajoutés. Suite **126 tests verts.**
-
-**Planning — menus de case groupés par préférence : FAIT.** Sur la page d'édition
-de case, les menus « Ajouter » et « Remplacer par » classent les bénévoles par
-**niveau de préférence déclaré pour ce poste** (⭐ Préféré → OK → Sans préférence
-→ Si nécessaire), via des `<optgroup>` ; en bas, un groupe « Non disponible sur
-ce créneau / à éviter » (non dispos + « surtout pas »). La route `admin_case`
-construit ces groupes (`groupes` + `autres`) ; le gabarit `planning_case.html`
-utilise un macro Jinja `options_benevoles`. Aide à prioriser d'un coup d'œil.
-
-**Planning — .ics (idée 4.1) : FAIT.** « Mon planning » exportable en un tap,
-sur le patron d'`ical_tournoi` (`app/tournoi/services.py`). Nouvelle fonction
-`app/planning/services.py::ical_planning_benevole(conn, id_benevole)` :
-construit un flux iCalendar **multi-VEVENT** (un par affectation, à partir de
-`planning_du_benevole`) — résumé = nom du poste ou libellé de la tâche
-(`type='tache'`), description = jour (`libelle_jour`) + nom de l'association,
-`UID` du type `planning-{id_affectation}-...@desjeuxpleinlamanche`. `None` si
-aucune affectation. **Helpers `_ics_horodatage`/`_ics_echappe` dupliqués**
-localement (pas de facteur commun avec `tournoi` — modules indépendants, bases
-séparées, décision maintenue). Route publique `GET /planning/mon.ics?code=`
-(`app/planning/routes.py`) : même lookup par code que `/planning/mon`, 404 si
-code invalide ou aucune affectation (jamais d'erreur brute), en-tête
-`Content-Disposition: attachment`. Bouton « 📅 Ajouter tout mon planning à mon
-agenda » sur `planning_mon.html` (visible seulement s'il y a des affectations,
-même style que le bouton équivalent des tournois). Aucune donnée personnelle
-dans le fichier (pas de nom de bénévole). **3 tests dédiés** (contenu multi-
-VEVENT, code invalide, bénévole sans affectation). **Suite globale : 182 tests
-verts.**
-
-**Script d'installation VPS (`deploy/install.sh`) : FAIT.** Script bash
-interactif à lancer sur le VPS après `git clone` (`sudo ./deploy/install.sh`),
-pensé pour quelqu'un de non-développeur. Vérifie/installe les prérequis
-(Python 3.11+ — tente `python3.11` via apt si absent —, nginx, certbot, git,
-sqlite3, ufw, dépendances de compilation pour Pillow). Questions posées dans
-l'ordre : domaine, e-mail (Let's Encrypt), **nom de l'association**, mot de
-passe admin (saisie masquée, confirmée), chemin d'installation (défaut
-`/opt/ludotex`), chemin des bases SQLite (défaut `/var/lib/ludotex`).
-L'URL du dépôt GitHub n'est **pas** demandée : fixée en dur
-(`https://github.com/Dramac/LudoteX`, décision Simon). Génère le `.env`
-(jeton bénévole temporaire puis **régénéré définitivement avec expiration à 1
-semaine** via `auth.reinitialiser_jeton` une fois les bases initialisées),
-crée le venv + installe `requirements.txt`, initialise les trois bases
-(`app.db`, `app.tournoi.db`, `app.planning.db`), installe le service systemd
-et la config nginx (chemins réécrits via `sed` selon les réponses), obtient le
-certificat Let's Encrypt (vérifie d'abord que le DNS pointe vers le serveur),
-propose la sauvegarde quotidienne automatique (crontab), puis affiche le lien
-d'activation bénévole. Relançable sans casser une install existante (ne
-réécrase pas un `.env` déjà présent sans confirmation). `docs/deploiement.md`
-réécrit autour de ce script (accès SSH, clonage, exécution, vérification,
-QR définitifs, sauvegarde, mise à jour `git pull` + `restart`, dépannage), avec
-les étapes manuelles détaillées conservées en annexe. `README.md` : nouvelle
-section « Installation en production » (résumé + lien).
-
-**Nom de l'association configurable (`NOM_ASSOCIATION`) : FAIT.** Corollaire
-de la question posée par `install.sh` : « LudoteX » était
-codé en dur à une quinzaine d'endroits (bandeau, pied de page, page « À
-propos », écran `/live`, message de partage du jeton bénévole, exports
-Excel/PDF des stats, fichiers `.ics` des tournois). Décision Simon (option
-« partout dans l'app ») : nouveau module `app/config.py`
-(`NOM_ASSOCIATION = os.getenv("NOM_ASSOCIATION", "LudoteX")`),
-exposé comme global Jinja (`{{ nom_association }}`, voir `app/templating.py`)
-et importé directement dans `routes/live.py` (`TITRE_DEFAUT`), `routes/admin.py`
-(message de partage), `exports.py` et `tournoi/services.py` (`.ics`). Défaut
-inchangé si la variable est absente → aucune régression sur les déploiements
-existants. `.env.example` complété (`NOM_ASSOCIATION` + `PLANNING_DATABASE_PATH`,
-qui manquait). **Suite globale toujours verte (142 tests)**.
-
-**Sauvegarde & restauration complète (3 bases) : FAIT.** Logique isolée dans
-`app/sauvegarde.py` (testable) + routes `GET /admin/sauvegarde/export`,
-`POST /admin/sauvegarde/import` dans `routes/admin.py`. **Export** : chaque
-base (prêt, tournois, planning) copiée **à chaud** via
-`sqlite3.Connection.backup()` (cohérent même en WAL, app non interrompue),
-regroupées dans un zip `ludotex-backup-AAAA-MM-JJ.zip` sous des noms **FIXES**
-(`pret-jeux.db`/`tournoi.db`/`planning.db`, indépendants du chemin réellement
-configuré en `.env` — lu via `get_database_path()` de chaque module, jamais
-dupliqué en dur) + `INFO.txt` (date/heure/version). **Import** : validation
-stricte AVANT toute modification (`valider_zip_sauvegarde` — 3 fichiers
-présents + `PRAGMA integrity_check` sur chacun, lève `ZipInvalide` sinon, page
-réaffichée avec message clair, jamais d'erreur brute) ; **filet de sécurité
-silencieux** (`sauvegarde_de_securite`) qui exporte l'état actuel dans
-`data/sauvegardes/avant-restauration-<horodatage>.zip` juste avant de
-remplacer quoi que ce soit ; remplacement fichier par fichier
-(`_remplacer_fichier`, purge les éventuels `-wal`/`-shm`/`-journal` de la
-destination pour ne jamais mélanger d'anciennes écritures avec le contenu
-restauré) — sûr car chaque route ouvre/ferme sa propre connexion (pas de pool).
-**9 tests** (`tests/test_sauvegarde.py` : zip complet avec les 3 bases +
-INFO.txt, rejet d'une archive incomplète, rejet d'une base corrompue, rejet
-d'un fichier non-zip, restauration qui remplace bien les données + filet de
-sécurité vérifié, routes export/import protégées par la garde admin).
-
-**Fusion des sous-menus « Base de données » et « Sauvegarde » : FAIT.** Une
-seule page `/admin/donnees` (gabarit `admin_donnees.html`) regroupe désormais
-le catalogue (import/export CSV/Excel) ET la sauvegarde complète des 3 bases
-(export/import zip) — un seul lien de menu « 🗄️ Données & sauvegarde » dans
-`admin_dashboard.html` au lieu de deux. `_page_donnees` (dans `routes/admin.py`)
-sert de rendu commun (compteurs catalogue + message), réutilisé par
-`donnees_import` et par `sauvegarde_import` (qui n'a plus de page dédiée, juste
-les actions `GET /admin/sauvegarde/export` et `POST /admin/sauvegarde/import`).
-Gabarit `admin_sauvegarde.html` supprimé (devenu inutile). **Suite globale :
-151 tests verts** (inchangée, aucun test ne visait la page fusionnée).
-
-**Lanceur local sans ligne de commande (`lancer.py` + `lancer.vbs`/`lancer.bat`) :
-FAIT.** Pour un poste Windows de bénévole, sans terminal : double-clic sur
-`lancer.vbs` (silencieux, `pythonw.exe`) ou `lancer.bat` (console visible,
-débogage). `lancer.py` orchestre tout, sans dépendance supplémentaire
-(réutilise `qrcode`/`pillow` déjà présents, et `http.server` stdlib) : vérifie
-les prérequis (`.venv`, `cloudflared` dans le PATH ou à la racine du projet,
-ports 8000/8001 libres) — sinon page HTML d'erreur claire, jamais de plantage
-brut ; démarre `uvicorn` en sous-processus caché (port 8000) ; démarre
-`cloudflared tunnel --url http://localhost:8000` et **lit stderr ligne par
-ligne** pour en extraire l'URL publique par regex ; génère une page HTML
-**temporaire** (QR via `app.etiquettes.image_qr_nu` — même dessin que le reste
-de l'appli — encodé en base64, URL en grand, statut, bouton rouge « Arrêter
-LudoteX ») et l'ouvre dans le navigateur par défaut ; démarre un micro-serveur
-de contrôle (`http.server.ThreadingHTTPServer`, port 8001, `/status` JSON +
-`/stop`) que la page interroge par polling JS (5 s) et que le bouton d'arrêt
-appelle en `fetch()` ; termine proprement les sous-processus sur arrêt (bouton
-ou Ctrl+C). Fichiers HTML temporaires nommés `lancer-ludotex-*.html`
-(`tempfile`, dossier temp du système) → motif ajouté au `.gitignore` par
-prudence. Doc dédiée `docs/lancement-local.md` (installation de `cloudflared`
-sur Windows — téléchargement direct ou `winget` —, usage, limites : **URL du
-tunnel différente à chaque lancement**, donc incompatible avec des QR
-imprimés à l'avance — réservés au déploiement définitif sur domaine fixe).
-`lancer.py`/`lancer.vbs`/`lancer.bat` **versionnés** (pas dans `.gitignore`).
-
-**Lanceur local — trois correctifs après un échec réel sous macOS (2026-08-29) :
-FAIT.** `python3 lancer.py` (venv non activé) échouait sur « L'application n'a
-pas démarré à temps », sans le moindre indice. Cause : `demarrer_uvicorn`
-lançait le sous-processus avec `sys.executable`, en s'appuyant sur une garantie
-qui n'existe que sous Windows (`lancer.vbs`/`lancer.bat` appellent
-explicitement le python du venv) ; avec le python système, uvicorn mourait
-aussitôt. (1) **Relance dans le venv** (`relancer_dans_le_venv`, `os.execv`
-depuis `__main__`) plutôt que la seule correction du sous-processus : ce script
-importe lui-même `app.etiquettes` (donc `qrcode`/`pillow`) pour le QR de sa
-page, l'échec n'aurait été que repoussé. `dans_le_venv_du_projet` compare
-`sys.prefix` au dossier `.venv` et **surtout pas** des chemins résolus —
-`.venv/bin/python` étant un lien vers l'interpréteur de base, `resolve()` rend
-les deux indistinguables. Marqueur d'environnement contre la boucle ; tampons
-vidés avant `execv`, qui ne le fait pas (constaté : le message de relance
-disparaissait sur un stdout redirigé). `demarrer_uvicorn` passe par
-`python_a_utiliser()`. (2) **Sortie d'uvicorn dans un fichier**
-(`data/uvicorn-lancer.log`, `data/uvicorn-formation-lancer.log`, écrasés à
-chaque démarrage) au lieu de `subprocess.DEVNULL` : c'était la redirection, et
-non l'absence de fenêtre, qui masquait l'erreur — le remède affiché
-(« relancer via la console ») n'y donnait donc pas accès non plus. Le message
-d'échec cite le **chemin complet** du journal et en affiche la fin ;
-`_afficher_erreur` gagne un paramètre `detail` rendu dans un `<pre>` et
-**échappe** tout (une trace Python contient `<module>`, `<frozen …>`).
-(3) **Message adapté à la plateforme** (`lanceur_de_la_plateforme`) : les deux
-occurrences de « lancer.bat » en dur — échec d'uvicorn ET échec du tunnel —
-désignaient un fichier Windows inexistant ailleurs. Nouveau **`lancer.command`**
-(pendant macOS du `.bat`, versionné, bit d'exécution posé). Non couvert par
-pytest (`lancer.py` n'est pas importé par l'application) : vérifié en
-reproduisant la panne puis le correctif sur une copie jetable du dépôt, dans
-les quatre cas (python système, python du venv, uvicorn en échec réel,
-échappement de la trace dans la page HTML). `docs/lancement-local.md` réécrit
-en conséquence (titre plus « (Windows) », section « Si l'application n'a pas
-démarré à temps »).
-
-**Saisie manuelle de secours sur le scanner (idée 2.4) : FAIT.** Sous la zone
-caméra de `/scanner`, un petit formulaire GET (« Saisie manuelle » →
-`GET /scanner/saisie?code=…`, `routes/scanner.py`) permet de TAPER le code de la
-boîte (`id_exemplaire`) quand le QR est illisible / la caméra capricieuse, et
-d'arriver directement sur `/pret/<id>` sans repasser par le catalogue. **Aucun
-JS ajouté.** `id_exemplaire` reste du TEXT (zéros de tête préservés, jamais
-d'interprétation en entier ; seuls les espaces autour sont retirés via
-`.strip()`). **Jamais bloquant** : code vide/inconnu → la page scanner est
-ré-affichée avec un message clair (`services.info_exemplaire` valide l'existence)
-et le champ prérempli/`autofocus`, prêt à corriger — pas d'erreur brute. **Même
-protection que le scanner** (`exiger_jeton`, aucune nouvelle surface publique).
-Style mobile-first (`.saisie-manuelle`). **4 tests** (présence du formulaire,
-code valide → 303 vers `/pret/<id>` avec espaces tolérés, code inconnu →
-message + valeur préremplie, accès sans jeton → 403). **Suite globale : 168
-tests verts.**
-
-**Habillage UI du catalogue (léger, sans framework ni JS ajouté) : FAIT.**
-Purement CSS (`app/static/css/style.css`) + gabarits. (1) **Ouverture animée**
-des panneaux `<details class="recherche">` (keyframe `recherche-ouverture` :
-fondu + léger glissement) — joue à l'ouverture uniquement (le `<details>` natif
-masque instantanément à la fermeture, non animé, assumé). (2) **Puces de filtres
-actifs** sur `/catalogue` : chaque filtre posé s'affiche en pastille cliquable
-qui le retire seul (les autres conservés) + « Tout effacer » ; liens de retrait
-calculés côté serveur (`routes/catalogue.py:_puces_filtres`, `urlencode`, passés
-en `chips`). (3) **Relief au survol** des cartes `.jeu` (ombre + léger
-soulèvement). (4) **Focus clavier visible** homogène (`:focus-visible`,
-liseré violet) + retour visuel à l'appui des boutons/puces, **tout le site**.
-(5) `<meta name="theme-color" content="#4a148c">` + favicon/`apple-touch-icon`
-(logo) dans `base.html`. Tout est **coupé sous `prefers-reduced-motion`**.
-Aucune régression (**151 tests verts**, purement cosmétique).
-
-**Point 7.2 — Supervision légère en admin : FAIT.** Page `GET /admin/supervision`
-(lecture seule, protégée par la garde admin existante, liée depuis le tableau
-de bord) pour qu'un bureau non technicien vérifie en 5 secondes que tout va
-bien le jour de l'événement. Logique isolée dans `app/supervision.py`
-(testable, **stdlib uniquement** : `shutil.disk_usage`, `pathlib`) : (1) état
-des **3 bases** (chemin/taille/date de dernière modification), chemins
-toujours lus via `get_database_path()` de chaque module — **jamais dupliqués
-en dur** ; (2) **espace disque** restant du volume contenant `data/` ; (3)
-**dernière sauvegarde** trouvée dans `data/sauvegardes/` (fichier le plus
-récent par mtime — dossier des filets de sécurité automatiques de
-`app.sauvegarde.sauvegarde_de_securite` — ou mention claire si vide) ; (4)
-**état du jeton bénévole** (défini/non, date d'expiration, expiré ou valide,
-via `auth.jeton_actuel`/`expiration_jeton`/`jeton_expire`) ; (5) **version
-déployée**, lue telle quelle depuis un fichier `VERSION` à la racine (contenu
-libre ; repli sur `APP_VERSION` si absent). **Aucune action d'écriture** sur
-cette page — uniquement des liens vers `/admin/donnees` et `/admin/jeton` pour
-agir. Libellés en français clair (« Aucune sauvegarde trouvée… » plutôt que
-des détails techniques bruts). **13 tests dédiés**
-(`tests/test_supervision.py`, service pur) + test de route (garde + rendu des
-5 sections). **Suite globale : 179 tests verts.**
-
-**Point 7.1 — Mode bac à sable / formation : FAIT.** Architecture retenue
-(décidée avant implémentation, cadrage affiné) : un **« SITE BIS »** = une
-**SECONDE INSTANCE** de la même application (même code, même dépôt), lancée
-avec son propre `.env` (`MODE_FORMATION=1` + bases SQLite **jetables**
-séparées), exposée sur un **sous-domaine dédié** (ex. `formation.<domaine>`,
-jamais un préfixe de chemin). **Aucun routage dynamique de connexion** dans le
-code — l'isolation vient uniquement du fait que l'instance ne connaît que ses
-propres bases. `app/config.py` expose `MODE_FORMATION` (bool, env
-`1`/`true`/`on`) et `FORMATION_URL` (optionnelle, lien admin côté PRODUCTION
-uniquement), tous deux injectés comme globals Jinja (`app/templating.py`) —
-**absent/0 : zéro changement visuel ni fonctionnel côté production** (vérifié
-par test). Quand actif : bandeau fixe orange (`#e65100`, différent du violet
-habituel `#4a148c`) « 🎓 SITE DE FORMATION — aucun effet sur LudoteX » sur
-**toutes** les pages (public/bénévole/admin, un seul point de contrôle dans
-`base.html`), et un filigrane diagonal « FORMATION » en pur CSS (image de fond
-SVG encodée en donnée, `body.mode-formation::after`, `pointer-events: none`),
-coupé à l'impression (`@media print`). Bandeau formation + bandeau habituel
-regroupés dans `.bandeau-groupe` (sticky commun) pour ne pas se chevaucher.
-Script de peuplement `app/formation.py` (`python -m app.formation`, modèle
-`app/planning/demo.py` mais **idempotent au sens fort** : VIDE puis repeuple —
-contrairement à la démo planning qui ajoute sans toucher à l'existant) : 20
-jeux fictifs (« Jeu d'essai n°1 »…, catégorie « Formation »), 5 prêts en cours
-+ 5 prêts rendus, 1 tournoi d'exemple (état `inscriptions`, 4 inscrits) —
-touche les DEUX bases (prêt + tournois) de l'instance courante. Bouton
-« Réinitialiser les données de formation » au tableau de bord admin, **visible
-uniquement si `MODE_FORMATION=1`** (`POST /admin/formation/reinitialiser`,
-revérifie `MODE_FORMATION` côté serveur — 404 sinon, même si le bouton n'est
-jamais rendu en production) ; sûr par construction (bases jetables propres à
-l'instance). Sur la PRODUCTION : lien « 🎓 Site de formation » au tableau de
-bord si `FORMATION_URL` définie (masqué sinon). Déploiement : `deploy/install.sh`
-propose une étape 9 optionnelle « Site de formation » — sous-domaine, bases
-`<chemin>-formation`, service systemd dédié `ludotex-formation` (port 8100,
-`EnvironmentFile=/etc/ludotex-formation.env` pour ne jamais toucher au `.env`
-de prod tout en partageant le même code), bloc nginx + certificat Let's
-Encrypt pour le sous-domaine, peuplement initial, et pose automatiquement
-`FORMATION_URL` dans le `.env` de production. Nouveaux gabarits
-`deploy/ludotex-formation.service` et `deploy/nginx-ludotex-formation.conf`
-(mêmes conventions que leurs équivalents production). `docs/deploiement.md`
-(section « Site de formation ») et nouvelle doc `docs/mode-formation.md`
-(accès, réinitialisation, QR d'entraînement via `scripts/generate_qr.py
---base-url`, suppression complète). QR d'entraînement : aucun script
-réécrit, juste `--base-url https://formation.<domaine>`. **11 tests dédiés**
-(`tests/test_formation.py` : comptes + idempotence des deux bases) + 3 tests
-de route (`tests/test_routes.py` : bandeau absent par défaut sur pages
-publique/bénévole/admin + bouton/lien absents + reset 404 ; bandeau présent
-partout + bouton fonctionnel quand actif ; lien admin conditionné à
-`FORMATION_URL` en production). **Suite globale : 190 tests verts.**
-
-**Tableau de bord admin en deux colonnes sur grand écran : FAIT.** Corollaire
-de `.contenu { max-width: 540px }` (global, `style.css`) qui bridait `/admin`
-en une seule colonne même sur ordinateur — même cause déjà rencontrée pour
-`planning_public`/`stats`/etc. (voir plus haut), traitée ici avec le même
-principe (`.contenu-large` + bloc Jinja `conteneur_extra`) plutôt qu'une
-nouvelle mécanique. `admin_dashboard.html` passe en `.contenu-large`, avec une
-grille CSS deux colonnes **à partir de 900px** (`.admin-dashboard-grille`,
-media query dédiée dans `style.css`) : colonne gauche = menu « Gérer » (+
-modules, fin d'événement), colonne droite = **supervision légère en direct**
-(mêmes informations que `/admin/supervision` : bases, disque, sauvegarde,
-jeton, version). Le contenu de la supervision est **factorisé** dans
-`app/templates/_supervision_contenu.html` (fragment paramétré par `{{ etat }}`),
-inclus à la fois par `admin_supervision.html` (page dédiée, sous son propre
-`<h1>`) et par `admin_dashboard.html` (carte « 🩺 Supervision » de la colonne
-droite). Route : `etat_supervision(conn)` est désormais calculé pour **toutes**
-les routes qui réaffichent le tableau de bord (connexion, clôture des prêts,
-réinitialisation formation), via un helper commun `_rendre_dashboard()` dans
-`routes/admin.py` (évite la triplication). **Sous 900px, rien ne change** :
-la colonne supervision est masquée en CSS (`display:none`, le lien
-« 🩺 Supervision » du menu « Gérer » reste alors le seul accès), et le menu
-« Gérer » lui-même est resté une liste plate visuellement identique à l'ancienne
-(les nouveaux sous-groupes — Jeux & étiquettes / Données & accès / Événement /
-Configuration — sont dans le HTML pour la hiérarchie visuelle du bureau, mais
-leurs titres `<h3>` sont masqués sous 900px et les `<ul>` n'ajoutent aucune
-marge propre, donc l'empilement mobile reste identique au pixel près). Au-delà
-de 900px : titres de sous-groupes visibles, séparateurs entre groupes, lignes
-de menu plus aérées avec surbrillance au survol. Aucune dépendance JS ajoutée
-(CSS pur, comme le reste du projet). **1 test ajouté**
-(`test_admin_dashboard_supervision_embarquee`), **191 tests verts**.
-
-**Tableau de bord admin — resserrage + libellés courts + menu « Gérer » sur 2
-colonnes (grand écran) : FAIT.** Suite du passage en deux colonnes ci-dessus :
-objectif tenir la page sans défilement sur un écran d'ordinateur courant.
-(1) **Titres resserrés** : `h1`/`h2` du tableau de bord et `h3` de la colonne
-supervision passent à une taille et des marges réduites, `.carte` gagne un
-padding/margin-bottom un peu plus compact — le tout **scopé à
-`.admin-dashboard-grille`** (`style.css`, media `min-width:900px`) pour ne pas
-toucher `.carte`/`h1`/`h2` des autres pages en `.contenu-large`
-(stats/planning/tournois). (2) **Libellés du menu « Gérer » raccourcis**
-(ex. « Imprimer des étiquettes (par lot) » → « Étiquettes (lot) »), le texte
-complet reporté en attribut `title` (info-bulle au survol, aucun JS) ; icônes
-mises dans un `<span class="admin-icone">` dédié et **agrandies**
-(`1.25em` de base, `1.4em` dès 900px) pour rester repérables malgré le texte
-plus court. (3) **Sous-groupes en grille 2×2** dès 900px
-(`.admin-groupes { display:grid; grid-template-columns: 1fr 1fr }`), au lieu
-d'empiler les 4 groupes (Jeux & étiquettes / Données & accès / Événement /
-Configuration) verticalement — divise la hauteur du menu par ~2 ; une bordure
-haute marque la 2ᵉ rangée. **Mobile inchangé pour la structure** (une seule
-colonne, groupes empilés, titres de groupe masqués) ; les libellés raccourcis
-et l'agrandissement léger des icônes s'appliquent en revanche **aussi sur
-mobile** (amélioration de lisibilité assumée des deux côtés, contrairement à
-la mise en page qui reste strictement scopée au grand écran). **191 tests
-toujours verts** (aucune assertion ne portait sur le texte long des liens du
-tableau de bord — vérifié).
-
-**Session de correction — 3 bugs de l'audit UX (`docs/idees-ux.md`) : FAIT.**
-Un commit par bug, dans l'ordre demandé.
-**Q1** : pluriel « 15 jeus » sur l'accueil (`accueil.html`) — `'s'` → `'x'` ;
-vérifié par grep qu'aucun autre gabarit ne construisait ce pluriel-là (les
-autres pluriels du site, « inscrit(s) », « joueur(s) », étaient déjà corrects).
-**M2** : le planning bénévole triait les jours par `libelle_jour` alphabétique
-(« Dimanche » avant « Samedi »). Nouvelle fonction
-`app/planning/services.py::jours_chronologiques(creneaux)` (tri Python sur
-`MIN(debut)`, UTC ISO triable lexicalement, aucun changement de schéma),
-utilisée par `construire_grille` — dont héritent la page publique, la grille
-admin **et** les exports Excel/PDF (ils partent tous de `construire_grille`) —
-et par le formulaire de collecte (`routes.py`), qui dupliquait le même
-groupement à la main. La liste à plat des créneaux dans les sections
-« Trame »/« Besoins » de l'écran admin reste hors scope (pas un groupement par
-jour). Vérifié avec `python -m app.planning.demo`.
-**M1** : l'histogramme `/stats` groupait les prêts par heure UTC
-(`substr(date_sortie,1,13)`) alors que le reste de la page est en heure
-locale. `services.prets_par_heure` récupère maintenant les `date_sortie` bruts
-et groupe en Python après `.astimezone(FUSEAU_LOCAL)` (toujours aucune logique
-de fuseau en SQL, cohérent avec le reste du module). Chaque entrée porte un
-`label` prêt à afficher (« 15h », ou « 17/07 15h » si la période couvre
-plusieurs jours locaux) ; `stats.html` l'utilise directement au lieu de
-découper la chaîne ISO. Aucun export Excel/PDF ne reprenait `par_heure` (aucun
-changement nécessaire de ce côté). Tests ajoutés pour les 3 bugs (dont le cas
-de bascule de jour 23:30 UTC → 01:30 local le lendemain pour M1). **Suite
-globale : 197 tests verts.**
-
-**Session UX — lot « bénévole au prêt » (`docs/idees-ux.md` Q3/Q4/M3/M8) :
-FAIT.** Un commit par point, dans l'ordre demandé. Objectif commun : fluidifier
-`/pret/<id>`, le geste répété toute la journée de l'événement.
-**Q3** : au retour, le numéro d'emplacement était noyé dans une phrase alors
-qu'il s'affiche en 5 rem au prêt. `pret.html` (résultat `rendu`) reprend
-désormais le même gabarit `.resultat-libelle` + `.pochette-num` qu'au prêt
-(« Récupérer la pièce d'identité à l'emplacement n° » + numéro géant), avec une
-nouvelle variante `.pochette-num--retour` (bleu `#1a73e8`, `style.css`) pour
-distinguer d'un coup d'œil un retour d'un prêt (vert). `rendu_tournoi` non
-touché (pas d'emplacement).
-**Q4** : le « Scanner le jeu suivant » — le geste le plus répété — n'était
-qu'un petit lien en pied de carte. Un vrai bouton pleine largeur
-`a.bouton.bouton-secondaire` (« 📷 Scanner le jeu suivant ») apparaît
-désormais juste sous le bandeau de résultat, pour TOUS les types de résultat.
-Le petit lien du pied de carte disparaît alors (redondant, seul « Voir la
-fiche publique » reste) ; en simple consultation (pas de résultat), le pied de
-carte est inchangé.
-**M3** : aucune protection contre le double-appui sur un wifi de salle lent
-(le second POST affichait « déjà sorti », lu comme une erreur). Script inline
-dans `base.html` (aucune dépendance) : au `submit`, désactive les boutons
-`type=submit` du formulaire soumis et remplace leur libellé par
-« Un instant… » (`innerHTML` sauvegardé dans `dataset.libelle`). Respecte les
-`onsubmit="return confirm(...)"` existants via `e.defaultPrevented` (le submit
-event bubble jusqu'à `document` APRÈS le handler du formulaire cible, donc un
-`confirm()` refusé a déjà marqué `defaultPrevented` — rien n'est désactivé
-dans ce cas). Réactivation au `pageshow` (bouton « page précédente » du
-navigateur, qui sert une page en cache avec des boutons restés désactivés).
-Logique JS non exécutable sous pytest (pas de moteur JS dans les tests) :
-vérifiée manuellement (`node --check` + relecture), test de présence du script
-ajouté.
-**M8** : un retour était affiché en bleu `resultat-info` (notice) alors que
-c'est un succès au même titre qu'un prêt. `rendu` et `rendu_tournoi` passent
-en `resultat-ok` (vert). `tournoi_sorti` (sortie, pas un retour) reste en bleu
-(information neutre) ; `deja_sorti`/`deja_disponible` restent en orange (rien
-n'a été modifié). Tests ajoutés pour les 4 points. **Suite globale : 200 tests
-verts.**
-
-**Session UX — lot « finitions transverses » (`docs/idees-ux.md` Q2, Q5–Q12) :
-FAIT.** Neuf points indépendants, un commit chacun, purement cosmétiques/
-accessibilité (aucune nouvelle dépendance, aucun changement fonctionnel).
-**Q2** : global Jinja `pluriel(n, singulier, pluriel)` (`app/services.py`,
-enregistré dans `app/templating.py`) — grammaire FR -1/0/1 singulier, |n|≥2
-pluriel. Remplace ~15 pluriels parenthésés type « jeu(x) », « prêt(s) »,
-« exemplaire(s) » dans `catalogue.html`, `fiche.html`, `stats.html`,
-`admin_jeux.html`, `admin_fiche.html`, `admin_donnees.html`,
-`planning_gerer.html`, `planning_admin.html`, `planning_case.html`,
-`tournoi_arbre.html`, `tournoi_rondes.html`, `tournoi_supprimer.html`.
-**Q5** : `base.html` — `{% block titre %}` par défaut pointe sur
-`{{ nom_association }}` au lieu de « Prêt de jeux » en dur ; `fiche.html`
-aligné sur le même motif que les autres pages (`<nom du jeu> —
-{{ nom_association }}`). **Q6** : `#9aa0a6` (contraste insuffisant) remplacé
-par `#6b7075` sur 4 règles CSS (`.stats-note`, `.palmares-val small`,
-`.planning-bloc--termine`, `.rr-vide`) — `--gris: #5f6368` non touché.
-**Q7** : texte scanner « Une seule autorisation caméra par session » →
-« Votre téléphone ne demandera l'autorisation caméra qu'une seule fois »
-(moins jargonneux). **Q8** : `aria-live="polite"` sur le statut du scanner
-(lecteurs d'écran). **Q9** et **Q10** : investigation sans bug réel trouvé —
-`stats_globales` renvoyait déjà « — » (pas « 0 min ») sans prêt terminé
-(`AVG` SQL sur 0 ligne → `NULL`/`None`), il ne manquait qu'un `title` explicite
-sur le chiffre ; le champ mot de passe admin avait déjà `autofocus`. Dans les
-deux cas : constat documenté + test de non-régression ajouté, sans changement
-de code inutile. **Q11** : le JPEG source (`logo_ludotex.jpg`) était en fait
-déjà carré (1509×1509) — le vrai défaut était le **cadrage** (sorcier décentré
-sur 2/3 gauche du canevas), illisible une fois réduit en icône. Recadrage
-centré tête/chapeau/barbe, régénéré en `favicon-192.png`/`favicon-512.png`
-(Pillow, LANCZOS), vérifié lisible jusqu'à 32×32. `base.html` référence ces
-PNG (`rel="icon"` par taille + `apple-touch-icon`), PNG versionnés (seul
-`*.qr.png` est exclu du dépôt). **Q12** : `.bouton-filtrer` aligné sur
-`border-radius: 12px` comme `.bouton` (transitions/hover/active déjà
-mutualisées). **Suite globale : 205 tests verts.**
-
-**Corrections mobile — retour terrain iPhone 13 mini (menu bandeau + tableau
-supervision) : FAIT.** Deux points indépendants, un commit chacun, remontés
-après test réel sur smartphone (capture à l'appui). **Menu du bandeau** : le
-menu bénévole/visiteur (`_menu_benevole.html`/`_menu_visiteur.html`, inclus
-par `base.html`) s'affichait à plat et passait sur 3 lignes sur petit écran —
-plus de 40 % de la hauteur visible mangée par le bandeau sticky avant même le
-contenu. Ne concerne QUE l'instance du bandeau : l'inclusion du même fragment
-dans la section « Aller aux modules » du tableau de bord admin
-(`admin_dashboard.html`) n'est pas touchée, ce n'est pas une barre fixe qui
-mange l'espace là-bas. **Tableau « Bases de données » de la supervision** :
-`.admin-table` (utilisée par `/admin/supervision` et `/admin/fonctionnalites`)
-n'avait jamais eu de règle CSS dédiée → largeur au contenu par défaut du
-navigateur, débordement à droite sur petit écran (colonnes tronquées,
-« Dernière modification » invisible). Même recette que `.detail` (déjà
-éprouvée sur mobile ailleurs, ex. « Détail des prêts ») : largeur 100 %,
-cellules qui s'enveloppent (`word-break`) plutôt que de déborder. Aucun
-changement visuel sur grand écran. **2 tests ajoutés** (structure `<details>`
-+ présence de la règle CSS via `/static/css/style.css`). **Suite globale :
-207 tests verts.**
-
-**Correctifs suite au retour ci-dessus (2ᵉ passage, menu invisible sur
-ordinateur + lisibilité supervision) : FAIT.** Deux nouveaux points
-indépendants, un commit chacun. **Régression du menu bandeau** : la première
-version du repli mobile reposait sur un unique `<details class="menu-
-bandeau">` qu'on tentait de « forcer ouvert » en CSS dès 640px
-(`display:flex !important` sur son contenu). Repéré cassé sur ordinateur —
-menu resté invisible. Cause probable : certains moteurs de rendu appliquent
-un traitement interne (proche de `content-visibility:hidden`) au contenu d'un
-`<details>` fermé, qu'une règle `display` d'auteur ne suffit pas toujours à
-surcharger, même avec `!important`. Remplacé par une approche sans piège :
-DEUX rendus séparés du même menu (le fragment de liens est inclus deux fois
-dans `base.html`, un seul point de maintenance des liens) — un `<details>`
-replié (affiché sous 640px) et une copie à plat dans une `<div class="menu-
-bandeau-large">` (affichée dès 640px) ; CSS bascule laquelle des deux est
-visible via un simple `display:none/block`, sans forcer l'état d'un
-`<details>`. Coût : `module_visible()` appelé deux fois par page (lecture
-SQLite locale déjà bon marché et déjà appelée plusieurs fois par page
-ailleurs — négligeable). **Lisibilité du tableau de supervision** : l'état de
-chaque base (« Présente »/« Introuvable ») réutilisait `.resultat` — une
-bannière pleine largeur (padding 20px, prévue pour les écrans de prêt/retour)
-compressée en `display:inline-block` dans une cellule, disproportionnée et
-malaisée à lire une fois le tableau compressé sur mobile. Remplacée par
-`.badge-ok`/`.badge-attention`, deux nouvelles variantes de la classe
-`.badge` **déjà existante** (pastille compacte utilisée pour dispo/sorti sur
-le catalogue, les tournois et les fiches admin — pas de nouvelle classe
-redondante, cohérence visuelle avec le reste du site). « Présente » → « Ok »
-(la pastille verte porte déjà le sens visuel) ; « Introuvable » inchangé.
-**Suite globale toujours 207 tests verts** (tests mis à jour, pas de test
-supplémentaire).
-
-**Lien « Administration » dans le menu du bandeau : FAIT.** Un administrateur
-connecté n'avait aucun moyen rapide de revenir au tableau de bord depuis les
-autres pages (catalogue, scanner, stats…) — il fallait retaper `/admin` dans
-la barre d'adresse. Nouveau global Jinja `est_admin(request)`
-(`app/templating.py`), qui réutilise `admin_auth.admin_connecte` (session
-admin par mot de passe, **distincte** du jeton bénévole — un administrateur
-peut être connecté sans avoir activé le jeton, et inversement).
-`_menu_benevole.html` (fragment partagé bandeau + tableau de bord admin) :
-lien « Administration » → `/admin` ajouté en fin de liste, visible
-UNIQUEMENT si `est_admin(request)`. Un seul point de maintenance : le lien
-apparaît automatiquement dans les deux rendus du bandeau (replié/à plat, cf.
-correctif menu ci-dessus) sans toucher à `base.html`. Portée volontairement
-limitée à `_menu_benevole.html` : un admin connecté a TOUJOURS
-`est_benevole(request)` vrai (`peut_ecrire` teste `admin_connecte` en
-premier), donc `_menu_visiteur.html` n'a jamais besoin de ce lien. **1 test
-ajouté** (absent sans session, présent dans les 2 rendus une fois connecté,
-disparaît après déconnexion). **Suite globale : 208 tests verts.**
-
-**M4 — Copier le code de désinscription/modification en un tap : FAIT.**
-`tournoi_inscription_ok.html` (code de désinscription tournoi) et
-`planning_collecte_ok.html` (code de modification des souhaits bénévole)
-n'affichaient le code qu'en texte brut, à noter soi-même. Motif « Copier »
-de `/admin/jeton` **réutilisé tel quel** (pas de nouvelle abstraction) sur
-les deux pages : bouton `.bouton-filtrer` « Copier le code » +
-`navigator.clipboard.writeText(...)` + confirmation `<span class="copie-
-ok">copié ✓</span>` (classe CSS déjà existante) réaffichée 2 s. Le code est
-injecté dans le script via `{{ code | tojson }}` (échappement JS sûr).
-Sur la page planning (accessible SANS code par filet de sécurité), bouton
-et script sont conditionnés à `{% if code %}` — rien à copier n'apparaît
-alors, jamais bloquant. Chaque page garde sa propre fonction `copierCode()`
-(pas de mutualisation avec `admin_jeton.html`), cohérent avec l'existant
-(`copierLien`/`copierDiscord` y sont déjà deux fonctions séparées plutôt
-qu'une abstraction commune). **3 tests ajoutés** (bouton + script présents
-avec le bon code à l'inscription tournoi ; idem sur la confirmation
-planning ; absence du bouton quand la page planning est atteinte sans
-code).
-
-**M5 — Griser les champs inapplicables au lancement d'un tournoi : FAIT.**
-`tournoi_gerer.html`, bloc « Lancer le tournoi » : le nombre de rondes et la
-case BO3 s'affichaient toujours actifs, alors qu'ils ne s'appliquent qu'à
-certains modes de scoring (notice texte en compensation). Script inline
-(IIFE, aucune dépendance) sur `#mode_scoring` : au chargement et à chaque
-`change`, grise (`disabled` + `opacity:.45`) `#champ_rondes` (rondes actives
-seulement pour `ronde_suisse`) et `#champ_bo3` (BO3 désactivé seulement pour
-`high_score`, actif pour suisse/round robin/élimination) — deux `id`
-ajoutés aux conteneurs existants, aucune restructuration. Logique alignée
-sur les règles RÉELLES de `services.lancer_tournoi` (pas sur le texte de la
-notice, qui omettait déjà round robin pour le BO3). **La notice reste
-affichée telle quelle** : repli utile si JS est indisponible, et le serveur
-revalide de toute façon tout — aucune règle dupliquée côté client, purement
-cosmétique. **1 test ajouté** (script, deux `id`, conditions exactes, notice
-toujours présente). **Suite globale : 320 tests verts.**
-
-**M6 — Menu bénévole empilé sur mobile : déjà couvert (aucun code).** En
-relisant la fiche avant de coder M6, constat que le besoin qu'elle décrit
-(le menu du bandeau s'empilait sur 3 lignes sur petit écran, mangeant
-l'écran du scanner) a été résolu entre-temps par la session « retour
-terrain iPhone 13 mini », avec un mécanisme DIFFÉRENT de la suggestion
-écrite dans la fiche (`overflow-x: auto` sur `.menu-benevole`). Le menu du
-bandeau est désormais replié par défaut sous 640px dans un `<details
-class="menu-bandeau">` (accordéon natif) et redevient à plat au-delà — voir
-plus haut. Décision (validée avec Simon) : ne pas superposer le motif
-`overflow-x` de la suggestion d'origine par-dessus un correctif qui
-fonctionne déjà et qui atteint le même objectif ; M6 marqué FAIT dans
-`docs/idees-ux.md` avec un renvoi vers le correctif réel, sans modification
-de code ni de test supplémentaire.
-
-**M7 — Bouton flottant « ↑ Recherche » sur le catalogue : FAIT.** 600 titres
-= un seul long défilement, panneau de recherche hors champ dès qu'on avance
-dans la liste. `id="haut"` posé sur la section de tête de `catalogue.html`
-(celle du panneau « Rechercher / filtrer ») ; lien `<a href="#haut">
-↑ Recherche</a>` **toujours visible**, `position: fixed; bottom: 16px;
-right: 16px` — pas de logique d'apparition au défilement, aucun JS, comme
-demandé. Habillage **réutilisé** de `.bouton-filtrer` (couleur, hover/
-active, `prefers-reduced-motion` déjà mutualisés) ; seule `.bouton-haut`
-(nouvelle) ajoute le positionnement flottant + l'ombre portée. Masqué à
-l'impression (`@media print`, même motif que le bandeau de formation).
-Pas de pagination ajoutée (hors périmètre de la suggestion retenue). **1
-test ajouté** (ancre + bouton présents). **Suite globale : 321 tests
-verts.**
-
-**S1 — Inventaire des composants d'interface : EN COURS.** Fiche
-`docs/idees-ux.md` (§ Améliorations structurantes) : deux « designs de
-formulaire » cohabiteraient (prêt vs tournois/planning/admin). Constat
-réévalué avant de coder : moins sévère qu'à l'audit — `.champ`/`.carte`/
-`.resultat` sont déjà largement réutilisés partout, `.bouton-filtrer` (action
-compacte/filtre) et `.pl-*` (grille planning dense) répondent à des besoins
-réellement différents, pas à une duplication accidentelle. Nouveau document
-**`docs/ui-composants.md`** : 10 composants canoniques (bouton principal/
-secondaire/compact, champ, lien, carte, message de résultat, badge, tableau
-de données) avec règle de choix entre variantes — référence à consulter/
-étendre au fil des prochaines retouches, pas une passe unique refermée. Revue
-systématique de tous les gabarits pour trouver les vrais écarts (plutôt que
-ceux supposés par l'audit initial) ; **4 corrigés** : (1) **7 boutons**
-`class="bouton"` seuls, sans `-principal`/`-secondaire` donc **sans couleur
-de fond** (le CSS force pourtant un texte blanc → peu ou pas lisible selon le
-navigateur), dans le module planning (`planning_case.html`,
-`planning_admin.html`, `planning_collecte.html`, `planning_gerer.html` ×4,
-`planning_creneau.html`) → `bouton-principal` ; (2) même défaut sur le lien
-de retour de `module_desactive.html`, aligné sur le motif `.lien` des pages
-sœurs (`acces_refuse.html`, `erreur.html`) ; (3) `admin_fonctionnalites.html` :
-bouton désactivé bricolé en style inline + classe ajoutée en JS, faute de
-composant partagé → nouvelle règle générique **`.bouton:disabled`** (CSS),
-gabarit simplifié ; (4) **`.detail` et `.admin-table` identifiés comme le
-même composant sous deux noms** (tableau de données dense, apparus à deux
-moments du projet) → règles CSS fusionnées, `.detail` hérite au passage du
-correctif anti-débordement mobile qui n'existait jusqu'ici que pour
-`.admin-table`. **2 tests garde-fous ajoutés** (plus aucun `.bouton` sans
-variante dans les gabarits ; présence de `.bouton:disabled`), 1 test existant
-adapté à la fusion CSS. **Suite globale : 325 tests verts.** Reste ouvert
-(documenté dans `docs/ui-composants.md` §11, pas de code) : pas de variante
-« danger » pour un bouton destructeur — pas une incohérence en soi (aucune
-page du site n'a de bouton rouge aujourd'hui), à ajouter si le besoin se
-confirme ailleurs.
-
-**S4 — Aide contextuelle repliée : EN COURS.** Fiche `docs/idees-ux.md`
-(§ Améliorations structurantes) : les explications longues finissent
-incrustées dans les formulaires plutôt que dans les pages d'aide dédiées
-(`/aide`, `/tournoi/aide`, `/planning/aide`). Nouveau composant
-**`.aide-inline`** (`app/static/css/style.css`) : `<details
-class="aide-inline"><summary>❓ …</summary>…</details>`, même langage visuel
-que `.recherche` (bordure, `<details>` natif, sans JS), teinte de fond
-différente pour ne pas être confondu avec un panneau de filtre. Appliqué aux
-3 écrans cités par la fiche, chacun avec un traitement différent selon ce que
-la revue du code a montré : (1) `admin_fonctionnalites.html` — la légende des
-états (`<dl class="fonct-legende">`), affichée en permanence sans aucun lien
-d'aide, est repliée telle quelle ; (2) `planning_gerer.html` (grille) — pas
-une longue explication à déplacer, mais un vrai trou : les 5 couleurs de la
-grille (grisé/trou/partiel/complet/surcharge) n'étaient expliquées nulle
-part, ni à l'écran ni sur `/planning/aide` ; la note d'interaction existante
-est remplacée par un `aide-inline` qui ajoute la légende manquante + un lien
-vers l'aide complète ; (3) `tournoi_gerer.html` (lancement) — la notice
-existante (mode/rondes/BO3, voir M5) sert aussi de **repli visible sans JS**
-pour le grisage de champs : la remplacer l'aurait cachée derrière un clic, un
-`aide-inline` **distinct** est donc ajouté EN PLUS (la notice reste
-inchangée). **4 tests ajoutés/étendus** (présence + contenu du bloc sur les
-3 écrans, notice M5 toujours présente). **Suite globale : 326 tests verts.**
-Reste ouvert : le motif n'a été appliqué qu'à ces 3 écrans (portée de cette
-session) ; d'autres écrans denses (ex. rondes/arbre de tournoi) pourraient en
-bénéficier plus tard, au fil des retouches.
-
-**M9 — Confirmations natives `confirm()` reformulées : FAIT.** Passage en
-revue des 17 `confirm()` du dépôt (mécanisme natif conservé partout, jamais
-remplacé par une modale JS). **5 réécrits** sur le patron « Action ? +
-conséquence + porte de sortie », ceux qui énuméraient réellement des
-détails techniques : restauration de sauvegarde (`admin_donnees.html`,
-reprend **l'exemple exact de la fiche** — la liste des 3 bases entre
-parenthèses disparaît) ; clôture des prêts (`admin_dashboard.html`, la
-parenthèse « (L'historique et les statistiques sont conservés.) » devient
-une clause naturelle) ; réinitialisation formation (`admin_dashboard.html`,
-la liste `(jeux, prêts, tournoi)` et « Vider et repeupler » remplacés par le
-libellé déjà utilisé sur le bouton) ; purge RGPD planning
-(`planning_gerer.html`, `(RGPD)` et « DÉFINITIVEMENT » remplacés par
-l'idiome **déjà existant** « Cette action est irréversible. », réutilisé
-tel quel depuis `admin_rangement.html`) ; ouverture groupée des tournois du
-jour (`tournoi_liste.html`, le nom d'état interne « en brouillon »
-disparaît). **12 laissés tels quels** : déjà courts et sans jargon, ou déjà
-accompagnés d'un texte de contexte visible à l'écran (suppression de
-tournoi : la bannière « Cette action est irréversible. » est déjà affichée
-avant le clic, le `confirm()` final reste volontairement minimal). **4
-tests ajoutés/étendus** (nouveaux libellés vérifiés à l'écran + anciennes
-formulations techniques absentes). **Suite globale : 323 tests verts.**
-
-**Suivi de l'emplacement de rangement : FAIT** (phase 1 complète, conception
-gravée dans `docs/conception-rangement.md`, tous les arbitrages de son §12
-tranchés en amont). Objectif : savoir où ranger chaque boîte, à l'événement
-comme au local hors événement, **sans jamais toucher à la logique métier du
-prêt** (numéro de pochette, deux clés stables) et **sans donnée personnelle**.
-**Deux contextes** interchangeables via un seul réglage global
-(`services.rangement_contexte`/`ecrire_rangement_contexte`, table
-`parametres`) : **Événement** (texte libre par exemplaire, colonne
-`exemplaires.emplacement_evenement`) et **Local** (liste d'emplacements fixes
-gérée en admin, FK `exemplaires.emplacement_local_id` →
-`emplacements_rangement.id_emplacement`, table créée avec un **seed** de 5
-emplacements par défaut, migrations idempotentes dans `app/db.py`). Les deux
-valeurs coexistent indépendamment ; changer de contexte ne touche pas
-l'autre. **Écran admin `/admin/rangement`** : bascule de contexte, réglage de
-**visibilité publique** (tous / bénévoles par défaut / administrateurs,
-`rangement_visibilite`), et **CRUD de la liste locale** (créer, renommer —
-répercuté automatiquement sur toutes les boîtes —, archiver/réactiver,
-réordonner, supprimer si plus aucune boîte rattachée). **Mode rangement au
-scanner** (`/scanner`) : bandeau d'activation, cookie dédié côté appareil
-(`rangement_actif`, même mécanique que `PRET_TOKEN`), chaque scan propose de
-saisir/choisir l'emplacement au lieu d'enregistrer un prêt (`/scanner/ranger`),
-saisie manuelle de secours intégrée, sortie de mode à tout moment. **Affichage
-au retour** (`/pret/<id>`, `rendu`/`rendu_tournoi`) : l'emplacement s'affiche
-en grand si renseigné, **toujours visible du bénévole quel que soit le
-réglage de visibilité publique**. **Visibilité catalogue/fiche** :
-`rangement_visible(request)` (global Jinja, imports locaux pour éviter tout
-cycle) gouverne l'affichage sur `/jeu/<id>` selon le réglage — jamais
-d'affichage d'une valeur vide (« non renseigné » proscrit, jamais bloquant).
-**Édition à l'unité** sur la fiche admin d'un jeu (`/admin/jeu/<ref>`) : les
-deux champs (événement/local) de chaque exemplaire sont **toujours
-indépendamment éditables**, deux formulaires séparés, réutilisés ensuite via
-un paramètre `retour` (validé pour n'accepter que les chemins internes
-`/admin/*`, jamais de redirection ouverte) qui permet à d'autres pages
-d'appeler les mêmes routes d'édition et de revenir sur elles-mêmes. **Import/
-export CSV** : les deux colonnes rangement font partie de
-`EN_TETES_CATALOGUE`/`lignes_export_catalogue`, ré-importables ; UPSERT en
-**`COALESCE(excluded.x, table.x)`** (une case laissée vide n'efface jamais
-une valeur déjà en base) ; un nom d'emplacement local inconnu à l'import est
-**créé automatiquement** (résolution/création mise en cache par run
-d'import). **Page des manques** (`/admin/rangement/manques`) : liste
-filtrable (catégorie, recherche texte) et **paginée** (`PAR_PAGE_MANQUES`=50,
-première pagination server-side du projet) des exemplaires sans emplacement
-dans le contexte actif, avec **saisie rapide en ligne** réutilisant les
-routes d'édition à l'unité via `retour` ; lien de comptage sur
-`/admin/rangement` et sur `/admin/donnees` après un import CSV laissant des
-boîtes non rangées. **Aide dédiée** : page publique `GET /rangement/aide`
-(`rangement_aide.html`, mode d'emploi des deux contextes, du mode scanner, de
-la visibilité et de la page des manques), liée depuis `/admin/rangement` et
-`/apropos`. **294 tests verts** au total (dont l'essentiel de
-`tests/test_rangement.py`, un fichier dédié couvrant schéma/migrations,
-services, et routes pour chacune des 9 étapes).
-
-**Rangement — addendum §13, affectation en lot par jeu : FAIT.** Amélioration
-post-phase 1 (conception dans `docs/conception-rangement.md` §13), pour
-équiper rapidement ~700 boîtes plutôt qu'une à une. **Remplace** l'ancienne
-page des manques (grain exemplaire) par la vue **`/admin/rangement/ranger`**
-(« Ranger les jeux »), au grain **TITRE** : une ligne par jeu (ex. « Catan —
-3 boîtes »), emplacement courant du contexte actif affiché (libellé / `—` si
-aucune boîte affectée / **« mixte »** si les copies diffèrent ou
-l'affectation est partielle). Filtres **réutilisant tel quel**
-`services.lister_catalogue()` (categorie/q/age/joueurs, même panneau que le
-catalogue public — aucune logique de filtre réimplémentée) + interrupteur
-« afficher aussi les jeux déjà rangés » (défaut : seulement ceux à ranger ;
-« déjà rangé » = **toutes** les boîtes du titre partagent le même emplacement
-non vide — décision d'implémentation prise faute de détail dans la conception
-sur ce point précis). Bandeau **« Contexte actif »** en tête (§13.7), avec
-accès rapide pour changer. **Sélection robuste** (§13.3) : le bouton
-« Appliquer à X jeux » **rejoue le filtre côté serveur** (POST transporte les
-critères, pas une liste d'ids) — couvre tout le résultat même multi-pages ;
-des cases à cocher permettent en plus de restreindre aux jeux de la page
-courante (« Appliquer aux jeux cochés »). JS inline minimal, repris tel quel
-du motif déjà en place sur `/admin/etiquettes` (tout cocher/décocher +
-compteur live). **Écrasement** annoncé sur le bouton (« dont N déjà rangés —
-seront remplacés »), jamais silencieux ; case **« ne pas écraser »** pour ne
-combler que les trous. **Emplacement vide refusé en lot** (pas de wipe de
-masse — retrait toujours à l'unité, fiche admin). Nouveaux services :
-`_resume_emplacement_titres`, `rangement_par_titre`, `affecter_emplacement_lot`
-(UPDATE en lot en une requête, pas une boucle Python, adapté à ~700 boîtes).
-`compter_exemplaires_sans_emplacement` et `_clause_sans_emplacement`
-conservés (compteur de `/admin/rangement`, message post-import, option
-« ne pas écraser »). **Correctif transverse** découvert en cours de route :
-le limiteur de débit de connexion admin (`app.auth._tentatives`) est un
-dictionnaire global au process, non remis à zéro entre tests — les
-connexions cumulées sur toute la suite finissaient par dépasser le seuil et
-faisaient échouer des tests sans rapport, plus loin dans l'ordre d'exécution ;
-fixture autouse ajoutée dans `tests/conftest.py` (nouveau fichier) pour
-réinitialiser ce compteur avant chaque test. **25 tests ajoutés** pour cet
-addendum. **Suite globale : 319 tests verts.**
-
-**Annonces libres sur l'écran de salle (idée 5.2) : FAIT.** Le bureau peut
-afficher un message ponctuel en bandeau sur `/live` (« Tombola à 15 h »,
-« portefeuille trouvé à l'accueil ») sans toucher au code ni recharger
-l'écran projeté, en suivant le patron déjà écrit pour le titre de l'écran
-(seconde clé sur la même page, aucune route/fichier nouveau). **Clé**
-`live_annonce` (`parametres`, une seule annonce à la fois, pas d'historique) +
-`app.routes.live.annonce_active(conn)` qui lit et renvoie le texte, exposé par
-`_collecter_donnees()` donc à la fois par `/live` et `/live/data` — **absent
-du JSON quand il n'y en a pas** (jamais de valeur absente affichée). Écran
-`/admin/ecran-salle` étendu (mêmes route/gabarit que le titre, pas de seconde
-page) : textarea 200 caractères + bouton **« Effacer l'annonce »** (mini-
-formulaire dédié, visible seulement si une annonce est active ; un champ vidé
-puis enregistré mène au même résultat). Bandeau conditionnel sur `/live`
-(`.bandeau-annonce`, teinte ambre distincte du reste de la palette, CSS/JS
-inline comme le reste du fichier), apparition ET disparition sans
-rechargement dans `rendre(d)`, texte injecté via **`textContent`** (jamais
-`innerHTML` — l'annonce est une saisie libre en admin).
-
-**Durée d'affichage en minutes (auto-masquage, ajout à la conception
-initiale) : FAIT.** Champ optionnel sur `/admin/ecran-salle` : vide =
-affichage illimité (comme prévu à l'origine) ; une valeur fixe une échéance
-`live_annonce_expire` (`parametres`, horodatage UTC ISO = *now* + N min au
-moment de l'enregistrement). Passé ce délai, `annonce_active()` masque
-l'annonce **par simple calcul à la lecture** — rien n'est jamais purgé en
-base : le texte reste éditable/rappelable en admin tant que personne ne le
-change, et le bouton d'effacement reste disponible même après expiration.
-Durée non numérique ou ≤ 0 → jamais bloquant, retombe sur l'illimité. Le
-champ « durée » est préaffiché avec les minutes restantes (calcul à
-l'affichage) pour qu'un enregistrement du titre seul ne réinitialise pas
-silencieusement une échéance en cours. **Rappel en supervision** (décision
-prise pour éviter qu'une annonce périmée passe inaperçue toute la journée) :
-`supervision.annonce_ecran_salle()` réutilise `annonce_active` (import
-différé, pas de duplication de la logique d'expiration) ; ligne « Annonce
-affichée en salle : … » dans `_supervision_contenu.html` (fragment partagé
-`/admin/supervision` + tableau de bord), affichée uniquement si une annonce
-est active. **8 tests dédiés** (absence par défaut, garde admin des deux
-routes, configuration/effacement/bouton dédié, longueur bornée, auto-masquage
-par durée dépassée simulée en base, durée invalide/négative jamais
-bloquante, rappel supervision conditionnel). **Suite globale : 334 tests
-verts.**
-
-**D5 volet 1 — cloisonnement du numéro de pochette sur `/stats` : FAIT.**
-Écart de sécurité découvert lors de l'audit n°2 (`docs/audit-ux-2026-07-18.md`,
-fiche D5) : la règle « aucune mention du numéro de pochette sur un écran
-public » (posée plus haut pour `/live`) n'était pas tenue sur `/stats`, page
-publique par défaut — le numéro apparaissait en clair dans la liste détaillée
-des prêts et dans la vue « Jeux actuellement sortis », ainsi que dans les
-exports Excel/PDF associés. **Décision Simon (2026-07-18)** : le numéro
-n'est visible que du bénévole/admin ; cette décision est aussi consignée dans
-`docs/specification.md` §3.2 (qui documente en plus le volet 2, purge à la
-clôture — non traité par cette session, voir plus bas). Correctif du
-**volet 1 uniquement** (cloisonnement d'affichage, pas de purge de donnée) :
-`app/templates/stats.html` conditionne l'en-tête **et** la cellule des deux
-tableaux concernés (`{% if est_benevole(request) %}`, le global Jinja déjà
-existant, qui est en réalité `auth.peut_ecrire` — bénévole activé OU admin
-connecté, voir `templating.py`) ; `app/exports.py::construire_xlsx`/
-`construire_pdf` gagnent un paramètre `avec_pochette: bool = True` qui retire
-la colonne de la feuille « Détail »/du tableau « Détail des prêts » sans
-jamais lire la requête HTTP (séparation volontaire, `exports.py` ne connaît
-pas FastAPI) ; `app/routes/stats.py` calcule `auth.peut_ecrire(request)` et le
-transmet aux deux routes d'export (`/stats/export.xlsx`, `/stats/export.pdf`,
-publiques elles aussi). Rien d'autre n'a changé sur la page (palmarès,
-histogramme, durées, totaux, filtres de période restent publics — décision
-explicite de la fiche). **Vérification demandée par Simon** : grep de
-`numero_pochette` sur `app/` — les deux seules autres occurrences côté
-affichage (`app/templates/pret.html`, `app/routes/pret.py`) sont déjà
-protégées par `exiger_jeton` (écrans bénévole uniquement, jamais publics) ;
-`app/models.py` et `app/services.py` ne font qu'un usage interne (colonne/
-logique métier). Aucune autre fuite trouvée. **3 tests ajoutés**
-(`tests/test_routes.py`) : bascule visiteur/bénévole sur `/stats` (en
-retirant/reposant le cookie `jeton_pret` du même client, le prêt étant créé
-côté bénévole puisque `POST /pret/*` l'exige) ; export Excel lu via
-`openpyxl.load_workbook` (en-tête « N° emplacement » absent/présent) ; export
-PDF vérifié en interceptant `reportlab.platypus.Table` (le contenu généré par
-reportlab est compressé — FlateDecode/ASCII85 — donc illisible en clair dans
-les octets bruts ; le mock capture les en-têtes réellement transmises à la
-mise en page, car `construire_pdf` importe `Table` à l'intérieur de la
-fonction). **Suite globale : 337 tests verts.**
-**D5 volets 2 et 3 — purge du numéro de pochette à la clôture : FAIT.**
-Quatre commits. **Volet 3 d'abord** (prérequis) :
-`sauvegarde.restaurer_zip_sauvegarde` remplaçait les fichiers de base et
-s'arrêtait là, alors que les migrations ne tournaient qu'au démarrage du
-serveur — or une restauration se fait à chaud. Nouveau
-`_migrer_bases_restaurees()` (les trois `init_db()`, idempotents par
-conception) appelé en fin de restauration. Défaut **préexistant** (une
-sauvegarde antérieure aux colonnes `motif`/`age`/rangement produisait déjà
-ce genre de panne), que le volet 2 rendait bloquant.
-**Schéma** : `numero_pochette` passe de `INTEGER NOT NULL` à `INTEGER`
-nullable. Voie retenue : **reconstruction de table**, pas la sentinelle `0`
-(qui n'efface rien, s'afficherait « 0 », et collisionne avec le marqueur des
-sorties tournoi). `db._migrer_pochette_nullable`, avec trois garde-fous —
-idempotence par le drapeau `notnull` de `PRAGMA table_info` (pas de table de
-versions) ; `PRAGMA foreign_keys` désactivé **avant** le `BEGIN` (il est
-ignoré à l'intérieur d'une transaction) puis `foreign_key_check` après ;
-comptage des lignes avant/après **dans** la transaction, tout écart lève et
-annule donc le `DROP`. Recrée explicitement les index de `prets` (que
-`DROP TABLE` emporte, `SCHEMA_INDEXES` s'exécutant avant les migrations) et
-refuse de tourner si le schéma réel diverge de `_COLONNES_PRETS` plutôt que
-de laisser tomber une colonne silencieusement. **Purge rétroactive** dans la
-même transaction (`numero_pochette = NULL WHERE date_retour IS NOT NULL`),
-**sorties tournoi closes comprises** — vérifié avant de trancher : aucune
-lecture de la colonne ne porte sur une ligne close (`pret_en_cours` et
-`lister_prets_en_cours` filtrent `date_retour IS NULL`,
-`lister_prets_periode` et les exports filtrent `motif = 'pret'`), c'est
-`motif` qui porte l'information. **Pas de sauvegarde de sécurité avant
-migration** (proposé, écarté avec Simon) : le zip contiendrait précisément
-les numéros que l'on efface, en clair dans `data/sauvegardes/`, dossier
-jamais purgé — ce serait D5 à l'envers.
-**Purge aux trois points de clôture** via `services._effacer_pochette` :
-`rendre` (numéro lu **avant** effacement et toujours renvoyé à l'écran — le
-bénévole doit voir « emplacement n° 7 » pour récupérer la pièce d'identité,
-c'est le geste central de l'appli), `repreter` (ancien prêt seulement, jamais
-le nouveau), `cloturer_tous_les_prets` (même requête `UPDATE`). Les prêts
-**en cours** gardent leur numéro : la reprise après incident pendant
-l'événement reste assurée par les sauvegardes, **rien n'a été ajouté de ce
-côté**. **Conséquence d'affichage** : la liste détaillée de `/stats` et les
-exports Excel/PDF perdent complètement leur colonne « emplacement » (elle
-porte sur une période, donc sur des prêts clos : elle serait toujours vide),
-et le paramètre `avec_pochette` d'`exports.py`, introduit au volet 1 pour ces
-deux seuls emplacements, disparaît — la donnée n'existe plus au lieu d'être
-masquée conditionnellement. La colonne subsiste dans « Jeux actuellement
-sortis » (prêts en cours), toujours réservée aux bénévoles/admin.
-**14 tests ajoutés** (`tests/test_migration_prets.py` : migration sans perte
-de ligne, purge, contre-test du prêt en cours, index recréés, idempotence,
-continuité de l'AUTOINCREMENT, refus d'un schéma inattendu ;
-`test_services.py` : les trois points de clôture + non-régression
-statistique ; `test_sauvegarde.py` : restauration d'une sauvegarde au schéma
-ancien) et 3 tests du volet 1 adaptés. **Suite globale : 351 tests verts.**
-
-**A1 — fiche publique sortie du cul-de-sac : FAIT.** `/jeu/<id>` est l'URL
-encodée dans les 703 QR et n'offrait aucune sortie. `fiche.html` gagne (1) un
-bouton « 📷 Prêter / rendre ce jeu » vers `/pret/<id>`, conditionné à
-`est_benevole(request)` et placé **avant** les caractéristiques — correctif
-critique : quand la caméra embarquée refuse de démarrer, le repli « appareil
-photo natif » documenté dans `aide.html` mène à `/jeu/<id>` et non à `/pret`,
-ce qui rendait le bénévole inopérant sauf à retaper l'URL ; (2) un pied de
-carte `.lien-fiche` (motif de `pret.html`) : retour au catalogue + lien
-`/catalogue?categorie=…` si la catégorie est renseignée (filtre existant,
-aucun service écrit). **Point 3 de la fiche non implémenté** (rebond « voir
-les jeux DISPONIBLES de la même catégorie ») : `lister_catalogue` n'a pas de
-filtre de disponibilité, le lien montrerait aussi les jeux sortis — la phrase
-promettrait autre chose que ce qu'elle donne. Aucune classe CSS ajoutée.
-**3 tests** (visiteur sans lien `/pret/`, bénévole avec, jeu sans catégorie).
-**Suite globale : 354 tests verts.**
-
-**A2 — page conviviale pour les adresses inexistantes : FAIT.** `gestion_http`
-(`app/main.py`) ne traitait que le 403 ; tout le reste retombait sur le
-gestionnaire par défaut de FastAPI, donc `{"detail":"Not Found"}` en texte
-brut — seul endroit du site montrant de la technique, et sans lien de sortie.
-Nouveau gabarit `introuvable.html` (calqué sur `erreur.html`) + branche
-`elif exc.status_code == 404`. **Vérifié avant d'écrire** : les seules
-`HTTPException` levées dans le code sont des **403** (`auth.exiger_jeton`,
-`modules.garde_module`) ; les 404 métier (« exemplaire inconnu », « tournoi
-inconnu », `module_desactive.html`) **retournent** leur gabarit avec
-`status_code=404` au lieu de lever — elles ne passent donc pas par ce
-gestionnaire et gardent leur message spécifique. **3 tests** dont les deux
-non-régressions. **Suite globale : 357 tests verts.**
-
-**B1 — mode rangement visible sur toutes les pages : FAIT.** Le mode est
-mémorisé dans un cookie d'appareil de 12 h et change la signification du
-geste central (scanner **range** au lieu d'ouvrir l'écran de prêt), mais
-n'était signalé que sur `/scanner` — seul mode caché de l'appli. Résolution
-du cookie **extraite** de `routes/scanner.py` vers `services.etat_rangement`
-(un seul domicile, `scanner.py` délègue) + `services.rangement_actif(request)`,
-global Jinja sur le modèle de `rangement_visible` (ouvre sa propre connexion :
-seule la requête est disponible dans un gabarit). Bandeau dans `base.html`,
-dans `.bandeau-groupe` avec celui de formation, donc sticky avec lui ; les
-deux coexistent (testé). **Jamais affiché à un visiteur non bénévole**, même
-porteur du cookie. Confirmation de rangement : « ✓ » générique remplacé par
-l'icône 🗄️ du bandeau (ne peut plus se lire comme une confirmation de prêt).
-`DUREE_COOKIE_RANGEMENT` **non touchée** (12 h, arbitrage de la fiche).
-Deux décisions en cours de route : (a) **collision de nom évitée** —
-`.rangement-bandeau` désignait déjà le PANNEAU détaillé de `/scanner`, une
-règle homonyme placée plus bas dans `style.css` l'aurait silencieusement
-restylé ; le bandeau global prend `.rangement-bandeau-global` et reprend le
-**bleu** de l'identité « rangement » ; (b) **panneau du scanner simplifié**
-(la fiche demandait de trancher) : libellé et « Quitter » étant désormais
-globaux et toujours visibles, il ne garde que ce qui lui est propre —
-changer d'emplacement sans quitter le mode. La sortie accepte un `retour`
-(chemins internes uniquement, `//hote` et URL absolues refusées) pour revenir
-sur la page d'où l'on quitte, repli sur `/scanner`. **6 tests**, 1 adapté.
-**Suite globale : 363 tests verts.**
-
-**C1 + B2 — le lot « aide » : FAIT.** Les deux fiches traitent le même
-constat pris par les deux bouts : l'aide existait, bien écrite, mais
-introuvable au moment où l'on en a besoin — quatre pages écrites chacune au
-moment de son module, sans index, sans porte d'entrée visiteur, et rien du
-tout côté administration.
-**C1** : nouvelle page `GET /admin/aide` (`admin_aide.html`), derrière la
-garde admin existante (accès non authentifié = **redirection** vers `/admin`,
-pas un 403 — motif `_garde`). Organisée par MOMENT de la vie de l'événement
-(**Avant / Pendant / Après / En cas de problème**) et non par écran, sans
-index alphabétique (écarté : double maintenance). Deux règles de contenu
-gravées en commentaire dans le gabarit : **aucune exploitation serveur**
-(SSH, systemd, nginx, certbot — elle reste dans `docs/deploiement.md`) et
-**aucune marche à suivre non vérifiée dans le code**, le bureau visé n'ayant
-pas les moyens de repérer une procédure plausible mais fausse. Entrée
-« ❓ Aide » en fin du groupe « Configuration » du tableau de bord. Blocs
-`.aide-inline` (composant de S4) sur les **4 écrans à risque**
-(`/admin/donnees`, `/admin/jeton`, `/admin/fonctionnalites`,
-`/planning/admin`), chacun renvoyant vers l'ancre correspondante.
-**Deux recours annoncés par la fiche ont dû être réécrits, la vérification
-ayant montré qu'ils n'existent pas** : (1) « j'ai restauré la mauvaise
-sauvegarde » — le filet de sécurité est bien créé dans `data/sauvegardes/`,
-mais **aucune route ne permet de le lister ni de le télécharger**, le
-rattrapage suppose un accès serveur ; la page le dit franchement et met en
-avant le seul geste actionnable (télécharger une sauvegarde AVANT d'en
-restaurer une), et le manque devient la **fiche C3** de l'audit ; (2) « j'ai
-importé le mauvais fichier » — la première rédaction proposait de supprimer
-les jeux ajoutés par erreur, or **aucune route de suppression de jeu
-n'existe** ; corrigé avant commit. Trois nuances tirées du code et absentes
-des docs y figurent aussi : la clôture efface les numéros de pochette (D5,
-donc récupérer les pièces d'identité avant) ; réinitialiser l'accès pour
-dépanner une seule personne déconnecte **tous** les autres téléphones ; un
-import écrase les fiches existantes, colonnes vides comprises, sauf le
-rangement (`COALESCE`). Un écart de mise en œuvre :
-`/admin/fonctionnalites` avait DÉJÀ un `.aide-inline` (légende des états,
-S4) — le lien de sortie y a été ajouté **dans le bloc existant** plutôt que
-d'empiler un second accordéon.
-**B2** : `/aide` restructurée en **hub** (URL conservée — elle est dans le
-menu et dans les habitudes) : `<h1>Aide</h1>` neutre à la place de « Mode
-d'emploi (bénévoles) » (titre qui promettait moins que ce que le site
-contient), carte « Par où commencer ? » à trois blocs d'audience, contenu
-d'origine déplacé TEL QUEL sous « Prêter et rendre un jeu » (ancre `#pret`,
-`h2`→`h3` ; **pas de découpage en `/aide/pret`**, le volume ne le justifie
-pas), puis carte des autres pages d'aide avec une phrase disant ce qu'on y
-trouve. **Deux ajouts par rapport à la lettre de la fiche, validés avec
-Simon** : les liens vers tournois/planning sont gardés par `module_visible`
-(sinon le hub proposerait de l'aide sur une rubrique masquée — défaut même
-de la fiche A3, non traitée), et le bloc « J'administre » est conditionné à
-`est_admin(request)`. Lien « Aide » ajouté à `_menu_visiteur.html` (le
-visiteur n'en avait aucun). **Convention de libellé** gravée dans
-`docs/ui-composants.md` **§12** — « ❓ Aide » pour un lien de navigation,
-« Voir l'aide complète — <sujet> » pour la sortie d'un `.aide-inline` —
-appliquée à 6 libellés, avec **trois familles exclues par décision** (les
-fragments de menu du bandeau, dont les entrées sont des mots simples sans
-icône ; `aide.html` lui-même, dont les liens sont volontairement descriptifs ;
-`apropos.html`, mots au fil d'une phrase), documentées dans le test
-garde-fou. Liens « ❓ Aide » ajoutés sur les 3 écrans publics qui en
-manquaient (`tournoi_detail`, `tournoi_inscription`, `planning_collecte` —
-ce dernier n'avait même **aucun** lien de sortie, un retour vers `/planning`
-a été ajouté au passage). `test_aide_page` **adapté en connaissance de
-cause** (il assertait « Mode d'emploi ») ; le garde-fou D3 sur `/aide` passe
-sans modification. **12 tests ajoutés, 1 adapté. Suite globale : 376 tests
-verts.**
-
-**Wiki mis à jour** (D5 + A1) : `Guide-Benevole` (le repli « appareil photo
-natif » menait à la fiche publique sans dire comment continuer — c'était le
-cul-de-sac corrigé par A1 ; le bouton « 📷 Prêter / rendre ce jeu » est
-désormais indiqué), `Module-Pret` et `Rgpd` (numéro de pochette effacé une
-fois le prêt terminé), `Module-Statistiques` (numéro réservé aux
-bénévoles/admin, jamais dans la liste détaillée). **Lacune connue non
-comblée : le module Rangement reste absent du wiki en totalité** (déjà
-signalé dans `docs/guide-utilisateur-cadrage.md` §1) — B1 n'a rien rendu
-faux, il n'y avait rien à corriger ; une page dédiée reste à écrire.
-
-**D3 — « emplacement » ne désigne plus trois objets : FAIT.** Le mot servait
-au casier à pièces d'identité, au lieu d'un tournoi ET à la place d'une
-boîte, sur des écrans enchaînés en trente secondes (cas le plus explosif : au
-retour d'une boîte rangée, « à l'emplacement n° 7 » en très gros puis « Où
-ranger le jeu : Étagère 3 » juste dessous). Renommages : **pochette**
-(`pret.html` ×9, `aide.html` ×5, en-tête « Empl. » → « Pochette » dans « Jeux
-actuellement sortis »), **lieu** (`tournoi_form`, `tournoi_aide` ; les trois
-autres gabarits tournoi disaient déjà « Lieu »), **rangement** inchangé.
-**Deux écarts par rapport à la fiche, arbitrés avant de coder** : (1)
-`aide.html` est PUBLIQUE et la fiche se contredisait à son sujet — renommée
-quand même, car le mot « pochette » est **déjà public** (wiki,
-spécification) ; ce qui doit rester interne est le NUMÉRO rattaché à un jeu,
-pas le vocabulaire, et une page d'aide doit employer les mots de l'écran
-qu'elle explique. (2) « Emplacement » est **conservé dans le module
-Rangement** (~15 écrans admin) plutôt que banni partout : la collision
-disparaît d'elle-même une fois pochette et lieu renommés. Seules des chaînes
-**affichées** changent — aucun nom de colonne, de champ (`name="emplacement"`),
-de clé ni d'en-tête d'export. La question « à examiner » des exports était
-déjà réglée par D5 (plus aucune colonne pochette) ; `/live` n'affichait déjà
-ni le mot ni un numéro (tests existants). Nouveau **`docs/vocabulaire.md`**
-(trois termes officiels, règle de discrétion du numéro, garde-fous).
-**3 tests ajoutés, 6 adaptés. Suite globale : 366 tests verts.** Wiki :
-`Module-Tournois` (« lieu ») — le reste du wiki disait **déjà** « pochette »,
-le renommage supprime donc une divergence guide/écran préexistante.
-
-**A4 — filtre « disponibles seulement » au catalogue, et point 3 de A1
-débloqué : FAIT.** `services.lister_catalogue` gagne un paramètre
-`dispo_seulement` : la disponibilité étant un AGRÉGAT (`SUM(...)` sur les
-exemplaires non prêtés), le filtre va dans un `HAVING` inséré entre le
-`GROUP BY` et le `ORDER BY` existants, jamais dans le `WHERE` (qui s'applique
-avant l'agrégation — l'aurait faussé silencieusement). Route `/catalogue` :
-paramètre `dispo=1`, transmis au service et ajouté à `_puces_filtres` (retrait
-en un tap, label « disponibles seulement »). Gabarit : `<label class="case">`
-dans le panneau de recherche, re-cochée quand le filtre est actif — motif déjà
-utilisé par les cases de sections de l'export PDF sur `/stats`. **Débloque le
-point 3 de A1**, jusque-là écarté faute de ce filtre : sur la fiche d'un jeu
-tout sorti (`disponible == 0`), le lien de catégorie du pied de carte devient
-« Voir les jeux disponibles « X » » (`/catalogue?categorie=X&dispo=1`) au lieu
-de « Voir les autres jeux » — un seul lien affiché à la fois (jamais les deux
-en doublon), le second restant inchangé pour un jeu encore disponible. Wiki :
-`Module-Pret.md` (case ajoutée à la description des filtres du catalogue).
-**7 tests ajoutés (2 service + 3 route côté A4, 2 route côté fiche). Suite
-globale : 383 tests verts.**
-
-**Lot de finitions A3 + D2 + D4 + E1 + D1** (`docs/audit-ux-2026-07-18.md`,
-2026-07-18, un commit par fiche, dans cet ordre — D1 en dernier car passe
-mécanique sur ~40 gabarits) : **A3** — bouton « Tournois » de l'accueil
-gardé par `module_visible` ; correctif plus sérieux trouvé au passage :
-`routes/catalogue.py` calculait et affichait planning/tournois imminents sur
-l'accueil PUBLIQUE même module désactivé, désormais sauté entièrement dans
-ce cas. Audit des autres liens en dur (`/tournois`, `/planning`, `/stats`,
-`/live`) : tous les autres sont soit dans des fragments de menu déjà gardés,
-soit sur des pages qui ne sont atteignables que si le module l'est déjà
-(routeurs entiers gardés par `garde_module`), soit des liens admin vers un
-module qui, désactivé, renvoie la page « module indisponible » habituelle —
-rien d'autre à corriger. **D2** — les 6 derniers pluriels inline
-(`'s'`/`'x' if n > 1 else ''`) remplacés par `pluriel()`, test garde-fou
-ajouté (exclut les 2 occurrences JS de `admin_etiquettes.html`, décision
-déjà prise en Q2). **D4** — nouvelle classe `.code-personnel` (promotion de
-`.pl-code`, agrandie) unifiant le code de désinscription tournoi (qui
-détournait `.pochette-num`, terme officiellement réservé au numéro de
-pochette depuis D3) et le code de modification planning ; structure
-alignée (titre → code → copier → phrase d'usage → « et si je le perds ? »
-→ liens). Recours de perte **re-vérifiés dans le code avant affichage,
-comme demandé — la vérification a contredit la fiche côté planning** :
-`tournoi/services.py::supprimer_participant` est bien exposée (bouton
-bénévole sur `tournoi_gerer.html`), mais
-`planning/services.py::supprimer_benevole` **existe sans être appelée par
-aucune route ni gabarit** — impossible de promettre un recours qui n'existe
-pas ; le recours réellement affiché est de renvoyer le formulaire de
-collecte (`enregistrer_souhaits` crée une nouvelle réponse/code quand le
-code fourni est inconnu), au prix d'une réponse en double qu'aucun écran ne
-permet de nettoyer aujourd'hui — **limite préexistante, candidat de fiche à
-part entière** si le besoin se confirme. **E1** — lien d'évitement clavier
-(`.saut-contenu`) ajouté tout premier élément du `<body>`, avant les
-bandeaux formation/rangement ; vérifications rapides demandées : un seul
-`<h1>` par page partout (branches `{% if/else %}` mutuellement exclusives
-sur les 5 gabarits qui semblaient en avoir deux), et **deux écarts réels de
-hiérarchie h1→h2→h3 trouvés et documentés sans être corrigés** (pas des
-corrections d'une ligne) : `planning_gerer.html` (sections 1/2 en
-`<summary><strong>` sans vraie balise de titre, contenant des `<h3>`, alors
-que les sections 3/4 du même fichier ont un vrai `<h2>`) et
-`admin_supervision.html` (`<h1>` suivi directement des `<h3>` du fragment
-`_supervision_contenu.html`, inclus ailleurs sous un `<h2>` — corriger l'un
-casserait l'autre sans paramétrer le fragment). **D1** — convention unique
-de titre d'onglet sur 40 gabarits : `<Sujet spécifique> — <Module> —
-{{ nom_association }}`, module omis quand il n'apporte rien (règle et
-exemples gravés dans `docs/ui-composants.md` §14) ; `live.html` **laissé
-tel quel** (page autonome hors `base.html`, titre réglable en admin,
-défaut = nom de l'association — lui imposer le suffixe aurait doublonné ou
-bridé la personnalisation). `.code-personnel` documentée en §13. Tests
-garde-fous ajoutés pour D1/D2 (source des gabarits) et E1 (présence +
-première position + masquage impression). **Suite globale : 406 tests
-verts.**
-
-**Refonte UX de l'écran de salle `/live` (audit dédié, 8 points A→G+I, le H —
-défilement auto du flux — écarté) : FAIT.** `live.html` reste autonome (CSS/JS
-inline, n'étend pas `base.html`), `/live` et `/live/data` toujours alimentés
-par le même `_collecter_donnees()`. **A** : les trois compteurs passent d'une
-grille de 3 grandes cartes à une **barre compacte sur une ligne** (mêmes `id`
-`c-sortis`/`c-dispo`/`c-total`/`c-tournois`, JS inchangé) pour rendre la
-hauteur au bloc vivant (tournois + mouvements) ; correctif du bug latent où le
-bandeau d'annonce (masqué par défaut) décalait les pistes de la grille
-`.ecran` — passage de `.ecran` en **flexbox colonne** (`.colonnes` en
-`flex:1 1 auto`, le reste en `flex:0 0 auto`), robuste que l'annonce soit
-affichée ou non. **B** : noms de jeux/tournois (`.mouv .nom`, `.tournoi .nom`)
-en **clamp 2 lignes** (`-webkit-line-clamp`) au lieu d'un ellipsis une ligne ou
-d'un débordement ; grilles réalignées en haut (`align-items: start`/
-`flex-start`). **C** : `/admin/ecran-salle` affiche désormais un **aperçu**
-fidèle du bandeau (mêmes couleurs ambre + puce 📣, nouvelle classe
-`.apercu-annonce-salle` dans `style.css`), calculé via `live.annonce_active(conn)`
-(donc respecte l'expiration) dans les deux handlers GET/POST — jamais le
-paramètre brut. **D** : nouvel état **« annonce expirée »** explicite en admin
-(`admin._annonce_expiree`) : au lieu d'afficher une heure passée, un message
-clair invite à ré-enregistrer ; le texte reste dans le formulaire (rappelable),
-rien n'est jamais effacé de force. **E** : chaque tournoi à venir porte
-désormais un `minutes_avant` (calcul de présentation, `live._minutes_avant`,
-au même titre que `_heure_locale`) ; le plus proche (liste triée par heure
-croissante) est **surligné** (« BIENTÔT ») et affiche « heure · dans N min ».
-**F** : l'horloge **tique localement chaque seconde** (JS pur, indépendante du
-polling — `d.horodatage` ne sert plus qu'à la concordance `/live`↔`/live/data`)
-et un **indicateur « hors ligne »** apparaît après 3 échecs consécutifs de
-`/live/data` (~30 s), pour ne plus donner l'illusion d'un écran vivant figé.
-**G** : quand aucun tournoi (ni en cours, ni à venir), `.colonnes` bascule en
-**une seule colonne** (classe `sans-tournois`, calculée dans `rendre()` donc au
-chargement comme au rafraîchissement) et le flux des mouvements occupe toute
-la largeur. **I** : boutons de durée rapide (15/30/60 min, illimitée) sous le
-champ durée de `/admin/ecran-salle` (`.bouton-filtrer`, script inline minimal).
-La logique JS pure (A affichage, B clamp, E surlignage, F horloge/hors-ligne,
-G bascule) n'est pas couverte par pytest (pas de moteur JS dans les tests) :
-vérifiée par relecture + `node --check` sur le script extrait. **1 test
-ajouté** (E : `minutes_avant` entier ≥ 0 sur un tournoi imminent + non-fuite du
-numéro de pochette), 1 test existant étendu (D : note « expirée »). Wiki
-vérifié (`grep -ri "écran de salle|/live|salle" wiki/`) : rien n'y décrivait
-l'aperçu, l'état expiré ni les boutons de durée rapide, donc rien n'y est
-devenu faux — aucune correction nécessaire (le module Écran de salle du wiki
-ne documente d'ailleurs pas non plus l'annonce elle-même, lacune préexistante
-hors périmètre de cette session). **Suite globale : 410 tests verts.**
-
-**Module PROGRAMME DU WEEK-END — JALON 1 (schéma + services) : FAIT.** Cadré
-dans `docs/conception-programme.md` : un élément de programme hors tournoi
-(animation, atelier, initiation, temps fort, intervention partenaire), pour
-répondre à « qu'est-ce qui commence maintenant ? » sans distinguer tournoi et
-animation aux yeux du public. Ce jalon est **services purs, aucune route,
-aucun gabarit** (jalon 2 à suivre). **Deux tables neuves** dans **la base des
-tournois** (`data/tournoi.db`, toujours aucune FK vers la base de prêt) :
-`types_programme` (liste configurable, patron exact d'`emplacements_rangement` :
-archivage doux, suppression refusée si rattachée, réordonnancement) — seedée au
-démarrage avec les 5 types de la note (animation/atelier/initiation/temps
-fort/intervention partenaire), seed idempotent, jamais ressuscité si le bureau
-en supprime un — et `programme` (les éléments : intitulé, description, type
-nullable **sans cascade**, date/durée, lieu, public visé, jauge purement
-indicative, état `brouillon`/`publie`/`annule`). Aucune migration de colonne
-nécessaire (tables neuves, `CREATE TABLE IF NOT EXISTS` suffit à mettre à
-niveau une base existante).
-
-**Services** dans le nouveau `app/tournoi/programme.py` : CRUD des types
-(`lister_types`, `creer_type`, `renommer_type`, `archiver_type`,
-`reactiver_type`, `reordonner_types`, `supprimer_type`) ; CRUD des éléments
-(`creer_element`, `get_element`, `modifier_element`, `supprimer_element`,
-`lister_elements(jour, id_type, inclure_brouillons)`, `dupliquer_element` —
-patron `dupliquer_tournoi`, repart toujours en brouillon —, `ical_element` —
-patron `ical_tournoi`) ; `changer_etat` avec une machine à états DISTINCTE de
-celle des tournois (`TRANSITIONS_PROGRAMME` : brouillon↔publié, publié→annulé,
-annulé→brouillon **ou** publié directement — plus permissive que les tournois
-qui doivent protéger des inscriptions, un élément de programme n'en a pas) ;
-`duree_depuis_fin(debut_iso, fin_iso)` (même logique que
-`planning.services.modifier_creneau` : refuse fin ≤ début ou bornes absentes,
-jamais bloquant, à la route jalon 2 d'exploiter le refus).
-
-**Extraction demandée par la conception** (§3/§5) : `SLOT_MIN`,
-`DUREE_DEFAUT_MIN`, `label_jour`, `_local_naive`, `_calculer_couloirs`
-déplacés de `tournoi/services.py` vers un nouveau **`app/tournoi/creneau.py`**,
-réimportés à l'identique dans `services.py` — **aucune signature publique
-n'a changé** (`services.label_jour`/`services.planning` s'appellent exactement
-comme avant), confirmé par la suite existante du module Tournois qui passe
-**sans une seule modification**.
-
-**Le cœur du module — `imminents(conn, minutes, inclure_annules=False)`** :
-fusionne les tournois (`tournois_imminents`, réutilisée telle quelle, aucune
-règle dupliquée) et les éléments de programme publiés dont le début tombe
-entre maintenant et +`minutes`, triés par heure croissante. Chaque entrée porte
-`source` (`"tournoi"`/`"programme"`), `id`, `intitule`, `icone` (celle du type
-pour un élément de programme, `None` pour un tournoi qui n'a pas ce champ —
-délibérément **pas** de repli codé en dur côté service, ce sera au gabarit du
-jalon 2 de choisir un glyphe par défaut), `lieu`, `date_heure` (UTC ISO brut,
-pour un futur lien `.ics`), `heure_locale` et `minutes_avant`. Les brouillons
-de programme sont TOUJOURS exclus (jamais publics, comme les tournois) ; les
-éléments annulés sont exclus par défaut et inclus sur demande (l'écran de
-salle, jalon 2, doit pouvoir les afficher barrés pendant leur fenêtre). Cette
-seule implémentation sera consommée par les trois surfaces prévues (accueil,
-écran de salle, page `/programme`) avec des fenêtres différentes.
-
-**Tests** : `tests/test_programme.py` (nouveau, 34 tests — schéma/idempotence/
-seed sur une base réelle temporaire, CRUD types/éléments sur base en mémoire,
-machine à états, `duree_depuis_fin`, `ical_element`, fusion `imminents` :
-ordre, fenêtre, mélange des deux sources, brouillons/annulés) + un test de
-restauration d'une sauvegarde de `tournoi.db` antérieure à ce jalon dans
-`tests/test_sauvegarde.py` (patron D5 : les deux tables apparaissent et sont
-seedées après restauration, sans perte du tournoi déjà présent).
-`tests/test_tournoi.py` **non modifié**. **Suite globale : 450 tests verts**
-(410 + 40 nouveaux).
-
-**Module PROGRAMME DU WEEK-END — JALON 2 (écrans + CRUD admin + page
-publique) : FAIT.** Suite du jalon 1, aucune logique métier réécrite —
-uniquement du câblage routes/gabarits sur `app/tournoi/programme.py`.
-**Routeur distinct** `app/tournoi/routes_programme.py` (la garde de module
-s'applique à `include_router`, comme pour les tournois), entrée
-`MODULES["programme"]` + `garde_module("programme")` dans `app/main.py`,
-lien « Programme » dans `_menu_benevole.html` **et** `_menu_visiteur.html`
-(gardés par `module_visible`). **Pas de route `/programme/{id}/gerer`** :
-contrairement aux tournois (participants, scores, rencontres), un élément de
-programme n'a que des champs simples — toutes les actions (modifier,
-changer d'état, dupliquer, supprimer) vivent directement dans les lignes de
-la liste bénévole `/programme/gestion` (patron dense façon
-`admin_rangement.html`, actions en `.bouton-filtrer`), pas de page de
-détail séparée.
-
-**Écrans bénévole** (jeton) : `/programme/gestion` (liste de travail,
-brouillons compris), `GET|POST /programme/nouveau` et
-`/programme/{id}/editer` (`programme_form.html`, patron `tournoi_form.html` :
-intitulé\* seul obligatoire, type — select des types actifs **+ l'archivé
-courant s'il y en a un**, comme le fait déjà `admin_fiche.html` pour le
-rangement —, **début et fin** en `datetime-local` dont la durée est déduite
-via `programme.duree_depuis_fin` ; nouveau service `programme.fin_iso`,
-l'inverse, pour préremplir la fin à l'édition à partir de la durée stockée),
-`POST /programme/{id}/etat` (transitions `TRANSITIONS_PROGRAMME`),
-`POST /programme/{id}/dupliquer` (**écart volontaire par rapport au patron
-tournoi** : un seul POST sans formulaire de date — la copie repart en
-brouillon **sans date** et redirige directement vers son édition, où le
-nouvel horaire se fixe), `GET|POST /programme/{id}/supprimer` (double
-confirmation, patron exact `tournoi_supprimer.html`).
-
-**CRUD admin des types** : `GET|POST /admin/programme-types`
-(`app/routes/admin.py`, patron exact d'`/admin/rangement` — créer avec
-icône, renommer, archiver/réactiver, réordonner, supprimer si non rattaché),
-lien « Types de programme » dans le groupe **Événement** du tableau de bord,
-entre « Date de l'événement » et « Écran de salle ».
-
-**Page publique `/programme`** : nouveau service `programme.grille(conn,
-jours, id_type=None)` (patron `tournoi.services.planning`, mêmes mécaniques
-de couloirs/slots de `creneau.py`, donc **même rendu CSS** — grille sur
-grand écran, agenda empilé sous 640 px) ; **éléments PUBLIÉS uniquement**
-(brouillons et annulés exclus — l'affichage barré d'un annulé est un besoin
-propre à l'écran de salle, hors périmètre de cette page). Les deux jours
-viennent du même réglage `evenement_date` que la frise des tournois sur
-l'accueil (lu dans la base de PRÊT depuis le routeur programme). Filtres
-**jour** et **type** en `<details class="recherche">` + puces de retrait,
-patron catalogue. Comme il n'existe pas de page de détail publique par
-élément, un bloc de la grille n'est **pas cliquable** (contrairement aux
-blocs tournoi) : il porte un simple lien `.ics` pour l'ajout à l'agenda.
-`GET /programme/{id}/agenda.ics` (patron exact `agenda_ics` des tournois),
-`GET /programme/aide` + lien depuis `/aide` (gardé par `module_visible`,
-visiteur et bénévole).
-
-**57 tests dédiés** (`tests/test_programme.py`, jalon 1 + jalon 2) : services
-`fin_iso`/`grille` (cas limites, filtre type, jour vide, publiés seulement),
-routes bénévole (accès sans jeton refusé, cycle création → édition →
-publication, intitulé vide refusé, duplication, suppression à double
-confirmation), admin (garde, CRUD complet, refus de suppression si
-rattaché), page publique (sans date d'événement, brouillons masqués,
-filtres + puces, module désactivé — page et lien masqués), `.ics` (contenu,
-404 sans date/introuvable, aucune donnée personnelle). **Suite globale :
-473 tests verts** (450 + 23).
-
-**Wiki** : nouvelle page `Module-Programme.md` (cycle de vie, création/
-gestion bénévole, duplication, CRUD admin des types, consultation publique,
-section « Si ça ne marche pas ») ; mises à jour de `Fonctionnalites.md`
-(Programme dans la liste des modules réglables), `Home.md` (lien dans le
-sommaire et le tableau « Je veux… »), `Glossaire.md` (entrée « Programme
-(élément de) »), `Guide-Benevole.md` (mention parmi les modules utiles
-pendant l'événement).
-
-**Module PROGRAMME — ÉCRAN DE SALLE (étape 7) : FAIT**, en deux commits.
-**7a — panneaux activables.** Décision Simon (26/07) : les quatre blocs de
-`/live` (barre de chiffres, Tournois, Animations, Derniers prêts & retours)
-s'activent depuis `/admin/ecran-salle` — la page qui porte déjà le titre et
-l'annonce, donc **aucune page ni mécanisme nouveau** : quatre clés dans
-`parametres` (`live_panneau_*`), lues par `live.reglages_panneaux` (réglages
-tels que saisis, pour le formulaire admin) et `live.panneaux_actifs`
-(réglages **+ précédence des modules**, pour la page). Défaut « tout
-affiché » → aucune régression sur une base existante. Réglage **global**
-(surcharge par l'URL écartée : deux sources de vérité à expliquer pour un
-besoin hypothétique). Un panneau éteint **n'est pas collecté** (ni requête,
-ni champ vide dans `/live/data`). L'ancienne bascule binaire
-`.colonnes.sans-tournois` est remplacée par un **nombre de pistes calculé**
-(`cols-1/2/3`, classe posée dans `rendre()`), un panneau gardant sa colonne
-s'il est activé ET a quelque chose à montrer (exception assumée : le flux des
-mouvements affiche « aucun mouvement pour l'instant », information utile en
-salle). **Correctif d'un défaut préexistant** : `routes/live.py` interrogeait
-la base des tournois **sans regarder l'état du module** `tournois`, alors que
-l'accueil sautait ce calcul (fiche A3) — l'écran annonçait donc des tournois
-d'un module masqué. Le compteur « Tournois en cours » vit dans la barre de
-chiffres : il suit le réglage des chiffres, pas celui du panneau, et
-disparaît (champ absent, jamais un « 0 » trompeur) si le module est
-désactivé. Tout éteindre est **légitime** (écran d'annonces seules) : averti
-en admin, jamais bloqué. Piège traité : une case décochée n'étant pas
-transmise, le mini-formulaire « Effacer l'annonce » **rejoue les panneaux en
-champs cachés** — sinon effacer une annonce éteignait l'écran au passage.
-**7b — troisième colonne « Animations »** : consomme
-`programme.imminents(120)` et n'en garde que `source == "programme"` (les
-tournois ont leur propre colonne, aucune règle dupliquée) ; mêmes codes
-visuels que les tournois à venir (puce BIENTÔT sur le plus proche, heure +
-délai) ; un élément **annulé reste affiché barré** pendant son créneau plutôt
-que de disparaître devant des gens qui l'attendent ; typographie resserrée
-**seulement** à trois pistes (`.cols-3`). **9 tests** ajoutés.
-
-**Module PROGRAMME — JALON 3 (accueil) : FAIT.** `routes/catalogue.py`
-consomme la **même** fusion que l'écran de salle (`programme.imminents`), avec
-une fenêtre de 60 min (`FENETRE_IMMINENTS_MIN`) au lieu de 120 : deux
-implémentations divergeraient le jour de l'événement. Le bloc « Ça commence
-bientôt » mélange les deux sources triées par heure — un tournoi reste
-cliquable et garde son remplissage (`imminents` transporte désormais
-`jeu`/`nb_inscrits`/`nb_places`/`places_restantes` côté tournoi, `jauge`/
-`public_vise` côté programme), une animation n'a **pas** de page de détail
-donc pas de lien. La frise deux jours devient « **Programme du week-end** »
-et porte les deux sources via `programme.planning_fusionne`, avec les
-couloirs calculés **sur l'ensemble** des blocs (sinon deux créneaux
-simultanés de sources différentes se superposeraient) ; chaque bloc porte
-`source`, le gabarit en déduit lien ou pas et la teinte
-(`.planning-bloc--programme`, violet, non cliquable). Fiche A3 respectée
-**dans les deux sens** : chaque source disparaît si son module est masqué
-sans emporter l'autre. **Refactorisation au passage** : l'assemblage de
-grille (tri, couloirs, coordonnées, étiquettes d'heures) était **recopié à
-l'identique** dans `services.planning` et `programme.grille` (le jalon 2
-avait suivi le patron par copie) → extrait dans
-`creneau.assembler_jours` + `creneau.bornes_bloc`, dont la frise fusionnée est
-le troisième appelant ; comportement inchangé, aucun test existant modifié de
-ce fait. **1 test adapté en connaissance de cause** (le titre de la frise
-n'est plus « Planning des tournois »), **6 ajoutés**. Wiki :
-`Module-Ecran-Salle.md` (colonne Animations + section « Choisir les panneaux
-affichés », avec la distinction réglage d'écran / état de module),
-`Avant-pendant-apres.md` (saisie du programme avant l'événement),
-`Module-Tournois.md` (nouvelle section « Tournoi ou élément de programme ? » —
-la frontière tient à une seule question : inscriptions et classement, ou
-non). **Suite globale : 486 tests verts.**
-
-**Mode formation — peuplement du programme : FAIT** (question de Simon, 26/07 :
-« est-ce que le mode formation peuple automatiquement le programme ? » — non,
-`app/formation.py` n'était dans le périmètre d'aucun des trois jalons ni de la
-conception). `_vider_base_tournoi` nettoie désormais aussi `programme` (mais
-JAMAIS `types_programme` : configuration amorcée, pas donnée d'exemple), et
-`peupler_programme(conn, noms)` crée **4 éléments** couvrant états et surfaces
-— publié à +20 min (visible sur l'accueil, fenêtre 1 h, ET sur l'écran de
-salle), publié à +4 h (frise), brouillon (invisible du public), annulé dans sa
-fenêtre (barré en salle). Rattachement aux types par nom via `_id_type`
-(`None` si renommé/archivé — jamais bloquant). Appelé par `peupler()` **après**
-`peupler_tournoi` sur la même connexion (l'inverse effacerait les éléments
-juste créés : un test garde-fou couvre ce piège d'ordre). **Manque préexistant
-corrigé au passage** : `evenement_date` n'était jamais réglée par le script,
-donc la frise de l'accueil ET `/programme` restaient vides sur le site de
-formation quoi qu'on y saisisse (la frise des tournois ne s'affichait pas
-davantage) → `peupler_pret` la pose sur **aujourd'hui**. **Pas de montée de
-version** (décision Simon : la production ne change pas d'un pixel, seul le
-script de peuplement du site de formation bouge, et `docs/versioning.md`
-exclut d'incrémenter pour un travail sans effet sur le déploiement — le tag
-`v1.2.0` reste donc juste). **4 tests ajoutés** (contenu + idempotence + piège
-d'ordre + date d'événement), **490 verts**. Vérifié en exécutant réellement
-`python -m app.formation` puis en interrogeant `/live/data`, `/` et
-`/programme` sur les bases peuplées. Docs : `docs/mode-formation.md`, wiki
-`Mode-Formation.md`.
-
-**Version 1.2.0 livrée** (2026-07-26, poussée et taguée `v1.2.0`) : module
-Programme du week-end + écran de salle configurable. Les trois porteurs du
-numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) sont alignés ; vérifié
-que `/apropos` affiche bien le numéro et les puces de la section. Le
-peuplement du mode formation ci-dessus est venu **après** le tag, sans montée
-de numéro (voir sa justification).
-
-**COURSE D'ATTRIBUTION DES NUMÉROS DE POCHETTE — CORRIGÉE** (2026-08-02).
-Défaut trouvé au test de charge du 30/07 (`docs/protocole-stress-test.md` § 2) :
-huit prêts simultanés repartaient tous avec la **même pochette**, huit prêts
-pouvaient s'ouvrir **sur une seule boîte**, et table `pochettes` vide (ouverture
-de soirée) les `MAX + 1` concurrents violaient la clé primaire → erreurs 500.
-Un même motif partout : on lit un état, puis on agit dessus, sans que rien
-n'empêche un autre bénévole de lire le même état entre les deux — en mode
-legacy du module `sqlite3`, un `SELECT` n'ouvre AUCUNE transaction en écriture.
-**Défaut reproduit avant correction**, dans les deux configurations, puis les
-**trois** pistes du § 6.1 mises en œuvre. (1) `services.transaction(conn)`,
-gestionnaire de contexte **réentrant** posant `BEGIN IMMEDIATE` — le verrou est
-pris AVANT la lecture ; appliqué à `preter`, `rendre`, `sortir_tournoi`,
-`repreter`, `cloturer_tous_les_prets`. La réentrance (`if conn.in_transaction:
-yield`) est ce qui permet à `repreter()` — qui écrit AVANT d'appeler `preter()`
-— de continuer à fonctionner, et elle est sûre parce qu'une transaction ne
-s'ouvre implicitement que sur une écriture (un SELECT seul laisse
-`in_transaction` à False), donc « déjà en transaction » ⇒ « verrou déjà tenu ».
-`conn.isolation_level = None` **écarté** (rendrait non-opérants les ~20
-`conn.commit()` de `services.py`). (2) Deux **index UNIQUE partiels**
-(`models.SCHEMA_INDEXES_UNIQUES`, filet et non correctif) : un prêt ouvert par
-boîte, une pochette par prêt — le second excluant `numero_pochette IS NULL`
-(prêts clos, D5) et `<> 0` (marqueur des sorties tournoi, forcément partagé).
-Ils sont créés **en un seul endroit**, `db._creer_index_uniques`, qui rattrape
-l'`IntegrityError` d'une base déjà incohérente, **avertit et continue**
-(`init_db()` tourne au démarrage ET après restauration de sauvegarde : lever
-mettrait le site par terre) — **aucune réparation automatique**, la base ne peut
-pas savoir quelle PI est dans quel casier. Volontairement PAS dans
-`SCHEMA_STATEMENTS` ni dans la liste que `_migrer_pochette_nullable` recrée : le
-piège du double domicile disparaît au lieu d'être entretenu.
-`idx_prets_retour_null` **conservé** (redevient l'index de requête si l'UNIQUE
-échoue). (3) Contrôle « déjà sortie ? » entré **dans** la transaction
-(`preter_si_disponible`, `sortir_tournoi_si_disponible` ; `preter`/
-`sortir_tournoi` gardent signature et contrat « ne refuse jamais »). Plus :
-`db.TIMEOUT_ECRITURE_S` = 15 s explicite (le défaut implicite de 5 s était subi),
-et résultat **`occupe`** dans `pret.html` (« Rien n'a été enregistré », boutons
-toujours en place) rattrapant `OperationalError`/`IntegrityError` — jamais un
-500. Migration **index seulement**, réversible par 2 `DROP INDEX` (⚠️ rétrograder
-le code sans les exécuter laisserait la contrainte face à un code qui produit
-des doublons). **15 tests** (`tests/test_concurrence_pochettes.py`, sur base
-FICHIER — deux connexions `:memory:` ne se disputent aucun verrou) : le test
-déterministe porte sur la seule propriété discriminante — entrer dans le bloc,
-avant toute lecture, doit DÉJÀ bloquer un autre écrivain (une première
-rédaction observait le moment de l'écriture et passait au vert correctif
-neutralisé, SQLite verrouillant de lui-même dès la première écriture) ; chaque
-test vérifié en neutralisant le `BEGIN IMMEDIATE`. **Suite globale : 505 tests
-verts.** Critère d'acceptation tenu sur instance locale (course 8×50 puis
-`coherence.py` 7/7, dans les deux configurations — verdicts consignés au § 2.4
-du protocole).
-
-**Même motif dans `tournoi/services.py::inscrire` — CORRIGÉ ensuite** (même
-session, commit séparé) : `places_restantes()` lu puis `INSERT`, donc deux
-inscriptions simultanées sur la dernière place passaient toutes les deux.
-Conséquence sans commune mesure (une chaise en trop), d'où le traitement à
-part. `services.transaction` est **importée** du module de prêt, pas dupliquée
-— `tournoi/` et `planning/` importent déjà 9 helpers de `app/services.py`
-(`maintenant`, `FUSEAU_LOCAL`, `local_vers_utc_iso`…) ; la duplication
-d'`_ics_horodatage` était un cas particulier, pas une règle contre l'import.
-`_inserer_inscription` **ne committe plus** (les deux appelants publics,
-`inscrire` et `ajouter_participant`, délimitent la transaction — piège :
-oublier le second aurait fait perdre silencieusement les ajouts manuels des
-bénévoles ; un test le couvre). **Aucun index ne peut servir de filet ici** :
-un plafond de places est un COMPTAGE, pas une unicité, aucune contrainte de
-schéma ne l'exprime. **6 tests** (`tests/test_concurrence_inscriptions.py`) ;
-le déterministe observe `conn.in_transaction` **au moment du comptage** —
-seule formulation discriminante, SQLite verrouillant de lui-même dès la
-première écriture. **Suite globale : 511 tests verts.** Non audités faute de
-périmètre : le reste du module tournois (désinscription, lancement, rondes),
-le planning, le programme.
-
-**IDENTIFIANTS D'APPAREIL ET REGISTRE (lot A du chantier « journal
-d'activité ») : FAIT.** Cadré dans `docs/conception-journal.md` §4/§6.2/§8,
-étapes 1 et 2 du §11 ; **aucune ligne de journal n'est encore écrite** — ce lot
-se tient tout seul et livre déjà de la valeur (savoir combien de téléphones ont
-activé l'accès). Cinq commits, un par étape. **Table `appareils`**
-(`models.py`, ajoutée à `SCHEMA_STATEMENTS`) dans la base de PRÊT, donc
-**incluse dans les sauvegardes** et recréée après restauration d'une archive
-antérieure (`_migrer_bases_restaurees`, volet 3 de D5) : `appareil` (PK, 6
-caractères hexadécimaux de `secrets.token_hex(3)`), `role`, `active_le`,
-`expire_le`, `generation`, `libelle`. Table neuve → `CREATE TABLE IF NOT
-EXISTS` suffit, **aucune migration de colonne**. `libelle` est créée **dès
-l'étape 1** bien que le DDL du §4.4 ne la montre pas (décision Simon) : elle
-n'est exploitée qu'à l'étape 4, mais l'ajouter plus tard aurait imposé un
-`ALTER TABLE` sur une table créée deux commits plus tôt. **Services**
-(`services.py`) : `COOKIE_APPAREIL`, `nouvel_appareil`, `appareil_de`,
-`empreinte_jeton` (8 caractères de `sha256(jeton)` — **jamais le jeton**, §8),
-`enregistrer_appareil`, `renommer_appareil`, `lister_appareils`,
-`purger_appareils_anciens`. **`admin_auth`** : `_appareils` (dict SÉPARÉ de
-`_sessions`, dont la valeur est un instant lu tel quel par `session_valide` —
-la mêler à autre chose aurait obligé à toucher la seule fonction qui garde la
-porte de l'admin), `ouvrir_session(appareil)`, `appareils_admin_ouverts()`.
-**« Actif » a trois sens** (§4.5) et se calcule **à la lecture, sans jamais
-écrire ni purger** (même principe que `live.annonce_active`) : échéance
-dépassée / jeton renouvelé (l'empreinte ne correspond plus au jeton courant) /
-session admin fermée (lue en mémoire — un redémarrage les ferme toutes, et
-c'est la vérité). **Cookie posé aux DEUX SEULS endroits qui ouvrent une
-écriture** (`/acces?jeton=`, `POST /admin/login`) — donc **rien pour le
-public**, la question du bandeau de consentement ne se pose jamais — et
-**seulement s'il est absent** (un bénévole rouvre son lien plus souvent qu'on
-ne croit ; le réécrire lui donnerait une nouvelle identité à chaque fois).
-`expire_le` calculé à partir de `_duree_cookie()` **elle-même** (nouveau
-`acces._echeance`), jamais d'une règle parallèle ; laissé **NULL pour un
-appareil admin** (décision Simon : la session en mémoire fait foi, une date en
-base serait une seconde vérité qui divergerait au premier redémarrage). Le
-REGISTRE, lui, est mis à jour à chaque activation réussie (upsert, décision
-Simon) : sans cela, après une rotation, le compteur annoncerait 0 pendant que
-douze téléphones fonctionnent. **Un appareil n'a qu'un rôle**, celui de la
-dernière activation (décision Simon) : le téléphone du bureau passe de
-`benevole` à `admin` sans créer de seconde ligne. **`/scanner`** affiche
-l'identifiant en pied de carte, **discrètement** (une ligne, pas un bandeau) :
-c'est la seule voie de rapprochement, et elle est **déclarative** (« moi c'est
-3F1A9C ») — rien ne s'affiche sans cookie. `_contexte_scanner` gagne la
-requête en paramètre, les six points de rendu en héritent. **`/admin/jeton`**
-porte la liste (§6.2, pas de page nouvelle) : compteur d'abord, tableau
-`.admin-table` des actifs, repli `<details>` des périmés **avec la raison**,
-libellé libre modifiable par ligne (`POST /admin/jeton/appareil/{id}/libelle`).
-**Pas de colonne « dernière activité »** (elle se déduira du journal, lot C —
-mieux vaut pas de colonne qu'une colonne vide). ⚠️ **Aucun bouton
-« révoquer »**, ni par ligne ni ailleurs : l'authentification compare le cookie
-au jeton courant, il n'existe aucun moyen de couper un appareil seul ; la page
-dit le seul geste réel (réinitialiser le jeton, qui déconnecte **tous** les
-téléphones) — **test garde-fou** vérifiant que la seule action portant sur un
-appareil est son libellé. **Consigne du libellé sous les champs eux-mêmes**
-(« un poste, jamais une personne ») et pas seulement dans le wiki : c'est le
-seul endroit du dispositif où une donnée personnelle peut entrer. **Purge**
-des lignes de plus d'un an dans `cloturer_tous_les_prets` (§8.1), même
-transaction, silencieuse (signature inchangée), mesurée sur
-`COALESCE(expire_le, active_le)` — sans quoi les lignes admin (`expire_le`
-NULL) ne partiraient jamais. **31 tests dédiés** (`tests/test_appareils.py`).
-**Suite globale : 542 tests verts.** Wiki : `Acces-et-Token.md` (section « La
-liste des appareils », dont « pourquoi on ne peut pas couper un seul
-appareil »), `Guide-Benevole.md`, `Rgpd.md`. **Pas de montée de version**
-(proposée au lot C).
-
-**SOCLE DU JOURNAL, ÉCRAN ET OUTIL TERMINAL (lot B du chantier « journal
-d'activité ») : FAIT.** Suite du lot A (identifiants d'appareil, ci-dessus).
-**Aucun point d'appel métier n'est encore posé** (lot C) : le journal existe,
-s'écrit, se lit et se filtre, mais reste vide en usage réel tant que les
-routes n'appellent pas `journaliser()`. Quatre commits.
-
-**Socle d'écriture** — nouveau `app/journal.py` : vocabulaire **fermé**
-(`MODULES`, `ACTIONS`, construit dès maintenant à partir des tables §2.1/
-§2.2/§2.3 de `docs/conception-journal.md`, alors même qu'aucun appel n'existe
-encore — sinon le test de vocabulaire fermé ne porterait que sur un
-sous-ensemble provisoire) ; `journaliser(request, module, action, objet=,
-ref=, ok=, detail=)`, **qui ne lève jamais** (tout est dans un `try/except
-Exception`, un module/action hors vocabulaire n'écrit rien et avertit sur
-`uvicorn.error` plutôt que de lever) ; assainissement obligatoire (retours à
-la ligne → espaces, troncature 120/60 caractères) ; horodatage local avec
-décalage explicite (`FUSEAU_LOCAL`, pas UTC — c'est un fichier qu'on lit au
-`tail`, pas de la donnée métier). `_qui(request)` : **admin testé avant
-bénévole** (un administrateur a aussi `acces_valide` vrai) et **mode ouvert
-détecté explicitement** (aucun jeton configuré → `indetermine`, jamais
-« bénévole » par défaut — même piège que la mesure d'audience). Logger dédié
-`ludotex.journal` (`propagate=False`), `RotatingFileHandler` (5 Mo × 5) +
-`StreamHandler` conditionnel (`JOURNAL_CONSOLE`) dont le formatage humain
-(`formater_console`) est **partagé** avec `scripts/journal.py`, un seul
-endroit qui décide de la mise en forme lisible. `lire_dernieres_lignes` :
-lecture par blocs en remontant depuis la fin, **jamais tout le fichier**,
-réutilisée par l'écran admin et le script. `JOURNAL_PATH`/`JOURNAL_CONSOLE`
-dans `app/config.py` + `.env.example`, branchement dans `app/main.py` à côté
-des `init_db()`, fixture autouse `_journal_isole` dans `tests/conftest.py`
-(sans elle, toute la suite écrirait dans le vrai `data/journal.log` du
-dépôt), `data/journal.log*` ajouté au `.gitignore` (le seul cas non couvert
-par les règles existantes, `.db`/`.sqlite*`).
-
-**Écran `/admin/journal`** (`routes/admin.py`) : garde admin (`_garde`), lit
-la fenêtre des **200 dernières lignes** puis filtre **dans cette fenêtre**
-(module, qui, action, appareil, recherche dans `objet`, période) — décision
-assumée et documentée à l'écran, pas une recherche plein fichier (chargerait
-potentiellement 5 Mo). Menus déroulants limités aux valeurs **réellement
-présentes** dans la fenêtre courante (motif `services.lister_categories`),
-pas le vocabulaire fermé entier. Puces de retrait (patron exact
-`catalogue._puces_filtres`). Ligne en échec marquée `.badge-attention` ;
-ligne JSON illisible (rotation en cours d'écriture) **ignorée en silence** ;
-fichier absent **ou vide** (le `RotatingFileHandler` crée un fichier de 0
-octet dès la configuration, avant toute ligne écrite) → message clair,
-jamais une erreur. Bouton de téléchargement du fichier brut (même repli
-« vide → redirection » que l'écran). Lien au tableau de bord (groupe
-« Données & accès »), `.aide-inline` renvoyant vers une nouvelle section
-`#probleme-journal` de `/admin/aide`.
-
-**Outil terminal `scripts/journal.py`** : stdlib uniquement, patron
-`scripts/import_csv.py`, réutilise `lire_dernieres_lignes`/`formater_console`.
-Options `-n/--nombre`, `-f/--suivre` (équivalent `tail -f`, **survit à une
-rotation** en surveillant l'inode du fichier et en rouvrant s'il change),
-`--module`, `--qui`, `--depuis HH:MM`, `--brut` (JSON, pour `| jq`). Le suivi
-`-f` **n'est pas couvert par la suite automatisée** (process persistant, pas
-simple sous pytest) : vérification manuelle documentée en tête de fichier.
-
-**Déploiement** : `JOURNAL_PATH`/`JOURNAL_CONSOLE` posés dans le `.env` de
-production généré par `deploy/install.sh` (sous les chemins de bases), et
-`JOURNAL_PATH` avec un chemin **distinct** dans `/etc/ludotex-formation.env`
-(sinon les deux instances écriraient dans le même fichier) + dans
-`run_python_formation()`. Commentaire étendu sur `deploy/ludotex.service` et
-`deploy/ludotex-formation.service` : la contrainte du worker unique couvre
-maintenant aussi le `RotatingFileHandler` (sûr uniquement avec un seul
-processus écrivain).
-
-**35 tests dédiés** (`tests/test_journal.py` : socle, écran admin, script
-terminal). **Suite globale : 578 tests verts.** Wiki (dépôt séparé) :
-nouvelle page `Journal-Activite.md` (à quoi ça sert, ce qu'on y trouve, ce
-qu'il ne contient jamais, section « Si ça ne marche pas ») + entrées dans
-`Home.md`, `Fonctionnalites.md` (précision : pas un module réglable),
-`Guide-Admin.md`, `Glossaire.md`. **Pas de montée de version** (proposée au
-lot C, comme prévu).
-
-**POINTS D'APPEL PRIORITÉ 1, GARDE-FOU D'INTERDICTION ET « DERNIÈRE
-ACTIVITÉ » (lot C du chantier « journal d'activité ») : FAIT.** Le journal
-cesse d'être un dispositif vide : les ~15 routes du tableau §2.1 de
-`docs/conception-journal.md` (administration et configuration — celles dont
-RIEN dans les trois bases ne gardait trace) écrivent désormais une ligne.
-Trois commits.
-
-**Points d'appel** (`app/routes/admin.py`, `app/planning/routes.py`) : jeton
-réinitialisé (l'échéance, jamais le jeton), mot de passe changé (le fait
-seul, ni l'ancien ni le nouveau ni une empreinte), connexion admin réussie
-ET échouée, import CSV (nom du fichier), restauration de sauvegarde, clôture
-des prêts (le nombre), module activé/désactivé, contexte et visibilité de
-rangement, affectation d'emplacement en lot, annonce d'écran de salle
-posée/effacée, date d'événement, purge RGPD du planning (nom de l'ÉDITION),
-réinitialisation des données de formation, création de fiche et ajout
-d'exemplaire. Tous **depuis les routes** (§5.2) : deux tests vérifient que
-`scripts/import_csv.py` et `app/formation.py`, lancés en ligne de commande,
-n'écrivent rien.
-
-Trois décisions non évidentes. (1) **`journaliser()` gagne deux paramètres
-`qui`/`appareil`**, réservés au SEUL `POST /admin/login` (docstring
-explicite, un seul appelant) : la session et le cookie d'appareil naissent
-dans la RÉPONSE, donc sur la requête entrante `admin_connecte()` est encore
-faux et le cookie absent lors d'une première connexion — sans eux, une
-connexion administrateur réussie porterait `qui: visiteur` sans appareil, et
-un filtre « qui = admin » raterait précisément les connexions. Option
-retenue avec Simon parmi trois. (2) **La restauration valide, JOURNALISE,
-puis remplace** (`valider_zip_sauvegarde` appelé explicitement dans la route,
-coût nul) : après le basculement des fichiers, `_qui()` lirait le jeton
-d'une AUTRE base que celle sur laquelle la requête a été authentifiée. Le
-fichier journal n'étant pas dans l'archive (§9), la ligne survit à la
-restauration. (3) **`/admin/fonctionnalites` compare à l'état précédent** et
-n'écrit qu'une ligne par module RÉELLEMENT changé : le formulaire renvoie
-tous les modules à chaque enregistrement, sans quoi chaque passage sur la
-page en produirait six, toutes fausses. Même précaution pour l'écran de
-salle, qui n'écrit « annonce effacée » que s'il y avait bien une annonce
-(sinon enregistrer le titre seul produirait un effacement imaginaire).
-
-**Garde-fou d'interdiction** (`tests/test_journal_interdits.py`, le test le
-plus important du chantier) : un scénario complet — activation du jeton,
-prêt, retour, tournoi PAR ÉQUIPES avec inscription publique, édition de
-planning avec un bénévole nommé, connexion admin, purge RGPD, restauration —
-joué avec des valeurs volontairement distinctives, puis le fichier produit
-passé au crible sur deux plans. **Littéral** : ni jeton, ni mot de passe, ni
-son empreinte sha256, ni pseudo, nom d'équipe, membre, nom de bénévole, code
-de désinscription ou de modification, ni IP, ni query string brute.
-**Structurel** : les clés de chaque ligne appartiennent au format fermé du
-§3 — c'est cette moitié qui protège l'AVENIR, un champ ajouté par
-inadvertance tombe même si sa valeur paraît anodine, là où une liste de mots
-interdits ne connaît que les fuites qu'on a su imaginer. Les deux ont été
-vérifiés en injectant de vraies fuites (un nom de bénévole en `objet`, puis
-un champ `ip`) : le test échoue bien dans les deux cas. Deux points assumés :
-le lot C ne journalisant pas encore les prêts ni les tournois, ces parties du
-scénario ne produisent aucune ligne — d'où un test de **non-vacuité** qui
-exige la présence des lignes du lot C, sans quoi tout passerait au vert sur
-un fichier vide ; et le numéro de pochette étant un petit entier, le
-chercher dans tout le fichier donne des faux positifs (l'id d'une édition de
-planning vaut « 1 » lui aussi — la première rédaction s'y est cassé le nez),
-donc on vérifie l'absence du MOT partout et celle de la VALEUR dans les
-lignes du module `pret`.
-
-**Colonne « dernière activité »** : `journal.derniere_activite_par_appareil`
-retient l'horodatage le plus récent par appareil dans la fin du fichier
-(réutilise `lire_dernieres_lignes`), consommée au rendu de `/admin/jeton`
-avec une fenêtre de **500 lignes** (`LIGNES_DERNIERE_ACTIVITE`, plus large
-que les 200 de l'écran journal : on y cherche une récence par appareil, pas
-une page à lire). **Aucune écriture, aucune colonne de base** — ajouter un
-UPDATE sur le chemin des requêtes est ce que §4.4 interdit. Un appareil hors
-fenêtre affiche **« — »**, jamais « jamais » : c'est « on ne sait pas », et
-une note sous le tableau le dit.
-
-Deux tests existants de `test_journal.py` **adaptés en connaissance de
-cause** : le cas « fichier journal vide » n'est plus atteignable en se
-connectant (la connexion écrit elle-même une ligne), il est désormais
-reconstitué explicitement. **36 tests ajoutés** (23 points d'appel + 8
-garde-fou + 5 dernière activité). **Suite globale : 614 tests verts.**
-Wiki : `Journal-Activite.md` (la page annonçait « prêts et retours, actions
-sur les tournois et le planning » — écrit au moment du socle en anticipant
-des points d'appel qui n'existaient pas ; remplacé par le tableau de ce qui
-est réellement enregistré, plus un paragraphe disant franchement ce qui n'y
-figure pas encore et où le trouver en attendant), `Guide-Admin.md` (même
-correction + quoi faire devant des connexions ratées), `Acces-et-Token.md`
-(la nouvelle colonne et le sens de son tiret).
-
-**LOT D — POINTS D'APPEL PRIORITÉS 2/3 ET FINITIONS DU CHANTIER JOURNAL :
-FAIT.** Dernier lot : le journal cesse d'être limité à l'administration et
-couvre désormais tournois, programme, planning et prêts. Cinq commits.
-
-**Tournois** (`app/tournoi/routes.py`) : `tournoi_cree` (création **et**
-duplication — une copie est une création), `tournoi_modifie`,
-`tournoi_supprime`, `tournoi_etat_change` (objet = `"<nom> → <état>"`, échec
-avec `detail: transition_refusee`), `tournoi_lance` (objet = `"<nom> —
-<mode>"`, **échec journalisé** si 0 participant ou mode inconnu — un
-lancement raté est aussi une information utile après coup, décision Simon),
-`tournoi_resultats_saisis` (scores, rondes, arbre), nouvelle action
-**`tournoi_ronde_generee`** (ajoutée au vocabulaire : générer la ronde/le
-tour suivant n'est pas une saisie de résultat, échec journalisé si ronde
-incomplète/terminée), `participant_ajoute`/`participant_supprime` (objet =
-le tournoi, **jamais le pseudo** — la base tournoi.db garde qui, et elle
-seule), `tournois_jour_ouverts`.
-
-**Programme** (`app/tournoi/routes_programme.py` + section admin des types
-dans `routes/admin.py`) : `programme_cree` (création et duplication),
-`programme_modifie`, `programme_supprime`, `programme_etat_change`,
-`programme_type_cree`/`_modifie`/`_supprime`. **Hors périmètre par
-décision** (non couverts, le tableau §2.2 de la conception ne les cite
-pas) : archivage/réactivation et réordonnancement (haut/bas) d'un type —
-ajustements de présentation, pas des faits qu'on cherche après coup.
-
-**Planning** (`app/planning/routes.py`) : `planning_questionnaire_ferme`
-(transition collecte→brouillon) et `planning_publie` (→publié) sur la même
-route `POST .../etat`, distingués par l'état de départ/d'arrivée ;
-`planning_genere` (préremplissage, objet = nom + bilan chiffré — le bilan
-va dans `objet` et non `detail`, car `detail` n'est conservé que si `ok` est
-faux) ; `planning_case_modifiee` sur les quatre routes d'édition d'une case
-(affecter/retirer/verrouiller/remplacer), via un nouveau helper
-`_objet_case(conn, ev, id_creneau, id_poste)` qui construit un libellé
-« poste — jour » **sans jamais lire un nom de bénévole**. **Hors périmètre**
-(non cité par la conception) : réouverture de la collecte (brouillon→
-collecte) et dépublication (publié→brouillon), ajout/suppression de poste
-ou de créneau, matrice des besoins.
-
-**Prêts** (`app/routes/pret.py`) : les quatre actions `pret`/`retour`/
-`re_pret`/`sortie_tournoi`, **réussite ET échec au même titre** — c'est
-l'apport réel de cette priorité (§2.3). Nouveau helper `_journaliser_pret`
-partagé par les quatre routes : `objet` = nom du jeu (que la table `prets`
-ne porte pas), `ref` = `reference_titre`, `ok=False` + `detail` = le type
-d'échec (`deja_sorti`, `deja_disponible`, `occupe`) dès que le résultat en
-est un — jamais le numéro de pochette, qui n'apparaît nulle part dans ces
-lignes.
-
-**Finitions** : `supervision.etat_journal()` (taille + date de dernière
-écriture du fichier courant, **lecture seule**, jamais le contenu) +
-nouvelle section dans `_supervision_contenu.html` (visible sur
-`/admin/supervision` et le tableau de bord) ; `journal.
-purger_rotations_anciennes(jours=365)` (purge par mtime des fichiers de
-rotation `journal.log.N`, jamais le fichier courant), appelée depuis
-`POST /admin/cloturer-prets` — même moment que la purge du registre des
-appareils (§8.1), pour la même raison (un geste qui existe déjà) ; une
-phrase sur `/apropos` (fin de la section « Administrateur », décision
-Simon : ajout court plutôt qu'une sous-section dédiée).
-
-**Garde-fou d'interdiction étendu** (`tests/test_journal_interdits.py`) :
-le scénario joue désormais aussi le lancement d'un tournoi (avec ses deux
-participants créés plus haut) et deux échecs de prêt (`deja_sorti` via un
-double « Prêter », `deja_disponible` via un double « Rendre ») ; nouveau
-test `test_les_echecs_de_pret_sont_journalises` (les deux `detail` sont
-bien présents, `ok: false`) ; la non-vacuité couvre désormais aussi
-`pret`/`retour`/`tournoi_lance`. **35 tests dédiés** dans
-`tests/test_journal_appels.py` (étendu du lot C : tournois, programme,
-planning, prêts — réussite et échec, et l'absence systématique de tout
-pseudo/nom dans les lignes concernées), + tests `app/formation.py`/
-`scripts/import_csv.py` toujours silencieux, + tests supervision/apropos.
-**Suite globale : 632 tests verts.**
-
-Wiki (dépôt séparé, poussé à part) : `Journal-Activite.md` (tableau des
-actions enregistrées étendu aux trois nouveaux modules, section « Si ça ne
-marche pas » corrigée — les prêts NE sont PLUS absents du journal),
-`Module-Pret.md`, `Module-Tournois.md`, `Module-Planning.md`,
-`Module-Programme.md` (nouvelle section « Suivi dans le journal
-d'activité » sur chacun), `Rgpd.md` (nouvelle section dédiée + ligne dans
-le tableau récapitulatif).
-
-**Chantier « journal d'activité » COMPLET** (lots A→D, du 4 août 2026).
-
-**Lot E — un appareil peut porter les deux rôles à la fois : CORRIGÉ**
-(2026-08-05, contrôle post-livraison du chantier ci-dessus). Défaut : le
-téléphone d'un membre du bureau qui active le jeton bénévole PUIS se
-connecte en administration voyait sa facette bénévole **écrasée** —
-`services.enregistrer_appareil` faisait un UPSERT qui remplaçait
-`expire_le`/`generation` par les `NULL` de l'inscription admin. Conséquence :
-le compteur de `/admin/jeton` sous-comptait, et après un redémarrage du
-service l'appareil s'affichait « session fermée » alors que son cookie de
-jeton bénévole restait valide — la liste mentait, ce que le §4.5 de
-`docs/conception-journal.md` cherchait justement à éviter. **La décision
-« un appareil n'a qu'un rôle » reste inchangée au sens des LIGNES en base**
-(toujours une seule ligne par appareil, aucune migration) : ce qui change,
-c'est qu'une ligne peut désormais représenter **deux facettes actives à la
-fois**. Correctif : `enregistrer_appareil` utilise
-`COALESCE(excluded.x, appareils.x)` sur `expire_le`/`generation` — même
-motif que l'import CSV du catalogue (« une case laissée vide n'efface jamais
-une valeur déjà en base ») — `role` continue de porter la dernière
-activation ; `_appareil_actif` évalue désormais les deux facettes
-séparément (bénévole — seulement si `generation` est renseignée, piège
-central : un poste d'administration pur ne doit jamais être déclaré
-« jeton renouvelé » — et admin, lue en mémoire) et l'appareil est actif si
-l'une des deux l'est, avec le motif bénévole prioritaire si les deux sont
-mortes (décision Simon : plus parlant qu'une « session fermée » qui est
-l'état par défaut au repos) ; `lister_appareils` compte désormais la
-**facette** bénévole active dans `nb_benevoles_actifs`, pas le `role`
-affiché, et chaque ligne porte `benevole_actif`/`admin_actif` pour
-l'affichage. `admin_jeton.html` : la colonne « Rôle » d'un appareil actif
-affiche un badge `.badge.badge-ok` par facette active (composant réutilisé,
-aucun nouveau). Aucune migration, aucune écriture ajoutée, aucun bouton de
-révocation (garde-fou existant toujours vert). **12 tests ajoutés/étendus**
-dans `tests/test_appareils.py` (scénario de non-régression, poste admin pur,
-chaque facette morte isolément, les deux mortes, purge d'un appareil mixte
-sur sa vraie échéance, affichage des deux badges). **Suite globale : 639
-tests verts.** Wiki : `Acces-et-Token.md` (nouvelle section sur le double
-badge et son effet sur le compteur).
-
-**Écran de salle — refonte de la mise en page pour téléviseur (2026-08-06) :
-FAIT.** Demande de Simon : `/live` empilait titre, annonce, chiffres puis
-trois colonnes égales (tournois / animations / prêts), si bien que le flux
-des prêts — l'information la moins utile à un visiteur — occupait un tiers
-de l'écran sur toute la hauteur. **Deux zones de deux blocs** désormais :
-en haut annonce + chiffres | derniers mouvements, en bas tournois |
-animations, dans un rapport de hauteur 1/3 – 2/3. Les proportions sont
-exprimées en `flex: N 1 0` et non en pourcentages : masquer un bloc suffit,
-son voisin s'étend seul et une zone entièrement éteinte rend sa hauteur à
-l'autre — **ce qui supprime toute la mécanique `cols-1/2/3`** écrite à
-l'étape 7a et ses cas particuliers. Contenu : le **mode de scoring
-disparaît** (« Ronde suisse » n'aide aucun visiteur et concurrençait le
-titre), remplacé par le nombre de joueurs ; les tournois à venir et les
-animations partagent un **gabarit d'agenda** (heure en colonne de gauche,
-grande et tabulaire, puis titre, lieu, places) ; la jauge dit **« 4 places
-libres / 12 »**, « complet » à zéro et « inscriptions ouvertes » sans
-plafond (jamais de chiffre inventé) ; le délai « dans N min » n'est plus
-porté que par la première ligne, la plus proche. Le flux des prêts passe
-d'un badge plein à une **pastille de couleur + libellé minuscule** (le nom
-du jeu reprend le premier rôle) et « SORTIE TOURNOI » devient « tournoi ».
-Nouveaux champs `/live/data` (additifs) : `nb_places` et `lieu` sur les
-tournois — ce dernier n'avait jamais été transmis alors que les animations
-l'affichaient déjà. **Défaut préexistant corrigé** : `overflow: hidden`
-faisait disparaître en silence tout ce qui dépassait ; une fonction
-`tronquer()` masque désormais explicitement les lignes qui ne tiennent pas
-et annonce « et N autres… » (rejouée à chaque rendu et au
-redimensionnement). Aussi : marges portées à 2,4 % (overscan des
-téléviseurs), taille de police bornée par la **hauteur** autant que par la
-largeur (`min(1.6vw, 2.9vh)` — le 16/10 profite enfin de sa hauteur, et une
-fenêtre large et basse ne déborde plus), et **suppression du bouton « Menu
-de l'application »** (personne ne clique sur un téléviseur ; il coûtait une
-bande sur toute la largeur — un test l'assertait, adapté en connaissance de
-cause). `NB_MOUVEMENTS` 10 → 8 : à 1080p le bloc en affiche environ 6 et
-annonce le reste, décision assumée (le flux est secondaire, les tournois et
-animations passent avant). **La logique JS n'est pas exécutable sous
-pytest** : vérifiée par `node --check` et relecture ; les tests portent sur
-les nouveaux champs et sur la présence des formulations dans le gabarit.
-**3 tests ajoutés, 2 adaptés. Suite globale : 642 tests verts.** Wiki :
-`Module-Ecran-Salle.md` (nouvelle description de la mise en page, jauge de
-places, troncature, absence volontaire de bouton, section « Si ça ne marche
-pas » ajoutée).
-
-**Formulaire de tournoi — « Nom du jeu » d'abord, titre spécifique en option
-(2026-08-06) : FAIT.** Départ : sur le site de FORMATION, les intitulés
-générés embarquaient le mot « Tournoi » et le mode de scoring (« Tournoi
-Catan — ronde suisse »), deux informations que la page affiche déjà par
-ailleurs. En remontant la cause, le formulaire lui-même invitait à cette
-redondance : « Nom du tournoi * » (obligatoire) + « Jeu » (facultatif)
-poussait à réécrire dans l'intitulé ce que les autres champs portent.
-**Décision Simon** : inverser les deux — **« Nom du jeu * »** devient le champ
-principal (cas majoritaire) et **« Titre spécifique du tournoi »** un champ
-facultatif. **Aucun changement de schéma** : `nom` reste la colonne d'affichage
-(NOT NULL), calculée par `routes._intitule(jeu, titre)` = titre s'il est
-saisi, sinon le nom du jeu — les dizaines d'écrans, exports, `.ics` et lignes
-de journal qui lisent `nom` sont donc intacts. Validation : au moins un des
-deux (message « Indiquez au moins le nom du jeu. ») — un titre seul reste
-accepté (tournoi multi-jeux), jamais bloquant. Édition : `routes._champs_nom(t)`
-redécompose le tournoi stocké ; pour un tournoi **créé avant** (intitulé saisi,
-`jeu` vide) l'intitulé est proposé comme nom de jeu, pour ne pas exiger de
-ressaisie ni changer l'affichage. **Corollaire d'affichage** : quand
-`jeu == nom`, le jeu n'est plus répété sous l'intitulé — liste des tournois
-(dont le sous-titre est désormais assemblé puis joint, ce qui supprime au
-passage le séparateur « · » orphelin quand le premier morceau manque), page
-publique, gestion, duplication, frise et bloc « ça commence bientôt » de
-l'accueil, et description du `.ics`. `/live` n'affichait pas ce champ : rien à
-y faire. **`app/formation.py`** : intitulés = nom du jeu seul, sauf un
-« Coupe des familles » (par équipes) qui illustre le titre spécifique ; les
-sept jeux tirés sont désormais garantis DISTINCTS, sans quoi deux tournois
-seraient devenus indiscernables une fois le suffixe de mode retiré. **Tests
-adaptés en connaissance de cause** : ~30 POST de tests postaient `nom=…` vers
-`/tournoi/nouveau` ou `/editer` (champ qui n'existe plus) → `jeu=…`, et les
-deux qui envoyaient nom ET jeu → `titre=…` + `jeu=…`. **9 tests ajoutés**
-(présence/absence des champs, intitulé = jeu, titre spécifique, refus des deux
-vides, titre seul, préremplissage à l'édition, tournoi ancien sans jeu, `.ics`
-sans répétition, garde-fou sur les intitulés de formation). **Suite globale :
-651 tests verts.** Wiki : `Module-Tournois.md` (section « Écrans bénévole »).
-Non traité, signalé : les intitulés du module Programme (« Initiation à X »
-avec le type « Initiation ») présentent la même redondance en plus discret.
-
-**ALERTE « RAPPORTEZ LES EXEMPLAIRES » AVANT UN TOURNOI — LOT 2 (réglages,
-cohabitation, journal) : FAIT** (2026-08-12, conception
-`docs/conception-alerte-tournoi.md`, découpage
-`docs/prompt-impl-alerte-tournoi.md`). Suite du lot 1 (calcul + bandeau sur
-`/live`, déjà commité). Trois commits.
-**Aucune page d'administration créée** : le message, le délai plancher et le
-délai plafond s'installent sous l'annonce de `/admin/ecran-salle`, avec la
-liste des jetons acceptés et le texte proposé du §4 reprenable en un clic
-(bouton « Utiliser ce texte », modèle transporté en attribut de données —
-rien à échapper à la main). **Formulaire SÉPARÉ, même page**
-(`POST /admin/ecran-salle/alerte`) : **écart assumé** avec le prompt, qui
-prévoyait un seul POST (consigné en §10 de la note, avec les trois autres).
-Le formulaire d'annonce porte quatre **cases à cocher**, qu'un navigateur ne
-transmet pas décochées — tout fondre en un envoi aurait fait qu'enregistrer
-un délai rejoue les panneaux et réciproquement, défaut que cette page a
-**déjà payé une fois** (« Effacer l'annonce » éteignait les panneaux, corrigé
-par des champs cachés) ; et l'alerte est le **premier réglage de cet écran
-qui peut être refusé**, or refuser une alerte mal saisie ne doit pas refuser
-au passage une annonce qui, elle, était bonne. Deux tests verrouillent cette
-indépendance dans les deux sens.
-**Les deux libellés qui font le lot.** (1) *Jeton inconnu* : le message le
-NOMME (« Le jeton {jouer} n'existe pas : il resterait affiché tel quel sur
-l'écran de la salle »), liste les quatre jetons acceptés, dit que rien n'a
-été enregistré, et **la saisie est réaffichée telle qu'elle a été tapée** —
-`_page_ecran_salle(..., saisie_alerte=…)` rejoue la saisie plutôt que la base.
-Pluriel géré (deux jetons fautifs sont tous deux nommés) ; la **casse compte**
-(`{Jeu}` est refusé, il ne serait pas substitué) ; une **accolade solitaire
-est acceptée** (elle ne casse rien à l'affichage, la refuser serait
-incompréhensible côté bureau). Même traitement pour les délais : non
-numériques, hors `[0, 1440]`, maximum < minimum. (2) *Cohabitation* :
-l'aperçu montre l'alerte (variante rouge `.apercu-alerte-salle` du composant
-`.apercu-annonce-salle`, teinte de `--alerte-fond` sur `/live`) PUIS écrit
-« Une alerte de tournoi occupe le bandeau jusqu'à 14:30 ; votre annonce
-(« … ») **n'est pas perdue** et reprendra ensuite toute seule ». L'heure vient
-de **`live.alerte_tournoi_detaillee`** (nouveau), qui rend `(texte, heure de
-reprise locale)` — l'heure de début du tournoi, la fenêtre étant `[H − délai,
-H[` ; `alerte_tournoi` délègue, signature du lot 1 inchangée.
-**Validation** : `live.jetons_inconnus` (domicile du vocabulaire fermé, à côté
-de `formater_alerte`), `DELAI_BORNE_MAX = 1440`, `MESSAGE_ALERTE_PROPOSE`.
-**Aperçu** calculé avec la même fonction que `/live`, **précédence de module
-comprise** (module tournois désactivé ⇒ aucune alerte), et tout est **relu en
-base après écriture** : l'aperçu doit dire la salle, pas le réglage. Les trois
-points d'entrée de la page partagent désormais `_page_ecran_salle` (patron
-`_page_donnees` / `_rendre_dashboard`).
-**Journal** : `alerte_posee` / `alerte_effacee` (module `live`), **deux
-actions** sur le patron exact de l'annonce libre plutôt qu'une seule comme le
-demandait le prompt — « éteinte » doit dire quel message a été retiré. Écrites
-**seulement si le modèle change** (lecture avant écriture) : les trois
-réglages voyagent dans le même formulaire, ajuster un délai produirait sinon
-une ligne identique à la précédente. **Les deux délais ne sont pas
-journalisés** (entiers sans texte à relire) et **l'affichage ne l'est jamais**
-(calcul de lecture, D11).
-**Non traité, signalé** (§10.4 de la note) : la carte Supervision rappelle une
-annonce active sans savoir qu'une alerte peut l'occuper — sa ligne reste vraie
-sur le réglage, pas sur ce que la salle montre à l'instant ; la corriger
-suppose d'ouvrir la base des tournois depuis `app/supervision.py`, qui ne
-connaît que celle du prêt.
-**20 tests ajoutés** (16 en section 5 de `tests/test_alerte_tournoi.py`, 4
-dans `tests/test_journal_appels.py`). **Suite globale : 912 tests verts.**
-Wiki : `Module-Ecran-Salle` (nouvelle section « Rappeler de rapporter les jeux
-avant un tournoi » + 4 entrées de « Si ça ne marche pas »), `Module-Tournois`
-(la durée d'un tournoi fixe le moment du rappel), `Avant-pendant-apres`
-(écrire le rappel avant l'événement), `Journal-Activite`, `Guide-Admin`.
-
-⚠️ **`wiki/` est un dépôt git SÉPARÉ** (clone du wiki GitHub) et il est
-listé dans le `.gitignore` du dépôt principal : les pages de wiki ne peuvent
-donc PAS être « corrigées dans le même commit que le code », contrairement à
-ce qu'affirme la section « Tenir le wiki à jour » plus bas. Il faut committer
-et pousser `wiki/` séparément. (Autre point périmé de ce fichier :
-`wiki/Module-Rangement.md` existe désormais.)
-
-**Audit sécurité (24/07/2026) — LOT A, durcissement du déploiement : FAIT.**
-Traite les 5 constats les plus rapides de `docs/audit-securite-2026-07-24.md`
-(voir aussi `docs/plan-action-securite.md` § Lot A), **exclusivement dans
-`deploy/` + `docs/deploiement.md`** — aucune modification de `app/`, la
-1.0.0 étant en production depuis le 23/07, ce lot durcit une installation
-EN LIGNE et pas une préparation. Cinq commits, un par constat.
-**SEC-01** : en-têtes de sécurité HTTP (HSTS, X-Frame-Options DENY,
-X-Content-Type-Options nosniff, Referrer-Policy same-origin, CSP) posés au
-niveau `server` des deux fichiers nginx (add_header n'étant pas cumulatif,
-poser au niveau `location` aurait fait perdre l'héritage à `/static/`).
-CSP la plus stricte compatible avec l'état actuel des gabarits :
-`'unsafe-inline'` nécessaire sur script-src ET style-src (10 gabarits ont
-des `<script>` inline sans nonce, `live.html` a un `<style>` inline),
-`data:` sur img-src (filigrane du mode formation). Documenté ce que la CSP
-protège (chargement externe, framing, formulaires) et ce qu'elle NE
-protège PAS (injection de script — reste sous la garde de l'autoescape
-Jinja). `certbot --nginx --redirect` duplique le bloc 80 vers le 443 : ces
-en-têtes s'y retrouvent après obtention du certificat. **SEC-02(a)** : le
-jeton bénévole et les codes personnels planning transitaient en clair dans
-`access.log` (query string) sur quatre routes (`/acces`,
-`/planning/collecte/{ev}` y compris `/merci`, `/planning/mon`,
-`/planning/mon.ics`) — masqués via un `map` sur `$uri` + deux `access_log
-if=` conditionnels (format normal partout ailleurs, format sans arguments
-sur ces routes). `/tournoi/desinscription?code=` a la même forme mais
-laissé hors périmètre (code jugé moins sensible : pas d'accès à des
-coordonnées). **SEC-04(a)** : `limit_req_zone`/`limit_req` devant
-`/live/data` (rate=2r/s, burst=20 nodelay — marge x20 sur l'usage d'un
-écran de salle) et `/stats/export.xlsx|pdf` (rate=6r/m, burst=3 nodelay).
-A nécessité de remonter les 4 `proxy_set_header` de `location /` au niveau
-`server` pour que les nouvelles `location` en héritent. **ROB-03(b)** :
-`client_max_body_size` remonté de `5m` à `20m` (la restauration d'une
-sauvegarde télécharge un zip des 3 bases par ce même chemin HTTP ; 5m ne
-laissait aucune marge de croissance) — ⚠️ à garder cohérent avec le futur
-plafond APPLICATIF du lot C (ROB-03(a), pas encore fait). **SEC-11** :
-`app.sauvegarde.sauvegarde_de_securite()` écrit ses filets
-(`avant-restauration-*.zip`, contenant les numéros de pochette des prêts
-en cours au moment de chaque restauration) dans le MÊME dossier que les
-sauvegardes cron (`$DATA_DIR/sauvegardes`), jamais purgés par la rotation
-existante (qui ne filtrait que `ludotex-backup-*.zip`) — dossier posé en
-0700 propriétaire du service par `install.sh` (production ET formation),
-purge par mtime à 30 jours ajoutée dans `deploy/sauvegarde.sh`.
-Sur les DEUX fichiers nginx, noms de zone/`map`/`log_format` préfixés
-différemment (`ludotex_*` vs `ludotexformation_*`) : une fois le site de
-formation installé, les deux fichiers sont fusionnés dans le même contexte
-http nginx, et une collision de nom ferait échouer `nginx -t` pour TOUTE
-la configuration, prod comprise — piège identifié avant d'écrire le code,
-pas après. `docs/deploiement.md` mis à jour à chaque commit (vérifications
-curl/grep à l'étape 5, dépannage 429 et rollback git à l'étape 9, mesure
-de taille + note permissions à l'étape 7, commandes manuelles équivalentes
-à l'annexe I). **Non couvert par pytest** (fichiers `deploy/`) — chaque
-commit porte sa propre commande de vérification VPS
-(`nginx -t`, `curl -sI`, `grep`, `ab`, `ls -ld`) ; non exécuté ni testé sur
-un VPS réel dans cette session (revue statique uniquement). Wiki non
-touché (rien de visible pour un utilisateur final). **Reste du plan
-d'action, non traité ici** : lots B (robustesse SQLite/erreurs), C
-(injections localisées/dépendances), D (anti-abus/débit applicatif), E
-(CSRF/secrets dans les URL transverse) — voir `docs/plan-action-securite.md`.
-
-**Audit sécurité (24/07/2026) — LOT B, robustesse SQLite & pages d'erreur :
-FAIT** (07/08). ⚠️ Le plan d'action était PÉRIMÉ sur ce lot : la session
-« course d'attribution des numéros de pochette » (02/08) avait déjà traité
-l'essentiel de ROB-01 côté prêt (`TIMEOUT_ECRITURE_S`, `BEGIN IMMEDIATE`,
-index UNIQUE, rattrapage `occupe`) et A2 le 404 de ROB-04. Quatre commits sur
-le reliquat réel.
-**ROB-01 (reliquat)** : `tournoi/db.py` et `planning/db.py` appelaient encore
-`sqlite3.connect()` **sans `timeout=`**, subissant le défaut implicite de 5 s
-là où le prêt patiente 15 s — écart réel depuis que `tournoi::inscrire`
-s'ouvre en `BEGIN IMMEDIATE` (les inscriptions concurrentes s'attendent, et
-c'est ce délai qui borne l'attente). `TIMEOUT_ECRITURE_S` **importée** de
-`app/db.py` plutôt que redéclarée : l'indépendance des trois bases porte sur
-les DONNÉES, pas sur les constantes de réglage — trois valeurs à tenir en
-accord dériveraient sans que rien ne le signale (précédent :
-`services.transaction` importée le 02/08 ; `_ics_horodatage` reste le cas
-particulier assumé). Justification en tête de `tournoi/db.py`, renvoi depuis
-`planning/db.py`. **4 tests** (`tests/test_connexions_timeout.py`, bases sur
-FICHIER) : l'un intercepte `sqlite3.connect` pour constater la valeur
-transmise (structurel assumé — distinguer 15 s de 5 s par le comportement
-coûterait 15 s de suite) ; l'autre, paramétré sur les 3 bases, abaisse la
-constante à 0,3 s et vérifie que l'abandon est immédiat — ⚠️ en la remplaçant
-**dans le module testé**, le `from app.db import` liant la valeur dans son
-espace de noms à l'import.
-**Défaut trouvé en instruisant la question « manque-t-il un rattrapage ? »**
-(arbitré avec Simon avant écriture) : `POST /planning/collecte/{ev}`
-redirigeait, en cas d'échec, vers un formulaire **VIERGE et sans un mot** — le
-bénévole perdait nom, contact, plafond, remarque, toutes ses cases de
-disponibilité et ses préférences par poste, sur le formulaire le plus long du
-site. Atteignable **sans aucune concurrence** (nom vide, ou questionnaire
-fermé entre l'ouverture de la page et l'envoi) : violation frontale de « ne
-jamais bloquer », sur l'une des deux seules routes d'écriture PUBLIQUES.
-Désormais réaffiché (400) avec message et saisie intacte ; rendu factorisé
-dans `_rendre_collecte` (GET + POST, sinon le groupement des créneaux par jour
-existerait en double). Le gabarit ne lisant que `nom`/`contact`/`max_heures`/
-`note`, le POST lui passe la saisie brute plutôt qu'une ligne de base. Deux
-absences volontaires dans `_MESSAGES_COLLECTE` : `fermee` (la bannière
-existante le dit déjà — un test compte les bannières) et `introuvable` (plus
-d'événement à afficher → redirection). Le rattrapage « occupé » (`database is
-locked`) vient **en bonus** dans l'emplacement ainsi créé, filtre et
-formulation repris tels quels de `routes/pret.py::_sans_conflit` (seul un
-conflit devient un message ; disque plein garde sa 500). **4 tests**, dont un
-CONTRE-TEST sur `disk I/O error`.
-**ROB-04** : tout code hors 403/404 retombait sur `http_exception_handler`,
-donc `{"detail": …}`. Cas atteignable = **405** (favori posé sur l'URL d'une
-ACTION). Nouveau gabarit `probleme.html` + repli **générique** (pas une liste
-de codes : un code oublié retomberait en JSON, précisément le défaut corrigé),
-`_MESSAGES_HTTP` ne portant que le 405. Code HTTP d'origine toujours conservé.
-Vérifié que les 404 MÉTIER (qui *retournent* leur gabarit au lieu de lever),
-`ModuleDesactive` et `RequestValidationError` ne passent pas par là, et que
-les seules `HTTPException` du dépôt sont des 403 — aucun appelant machine
-concerné. **2 tests** (dont un code sans entrée dédiée, sinon restreindre le
-gestionnaire au seul 405 passerait inaperçu).
-**ROB-05** : `auth._tentatives` et `admin_auth._sessions`/`_appareils` ne se
-purgeaient qu'à la relecture de la MÊME clé. Balayage **amorti à l'accès**
-(au plus une fois par `INTERVALLE_BALAYAGE_S` = 5 min), pas de tâche de fond —
-ces modules sont aussi importés par les scripts et `lancer.py`. Le vrai piège
-n'était pas « ça purge » mais « ça purge sans rien changer d'observable » :
-d'où l'horizon de purge côté auth = **la plus grande fenêtre jamais vue**
-(`_fenetre_max`) et non celle de l'appel courant — `fenetre` est un paramètre,
-et le lot D prévoit une limite dédiée au login admin ; purger trop tôt
-offrirait un quota neuf à une adresse encore surveillée, soit un
-affaiblissement silencieux déguisé en libération de mémoire. Les deux
-`_balayer` sont **dupliqués** (`app/auth.py` importe déjà `admin_auth` :
-factoriser créerait un cycle). La fixture autouse de `conftest.py` est
-**intacte et reste opérante** (le balayage lit `_tentatives` par son nom
-global, donc suit le dictionnaire rebranché — un test le vérifie) ;
-`_dernier_balayage`/`_fenetre_max` ne sont pas réinitialisés et n'ont pas à
-l'être (ils ne pèsent que sur la fréquence du ménage). Protection toujours
-**« best effort »** : mémoire d'un process, worker unique imposé par
-`deploy/ludotex.service`. **10 tests**, chacun vérifié en injectant sa
-régression (horizon ramené à la fenêtre de l'appel, balayage non amorti,
-appareils non suivis, balayage purgeant tout). Piège d'isolation rencontré :
-`_sessions`/`_appareils` sont des globaux que le reste de la suite remplit —
-la première rédaction passait seule et échouait dans la suite complète ; la
-fixture `sessions_isolees` VIDE les deux dictionnaires pour la durée du test.
-**Suite globale : 671 tests verts** (651 + 20). Wiki : `Module-Planning.md`
-gagne sa section « Si ça ne marche pas » (elle n'en avait aucune), dont un
-paragraphe qui **dit franchement une limite** plutôt que de promettre un
-recours inexistant — `supprimer_benevole` existe sans être appelée par aucune
-route (fiche D4, revérifiée), donc une réponse en double reste en place
-jusqu'à la purge. **Reste du plan d'action** : lots C (injections
-localisées/dépendances), D (anti-abus/débit applicatif), E (CSRF/secrets dans
-les URL).
-
-**NOM DE L'ÉVÉNEMENT ET PAGE « GESTION DE L'ÉVÉNEMENT » : FAIT** (2026-08-09,
-cadré dans `docs/prompt-impl-evenement-nom.md`). L'application ne connaissait
-que la DATE de l'édition ; elle porte désormais aussi son **nom** (« Festival
-du Jeu 2026 »). Quatre commits.
-**Clé `evenement_nom`** dans `parametres` (base de PRÊT), à côté
-d'`evenement_date` — aucune table, aucune migration, aucun historique.
-**UN SEUL DOMICILE pour la lecture** (`app/services.py`) :
-`lire_nom_evenement(conn)` pour les appelants qui ont une connexion, et
-`nom_evenement()` qui ouvre/ferme la sienne pour ceux qui n'en ont pas (global
-Jinja, modules tournois/programme) — même exception assumée à la convention
-`conn` en paramètre que `rangement_visible`/`rangement_actif`, mais **sans
-paramètre** (le nom ne dépend pas du visiteur). Le motif « `lire_parametre`
-recopié à six endroits » est précisément celui que le projet a payé cher
-ailleurs (double domicile des index uniques, duplication de la logique
-d'expiration d'annonce).
-**`/admin/evenement` devient « Gestion de l'événement »** : nom + date dans un
-seul formulaire, plus des **liens** vers Écran de salle / Types de programme /
-Planning bénévole, qui gardent leurs pages propres (la page n'absorbe rien).
-L'**URL est conservée** (liée depuis le tableau de bord et `admin_aide.html`) ;
-seuls le titre, le `<h1>`, le libellé du menu et le `title` du lien changent.
-Une date invalide refuse l'enregistrement des DEUX champs plutôt que
-d'enregistrer le nom en silence.
-**Titre de `/live` = le nom de l'événement, point** (repli : nom de
-l'association). `TITRE_DEFAUT` (constante) devient `live.titre_ecran(conn)`.
-C'est la **seule** façon dont le nom apparaît sur `/live` — pas de ligne à
-lui : la refonte du 06/08 a rendu cette hauteur au contenu utile.
-⚠️ **Corrigé en cours de session, après test de Simon** : la première version
-posait une cascade à TROIS niveaux (titre saisi sur `/admin/ecran-salle` >
-nom de l'événement > association), et renseigner le nom ne changeait rien à
-l'écran. Cause : le champ « Titre » était **prérempli avec la valeur par
-défaut** quand aucun titre n'était enregistré — enregistrer une annonce ou un
-réglage de panneaux suffisait donc à figer le nom de l'association comme
-titre explicite, qui l'emportait ensuite pour toujours, sans que rien ne
-l'explique. **Décision Simon : un seul réglage.** Le champ « Titre » est
-supprimé de `/admin/ecran-salle` (la page rappelle la valeur en vigueur et
-renvoie vers `/admin/evenement`), le POST perd son paramètre `titre`, et la
-clé `live_titre` n'a plus aucun lecteur. Migration
-`db._migrer_titre_live_vers_nom_evenement` (idempotente, jouée au démarrage
-ET après restauration de sauvegarde) : l'ancienne valeur **devient** le nom
-de l'événement s'il est vide (rien à ressaisir, et le nom apparaît en prime
-sur les trois autres surfaces) ; si un nom existait déjà, c'est lui qui fait
-foi et l'ancien titre est abandonné **avec un avertissement dans les journaux
-du serveur**, jamais en silence. La clé morte est supprimée dans les deux
-cas — la laisser en place ferait réapparaître l'ancienne valeur et
-entretiendrait le double domicile que ce lot supprime.
-**Affichage public** : global Jinja `nom_evenement()` + composant
-`.rappel-evenement` (documenté `docs/ui-composants.md` **§15**), une ligne
-discrète SOUS le `<h1>` existant sur l'accueil, `/programme`, `/tournois` et la
-page publique d'un tournoi. Toujours conditionné : **nom absent = rien du
-tout**, jamais de libellé vide ni de « aucun nom d'événement » (règle déjà
-appliquée au rangement et à l'annonce de l'écran de salle) — un test vérifie
-que les cinq surfaces se comportent **exactement** comme avant sur une base où
-la clé n'a jamais été écrite. Rien sur les écrans bénévole/admin : ceux qui les
-utilisent savent quel événement ils préparent.
-**`.ics`** : `ical_tournoi` et `ical_element` gagnent un paramètre optionnel
-`nom_evenement`, **renseigné par la route**. Les deux services n'ont en main
-que la connexion des TOURNOIS alors que le réglage vit dans la base de PRÊT :
-leur faire ouvrir une seconde base romprait l'indépendance des trois bases.
-Côté programme, `_jours_evenement()` ouvrait déjà la bonne connexion → devient
-`_reglages_evenement()` et rapporte les DEUX réglages en une seule ouverture
-(`_jours_evenement()` subsiste en raccourci).
-**Journal** : action `evenement_nom_modifie` ajoutée au vocabulaire fermé ;
-`evenement_date_modifiee` **inchangée** (des tests et le wiki la citent
-nommément). Seul écart de comportement, assumé : chaque clé n'est journalisée
-que **si elle change** — les deux champs voyageant désormais dans le même
-formulaire, écrire à chaque envoi produirait des « date modifiée » alors que
-seul le nom a bougé (même précaution que sur `/admin/ecran-salle`, qui n'écrit
-« annonce effacée » que s'il y avait bien une annonce). Les trois POST du test
-existant changent tous la valeur : il reste vert sans modification.
-⚠️ Cette clé est l'**amorce de la future table `editions`** (fiche 6.4 de
-`docs/idees-evolutions.md`, « prérequis structurant n°1 ») : le jour venu, ce
-sont ces deux clés à migrer et ce seul couple de fonctions à faire pointer
-ailleurs. Noté dans la fiche.
-**18 tests dédiés** (`tests/test_evenement_nom.py` : non-régression sans la
-clé sur les 5 surfaces, titre de `/live`, absence du champ titre en admin, le
-scénario exact du défaut ci-dessus, les deux sens de la migration + son
-idempotence, écriture/effacement/bornage à 80 caractères, garde admin, les
-deux lignes de journal et l'absence de ligne quand rien ne change, nom présent
-dans les deux `.ics`). **Un seul test existant adapté en connaissance de
-cause** : `test_live_titre_configurable` écrivait la clé `live_titre`, qui
-n'existe plus — la propriété testée (un titre projeté configurable) n'a pas
-changé. **Suite globale : 729 tests verts** (le lot « transfert de pochette »,
-committé en parallèle, en apporte 30).
-
-**Programme du week-end — page publique par élément (revient sur une décision
-du jalon 2) : FAIT** (2026-08-09). Le §6.1 de `docs/conception-programme.md`
-écartait délibérément une page de détail pour un élément de programme (« un
-élément n'a que des champs simples ») ; à l'usage, l'absence se voyait — un
-tournoi est cliquable dans la frise de l'accueil et sur `/programme`, une
-animation ne l'était pas, sans que rien n'explique la différence, et un
-élément annulé ne pouvait prévenir personne de son annulation. Nouvelle route
-`GET /programme/{id_element:int}` (patron **exact** `tournoi.routes.detail`) +
-gabarit `programme_detail.html` : un **brouillon** est traité comme un
-identifiant inconnu (404, jamais public, comme un tournoi) ; un élément
-**annulé** reste accessible avec un bandeau `.resultat.resultat-attention`
-(« Annulé — cet élément ne se tiendra pas ») — cohérent avec `/live`, qui
-l'affiche déjà barré pendant sa fenêtre : quelqu'un qui a le lien ou l'a mis à
-son agenda doit apprendre l'annulation, pas tomber sur une page introuvable.
-Contenu : intitulé, type (icône + nom, même archivé), horaire (`dt_local`),
-durée, lieu, public visé, jauge (« indicatif »), description, bouton
-« 📅 Ajouter à mon agenda » **masqué si l'élément n'a pas de date** (le `.ics`
-renverrait 404). **Le piège du lot** : le bloc de grille de `programme_public.html`
-contenait déjà un `<a>` vers `agenda.ics` — le rendre lui-même cliquable
-aurait imbriqué un `<a>` dans un `<a>` (HTML invalide). Le lien `.ics` **quitte
-donc la grille** pour vivre sur la nouvelle page, exactement comme un bloc de
-tournoi n'a jamais eu de lien interne. Blocs rendus cliquables (mêmes
-`<div>`→`<a>`) : la grille de `/programme`, la frise deux jours de l'accueil
-(`planning-bloc--programme`), et le bloc « Ça commence bientôt » (`jeu-lien`,
-qui était un `<span>` non cliquable). Lien « Page publique » ajouté sur chaque
-ligne de `/programme/gestion` (un brouillon y affiche honnêtement un 404 —
-sert justement à vérifier qu'il n'est pas encore public). Trois affirmations
-devenues fausses corrigées : la docstring de `routes_programme.py` (« pas de
-route `/programme/{id}/gerer} » reste vrai — toujours aucun écran de GESTION
-par élément — mais précise qu'une page PUBLIQUE existe désormais), les deux
-commentaires d'`accueil.html` qui disaient « une animation n'a pas de page,
-pas de lien », et une section de révision ajoutée en fin de
-`docs/conception-programme.md` (§10, sans réécrire le §6.1 d'origine). **24
-tests ajoutés** (page publiée/annulée/sans date/brouillon/id inconnu, blocs
-cliquables sur `/programme` et l'accueil, absence d'`agenda.ics` dans la
-grille, garde de module, lien de gestion), **1 test adapté en connaissance de
-cause** (`test_accueil_ce_qui_commence_fusionne_les_deux_sources` assertait
-l'absence du lien — assertion inversée). **Suite globale : 695 tests verts.**
-Wiki : `Module-Programme.md` (nouvelle description de la page d'un élément,
-bandeau annulé, lien « Page publique » en gestion).
-
-**Numéro de version au pied de page : FAIT** (2026-08-09). Le numéro n'était
-lisible que sur `/apropos` et `/admin/supervision` ; il est désormais rappelé
-dans le pied de page de **toutes** les pages, à côté de « Licence GPLv3 »
-(`base.html`, un seul point de rendu). Nouveau global Jinja `app_version`
-(`app/templating.py`) importé d'`app/version.py`, **porteur canonique du
-numéro** — jamais recopié en dur dans un gabarit, donc la montée de version
-suffit à mettre le pied de page à jour. Classe `.pied-version`
-(`font-variant-numeric: tabular-nums`, insécable) ; pas de lien vers
-`/apropos`, qui figure déjà juste avant dans le même pied de page (doublon
-évité). **1 test** (présence sur trois pages publiques, valeur lue depuis
-`APP_VERSION` et non écrite en dur). Wiki : `Guide-Admin.md` (le bloc
-« Version déployée » de la supervision précise qu'on peut aussi lire le
-numéro en bas de n'importe quelle page). **Suite globale : 696 tests verts.**
-
-**Version 1.6.0** (2026-08-09) : nom de l'événement + page publique par
-élément de programme + numéro de version au pied de page. Les trois porteurs
-du numéro (`app/version.py`, `VERSION`, `CHANGELOG.md`) sont alignés.
-
-**TRANSFERT DE POCHETTE — rendre une boîte et en prêter une autre sans
-déplacer la pièce d'identité : FAIT** (2026-08-10, cadré dans
-`docs/conception-transfert-pochette.md`, prompts d'implémentation
-`docs/prompt-impl-transfert-pochette.md` et `docs/prompt-wiki-transfert-pochette.md`).
-Un visiteur rapporte un jeu et repart aussitôt avec un autre : enchaîner
-« Rendre » puis « Prêter » faisait sortir sa pièce d'identité du casier n°7
-pour l'y remettre dix secondes plus tard, le plus petit numéro libre étant
-précisément celui qu'on venait de libérer. **Le besoin n'est pas « ne pas
-rendre la PI », c'est ne pas déplacer la pochette.**
-**Décisions Simon** : écran de transfert avec scan intégré (plutôt qu'un état
-en suspens dans un cookie) ; point d'entrée unique, l'écran de la boîte
-rendue ; libellé **« Rendre et prêter un nouveau jeu sans retour PI »**
-conservé tel quel (réserve consignée : « PI » n'apparaît nulle part ailleurs
-dans l'interface — le sous-titre du bouton porte donc l'explication en clair) ;
-**numéro de pochette conservé à l'identique**.
-⚠️ **EXCEPTION ASSUMÉE À UNE RÈGLE NON NÉGOCIABLE.**
-`services.transferer_pochette(conn, id_rendu, id_nouveau)` réutilise le numéro
-du prêt qu'il clôt **même si un numéro plus petit est libre** — seul endroit
-du code qui déroge à « toujours le plus petit numéro libre » (spec §6), et
-`plus_petit_numero_libre()` n'est donc pas appelée. Ce n'est pas un
-contournement : la pochette n'est jamais devenue libre, puisque la pièce
-d'identité n'a pas quitté son casier. Réattribuer le plus petit libre
-afficherait « déplacez la pièce d'identité en n°3 », soit le geste même que la
-fonctionnalité supprime. Un test verrouille explicitement ce point (§3 de la
-note), sans quoi quelqu'un « corrigera » un jour le service en toute bonne foi.
-**Aucune table, aucune colonne, aucune migration** : le transfert produit ce
-que produiraient un retour et un prêt. **Ordre imposé dans la transaction**
-(unique, `BEGIN IMMEDIATE`, patron de `repreter`) : clôture + effacement du
-numéro (D5) **avant** l'INSERT, sinon l'index UNIQUE partiel
-`idx_pochettes_un_seul_pret` refuse l'écriture (la ligne close doit sortir du
-prédicat `date_retour IS NULL` avant que la nouvelle n'y entre) — un test le
-démontre plutôt que de laisser le commentaire invérifiable. La table
-`pochettes` n'est **pas** libérée (le n°7 reste `occupe = 1` de bout en bout) ;
-un `UPDATE` de réaffirmation ne sert qu'en base déjà incohérente. Quatre refus,
-**aucun n'écrit rien** : `rien_a_rendre`, `sans_pochette` (sortie tournoi),
-`nouveau_sorti`, plus le `occupe` habituel via `_sans_conflit`.
-**Quatre routes** dans `routes/pret.py` : `GET .../transfert` (écran de scan),
-`GET .../transfert/saisie` (secours clavier), `GET .../transfert/{id_nouveau}`
-(confirmation), `POST .../transfert/{id_nouveau}` (l'opération). Trois pièges
-traités : (1) `/transfert/saisie` **déclarée avant** `/transfert/{id_nouveau}`,
-sinon FastAPI capture « saisie » comme un id (test dédié) ; (2) **le scan
-n'écrit jamais** — la caméra mène à la confirmation, comme partout ailleurs
-dans l'appli, et c'est là que le bénévole rattrape un scan de la mauvaise
-boîte, au même nombre de taps qu'un prêt ordinaire ; (3) l'écran de résultat
-est rendu sur la boîte **nouvellement sortie** mais l'emplacement de rangement
-affiché est celui de la boîte **rendue** — d'où la sentinelle `_AUTO` dans
-`_rendu()`, qui distingue « calculer » de « valeur déjà connue » sans changer
-le comportement des appelants historiques. L'écran de confirmation **prévient**
-quand la boîte visée est déjà sortie (évite un tap perdu) mais **garde son
-bouton** : ce n'est qu'un instantané, seul le POST fait autorité sous le verrou.
-`scanner.js` : **pas de duplication**, `ouvrir()` gagne une troisième cible
-`<body data-scan-cible="…">` **prioritaire** sur le mode rangement (action
-délibérée > mode d'appareil), sur le patron exact de `data-rangement`.
-**Troisième variante visuelle obligatoire** (§8 de la note) : le grand numéro
-parle par la couleur — vert « déposez la PI », bleu « récupérez-la » — et le
-transfert dit une troisième chose, **ne touchez pas à la pochette**. Réutiliser
-l'une des deux aurait fait faire le geste qu'on supprime →
-`.pochette-num--transfert` (violet d'identité), **toujours accompagnée de la
-phrase explicite**, jamais de la seule couleur ; règle de choix des trois
-variantes gravée dans `docs/ui-composants.md` **§16**.
-**Journal** : action `transfert` au vocabulaire fermé, `objet` = les deux noms
-(« Catan → Dixit »), `ref` = le titre **nouvellement prêté** (comme l'action
-`pret` : un filtre par référence donne la même chose quel que soit le chemin
-emprunté pour prêter le jeu), jamais le numéro de pochette ; refus journalisés
-au même titre que les succès. Garde-fou `test_journal_interdits.py` étendu au
-scénario. **30 tests dédiés** (`tests/test_transfert_pochette.py` 13 —
-dont la concurrence sur base FICHIER — et `tests/test_transfert_routes.py` 17),
-chacun vérifié en injectant sa régression (numéro réattribué, ordre des
-écritures inversé, `BEGIN IMMEDIATE` neutralisé, écran rendu sur la mauvaise
-boîte, routes déclarées dans le mauvais ordre). **Suite globale : 729 tests
-verts.** Wiki : `Module-Pret`, `Guide-Benevole` (dont le diagramme Mermaid),
-`FAQ`, `Journal-Activite`.
-
-**CARNET DE MAINTENANCE — signalements d'état des boîtes (lots 1 à 3 sur 4) :
-FAIT** (2026-08-10, conception `docs/conception-signalements.md`, découpage
-`docs/prompt-impl-signalements.md`). Réunit les fiches 2.2 et 6.2 de
-`docs/idees-evolutions.md` : un bénévole constate qu'il manque un dé, et
-l'information avait jusqu'ici pour seul réceptacle le voisin de comptoir.
-**Deux tables neuves dans la base de PRÊT** (`categories_signalement` AVANT
-`signalements`, qui la référence), FK **nullable et sans cascade** (patron
-`programme.id_type`), état **déduit** (`traite_le IS NULL`, comme l'état d'un
-exemplaire), index partiel de lecture, aucun index UNIQUE (deux signalements
-identiques sont légitimes). Catégories **configurables** (arbitrage Simon
-contre la constante fermée), patron `emplacements_rangement` : archivage doux,
-seed de cinq entrées qui ne remplit que si la table est vide et **ne
-ressuscite jamais** une entrée supprimée. Pas de `services.transaction` : un
-signalement est un INSERT autonome, `traiter_signalement` est un
-`UPDATE ... WHERE traite_le IS NULL` donc idempotent. **Côté bénévole**, le
-patron du transfert de pochette : un lien **permanent** en pied de carte de
-`/pret/<id>` qui **ouvre un écran** (`GET|POST .../signaler`) sans rien écrire,
-rattrapage sans perte de saisie si la catégorie manque ou a été archivée entre
-l'affichage et l'envoi, et un bandeau d'alerte listant les signalements ouverts
-**visible dès l'ouverture de l'écran**, avant toute action — il ne bloque
-jamais le prêt. **Le point dur** (§3 de la note) : le détail libre est la
-**seule porte d'entrée d'une donnée personnelle** dans l'application de prêt,
-d'où la consigne « Décrivez la boîte, jamais une personne » **sous le champ
-lui-même** (précédent du libellé d'appareil de `/admin/jeton`) et le texte
-jamais public, jamais journalisé.
-
-**Lot 3 (administration), objet de la session du 2026-08-10.** CRUD des
-catégories `/admin/categories-signalement` (transposition ligne à ligne de
-`/admin/rangement`, sans la colonne icône des types de programme), avec la
-consigne « cette liste est lue au comptoir » posée sous le champ de création —
-c'est le seul frein à l'enflure d'une liste ouverte. Liste
-`/admin/signalements` : jeu, boîte, catégorie, détail, date, **les deux
-emplacements** et « Marquer traité » ; filtres état (ouverts/traités/tous, la
-vue par défaut ne porte pas de puce) et catégorie, avec puces de retrait
-(patron `catalogue._puces_filtres`) ; les filtres courants voyagent en champs
-cachés avec l'action pour revenir sur la même vue. **Pas de pagination**
-(piège 4 instruit, pas recopié : quelques dizaines d'incidents par édition, pas
-le parc — la vue « Ranger les jeux » n'est pas un modèle ici). Les deux
-emplacements viennent de `lister_signalements`, **jamais** d'`emplacement_actuel`
-(elle choisit selon le contexte réglé, or la liste se traite après l'événement,
-contexte repassé en « local »), et chacun ne s'affiche que s'il est renseigné.
-**Arbitrage tranché avant d'écrire** (§7, décision consignée dans la note) :
-`exports.catalogue_xlsx` devient **`exports.tableau_xlsx(entetes, lignes,
-titre_feuille)`** — un seul appelant en production, aucun en test, et son unique
-partie non générique (le titre de feuille en dur) aurait intitulé
-« Catalogue » le classeur des signalements. Le PDF a sa fonction propre
-`exports.signalements_pdf` (A4 **paysage**, `Paragraph` par cellule sinon
-reportlab déborde ; style d'en-tête dédié, `TEXTCOLOR` d'un `TableStyle` ne
-s'appliquant pas au contenu d'un `Paragraph`). Les deux exports partent de
-`/admin/signalements` **uniquement** et respectent les filtres ; un test
-vérifie qu'aucun signalement ne sort par `/stats` ni par ses deux exports, qui
-sont **publics** (piège 2, précédent D5). Tableau de bord : « Carnet de
-maintenance » dans le groupe « Jeux & étiquettes », compteur entre parenthèses
-**seulement s'il est non nul** (jamais un « (0) » permanent), plus « Catégories
-de signalement » ; nouvelle section `#apres-signalements` de `/admin/aide`, qui
-**dit franchement** qu'un signalement saisi par erreur ne peut pas être
-supprimé — aucune route ne le permet, vérifié — le recours réel étant de le
-marquer traité. Page en `.contenu-large` (piège 5, l'erreur des 540 px, déjà
-commise six fois) ; le garde-fou correspondant et celui du « jamais de non
-renseigné » ont été **vérifiés en injectant leur régression**. **52 tests
-dédiés** (`tests/test_signalements_admin.py`). **Suite globale : 827 tests
-verts.**
-
-**Carnet de maintenance — LOT 4 (journal, garde-fou, wiki) : FAIT**
-(2026-08-10). Cinq actions au vocabulaire fermé (`signalement_cree`,
-`signalement_traite`, `categorie_signalement_creee`/`_modifiee`/`_supprimee`) ;
-archivage, réactivation et réordonnancement d'une catégorie restent **hors
-journal**, décision du §10 reprise des types de programme et désormais tenue
-par un test dédié (sans quoi l'absence redeviendrait un oubli).
-**Écart assumé avec le §10 de la note, arbitré avec Simon** : celui-ci place le
-libellé de catégorie dans `detail`, or `journaliser()` ne conserve `detail` que
-lorsque `ok` est faux (format arrêté au §3 de `docs/conception-journal.md`) — la
-catégorie aurait donc disparu de toutes les lignes RÉUSSIES, précisément celles
-qu'on relit. Elle rejoint `objet` à côté du nom du jeu (« Catan — Pièce
-manquante »), exactement comme le bilan chiffré de `planning_genere` ; `detail`
-reste le motif d'un refus. Deux précautions déjà éprouvées ailleurs :
-`POST /pret/{id}/signaler` journalise **aussi les refus** (catégorie manquante
-ou archivée entre l'affichage et l'envoi — une surprise qu'on cherche après
-coup, §2.3), et « Marquer traité » **n'écrit rien** sur un second appui ou un
-identifiant inconnu, `traiter_signalement` étant idempotent — une ligne
-« traité » affirmerait sinon un fait qui n'a pas eu lieu (patron de « annonce
-effacée »). Nouveau service `get_signalement` (le journal doit nommer le jeu,
-que la table `signalements` ne porte pas, et lire `traite_le` avant d'écrire) ;
-il ne ramène délibérément **pas** `texte`.
-**Garde-fou d'interdiction étendu** (`tests/test_journal_interdits.py`) : le
-scénario joue désormais deux envois de signalement — un **refusé**, un accepté —
-portant chacun un détail libre volontairement distinctif, puis la clôture du
-signalement côté administration. Nouveau test dédié vérifiant que les lignes du
-carnet disent bien le jeu ET la catégorie, et qu'aucun **fragment** du texte
-libre n'apparaît nulle part (la recherche de la chaîne entière manquerait une
-fuite tronquée à 120 caractères). **Chaque assertion a été vérifiée en
-injectant la fuite qu'elle attrape**, puis en la retirant : texte libre dans
-`objet`, texte libre dans `detail` sur la branche de refus, fuite **tronquée**
-à 20 caractères, point d'appel supprimé (non-vacuité), garde d'idempotence
-retirée, journalisation ajoutée sur l'archivage. Aucune fuite réelle trouvée.
-Le libellé de CATÉGORIE reste journalisé : c'est la réserve assumée du §3,
-point 2, depuis que les catégories sont configurables — écrite noir sur blanc
-dans le test pour qu'on ne la « corrige » pas un jour par réflexe.
-**7 tests ajoutés** (6 dans `test_journal_appels.py`, 1 dans
-`test_journal_interdits.py`, plus les assertions étendues des tests
-existants). **Suite globale : 834 tests verts.** Raccord noté dans `docs/idees-evolutions.md` §6.3 : le
-carnet constituera une section du futur rapport d'édition.
-
-**CATALOGUE DU SITE DE FORMATION IMPORTÉ D'UN CSV (`FORMATION_CATALOGUE_CSV`) :
-FAIT** (2026-08-10). Retour de la première session de formation en conditions
-réelles : liens d'activation du site de FORMATION envoyés aux bénévoles, vraies
-boîtes en main, aucun scan n'aboutissait. Diagnostic vérifié dans le code avant
-de coder quoi que ce soit — **le scanner n'était pas en cause** :
-`scanner.js::extraireId` isole l'id par `texte.match(/\/jeu\/([^/?#]+)/)`, sans
-jamais regarder le domaine, donc un QR de production scanné depuis `/scanner`
-du site de formation ouvrait bien `/pret/<id>` **de l'instance de formation** ;
-c'est cet id qui n'existait pas dans sa base (60 jeux fictifs aux ids
-auto-générés `A…`), d'où « boîte inconnue ». **Décision Simon** parmi trois
-options : **instantané CSV**, pas de lecture croisée entre instances — un
-fichier déposé à la main, rafraîchi quand le bureau le décide.
-`app/formation.py` : `_chemin_catalogue_csv` (variable absente/vide → `None`
-sans un mot ; renseignée mais fichier introuvable → **avertissement sur
-`uvicorn.error` puis repli**, sans quoi le seul symptôme serait un catalogue de
-60 jeux là où on en attendait 700) et `_importer_catalogue_csv`, qui **réutilise
-`scripts.import_csv.importer`** — le même code que `/admin/donnees`, donc la
-même clé « Code jeu » → `id_exemplaire`, ce qui est toute la raison d'être du
-dispositif. ⚠️ Son `except` attrape `(Exception, SystemExit)` : `construire_donnees`
-**lève `SystemExit`** quand les colonnes clés manquent (correct pour un script
-en ligne de commande), et `SystemExit` n'hérite pas d'`Exception` — non
-rattrapé, un CSV mal formé rendait 500 sur le bouton « Réinitialiser les données
-de formation » (test dédié, vérifié en retirant `SystemExit`). Les prêts
-d'exemple portent sur un **échantillon** de `NB_JEUX` boîtes au plus (en prêter
-une par ligne du vrai catalogue donnerait 700 prêts en 5 h) : les statistiques
-de démonstration sont donc les mêmes quelle que soit la source. Corollaires :
-`_peupler_prets_dates` renvoie désormais **(en cours, terminés) RÉELLEMENT
-créés** — avec un catalogue plus petit que `NB_PRETS_EN_COURS`, le résumé
-affichait un chiffre faux ; `peupler()` tire les noms de jeux des `titres`
-**réellement en base** après peuplement (`_noms_en_base`, repli sur
-`noms_jeux_formation` sous 7 titres distincts, seuil de `peupler_tournoi`), un
-seul chemin au lieu de deux ; le résumé porte une clé **`catalogue`**
-(`csv`/`fictif`) reprise dans le message d'administration (« 703 jeux (copie du
-vrai catalogue) ») et dans la sortie CLI — seul retour visible distinguant un
-import réussi d'un repli silencieux. **Écart signalé, non corrigé** (ce serait
-le couplage refusé) : `install.sh` ne pose jamais `FORMATION_SOURCE_DB` et le
-repli `data/pret-jeux.db` n'existe pas sur le VPS — le tirage de « noms réels »
-y est donc **inopérant depuis toujours** ; documenté dans
-`docs/mode-formation.md`, avec au passage la correction du chemin erroné qui y
-figurait (`app.db` → `pret-jeux.db`). **NON TRAITÉ, décision Simon** : le repli
-« appareil photo natif » (documenté dans `/aide`) ouvre l'URL inscrite dans le
-QR, donc la PRODUCTION — aucun réglage côté formation ne peut l'intercepter ;
-consigne et planche de QR d'entraînement écartées pour l'instant, le risque est
-écrit en tête d'`app/formation.py` et dans `docs/mode-formation.md`. **7 tests
-ajoutés** (`tests/test_formation.py`), chacun vérifié en injectant sa régression,
-dont celui qui porte le besoin : un QR de production (`https://<prod>/jeu/00472`)
-dont l'id est extrait avec l'expression de `scanner.js` ouvre bien la boîte sur
-l'instance de formation. **1 test adapté en connaissance de cause** (égalité
-exacte du résumé, clé `catalogue` ajoutée). **Suite globale : 841 tests verts.**
-Vérifié en exécutant réellement `python -m app.formation` sur des bases jetables
-dans les trois configurations (CSV valide, aucune variable, chemin faux) puis en
-interrogeant `/jeu/00472` et `/pret/00472` par TestClient. Wiki :
-`Mode-Formation.md` (section « Scanner de vraies boîtes pendant une formation »,
-dont l'avertissement sur l'appareil photo).
-
-**TROIS AJUSTEMENTS LÉGERS (2026-08-10, un commit chacun) : FAIT.**
-
-**1. Erreurs de prêt.** Un jeu rendu moins de `services.SEUIL_ERREUR_PRET_S`
-(= 60 s) après sa sortie n'a pas été prêté : mauvaise boîte scannée, ou
-visiteur qui se ravise pendant qu'on lui prend sa pièce d'identité. La ligne
-passe de `motif = 'pret'` à `motif = 'erreur'` **à la clôture**
-(`_marquer_erreur_si_immediat`, appelée dans la transaction). Les ~8 requêtes
-de statistiques filtrant déjà `motif = 'pret'`, l'exclusion est acquise
-**sans en toucher une seule** — c'est ce qui a fait préférer la troisième
-valeur de motif à un filtre de durée recopié partout. Compteur dédié
-`stats_globales()["erreurs"]`, affiché sur `/stats` (le « 0 » est montré :
-sur un tableau de bord chiffré il informe, la règle « jamais de (0)
-permanent » vise les compteurs de menu) et dans les deux exports.
-**Aucune migration** : la colonne existait, son domaine n'est pas contraint
-en base, et une ligne d'avant reste `'pret'`. Appliqué à `rendre` ET à
-`transferer_pochette` (un transfert est le rattrapage type d'une mauvaise
-boîte) ; **pas** à `repreter` (la boîte reste sortie — la requalifier
-retirerait des stats un prêt en cours) ni à `cloturer_tous_les_prets` (une
-boîte encore dehors en fin d'événement est un prêt qu'on n'a pas vu revenir),
-deux contre-tests le verrouillent. Côté bénévole **rien ne change** : même
-pochette, même geste, plus une ligne d'information sous le numéro
-(`resultat.erreur`) — surtout pas un bandeau d'avertissement, rien n'a mal
-tourné. Journal inchangé (l'action reste `retour` ; `detail` n'est conservé
-que sur un échec, donc inutilisable ici). **Piège qui a occupé le plus de
-temps** : dans un test, un prêt et son retour sont séparés de quelques
-microsecondes — six tests existants sont donc devenus des « erreurs » et ont
-cassé. Fixture partagée `vieillir_prets` (`tests/conftest.py`) qui recule
-`date_sortie` en Python (SQLite `datetime()` rend une chaîne naïve, sans « T »
-ni décalage, que `fromisoformat` relit sans fuseau et qui lèverait au calcul
-des durées). Seuil volontairement **non neutralisé** dans la suite : cela
-masquerait une régression sur le comportement lui-même. **17 tests dédiés**
-(`tests/test_erreurs_pret.py`). Corrigé au passage : `test_formation_mode_
-inactif_par_defaut` échouait **déjà avant cette session** (il cherchait les
-mots « Site de formation » n'importe où dans `/admin`, or le bloc de
-supervision y affiche le résumé du fichier `VERSION`, qui les contient depuis
-la v1.8.0) — l'assertion porte désormais sur le lien lui-même.
-
-**2. Cinq écrans élargis.** `.contenu` est plafonné à 540 px pour tout le
-site ; ce plafond étant global, il bride aussi les grands écrans — même cause
-que les six diagnostics précédents, même remède (`conteneur_extra`).
-Concernés : `/tournoi/<id>/gerer` et `/tournois` (listes de travail),
-`/admin/jeton` (tableau des appareils), plus `/admin/evenement` et `/aide`.
-⚠️ **Ces deux derniers sont des exceptions assumées** à la règle jusqu'ici
-suivie (« les formulaires et les pages de lecture restent volontairement
-étroits ») : élargis sur demande de Simon. La règle de choix ET la dérogation
-sont écrites dans **`docs/ui-composants.md` §17**, pour qu'on ne les prenne
-pas plus tard pour un oubli. Test garde-fou sur la **source** des gabarits
-(deux de ces écrans demandent une session admin, un troisième un tournoi
-existant, alors que la propriété est statique).
-
-**3. Inscription aux tournois réservable aux bénévoles.** Troisième réglage
-de « Gestion de l'événement », clé `tournoi_inscription` dans `parametres`
-(base de PRÊT), couple `lire_inscription_tournoi(conn)` /
-`inscription_tournoi_reservee()` sur le patron exact du nom d'événement.
-Réservée aux bénévoles, la page d'un tournoi **reste publique et complète**
-(horaire, lieu, places, classement, `.ics`) : seul le bouton « S'inscrire »
-cède la place à « Inscriptions auprès d'un bénévole, sur place. »
-(`.inscription-comptoir`) — c'était la demande : que la fenêtre tournoi
-devienne une information. Le bénévole garde le formulaire ; la
-**désinscription par code reste ouverte à tous** (décision Simon : un inscrit
-au comptoir doit pouvoir se désister seul). Contrôle refait **au POST** et
-pas seulement à l'affichage (formulaire ouvert avant le changement de
-réglage, ou adresse appelée directement) ; dans les deux cas on **redirige**
-vers la page du tournoi, qui explique où s'adresser, plutôt que de refuser.
-C'est la **route** qui lit le réglage et le transmet — aucun service du
-module tournois n'ouvre la base de prêt (indépendance des trois bases, déjà
-tenue pour le nom d'événement dans les `.ics`). Toute valeur absente ou
-inattendue retombe sur « visiteurs », **à la lecture comme à l'écriture** :
-ce réglage ne doit jamais fermer les inscriptions par accident, et une base
-d'avant se comporte exactement comme avant. Se combine avec la case
-« Inscription en ligne » de chaque tournoi (elle dit *si*, le réglage dit
-*qui*). Journal : action `inscription_tournoi_modifiee`, écrite **seulement
-si la valeur change** (les trois réglages voyagent dans le même formulaire).
-Le groupe de boutons radio est un `<fieldset class="champ champ-groupe">`
-avec `<legend>` (deux règles CSS) : sans quoi un lecteur d'écran annonce les
-deux options hors contexte. **11 tests**, chacun vérifié en injectant sa
-régression.
-
-**Suite globale : 867 tests verts** (841 + 26). Wiki : `Module-Statistiques`
-(section « Les erreurs de prêt »), `Module-Pret`, `Glossaire` (entrée « Erreur
-de prêt »), `Module-Tournois` (section « Qui peut inscrire »), `Guide-Admin`
-(le troisième réglage), `Journal-Activite`.
-
-Autres notes de conception : `docs/evolution-prets-longue-duree.md` (comptes /
-prêts nominatifs, optionnel) et `docs/ameliorations-a-prevoir.md` (backlog,
-points 1→8 déjà réalisés).
-
-**Étude à mener (nouveau chat) : choix de l'hébergement** — cadrée dans
-`docs/etude-hebergement-brief.md` (comparatif avec recherche web + reco, à partir
-de `docs/budget.md` et spec §10).
+Fichier relu au début de chaque session. C'est un **fichier d'état, pas un
+journal** : on remplace ce qui a changé, on n'empile pas. L'histoire d'une
+session va dans le message de commit, dans `CHANGELOG.md` et dans
+`interne/comptes-rendus/` — voir « Tenir ce fichier » plus bas.
+
+## Où vit quoi — une information, un seul domicile
+
+| Domicile | Contenu |
+| --- | --- |
+| `docs/specification.md` | La conception **fait foi**. En cas de divergence, c'est elle qui a raison. |
+| `docs/guide-developpeur.md` | Architecture, conventions, flux d'une requête, recettes d'extension, pièges connus. |
+| `docs/conception-*.md` | La conception d'un module donné (tournois, planning, journal, rangement, programme, signalements…). |
+| `docs/ui-composants.md` | Les dix composants d'interface canoniques et leurs règles d'emploi. |
+| `wiki/` | Le **guide utilisateur** (bénévoles, bureau). Aucun jargon, aucun chemin de fichier. Dépôt git **séparé**, à committer à part. |
+| `CHANGELOG.md`, `VERSION`, `app/version.py` | L'histoire livrée, tournée utilisateur. Les trois portent toujours le même numéro. |
+| `interne/chantiers.md` | Le **registre vivant** du chantier en cours : lots, états, enseignements, invariants. Hors Git. |
+| `interne/comptes-rendus/` | Un compte rendu par lot livré, à lire avant d'attaquer le lot suivant. Hors Git. |
+| `interne/historique-sessions.md` | Archive du journal détaillé de juin à août 2026. Lecture d'appoint, chiffres périmés. Hors Git. |
+| `CLAUDE.md` (ce fichier) | L'état courant et les règles de travail. Rien d'autre. |
 
 ## Le projet
 
@@ -2799,17 +32,24 @@ association (~700 jeux). Les bénévoles scannent un QR par exemplaire avec leur
 smartphone pour enregistrer prêts et retours sur une base partagée, en
 remplacement de la feuille papier (goulet d'étranglement). Anti-vol par
 **numéro de pochette** où l'on dépose la pièce d'identité → **zéro donnée
-personnelle**, hors champ RGPD.
+personnelle** dans l'application de prêt, hors champ RGPD.
 
-Ce dépôt = **brique de prêt uniquement**. Le site vitrine + newsletter
+Ce dépôt = **la brique logicielle uniquement**. Le site vitrine + newsletter
 (WordPress, hébergement mutualisé) est une brique séparée, hors dépôt.
+
+Les utilisateurs finaux sont des **bénévoles non techniciens sur smartphone**,
+en conditions dégradées (wifi de salle lent, petit écran, geste répété des
+centaines de fois dans la journée), et un **bureau d'association** sans
+compétence informatique.
 
 ## Stack
 
-Python + **FastAPI**, servi par `uvicorn`. Base **SQLite**. Pages servies par
-le backend (Jinja2) + un peu de **JS uniquement** pour le scanner caméra
-embarqué. **PWA** (« ajouter à l'écran d'accueil »). Déploiement cible : VPS
-Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
+Python 3 + **FastAPI**, servi par `uvicorn`. Bases **SQLite**. Pages rendues
+côté serveur (Jinja2), **pas de SPA**. CSS mobile-first **sans framework ni
+build**. Le JS reste marginal (scanner caméra, quelques scripts inline) et
+**sans aucune dépendance CDN** (jsQR est versionné dans `app/static/js/`).
+**PWA** (« ajouter à l'écran d'accueil »). Déploiement : VPS Debian/Ubuntu,
+nginx, systemd, HTTPS Let's Encrypt.
 
 ## Règles métier non négociables
 
@@ -2824,70 +64,181 @@ Lite (Debian/Ubuntu), HTTPS Let's Encrypt.
 - **Logique de scan** :
   - exemplaire **DISPONIBLE** → action unique « Prêter » (attribue + affiche le
     numéro de pochette en grand).
-  - exemplaire **SORTI** → deux actions : « Rendre » (principale, libère le
-    numéro) et « Le re-prêter » (cas d'oubli de scan : clôt l'ancien prêt puis
-    en rouvre un avec un nouveau numéro).
-- **Ne jamais bloquer** : toute incohérence → message + action de rattrapage en
-  un tap, jamais d'erreur bloquante.
-- **Séparation lecture / écriture** : fiches/catalogue publics et sans action ;
-  prêt/retour derrière un **jeton aléatoire long** (~32 car.) mémorisé côté
-  appareil, + **limitation de débit par IP**. Pas de comptes individuels.
-  Rotation annuelle du jeton.
-- **Zéro donnée personnelle** dans l'app de prêt — propriété à préserver.
+  - exemplaire **SORTI** → « Rendre » (principale, libère le numéro), « Le
+    re-prêter » (oubli de scan : clôt l'ancien prêt et en rouvre un) et
+    « Transférer » (rendre une boîte et en prêter une autre sans changer de
+    pochette).
+- **Ne jamais bloquer** : toute incohérence donne un message clair et une action
+  de rattrapage **en un tap**, jamais une erreur brute. Cette règle prime sur
+  tout le reste.
+- **Séparation lecture / écriture** : catalogue et fiches publics et sans
+  action ; prêt/retour derrière un **jeton bénévole** aléatoire long mémorisé
+  côté appareil, + limitation de débit par IP. Pas de comptes individuels.
+  Rotation du jeton par l'admin, avec date d'expiration.
+- **Zéro donnée personnelle** dans l'application de prêt — propriété à
+  préserver. Toute proposition qui ferait entrer une donnée personnelle doit
+  être **signalée comme telle avant d'être écrite**. Deux exceptions assumées et
+  cloisonnées : le module planning (base séparée, finalité unique) et le champ
+  libre des signalements du carnet de maintenance.
 
-## Modèle de données (4 tables — voir spec §3 et `app/models.py`)
+## Les trois bases — invariant
 
-- `titres` : `reference_titre` (PK), `nom`, `type_jeu` ("Jeu"/"Extension"),
-  `categorie` + colonnes optionnelles nullables (`nb_joueurs_min/max`,
-  `duree_min`, `age_min`, `editeur`, `auteur`, `annee_edition`, `descriptif`,
-  `date_achat` — ISO, la + récente des exemplaires ; alimente
-  `services.derniers_achats` → panneau « Dernières acquisitions » du catalogue).
-  Migration : `db._appliquer_migrations` ajoute les colonnes apparues après coup
-  (ex. `type_jeu`) aux bases existantes via ALTER TABLE.
-- `exemplaires` : `id_exemplaire` (PK, TEXT), `reference_titre` (FK).
-- `prets` : `id_pret` (PK auto), `id_exemplaire` (FK), `numero_pochette`,
-  `date_sortie`, `date_retour` (NULL tant que sorti). Historique jamais purgé.
-- `pochettes` : `numero_pochette` (PK), `occupe` (0/1). Occupation du moment.
-- `parametres` : `cle` (PK), `valeur`. Réglages persistants (ex. `admin_hash`).
+L'application tient **trois bases SQLite séparées et indépendantes**, chacune
+avec son propre schéma, ses migrations et son initialisation :
 
-## Décisions de conception déjà prises
+| Base | Schéma | Tables |
+| --- | --- | --- |
+| Prêt | `app/models.py` | `titres`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement` |
+| Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme` |
+| Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
+
+**L'invariant à ne jamais perdre de vue : un service ne traverse jamais une
+autre base.** Quand un module a besoin d'un réglage qui vit ailleurs (le nom de
+l'événement dans un en-tête `.ics`, par exemple), **c'est la route qui lit et
+transmet la valeur au service**.
+
+Le **journal d'activité** (`app/journal.py`) n'est pas une table : c'est un
+fichier à rotation, à **vocabulaire fermé** (modules et actions énumérés), avec
+un test garde-fou qui interdit d'y écrire quoi que ce soit hors vocabulaire.
+
+Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
+
+## Décisions de conception structurantes
 
 - `id_exemplaire` stocké en **TEXT** (préserve un éventuel zéro de tête, ex.
   `00472` ; jamais réinterprété comme un entier).
-- `titres` : colonnes de cœur + colonnes optionnelles nullables (choix validé).
-  L'import CSV remplira ce qu'il trouve ; le schéma peut évoluer sans toucher
-  aux deux clés.
-- SQLite ouvert avec `PRAGMA foreign_keys = ON` et `journal_mode = WAL`
-  (concurrence d'écriture entre bénévoles).
-- État d'un exemplaire **déduit** (prêt avec `date_retour IS NULL`), pas stocké.
+- **État d'un exemplaire déduit** (prêt avec `date_retour IS NULL`), jamais
+  stocké.
+- `titres` : colonnes de cœur + colonnes optionnelles nullables. Le schéma peut
+  évoluer sans toucher aux deux clés.
+- **Migrations idempotentes** par `ALTER TABLE` dans le `db.py` de chaque base
+  (`CREATE TABLE IF NOT EXISTS` ne met pas à niveau une base existante). Une
+  base d'avant doit toujours se comporter exactement comme avant.
+- SQLite ouvert avec `PRAGMA foreign_keys = ON` et `journal_mode = WAL`.
+  Écritures concurrentes sous `services.transaction(conn)` (`BEGIN IMMEDIATE`
+  + timeout) — voir le correctif de course sur les numéros de pochette,
+  `docs/protocole-stress-test.md`.
+- **Visibilité des modules** (`app/modules.py`) : tournois, programme, stats,
+  planning, écran de salle et « à propos » ont chacun quatre états — *tous*,
+  *bénévoles*, *discret* (URL ouverte, lien masqué), *désactivé* — réglés depuis
+  `/admin/fonctionnalites` et stockés dans `parametres`. L'état par défaut est
+  *tous*, donc aucune migration pour les bases existantes.
+- **Identité paramétrable** : le nom de l'association, la page « À propos », le
+  logo et la couleur de thème sont des **données éditoriales** en base
+  (`parametres`, écrans `/admin/identite` et `/admin/evenement`), pas des
+  constantes. Ce qui engage l'infrastructure ou la sécurité reste dans `.env`.
+- **Réutiliser plutôt que dupliquer** : un composant, une constante ou une règle
+  métier a un seul domicile (le dessin d'étiquette dans `app/etiquettes.py`,
+  partagé avec `scripts/generate_qr.py` ; le menu bénévole dans un fragment
+  unique ; les helpers de dates dans `app/services.py`). Les rares duplications
+  assumées sont justifiées en commentaire.
+
+## État de l'application — au 2026-09-01
+
+**Dernière version publiée : 1.10.0** (2026-08-14, voir `VERSION` et
+`CHANGELOG.md`). L'application est **en production**. Des commits postérieurs
+(lots 1 à 3c du chantier d'ouverture publique) attendent la **1.11.0**, qui est
+le lot 8 du registre. Ce qui est livré, par module :
+
+- **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
+  scanner caméra (jsQR) avec saisie manuelle de secours, prêt / retour /
+  re-prêt / **transfert de pochette**, sortie « tournoi » exclue des stats,
+  **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), clôture de
+  fin d'événement.
+- **Statistiques** (`/stats`) — totaux, palmarès, histogramme horaire, durées,
+  filtre par période, liste détaillée, jeux actuellement sortis, exports Excel
+  et PDF à sections cochables.
+- **Tournois** (`/tournois`) — quatre modes de scoring (`app/tournoi/services.py`,
+  `MODES_SCORING` : high score, ronde suisse, round robin, élimination directe),
+  tournois **par équipes**, option BO3, inscription publique avec code de
+  désinscription (**e-mail jamais stocké**), inscription réservable aux
+  bénévoles, export `.ics`, duplication, ouverture groupée du jour.
+- **Programme du week-end** (`/programme`) — types d'éléments administrables,
+  grille publique filtrable, page publique par élément, reprise sur l'écran de
+  salle et sur l'accueil.
+- **Planning bénévoles** (`/planning`, base séparée) — questionnaire de
+  disponibilités et de préférences, préremplissage glouton (continuité, équité),
+  grille d'ajustement **sans JS**, export « mon planning » en `.ics`.
+- **Écran de salle** (`/live`) — tableau de bord temps réel pour projecteur,
+  annonces libres du bureau, **alerte automatique « rapportez les exemplaires »**
+  avant chaque tournoi.
+- **Rangement** — emplacements, deux contextes interchangeables, affectation en
+  lot, mode rangement visible sur toutes les pages.
+- **Carnet de maintenance** — signalements d'état des boîtes et catégories
+  administrables.
+- **Journal d'activité** — socle à vocabulaire fermé, écran `/admin/journal`,
+  outil terminal `scripts/journal.py`, registre des appareils.
+- **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
+  appareils, fiches et étiquettes en lot, import/export du catalogue,
+  **sauvegarde et restauration des trois bases**, supervision, identité,
+  gestion de l'événement, visibilité des fonctionnalités, aide admin.
+- **Mode formation** — seconde instance du même code, catalogue importable
+  depuis un CSV pour scanner de vraies boîtes sans rien inscrire pour de bon.
+- **Exploitation** — `deploy/` (install.sh, update.sh, systemd, nginx,
+  sauvegarde) et lanceur local sans ligne de commande (`lancer.py`,
+  `lancer.command`, `lancer.bat`).
+
+**Le total de tests ne figure pas ici**, volontairement : c'est le chiffre qui a
+fait diverger l'ancien fichier soixante et une fois. Il se lit en lançant la
+suite (`pytest -q`) et se consigne au lot correspondant dans
+`interne/chantiers.md`.
+
+## Chantier en cours — ouverture publique de LudoteX
+
+**Le registre fait foi : `interne/chantiers.md`.** Il porte l'état de chaque lot,
+les enseignements à reporter dans les prompts suivants et les invariants. Ne pas
+le recopier ici. Les décisions de fond, elles, sont en fin de ce fichier.
+
+Le compte rendu du lot précédent est **à lire avant d'attaquer le suivant**
+(`interne/comptes-rendus/`).
 
 ## Workflow de développement
 
-- L'assistant édite les fichiers dans le dossier local et commit en local.
-  **L'assistant ne peut PAS pousser** (pas de connecteur GitHub ni de CLI `gh`
-  dans son environnement) → **c'est Simon qui exécute `git push`** après
-  validation de chaque étape.
-- Remote configuré en **HTTPS** (auth par Personal Access Token côté Terminal
-  de Simon ; le token ne transite jamais par le chat).
-- **Environnement de test retenu : tunnel HTTPS** (type Cloudflare Tunnel /
-  ngrok) au-dessus de `uvicorn` local, pour tester le **scan caméra depuis un
-  smartphone**. Raison : le scanner caméra (`getUserMedia`) exige un contexte
-  sécurisé (HTTPS ou `localhost`). Déploiement VPS dans un second temps.
+- L'assistant édite les fichiers et **commit en local**. Il ne peut pas pousser :
+  **c'est Simon qui exécute `git push`**, après validation. Ne jamais supposer
+  que le code est parti.
+- Remote en **HTTPS** (jeton personnel côté terminal de Simon ; il ne transite
+  jamais par le chat).
+- **Un commit par point traité**, message en français, sans emoji.
+- **Chaque changement de comportement s'accompagne de ses tests** ; la suite doit
+  rester verte.
+- **Environnement de test du scanner : tunnel HTTPS** au-dessus d'`uvicorn`
+  local. `getUserMedia` exige un contexte sécurisé (HTTPS ou `localhost`).
+- **Vérifier avant d'affirmer.** Ne jamais documenter, ni promettre à
+  l'utilisateur, un recours ou un comportement sans l'avoir retrouvé dans le
+  code. Si une fonction existe mais n'est appelée par aucune route, le dire
+  franchement plutôt que d'inventer une procédure plausible.
+- **Signaler les écarts.** Quand une note de conception ou une fiche d'audit est
+  périmée, contredite par le code, ou demande quelque chose de discutable : le
+  dire et proposer un arbitrage, plutôt que de l'appliquer à la lettre.
+- **Accessibilité** : contrastes, focus clavier visible, hiérarchie des titres,
+  lecteurs d'écran, `prefers-reduced-motion`.
 
-### ⚠️ Tenir le wiki à jour — contrainte de CHAQUE session
+### Tenir ce fichier — règle née de sa refonte du 2026-09-01
 
-Le dossier `wiki/` (14 pages) est **le guide utilisateur** du projet : bénévoles
-et bureau, public non développeur. Il vit dans le dépôt précisément pour être
-corrigé **dans le même commit** que le code qui le périme.
+`CLAUDE.md` avait atteint **225 Ko**, dont 87 % de journal de sessions accumulé
+sans jamais rien retirer. Relu en entier à chaque démarrage, il coûtait cher,
+noyait les règles qui comptent et se contredisait. Il a été ramené à une
+vingtaine de kilo-octets, le journal archivé dans `interne/historique-sessions.md`.
+
+**La règle, pour que ça ne recommence pas** : en fin de session, on **remplace**
+la ligne d'état concernée, on n'ajoute pas un paragraphe. Ce qui a été fait, avec
+son raisonnement, va dans le **message de commit**, dans `CHANGELOG.md` (tourné
+utilisateur) et, pour un lot de chantier, dans `interne/comptes-rendus/`. Rien de
+daté, aucun total de tests, aucun récit de session dans ce fichier. S'il repasse
+au-dessus de **30 Ko**, c'est que la règle a lâché.
+
+### Tenir le wiki à jour — contrainte de CHAQUE session
+
+Le dossier `wiki/` est **le guide utilisateur** du projet : bénévoles et bureau,
+public non développeur. Il vit dans le dépôt précisément pour être corrigé
+**dans le même commit** que le code qui le périme — c'est un **dépôt git
+séparé**, à committer à part.
 
 **Le constat qui motive cette règle** (audit du 2026-07-18,
 `docs/guide-utilisateur-cadrage.md` §1) : quatre pages étaient fausses ou
-incomplètes — module Rangement absent en totalité, « les trois modes de
-scoring » alors qu'il y en a quatre, menu « Base de données » renommé
-« Données & sauvegarde » depuis la fusion, annonces de l'écran de salle et mode
-formation non documentés. Aucune de ces dérives n'est due à une négligence
-ponctuelle : elles viennent de ce que **rien ne signalait, au moment du
-changement, que la doc devait suivre**. D'où cette section.
+incomplètes, non par négligence ponctuelle, mais parce que **rien ne signalait,
+au moment du changement, que la doc devait suivre**.
 
 **La règle.** Avant de clore une session, si le travail a touché à l'un de ces
 points, vérifier si une page de `wiki/` le mentionne — et la corriger :
@@ -2903,19 +254,14 @@ points, vérifier si une page de `wiki/` le mentionne — et la corriger :
 Ne PAS documenter dans `wiki/` : refactorisations internes, tests, migrations,
 noms de fichiers ou de fonctions. Le wiki ne parle jamais de code.
 
-**Où écrire quoi** : `wiki/` = utilisateur (aucun jargon, aucun chemin de
-fichier) ; `docs/` = conception et décisions ; `CLAUDE.md` = ce résumé
-opérationnel. Une même information n'a qu'un seul de ces trois domiciles.
+**Conventions rédactionnelles** (détail dans `docs/guide-utilisateur-cadrage.md`) :
+infinitif pour les gestes, « vous » pour s'adresser au lecteur, jamais de
+tutoiement ; libellés de boutons en gras et identiques à l'écran ; section « Si
+ça ne marche pas » obligatoire sur toute page décrivant une action ; diagrammes
+en **Mermaid** ; captures dans `wiki/images/`, **jamais de numéro de pochette
+réel, de pseudo, de nom de bénévole ni de jeton visible**.
 
-**Conventions rédactionnelles du wiki** (détail complet et plan de refonte dans
-`docs/guide-utilisateur-cadrage.md`) : infinitif pour les gestes, « vous » pour
-s'adresser au lecteur, jamais de tutoiement ; libellés de boutons en gras et
-identiques à l'écran ; section « Si ça ne marche pas » obligatoire sur toute
-page décrivant une action ; diagrammes en **Mermaid** dans le markdown ;
-captures dans `wiki/images/`, **jamais de numéro de pochette réel, de pseudo,
-de nom de bénévole ni de jeton visible**.
-
-### 🔢 Proposer une montée de version — à la fin de CHAQUE session
+### Proposer une montée de version — à la fin de CHAQUE session
 
 Depuis la **1.0.0** (première mise en production, 2026-07-23), l'application est
 versionnée en **`MAJEUR.MINEUR.CORRECTIF`** (SemVer). Marche à suivre complète :
@@ -2923,238 +269,80 @@ versionnée en **`MAJEUR.MINEUR.CORRECTIF`** (SemVer). Marche à suivre complèt
 
 **La règle.** Quand une session a produit un changement destiné à être déployé,
 **proposer à Simon** (sans l'appliquer d'office — c'est lui qui tranche) le
-numéro de version adapté au travail réalisé :
+numéro adapté :
 
-- **CORRECTIF** (`x.y.Z`) — corrections de bugs, retouches d'UI/texte/
-  accessibilité, refactorisations, optimisations : rien de neuf pour
-  l'utilisateur.
+- **CORRECTIF** (`x.y.Z`) — corrections de bugs, retouches d'UI, de texte ou
+  d'accessibilité, refactorisations : rien de neuf pour l'utilisateur.
 - **MINEUR** (`x.Y.0`) — une nouvelle fonctionnalité ou un nouveau module, sans
   casse.
-- **MAJEUR** (`X.0.0`) — grande étape / changement de cap, ou évolution qui
-  demande une intervention à la mise à jour au-delà d'`update.sh`.
+- **MAJEUR** (`X.0.0`) — grande étape, ou évolution qui demande une intervention
+  à la mise à jour au-delà d'`update.sh`.
 
-En cas de doute entre deux niveaux, proposer le plus élevé, en expliquant
+En cas de doute entre deux niveaux, proposer le plus élevé en expliquant
 pourquoi. Ne PAS proposer de montée pour un travail qui ne change rien au
 déploiement (documentation seule, notes, exploration).
 
-**Si Simon accepte**, mettre à jour dans le même commit les **trois** porteurs
-du numéro — `app/version.py` (`APP_VERSION`), `VERSION` (numéro + date +
-résumé), `CHANGELOG.md` (nouvelle section en tête, puces tournées utilisateur :
-elles s'affichent sur `/apropos`) — puis rappeler à Simon de poser le tag git
-`vX.Y.Z` après le push. Les trois fichiers portent **toujours le même numéro**.
-
-## Séquence de dev (brief §6) — état
-
-1. [fait] Structure du dépôt + `requirements.txt` + README.
-2. [fait] Schéma SQLite (`app/models.py`) + init (`app/db.py`).
-3. [fait] `scripts/import_csv.py` — import tolérant. CSV réel reçu
-   (`Liste_Jeux_Etendue_140626.csv`, 703 lignes, séparateur `;`, UTF-8 BOM).
-   Mapping : « Code jeu »→`id_exemplaire` (TEXT, zéros de tête), nom nettoyé,
-   `reference_titre`=slug du nom (REGROUPEMENT par nom, validé par Simon),
-   « Type »→`type_jeu` (Jeu/Extension), « Type jeu »→`categorie`, parsing
-   « Nb joueurs » 2-4→min/max, « Age » 10+→10,
-   « Temps jeu »→`duree_min`, « Marque »→`editeur`, + descriptif/auteur/année.
-   Colonnes d'état du CSV ignorées (état déduit des prêts). Idempotent (UPSERT).
-   Résultat : **609 titres / 703 exemplaires**, 0 FK orpheline. Regroupements
-   à noms divergents (28) tous vérifiés corrects (casse/accents). « Lien image »
-   non importé (chemins Windows locaux inutilisables).
-4. [fait] `scripts/generate_qr.py` — un QR par exemplaire encodant
-   `<BASE_URL>/jeu/<id_exemplaire>`. Lit les exemplaires en base. PNG individuels
-   `<id>.png` avec libellé « code — nom » ; option `--planche` → PDF A4 (grille
-   4×6, pages converties 1-bit pour éviter le codec JPEG absent de Pillow).
-   `BASE_URL` depuis `.env`, surchargeable par `--base-url`. Décodage vérifié
-   (OpenCV) : URL exacte. **URL définitive : ne tirer les étiquettes qu'une fois
-   le domaine figé** ; avant, QR de test (tunnel/localhost). QR exclus du dépôt
-   (`qr/` dans `.gitignore`).
-   Étiquette **format paysage** (QR à gauche, panneau à droite) : placeholder
-   LOGO (option `--logo`), cercle GOMMETTE, nom du jeu, et CODE DE CLASSEMENT
-   type `EAM8-3-5-15` (fonction `code_classement()` : chiffres âge/joueurs/durée
-   depuis la base, lettres `XXX` en placeholder tant que la nomenclature n'est
-   pas figée). Le numéro de base n'est PAS affiché (présent dans le QR). Planche
-   A4 (reportlab, **couleur** pour le logo) à grille **configurable**
-   `--grille LxC` (défaut 8x2). Logo réel : `logo_ludotex.jpg` à la racine.
-5. [fait] Fiche jeu `/jeu/<id>` (lecture publique) + écran prêt/retour
-   `/pret/<id>` (écriture). Logique métier isolée dans `app/services.py` (état
-   déduit, plus petit n° de pochette libre recyclé sans plafond, prêter / rendre
-   / re-prêter, dispo par titre). Contrôle d'état côté serveur → jamais bloquant
-   (déjà sorti / déjà dispo = message). Templates Jinja2 (`base/fiche/pret.html`)
-   mobile-first + `static/css/style.css`. `main.py` : StaticFiles + redirection
-   `/`→`/catalogue`. Auth jeton = placeholder `exiger_jeton` (étape 9). 10 tests
-   verts (services + routes via TestClient), flux validé sous uvicorn.
-6. [fait] Scanner caméra embarqué : page `/scanner` (`routes/scanner.py`) +
-   `static/js/scanner.js`. getUserMedia caméra arrière + décodage **jsQR**
-   (compatible iOS/Android ; `BarcodeDetector` absent d'iOS). Extrait l'id de
-   l'URL `/jeu/<id>` et redirige vers `/pret/<id>`. Repli si caméra indispo
-   (message → appareil photo natif). Lien « Scanner le jeu suivant » sur l'écran
-   prêt pour enchaîner. jsQR **hébergé en local** (`static/js/jsQR.js`, versionné,
-   aucune dépendance CDN). Test route 200 + contenu.
-7. [fait] Catalogue public `/catalogue` (`routes/catalogue.py`) : liste des
-   titres triée par nom, dispo par titre (X/Y), lien vers la fiche d'un
-   exemplaire représentatif (MIN id). Page d'accueil `/`→`/catalogue`. Template
-   `catalogue.html`. **Recherche/filtres combinés** dans un panneau dépliable
-   `<details>` (sans JS) : champ `q` (nom, LIKE NOCASE), `categorie` (égalité),
-   `age` (age_min <= X, « accessible dès cet âge »), `joueurs` (nb_joueurs_min <=
-   N <= nb_joueurs_max, nombre exact ; jeux sans bornes exclus si filtre actif).
-   Services `lister_catalogue(categorie,q,age,joueurs)`, `lister_categories`,
-   `ages_disponibles`, `max_joueurs`. Tests 200 + filtres.
-8. [fait] Page statistiques `/stats` (`routes/stats.py`) : total des prêts +
-   en cours + titres prêtés, palmarès des plus/moins prêtés par titre (zéros
-   inclus via LEFT JOIN « catalogue d'abord »), histogramme prêts par heure
-   (barres CSS, heures UTC). Double vue `?tri=total|exemplaire`. Services
-   `stats_globales`, `palmares`, `prets_par_heure`. Lien dans le pied de page.
-   **Filtre par période** `debut`/`fin` (saisies heure locale FR → UTC via
-   `local_vers_utc_iso`, fuseau Europe/Paris) appliqué à tout + **liste
-   détaillée** des prêts (`lister_prets_periode`). **Exports** Excel (openpyxl)
-   et PDF (reportlab) via `app/exports.py` + `services.collecter_stats`, routes
-   `/stats/export.xlsx|pdf` (filtres respectés). Alias `/stat`,`/statistique`,
-   `/statistiques`→`/stats`. Logo de l'asso (`app/static/img/logo_ludotex.jpg`,
-   aussi `LOGO_DEFAUT` des étiquettes) affiché en tête du catalogue.
-   Tests services + route + exports.
-9. [fait] Auth bénévole par jeton + limitation de débit (`app/auth.py`,
-   `routes/acces.py`). `/pret/*` et `/scanner` exigent un cookie = `PRET_TOKEN`
-   (comparé en temps constant). Lien d'activation `/acces?jeton=…` pose le cookie
-   (HttpOnly, SameSite=Lax, Secure si HTTPS, validité 3 jours) puis redirige vers /scanner.
-   Limitation de débit par IP sur `/acces` (`RATE_LIMIT_PER_MINUTE`, en mémoire).
-   Catalogue/fiches/stats restent publics. Si `PRET_TOKEN` non défini → mode
-   ouvert + avertissement au démarrage (À DÉFINIR en prod). Page `acces_refuse`
-   via gestionnaire 403. Rotation annuelle = changer `PRET_TOKEN`. Tests verts.
-10. [artefacts prêts] Déploiement VPS + HTTPS. Fichiers dans `deploy/`
-    (`ludotex.service` systemd 1 worker + `--proxy-headers`,
-    `nginx-ludotex.conf` reverse proxy + static, `sauvegarde.sh` SQLite `.backup`
-    + rotation + rclone optionnel) et guide pas à pas `docs/deploiement.md`
-    (VPS, venv, `.env`, base + import, systemd, nginx, certbot Let's Encrypt,
-    QR définitifs une fois le domaine figé, sauvegarde cron, mises à jour).
-    Reste à exécuter sur le VPS par Simon quand l'hébergeur/domaine seront choisis.
-
-`routes/catalogue.py` : `/jeu/<id>` + `/catalogue` faits.
-`routes/pret.py` : `/pret/<id>` + actions prêter/rendre/re-prêter faits
-(protégés par `exiger_jeton`). `routes/scanner.py`, `routes/stats.py`,
-`routes/acces.py` faits.
-
-## Espace d'administration (hors séquence initiale)
-
-Écran `/admin` protégé par **mot de passe** (≠ jeton bénévole) : `app/admin_auth.py`
-(hachage pbkdf2 stdlib, hash en table `parametres`, amorçage via `ADMIN_PASSWORD`
-du `.env`, sessions en mémoire + cookie), `routes/admin.py`, templates `admin_*`.
-Permet : créer une fiche de jeu (id_exemplaire AUTO, préfixe `A` via
-`services.prochain_id_exemplaire`, voir `creer_jeu`/`ajouter_exemplaire`),
-consulter une fiche et **(ré)imprimer l'étiquette** de chaque exemplaire
-(`GET /admin/etiquette/<id>.png`), **imprimer des étiquettes EN LOT**
-(`/admin/etiquettes` : sélection de jeux cochables + filtre catégorie + tout/aucun ;
-mise en page A4 réglable — 4 marges mm + colonnes×lignes, compteur live JS ;
-`POST /admin/etiquettes/pdf` → PDF couleur via `etiquettes.planche_pdf`, qui
-imprime toutes les boîtes des jeux choisis ; services `titres_pour_etiquettes` /
-`exemplaires_pour_etiquettes`), **importer/exporter le catalogue**
-(`/admin/donnees` : import d'un CSV téléversé via `scripts.import_csv.importer` ;
-export CSV/Excel ré-importable via `services.lignes_export_catalogue` +
-`exports.catalogue_csv`/`tableau_xlsx` (ex-`catalogue_xlsx`, renommée quand le
-carnet de maintenance lui a donné un second appelant), en-têtes =
-`EN_TETES_CATALOGUE`),
-changer le mot de passe. Le **dessin
-d'étiquette est mutualisé** dans `app/etiquettes.py` (partagé avec
-`scripts/generate_qr.py`). Accès non authentifié → redirection vers /admin (pas
-de 403). Le **tableau de bord** propose un menu vers les modules (catalogue,
-stats, scanner) en plus des actions d'admin.
-
-**Jeton bénévole en base** : `auth.jeton_actuel(conn)` lit d'abord `parametres`
-(clé `pret_token`) puis l'env `PRET_TOKEN` (amorçage). Page `/admin/jeton` :
-affiche le lien d'activation, permet de **réinitialiser** le jeton
-(`auth.reinitialiser_jeton`, invalide les anciens cookies) et de le **partager**
-(WhatsApp/e-mail/SMS + copier). `acces_valide` ouvre une connexion pour lire le
-jeton courant.
-
-**Export PDF à la carte** : `exports.construire_pdf(data, periode, sections)`
-avec sections cochables (synthèse, plus, moins, detail — détail décoché par
-défaut) ; route `/stats/export.pdf?sections=…`. L'export Excel reste complet.
-Tests verts.
-
-## Évolutions du backlog (points 1–8, juin 2026)
-
-- **Sortie « tournoi »** : colonne `prets.motif` ('pret'/'tournoi', migration auto).
-  `services.sortir_tournoi` (numero_pochette=0, sans emplacement), bouton « Sortir
-  pour un tournoi » sur `/pret/<id>`. **Exclu de toutes les stats** (filtre
-  `motif='pret'` dans stats_globales/palmares/prets_par_heure/lister_prets_periode).
-- **Durées** : `services.format_duree`, durée par prêt (`duree_txt`, « depuis … »
-  si en cours) dans la liste détaillée, **durée moyenne** (`stats_globales`,
-  prêts terminés via `julianday`). Affichées page stats + exports Excel/PDF.
-- **Vue « Jeux actuellement sortis »** (`/stats`, ancre `#sortis`) :
-  `services.lister_prets_en_cours` → 2 blocs (prêtés au public / en tournoi).
-- **Clôture de fin d'événement** : `services.cloturer_tous_les_prets` (clôt tout
-  prêt non clos + libère les pochettes, **garde l'historique**), bouton admin
-  `/admin/cloturer-prets` (section « Fin d'événement », confirmation).
-- **Validité du jeton** : `parametres.pret_token_expire` (UTC). `auth.jeton_expire`
-  (expiré = accès FERMÉ ≠ absent = ouvert), `reinitialiser_jeton(conn, expire_iso)`
-  défaut **1 semaine** ; cookie d'`/acces` aligné sur l'expiration. Champ
-  « valable jusqu'au » sur `/admin/jeton`.
-- **Menu bénévole** : fragment `templates/_menu_benevole.html` (Catalogue,
-  Scanner, Statistiques, Jeux sortis, Aide), affiché dans le bandeau **uniquement
-  si `est_benevole(request)`** (global Jinja = `auth.acces_valide`), et réutilisé
-  dans le dashboard admin (point unique de maintenance). Page **`/aide`** (mode
-  d'emploi bénévole).
+**Si Simon accepte**, mettre à jour dans le même commit les **trois** porteurs du
+numéro — `app/version.py` (`APP_VERSION`), `VERSION` (numéro + date + résumé),
+`CHANGELOG.md` (nouvelle section en tête, puces tournées utilisateur : elles
+s'affichent sur `/apropos`) — puis rappeler à Simon de poser le tag git `vX.Y.Z`
+après le push.
 
 ## Sécurité du dépôt
 
-Ne **jamais** committer : le jeton bénévole, `.env`, la base SQLite. Ils sont
-exclus par `.gitignore` (vérifié). Utiliser `.env.example` comme modèle.
+Ne **jamais** committer : le jeton bénévole, `.env`, les bases SQLite, le dossier
+`interne/`. Ils sont exclus par `.gitignore`. Utiliser `.env.example` comme
+modèle. Les secrets ne passent ni par les URL ni par les logs.
 
 ## Lancer en local
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # éditer le jeton, le chemin base, le domaine
-python -m app.db            # initialise la base SQLite
+cp .env.example .env        # éditer le jeton, le chemin des bases, le domaine
+python -m app.db            # initialise la base de prêt
 uvicorn app.main:app --reload
 ```
 
-## Ouverture publique de LudoteX — arbitrages (2026-08-29)
+Sans ligne de commande : `lancer.command` (macOS), `lancer.bat` (Windows).
 
-Marche à suivre détaillée : `docs/note-ouverture-publique.md`. Cette section ne
-porte que les **décisions** ; elle prime sur la note en cas de divergence.
+## Ouverture publique de LudoteX — arbitrages
+
+Décisions arrêtées le 2026-08-29 ; **cette section prime** sur
+`docs/note-ouverture-publique.md` en cas de divergence. L'avancement, lui, est
+dans `interne/chantiers.md`.
 
 **1. Cible.** LudoteX devient un outil réutilisable par d'autres associations :
 dépôt public lisible, page vitrine indexable, produit sans marque d'association.
 Le dépôt `Dramac/LudoteX` et son wiki sont **déjà publics**.
 
-**2. Le nom de l'association est une donnée de configuration.** Aucune mention
-de « LudoteX » ne doit subsister dans le code, les docs, le
-wiki, les captures ni la vitrine. Seules exceptions : le `.env` de notre
-instance, et la ligne de copyright de `LICENSE` — **en attente d'arbitrage du
-bureau** (titularité des droits : ne pas y toucher sans réponse).
+**2. Le nom de l'association est une donnée de configuration.** Aucune mention de
+« LudoteX » ne doit subsister dans le code, les docs, le wiki,
+les captures ni la vitrine. Seules exceptions : le `.env` de notre instance, et
+la ligne de copyright de `LICENSE` — **en attente d'arbitrage du bureau**
+(titularité des droits : ne pas y toucher sans réponse).
 
-**3. Paramétrage : l'identité en base, l'infrastructure en `.env`.**
+**3. Paramétrage : l'identité en base, l'infrastructure en `.env`.** *Appliqué
+aux lots 1 à 3c.*
 
-- **Administrable** (table `parametres` de la base de prêt, écran admin dédié,
-  sur le modèle de `/admin/evenement` qui existe déjà) : nom de l'association,
-  texte de présentation de la page « À propos », adresse de contact, URL du
-  dépôt (aujourd'hui en dur dans `app/routes/catalogue.py`), logo. Ce sont des
-  données **éditoriales** : elles changent sans redéploiement et un bureau non
-  technicien doit pouvoir les corriger seul.
+- **Administrable** (table `parametres` de la base de prêt, écrans
+  `/admin/identite` et `/admin/evenement`) : nom de l'association, texte de
+  présentation, adresse de contact, URL du dépôt, logo, couleur de thème. Ce
+  sont des données **éditoriales** : elles changent sans redéploiement et un
+  bureau non technicien doit pouvoir les corriger seul.
 - **Reste dans `.env`** : `BASE_URL` (figée par les QR imprimés),
   `MODE_FORMATION`, `FORMATION_URL`, chemins des bases et du journal, secrets.
   Un réglage qui engage l'infrastructure ou la sécurité ne descend pas dans une
   interface web.
-- **Contrainte technique à traiter dès le premier lot** (corrigé après lecture
-  du code — la piste d'un module `app/identite.py` est ABANDONNÉE) :
-  `nom_association` est aujourd'hui un **global Jinja posé à l'import**
-  (`app/templating.py`) depuis une constante de `app/config.py`, et il est lu
-  dans **66 gabarits** (73 occurrences) plus quatre modules Python. Le motif à
-  suivre existe déjà dans `app/services.py`, section « Identité de l'événement »
-  (`lire_nom_evenement(conn)` / `nom_evenement()`) : c'est **là** qu'atterrit
-  l'identité de l'association, pas dans un nouveau module — le projet a déjà un
-  domicile pour ce genre de réglage. Deux règles héritées de ce motif :
-  côté gabarits, un **context processor** (Starlette 0.41.3 le supporte) évite de
-  convertir les 66 gabarits en `{{ nom_association() }}` ; côté `planning` et
-  `tournoi` (en-têtes `.ics`), **c'est la route qui lit et transmet la valeur au
-  service**, jamais le service qui ouvre la base de prêt — l'indépendance des
-  trois bases est un invariant.
-- **La page « À propos » ne devient pas éditable en entier** : l'essentiel y est
-  de la documentation produit, identique pour tout déploiement. Seuls le
-  paragraphe « L'association », le contact et les crédits sont paramétrables.
-  Texte brut échappé par Jinja, **jamais de HTML libre saisi en admin**.
-- **Logo** : un envoi de fichier depuis l'admin est une nouvelle surface
-  d'attaque (type, taille, nom de fichier, écrasement). À traiter comme un lot à
-  part, pas en même temps que les champs texte.
+- **Le motif à suivre** vit dans `app/services.py`, section « Identité de
+  l'événement » (`lire_nom_evenement` / `nom_evenement`) : lecture en base avec
+  repli, exposition aux gabarits par **context processor**, et pour `planning` et
+  `tournoi` c'est **la route qui lit et transmet** — l'indépendance des trois
+  bases est un invariant.
+- **La page « À propos » n'est pas éditable en entier** : l'essentiel y est de la
+  documentation produit, identique pour tout déploiement. Seuls le paragraphe
+  « L'association », le contact et les crédits sont paramétrables. Texte brut
+  échappé par Jinja, **jamais de HTML libre saisi en admin**.
 
 **4. Tri de `docs/`.** Le dépôt public garde ce qui permet d'installer,
 d'exploiter, de comprendre et de contribuer : `specification.md` (fait foi),
@@ -3163,39 +351,38 @@ d'exploiter, de comprendre et de contribuer : `specification.md` (fait foi),
 `protocole-stress-test.md`, et les `conception-*.md` des modules **livrés**.
 Sortent du dépôt : prompts d'implémentation, `budget.md`, présentation au CA,
 audits datés, `plan-action-securite.md`, études d'hébergement, notes d'idées et
-d'évolutions, veille, cadrages du wiki, `bonne-pratique.md`.
+d'évolutions, veille, cadrages du wiki, `bonne-pratique.md`. Règle d'arbitrage
+ajoutée au lot 5 : **un document cité par le code reste**, sauf l'audit de
+sécurité.
 
-*Motif du refus de tout sortir : un dépôt GPLv3 sans document de conception
-n'est pas reprenable. Pour un tiers, l'absence de documentation technique est le
-premier motif d'abandon d'une reprise.* À noter : **25 des 53 fichiers de
-`docs/` ne sont déjà pas versionnés** — le tri est à moitié fait.
+*Motif du refus de tout sortir : un dépôt GPLv3 sans document de conception n'est
+pas reprenable. Pour un tiers, l'absence de documentation technique est le
+premier motif d'abandon d'une reprise.*
 
 **5. Les notes internes vivent en local, hors Git, mais sauvegardées.** Dossier
-`interne/` ajouté à `.gitignore`, inclus dans la sauvegarde habituelle de la
-machine. Conséquence assumée : pas d'historique fin ni de diff sur ces
-documents.
+`interne/`, exclu par `.gitignore`, inclus dans la sauvegarde de la machine.
+Conséquence assumée : pas d'historique fin ni de diff sur ces documents.
 
-**6. Historique : une réécriture complète, une seule fois, maintenant.**
-`git filter-repo` pour (a) purger les chemins internes de tout l'historique et
-(b) remplacer le nom de l'association dans le contenu des fichiers **et** dans
-les messages de commit (`--replace-text` + `--replace-message`). Un seul
-`push --force`, exécuté par Simon.
+**6. Historique : une réécriture complète, une seule fois.** `git filter-repo`
+pour (a) purger les chemins internes de tout l'historique et (b) remplacer le nom
+de l'association dans le contenu des fichiers **et** dans les messages de commit
+(`--replace-text` + `--replace-message`). Un seul `push --force`.
 
 Ordre impératif : **neutralisation terminée et commitée → puis réécriture → puis
-force-push.** Préalables : arbre de travail propre (31 fichiers modifiés en
-attente au 2026-08-29), vérifier les forks sur la page GitHub, et faire une
-copie du dépôt avant. **À exécuter par Simon dans son terminal**, pas via
-l'assistant : `filter-repo` doit supprimer des fichiers dans `.git`, ce que le
-montage utilisé par l'assistant interdit. Le wiki est un dépôt distinct : même
-opération, et ses 12 captures sont à refaire **avant**.
+force-push.** Préalables : arbre de travail propre, vérifier les forks sur la
+page GitHub, copie du dépôt avant. **À exécuter par Simon dans son terminal**,
+pas via l'assistant : `filter-repo` doit supprimer des fichiers dans `.git`, ce
+que le montage utilisé par l'assistant interdit. Le wiki est un dépôt distinct :
+même opération, et ses captures sont à refaire **avant**.
 
 **7. Vitrine.** Page statique, dépôt séparé `ludotex-site`, GitHub Pages, CNAME
 vers un **autre sous-domaine** que `ludotex.nicaro.eu` — cette URL est figée par
 les QR déjà imprimés.
 
-**8. Méthode de travail à partir d'ici.** Un fil « chantier » par lot, ouvert
-depuis un **prompt autonome** rédigé dans le fil centralisateur. Chaque prompt
-rappelle l'objectif, les fichiers à lire d'abord, les contraintes du projet, la
-définition de fini (suite verte, wiki à jour, un commit en français) et ne
-couvre qu'**un seul commit**. Le registre des lots vit sur disque
-(`interne/chantiers.md`), pas dans la mémoire d'une conversation.
+**8. Méthode de travail.** Un fil « chantier » par lot, ouvert depuis un **prompt
+autonome** rédigé dans le fil centralisateur. Chaque prompt rappelle l'objectif,
+les fichiers à lire d'abord, les contraintes du projet, la définition de fini
+(suite verte, wiki à jour, un commit en français) et ne couvre qu'**un seul
+commit**. Ne pas y citer de chiffres non mesurés ; annoncer les tests qui vont
+bouger. Le registre des lots vit sur disque (`interne/chantiers.md`), pas dans la
+mémoire d'une conversation.
