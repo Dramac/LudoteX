@@ -6,12 +6,12 @@
      ci-dessous, NI le violet des blocs « programme » du planning : ce sont des
      significations (dépôt, erreur, attention, catégorie d'animation), elles
      doivent rester identiques quelle que soit la couleur choisie. */
-  --primaire: #4a148c;
-  --primaire-survol: #661cc2;   /* teinte et saturation conservées, L + 12 points */
-  --primaire-clair: #7e57c2;
-  --primaire-fond: #ede7f6;
-  --primaire-fond-leger: #f8f6fb;
-  --primaire-texte: #fff;       /* texte posé sur --primaire */
+  --primaire: #2a2724;          /* anthracite chaud */
+  --primaire-survol: #4b4640;   /* teinte et saturation conservées, L + 12 points */
+  --primaire-clair: #af9e8d;    /* L 62 % — décoratif SEULEMENT : ~2,6:1 sur blanc */
+  --primaire-fond: #f5f0eb;     /* L 94 % */
+  --primaire-fond-leger: #faf7f5;/* L 97 % */
+  --primaire-texte: #fff;       /* texte posé sur --primaire — ici 14,9:1 */
 
   --vert: #1f7a3d;
   --vert-clair: #e6f4ea;
@@ -58,7 +58,7 @@ body {
 .menu-benevole { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .menu-benevole a { color: #1a73e8; text-decoration: none; font-weight: 600; }
 .menu-benevole a:hover { text-decoration: underline; }
-/* Sur le bandeau violet, les liens passent en blanc. */
+/* Sur le bandeau coloré, les liens passent en --primaire-texte. */
 .bandeau .menu-benevole { margin-top: 8px; }
 .bandeau .menu-benevole a { color: var(--primaire-texte); opacity: 0.95; }
 
@@ -172,7 +172,7 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
   color: var(--texte);
   padding: 10px 16px;
   border-radius: 8px;
-  border: 2px solid var(--primaire-clair);
+  border: 2px solid var(--primaire);
   text-decoration: none;
   font-weight: 600;
 }
@@ -188,18 +188,24 @@ select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid var(--primaire-clair);
+  outline: 3px solid var(--primaire);
   outline-offset: 2px;
   border-radius: 6px;
 }
-/* Champs de saisie : liseré violet au focus (souris comme clavier). */
+/* Champs de saisie : liseré coloré au focus (souris comme clavier).
+   Comme les deux règles ci-dessus, ces marqueurs de focus prennent --primaire
+   et non --primaire-clair : une teinte à 62 % de luminosité ne donne qu'environ
+   2,6:1 sur blanc, sous le minimum de 3:1 attendu d'un indicateur de focus. */
 .champ input:focus,
 .champ select:focus,
-.champ textarea:focus { border-color: var(--primaire-clair); }
+.champ textarea:focus { border-color: var(--primaire); }
 
 /* Retour visuel à l'appui sur les boutons et puces. */
-.bouton, .bouton-filtrer, .chip-filtre { transition: filter .12s ease, transform .06s ease; }
-.bouton:hover, .bouton-filtrer:hover { filter: brightness(.96); }
+.bouton, .bouton-filtrer, .chip-filtre { transition: filter .12s ease, transform .06s ease, background .12s ease; }
+.bouton:hover { filter: brightness(.96); }
+/* Le bouton primaire s'éclaircit au survol au lieu de s'assombrir : sur une
+   couleur d'identité sombre, brightness(.96) ne se voit pas. */
+.bouton-filtrer:hover { background: var(--primaire-survol); }
 .bouton:active, .bouton-filtrer:active, .chip-filtre:active { transform: translateY(1px); }
 
 /* Ouverture animée des panneaux <details class="recherche"> (léger). */
@@ -304,9 +310,12 @@ summary:focus-visible,
 .pochette-num--retour { color: #1a73e8; }
 /* Transfert de pochette (docs/conception-transfert-pochette.md §8) : ni vert
    (glissez la PI) ni bleu (récupérez-la) — une troisième couleur pour dire
-   NE TOUCHEZ PAS À LA POCHETTE. Réutilise le violet d'identité du site
-   (déjà .bouton-filtrer, theme-color) qui ne porte par ailleurs aucun sens
-   de dépôt/retrait sur cet écran — voir docs/ui-composants.md §16. */
+   NE TOUCHEZ PAS À LA POCHETTE. Réutilise la couleur d'IDENTITÉ du site
+   (déjà .bouton-filtrer, theme-color), qui ne porte par ailleurs aucun sens
+   de dépôt/retrait sur cet écran — voir docs/ui-composants.md §16.
+   ⚠️ Depuis que cette couleur est réglable, c'est la seule signification
+   portée par --primaire : une association qui choisirait un vert ou un bleu
+   proches de ceux du prêt et du retour affaiblirait la distinction. */
 .pochette-num--transfert { color: var(--primaire); }
 .resultat-consigne { margin: 0; font-weight: 600; }
 
@@ -448,8 +457,8 @@ summary:focus-visible,
   transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease;
 }
 .jeu:hover {
-  box-shadow: 0 3px 12px rgba(74, 20, 140, .12);
-  border-color: #c9b8e8;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .12);
+  border-color: var(--primaire-clair);
   transform: translateY(-1px);
 }
 
@@ -461,9 +470,11 @@ summary:focus-visible,
   background: var(--primaire-fond); color: var(--primaire);
   border-radius: 999px; padding: 4px 12px;
   font-size: .85rem; font-weight: 600; text-decoration: none;
-  transition: background .15s ease;
 }
-.chip-filtre:hover { background: #d9ccf0; }
+/* Survol : assombrissement relatif plutôt qu'une teinte figée, pour suivre
+   --primaire-fond quelle que soit la couleur réglée (transition mutualisée
+   plus haut avec les boutons). */
+.chip-filtre:hover { filter: brightness(.95); }
 .chip-filtre .croix { font-weight: 700; opacity: .7; }
 
 /* Statistiques */
@@ -928,8 +939,8 @@ button.lien {
 /* Bandeau GLOBAL du mode rangement (fiche B1) — même traitement que le
    bandeau de formation ci-dessus (bande pleine largeur dans .bandeau-groupe,
    donc sticky avec lui). Reprend le BLEU de l'identité « rangement » du site
-   (cf. .rangement-valeur / .rangement-bandeau), distinct du violet du bandeau
-   habituel et de l'orange de formation : les trois coexistent sans se
+   (cf. .rangement-valeur / .rangement-bandeau), distinct de la couleur du
+   bandeau habituel et de l'orange de formation : les trois coexistent sans se
    confondre. Contrairement au bandeau de formation, celui-ci porte une
    action (quitter), d'où la mise en ligne flex.
    ⚠️ Nom volontairement distinct de `.rangement-bandeau` (ligne ~415), qui
