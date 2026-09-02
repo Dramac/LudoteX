@@ -79,8 +79,8 @@ pour la garder). Dans l'ordre :
 
 1. **Domaine** : le nom de domaine préparé à l'étape 0 (ex. `jeux.monasso.fr`).
 2. **E-mail** : pour les alertes Let's Encrypt.
-3. **Nom de l'association** : affiché dans le bandeau du site (par défaut
-   « LudoteX »).
+3. **Nom de l'association** : affiché dans le bandeau du site (obligatoire,
+   pas de valeur par défaut).
 4. **Mot de passe administrateur** (saisie masquée, demandée deux fois).
 5. **Chemin d'installation** : où vivra le code sur le serveur (par défaut
    `/opt/ludotex` — garder la valeur par défaut sauf besoin particulier).

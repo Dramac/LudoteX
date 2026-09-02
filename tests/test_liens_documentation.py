@@ -9,7 +9,7 @@ n'empêchait qu'un déplacement ultérieur (le lot 5 lui-même en a fait une
 douzaine, vers `interne/`, hors Git) en recrée un autre sans que personne ne
 le remarque avant qu'un tiers clone le dépôt.
 
-Ce test vérifie que tout chemin `docs/xxx.md` cité par un fichier SUIVI par
+Ce test vérifie que tout chemin `docs/....md` cité par un fichier SUIVI par
 git correspond à un fichier qui existe réellement dans `docs/`. Portée
 volontairement étroite :
 

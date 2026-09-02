@@ -3,7 +3,7 @@
 [![Licence : GPLv3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE)
 
 Application web de **prêt de jeux de société** pour l'événement annuel d'une association
-(~700 jeux). Chaque exemplaire porte un QR code ; les bénévoles scannent avec leur
+(de l'ordre de plusieurs centaines de jeux). Chaque exemplaire porte un QR code ; les bénévoles scannent avec leur
 smartphone pour enregistrer prêts et retours sur une base partagée, en remplacement de la
 feuille papier unique (goulet d'étranglement aux heures de pointe).
 
@@ -38,9 +38,6 @@ La **phase 1 est complète**. L'application propose aujourd'hui :
   inscription publique (pseudo + code de désinscription, **sans e-mail**), suivi
   public, et trois modes de scoring — **high score**, **ronde suisse** et
   **élimination directe** — avec option **best of 3**.
-
-Le catalogue réel importé compte **609 titres / 703 exemplaires**. La suite de tests
-compte **79 tests** (`pytest`).
 
 ## Stack
 
@@ -125,7 +122,7 @@ ludotex/
 ├── data/                # bases SQLite + logo déposé en admin (NON versionnés)
 ├── logo/                # sources de l'identité LudoteX (CC0, voir LICENCE.md)
 ├── docs/                # spécification, conception des modules, déploiement, vocabulaire…
-├── tests/               # test_services, test_routes, test_tournoi (79 tests)
+├── tests/               # test_services, test_routes, test_tournoi
 ├── requirements.txt
 ├── .gitignore
 └── .env.example

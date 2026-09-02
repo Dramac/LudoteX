@@ -141,15 +141,16 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   non-régression ajouté.
 
 ### ✅ FAIT — Q11. Favicon JPEG rectangulaire
-- **Où** : `base.html` : `<link rel="icon" href="/static/img/logo_ludotex.jpg">`.
+- **Où** : `base.html` : la balise `<link rel="icon">` pointait vers le JPEG
+  d'origine, dans `app/static/img/`.
 - **Pourquoi** : les navigateurs rendent mal un JPEG non carré (fond blanc,
   déformation) — visible sur chaque onglet et sur l'écran d'accueil PWA.
 - **Suggestion** : générer un `favicon-192.png` et `favicon-512.png` carrés
   (Pillow est déjà là), déclarés en `rel="icon"` + `apple-touch-icon`.
-- **Constaté** le 2026-07-17 : le JPEG source (`logo_ludotex.jpg`) est en fait
-  déjà carré (1509×1509) — le problème réel n'est pas le format mais le
-  **cadrage** : le sorcier est décentré (2/3 gauche du canevas), donc illisible
-  une fois réduit à 16-32 px.
+- **Constaté** le 2026-07-17 : le JPEG source est en fait déjà carré
+  (1509×1509) — le problème réel n'est pas le format mais le **cadrage** : le
+  sorcier est décentré (2/3 gauche du canevas), donc illisible une fois réduit
+  à 16-32 px.
 - **Corrigé** le 2026-07-17 : recadrage centré sur la tête/chapeau/barbe du
   sorcier (zone la plus reconnaissable en petit), redimensionné en PNG carré
   192×192 et 512×512 (Pillow, rééchantillonnage LANCZOS). Vérifié visuellement

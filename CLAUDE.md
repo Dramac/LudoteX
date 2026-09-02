@@ -314,9 +314,9 @@ lui, est dans `interne/chantiers.md`.
 dépôt public lisible, page vitrine indexable, produit sans marque d'association.
 Le dépôt `Dramac/LudoteX` et son wiki sont **déjà publics**.
 
-**2. Le nom de l'association est une donnée de configuration.** Aucune mention de
-« LudoteX » ne doit subsister dans le code, les docs, le wiki,
-les captures ni la vitrine. **Seule exception : le `.env` de notre instance.**
+**2. Le nom de l'association est une donnée de configuration.** Aucune mention du
+nom de l'association — celui que porte le `.env` de notre instance — ne doit
+subsister dans le code, les docs, le wiki, les captures ni la vitrine.
 
 *Titularité des droits — tranchée le 2026-09-01.* Simon est **seul titulaire**
 des droits d'auteur sur le code, indépendamment de l'association : le travail a

@@ -933,9 +933,10 @@ def test_favicon_carre(client):
     # RÉELLEMENT servi par cette route (fichier déposé ou de repli) est couvert
     # par tests/test_logo.py ; ici on ne vérifie que le référencement.
     r = client.get("/catalogue")
-    assert 'href="/image/favicon-192.png?v=' in r.text
-    assert 'href="/image/favicon-512.png?v=' in r.text
-    assert "logo_ludotex.jpg" not in r.text.split("<body", 1)[0]  # plus dans <head>
+    entete = r.text.split("<body", 1)[0]
+    assert 'href="/image/favicon-192.png?v=' in entete
+    assert 'href="/image/favicon-512.png?v=' in entete
+    assert ".jpg" not in entete and ".jpeg" not in entete  # plus aucune icône JPEG dans <head>
     for nom in ("favicon-192.png", "favicon-512.png"):
         rf = client.get(f"/image/{nom}")
         assert rf.status_code == 200

@@ -177,7 +177,7 @@ done
 
 echo
 echo "--- Association ---"
-demander "Nom de l'association (affiché dans le bandeau du site)" "LudoteX"
+demander "Nom de l'association (affiché dans le bandeau du site)" ""
 NOM_ASSOCIATION="$REPONSE"
 
 echo

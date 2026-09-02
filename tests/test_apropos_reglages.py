@@ -112,15 +112,17 @@ def test_sans_presentation_la_section_association_disparait_en_entier(client):
 
 
 def test_sans_contact_la_section_contact_disparait_en_entier(client):
+    """
+    Garde aussi une régression historique : le dépôt portait autrefois une
+    adresse de contact en dur, affichée même sans réglage. Sans
+    `asso_contact` en base, aucun mailto: ne doit apparaître, quelle que soit
+    l'adresse — reformulé sur le comportement plutôt que sur l'ancienne
+    valeur littérale (lot 4 de l'ouverture publique).
+    """
     page = client.get("/apropos")
     assert page.status_code == 200
     assert "<h2>Contact</h2>" not in page.text
     assert "mailto:" not in page.text
-
-
-def test_l_adresse_de_contact_historique_a_disparu_du_depot(client):
-    """`contact@ludotex.fr` était la dernière adresse en dur du dépôt."""
-    assert "contact@ludotex.fr" not in client.get("/apropos").text
 
 
 def test_sans_reglage_le_lien_vers_le_code_source_reste_affiche(client):
