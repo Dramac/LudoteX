@@ -6,6 +6,18 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.11.0 — 2026-09-06
+
+- **À faire après la mise à jour : redéposer votre logo.** Il n'est plus livré avec l'application — il vous appartient, et il vit maintenant avec vos données. Tant qu'il n'est pas redéposé depuis Administration → **Identité**, c'est le logo du logiciel (un meeple jaune) qui s'affiche sur le site, dans l'onglet du navigateur et sur les étiquettes. C'est l'affaire d'une minute, et c'est le seul geste que demande cette version. À faire **avant** toute réimpression d'étiquettes.
+- La **couleur par défaut** du site passe du violet à un **gris anthracite chaud**. Ce changement se voit sans rien faire ; si vous préférez une autre couleur, elle se règle désormais elle aussi depuis **Identité**.
+- Le **nom de votre association** se règle depuis le site, dans Administration → **Identité**, au lieu d'un fichier sur le serveur. Il s'applique immédiatement, partout : bandeau, pied de page, titres d'onglet, en-tête des exports, fichiers d'agenda, message de partage de l'accès bénévole.
+- La page **À propos** devient la vôtre : un texte de présentation de l'association, une adresse de contact et l'adresse du code source, tous trois réglables depuis **Identité**. Une rubrique laissée vide disparaît de la page plutôt que d'afficher un blanc.
+- Votre **logo** se dépose depuis **Identité**, en PNG, JPEG ou WebP. Un seul dépôt suffit : la même image sert sur le site, dans l'onglet du navigateur, sur l'icône posée sur l'écran d'accueil d'un téléphone et sur les étiquettes des boîtes.
+- La **couleur du site** se règle au même endroit, en reprenant exactement celle de votre charte. Vous n'en choisissez qu'une : les nuances et la couleur du texte du bandeau en sont déduites, de sorte qu'aucune couleur ne peut rendre le bandeau illisible. Les couleurs qui portent un sens — le vert du prêt, le bleu du retour, l'orange des avertissements — ne changent jamais.
+- Les **exports PDF** (statistiques, carnet de maintenance, planning des bénévoles) reprennent votre couleur, en-tête compris. Les **étiquettes**, elles, restent en noir et blanc : sur plusieurs centaines d'impressions, c'est de l'encre en moins.
+- Les **étiquettes** portent désormais un vrai dessin par défaut — un meeple noir — à la place du cadre « LOGO » vide affiché jusqu'ici quand aucun logo n'était déposé.
+- Le **dépôt du code** s'adresse enfin à quelqu'un d'autre : mode d'emploi d'installation, page de personnalisation, catalogue d'exemple prêt à importer et règles de contribution. Sans effet sur le site, mais c'est ce qui permet à une autre association de reprendre l'application.
+
 ## 1.10.0 — 2026-08-14
 
 - L'**écran de salle** prévient désormais tout seul avant chaque tournoi : « Le tournoi de Catan commence dans 42 minutes — merci de rapporter tous les exemplaires au stand de prêt. » Le nombre de minutes se recalcule en permanence, et le message s'efface de lui-même à l'heure de début : personne n'a rien à déclencher ni à retirer le jour J.
