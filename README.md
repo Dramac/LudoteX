@@ -1,85 +1,106 @@
-# LudoteX — brique de prêt
+# LudoteX
 
 [![Licence : GPLv3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE)
 
-Application web de **prêt de jeux de société** pour l'événement annuel d'une association
-(de l'ordre de plusieurs centaines de jeux). Chaque exemplaire porte un QR code ; les bénévoles scannent avec leur
-smartphone pour enregistrer prêts et retours sur une base partagée, en remplacement de la
-feuille papier unique (goulet d'étranglement aux heures de pointe).
+**LudoteX enregistre les prêts de jeux de société d'un événement, par scan d'un
+QR code sur la boîte, depuis le téléphone de n'importe quel bénévole.** Il
+remplace la feuille de prêt papier — celle qu'un seul bénévole peut tenir à la
+fois, et devant laquelle la file s'allonge aux heures d'affluence.
 
-L'anti-vol repose sur un **numéro de pochette** : la pièce d'identité de l'emprunteur est
-glissée dans une pochette numérotée, et seul ce numéro relie un prêt à une personne.
-L'application **ne stocke aucune donnée personnelle** et reste donc hors du champ du RGPD.
+L'application est **en production depuis juillet 2026** sur l'instance d'une
+association, avec plusieurs centaines de boîtes étiquetées. Autour du prêt, elle
+gère aussi les tournois, le programme des animations, le planning des bénévoles
+et l'écran de salle.
 
-> Ce dépôt couvre uniquement la **brique de prêt** (web-app Python + SQLite, sur VPS).
-> La brique « site vitrine + newsletter » (WordPress sur hébergement mutualisé) est
-> volontairement cloisonnée et hors de ce dépôt.
+## À qui ça s'adresse
 
-## Fonctionnalités
+À une association qui **prête des jeux le temps d'un événement** — un festival,
+une nuit du jeu, un salon — et qui les récupère à la fin.
 
-La **phase 1 est complète**. L'application propose aujourd'hui :
+Ceux qui s'en servent le jour J sont des **bénévoles non techniciens, sur leur
+propre smartphone**, dans un gymnase au wifi capricieux. Ceux qui l'administrent
+sont un **bureau d'association** : ils règlent, impriment, exportent, sans
+jamais ouvrir de terminal.
 
-- **Page d'accueil publique** (`/`) : accès aux outils publics, nombre de jeux
-  disponibles au prêt, et tournois qui commencent dans l'heure.
-- **Catalogue public** (`/catalogue`) : liste des jeux, disponibilité par titre,
-  recherche et filtres combinés (nom, catégorie, âge, nombre de joueurs).
-- **Fiche d'un exemplaire** (`/jeu/<id>`) : cible des QR codes, en lecture seule.
-- **Scanner caméra** embarqué (`/scanner`) : décodage du QR dans le navigateur
-  (jsQR, compatible iOS/Android), puis ouverture de l'écran de prêt.
-- **Prêt / retour** (`/pret/<id>`) : « Prêter » (attribue le plus petit numéro de
-  pochette libre), « Rendre », « Le re-prêter », et « Sortir pour un tournoi ».
-  Jamais bloquant : toute incohérence donne un message + une action de rattrapage.
-- **Statistiques** (`/stats`) : prêts totaux / en cours, palmarès par titre,
-  histogramme par heure, durées, filtre par période, exports **Excel** et **PDF**.
-- **Espace d'administration** (`/admin`, mot de passe) : création de fiches,
-  (ré)impression d'étiquettes, gestion du jeton bénévole, clôture de fin
-  d'événement.
-- **Module Tournois** (`/tournois`) : création/gestion par les bénévoles,
-  inscription publique (pseudo + code de désinscription, **sans e-mail**), suivi
-  public, et trois modes de scoring — **high score**, **ronde suisse** et
-  **élimination directe** — avec option **best of 3**.
+## Ce qui le distingue
 
-## Stack
+- **Aucune donnée personnelle.** L'anti-vol repose sur un **numéro de
+  pochette** : la pièce d'identité de l'emprunteur est glissée dans une pochette
+  numérotée, et seul ce numéro relie un prêt à une personne. L'application ne
+  stocke ni nom, ni téléphone, ni e-mail — y compris pour les inscriptions aux
+  tournois. Il n'y a donc pas de registre de traitement à tenir, pas de durée de
+  conservation à justifier, et rien à effacer sur demande.
+- **Rien à installer pour les bénévoles.** Pas d'application mobile : un lien,
+  ouvert dans le navigateur du téléphone, ajouté à l'écran d'accueil en un tap.
+- **Des pages construites par le serveur**, sans framework JavaScript. Un vieux
+  téléphone et un wifi de salle suffisent : ce qui arrive sur l'écran est une
+  page terminée, pas une application à télécharger puis à faire tourner.
+- **Une dépendance lourde en moins.** Les données vivent dans des fichiers
+  SQLite : aucun serveur de base de données à installer, à surveiller ni à
+  sauvegarder à part. Une sauvegarde, c'est une copie de fichiers.
+- **Jamais bloquant.** Toute incohérence rencontrée au scan donne un message en
+  français et une action de rattrapage en un tap — jamais une erreur brute
+  devant une file d'attente.
 
-- **Backend :** Python + [FastAPI](https://fastapi.tiangolo.com/), servi par `uvicorn`.
-- **Base de données :** SQLite (charge faible, sauvegarde simple), ouverte en mode WAL.
-- **Front :** pages servies par le backend (Jinja2) + un peu de JS pour le scanner caméra.
-- **PWA :** « ajouter à l'écran d'accueil » pour un lancement en un tap, sans installation.
-- **Déploiement cible :** VPS Lite (Debian/Ubuntu), HTTPS via Let's Encrypt.
+## Ce qu'il y a dedans
 
-## Modèle de données — deux clés non négociables
+- **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
+  scanner caméra avec saisie manuelle de secours, prêt / retour / re-prêt /
+  transfert de pochette, sortie « tournoi », clôture de fin d'événement.
+- **Statistiques** — totaux, palmarès par titre, histogramme horaire, durées,
+  filtre par période, exports Excel et PDF.
+- **Tournois** — inscription publique (pseudo + code de désinscription, sans
+  e-mail), quatre modes de scoring, tournois par équipes, export d'agenda.
+- **Programme du week-end** — animations, ateliers et temps forts, avec leur
+  grille publique.
+- **Planning des bénévoles** — questionnaire de disponibilités, préremplissage
+  automatique, grille d'ajustement, export « mon planning ».
+- **Écran de salle** — tableau de bord à projeter, annonces du bureau, rappel
+  automatique avant chaque tournoi.
+- **Rangement et carnet de maintenance** — où va chaque boîte, ce qu'il y a à
+  réparer ou à racheter.
+- **Administration** — étiquettes QR à imprimer, import/export du catalogue,
+  sauvegarde et restauration, jeton bénévole, journal d'activité, identité de
+  l'association, mode formation pour s'entraîner sans toucher aux vraies
+  données.
 
-| Clé | Rôle |
-|---|---|
-| `id_exemplaire` | identifiant **unique d'une boîte physique**, encodé dans le QR (`/jeu/<id_exemplaire>`). Ne change jamais une fois le QR imprimé. |
-| `reference_titre` | clé de **regroupement des exemplaires d'un même jeu** (ex. `CATAN`), indispensable aux statistiques par titre. |
+## Ce qu'il faut pour l'exploiter
 
-Base de prêt (`data/pret-jeux.db`) : `titres`, `exemplaires`, `prets` (historique
-complet, jamais purgé), `pochettes` (occupation du moment, numéro recyclé = plus petit
-libre, **sans plafond**) et `parametres` (réglages persistants : hash admin, jeton…).
+- Un **VPS d'entrée de gamme** sous Debian 12 ou Ubuntu 22.04+ (1 vCPU, 2 Go de
+  RAM), avec un accès SSH.
+- Un **nom de domaine**, dont le DNS pointe vers ce VPS.
+- **Quelqu'un capable de suivre une procédure**, une fois. Pas un
+  administrateur système : le script d'installation pose des questions et fait
+  le reste. C'est l'affaire d'une première mise en ligne, pas d'un poste
+  d'exploitation à tenir toute l'année.
 
-Base des tournois **séparée** (`data/tournoi.db`, aucune clé étrangère entre les deux) :
-`tournois`, `inscriptions` (pseudo + code, jamais d'e-mail) et `rencontres` (matchs).
+Ordre de grandeur du coût annuel : **40 à 80 €** — le VPS d'entrée de gamme et
+le nom de domaine, rien d'autre. Ce n'est pas un devis : les tarifs varient
+d'un hébergeur à l'autre et dans le temps.
 
-## Démarrage rapide (développement)
+## Ce que ça ne fait pas
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # puis éditer .env (jeton, chemin base, domaine)
-python -m app.db              # initialise la base SQLite vide
-python scripts/import_csv.py <catalogue.csv>   # (optionnel) importe le catalogue
-uvicorn app.main:app --reload
-```
+Dire non tout de suite fait gagner du temps à tout le monde.
 
-> Le scanner caméra exige un contexte sécurisé (HTTPS ou `localhost`). Pour tester
-> le scan depuis un smartphone, exposer `uvicorn` via un tunnel HTTPS
-> (Cloudflare Tunnel / ngrok). Déploiement VPS : voir `docs/deploiement.md`.
+- **Ce n'est pas un logiciel de ludothèque à l'année.** LudoteX est pensé pour
+  un événement : on ouvre, on prête, on récupère tout, on clôt. Pas de prêts sur
+  plusieurs semaines, pas de relances, pas d'amendes de retard.
+- **Il n'y a pas de gestion des adhérents.** Ni fichier de membres, ni
+  cotisations, ni cartes — c'est le corollaire direct du « aucune donnée
+  personnelle » plus haut, et c'est assumé.
+- **Il n'y a pas d'application mobile** à installer sur les téléphones, ni sur
+  les magasins d'applications. C'est un site web.
+- **Il n'y a pas de réservation en ligne** d'un jeu par le public, ni de compte
+  utilisateur.
+- **Il n'y a pas de multi-association** : une instance = une association. Deux
+  associations, ce sont deux installations.
+- **Il n'y a pas de mode hors ligne** : les téléphones doivent atteindre le
+  serveur. Un wifi lent suffit, une absence de réseau non.
 
-## Installation en production (VPS)
+## Démarrer
 
-Prérequis : un VPS Debian 12 / Ubuntu 22.04+ avec accès SSH, et un nom de
-domaine dont le DNS pointe déjà vers le VPS.
+**Installer sur un serveur.** Prérequis : un VPS Debian 12 / Ubuntu 22.04+ avec
+accès SSH, et un nom de domaine dont le DNS pointe déjà vers lui.
 
 ```bash
 git clone https://github.com/Dramac/LudoteX.git
@@ -87,65 +108,109 @@ cd LudoteX
 sudo ./deploy/install.sh
 ```
 
-Le script `deploy/install.sh` est **interactif** : il installe les paquets
-système nécessaires (Python 3.11+, nginx, certbot...), pose quelques
-questions (domaine, e-mail, nom de l'association, mot de passe admin,
-chemins d'installation), puis configure entièrement l'application — service
-systemd, reverse proxy nginx, certificat HTTPS Let's Encrypt, sauvegarde
-quotidienne — et affiche à la fin le lien d'activation bénévole.
-
-Guide détaillé (pas à pas, dépannage, mises à jour) :
+Le script est **interactif** : il installe les paquets nécessaires, pose
+quelques questions (domaine, e-mail, nom de l'association, mot de passe admin),
+puis configure tout — service systemd, reverse proxy nginx, certificat HTTPS
+Let's Encrypt, sauvegarde quotidienne — et affiche à la fin le lien d'activation
+des bénévoles. Guide pas à pas, dépannage et mises à jour :
 [docs/deploiement.md](docs/deploiement.md).
 
-## Structure
+**Essayer sur son poste**, sans serveur ni ligne de commande :
+[docs/lancement-local.md](docs/lancement-local.md).
+
+**Remplir le catalogue pour voir à quoi ça ressemble.** Une base vide ne montre
+rien : le dépôt contient un petit catalogue fictif d'une vingtaine de jeux, au
+format attendu par l'import.
+
+```bash
+python -m scripts.import_csv exemples/catalogue-exemple.csv
+```
+
+Le même import accepte votre propre export de catalogue, en CSV, depuis
+l'écran « Données & sauvegarde » de l'administration.
+
+**Faire que ça devienne chez vous** — nom, logo, couleur, présentation,
+contact : [docs/personnaliser.md](docs/personnaliser.md).
+
+## Sous le capot
+
+- **Backend :** Python 3.11+ et [FastAPI](https://fastapi.tiangolo.com/), servi
+  par `uvicorn` derrière nginx.
+- **Données :** SQLite en mode WAL. **Trois bases indépendantes** — prêt,
+  tournois, planning — sans aucune clé étrangère entre elles.
+- **Front :** pages Jinja2 rendues par le serveur, CSS mobile-first sans
+  framework ni build. Le JavaScript se limite au scanner caméra (jsQR,
+  versionné dans le dépôt) et à quelques scripts courts : **aucune dépendance
+  CDN**.
+- **PWA :** « ajouter à l'écran d'accueil » pour un lancement en un tap.
+
+### Deux clés non négociables
+
+| Clé | Rôle |
+|---|---|
+| `id_exemplaire` | identifiant **unique d'une boîte physique**, encodé dans le QR (`/jeu/<id_exemplaire>`). Ne change jamais une fois le QR imprimé. |
+| `reference_titre` | clé de **regroupement des exemplaires d'un même jeu** (ex. `CATAN`), indispensable aux statistiques par titre. |
+
+Base de prêt : `titres`, `exemplaires`, `prets` (historique complet, jamais
+purgé), `pochettes` (occupation du moment, numéro recyclé = plus petit libre,
+sans plafond) et `parametres` (réglages persistants). Base des tournois et base
+du planning : séparées, indépendantes.
+
+### Structure du dépôt
 
 ```
-ludotex/
+LudoteX/
 ├── app/
 │   ├── main.py          # point d'entrée FastAPI (routeurs, gestion d'erreurs)
-│   ├── config.py        # nom de l'association (NOM_ASSOCIATION), personnalisable
 │   ├── models.py        # schéma SQLite (base de prêt)
 │   ├── db.py            # init + accès base + migrations
 │   ├── services.py      # logique métier du prêt (état déduit, pochettes, stats)
 │   ├── auth.py          # jeton bénévole + limitation de débit
-│   ├── admin_auth.py    # mot de passe admin (pbkdf2)
 │   ├── etiquettes.py    # dessin des étiquettes QR (partagé avec scripts/)
-│   ├── exports.py       # exports Excel / PDF des stats
+│   ├── exports.py       # exports Excel / PDF
 │   ├── routes/          # catalogue, pret, scanner, stats, acces, admin
 │   ├── tournoi/         # module Tournois (base, modèles, services, routes séparés)
-│   ├── static/          # CSS, JS du scanner (jsQR local), logo LudoteX servi par défaut
-│   └── templates/       # pages Jinja2 (accueil, fiche, prêt, catalogue, stats, tournois…)
-├── scripts/
-│   ├── import_csv.py    # import / mise à jour tolérant du catalogue (UPSERT)
-│   └── generate_qr.py   # génération des QR (PNG individuels + planche A4)
-├── deploy/              # install.sh (installation interactive), systemd, nginx, sauvegarde
-├── data/                # bases SQLite + logo déposé en admin (NON versionnés)
+│   ├── planning/        # module Planning bénévoles (base séparée)
+│   ├── static/          # CSS, jsQR local, logo LudoteX par défaut
+│   └── templates/       # pages Jinja2
+├── scripts/             # import du catalogue, génération des QR, journal
+├── deploy/              # install.sh, update.sh, systemd, nginx, sauvegarde
+├── exemples/            # catalogue fictif prêt à importer
+├── docs/                # conception, déploiement, personnalisation, vocabulaire
 ├── logo/                # sources de l'identité LudoteX (CC0, voir LICENCE.md)
-├── docs/                # spécification, conception des modules, déploiement, vocabulaire…
-├── tests/               # test_services, test_routes, test_tournoi
+├── tests/               # suite pytest
+├── data/                # bases SQLite + logo déposé en admin (NON versionnés)
 ├── requirements.txt
-├── .gitignore
 └── .env.example
 ```
 
 ## Documentation
 
-La conception fait foi : voir **[docs/specification.md](docs/specification.md)** et
-**[docs/conception-tournois.md](docs/conception-tournois.md)**.
-Déploiement pas à pas : [docs/deploiement.md](docs/deploiement.md).
-Index complet de la documentation technique, et ordre de lecture pour reprendre
-le projet : [docs/README.md](docs/README.md).
+- **Utiliser l'application** (bénévoles, bureau) : le
+  [wiki du dépôt](https://github.com/Dramac/LudoteX/wiki), écrit sans jargon.
+- **Installer et exploiter** : [docs/deploiement.md](docs/deploiement.md),
+  [docs/personnaliser.md](docs/personnaliser.md).
+- **Comprendre et reprendre le code** :
+  [docs/README.md](docs/README.md) donne l'ordre de lecture.
+  La conception fait foi — [docs/specification.md](docs/specification.md).
 
 ## Sécurité
 
-- Ne **jamais** committer le jeton bénévole, le fichier `.env`, ni les bases SQLite de
-  production. Utiliser `.env.example` comme modèle.
-- Séparation lecture / écriture : les fiches publiques (`/jeu/...`) n'ont aucune action ;
-  les opérations de prêt/retour (`/pret`, `/scanner`) sont protégées par un **jeton
-  aléatoire long** mémorisé côté appareil, avec limitation de débit par IP. Rotation
-  annuelle du jeton (réinitialisation depuis `/admin`).
-- L'espace d'administration est protégé par un **mot de passe distinct** du jeton bénévole.
-- **Zéro donnée personnelle** dans l'application : propriété centrale à préserver.
+- Ne **jamais** committer le jeton bénévole, le fichier `.env`, ni les bases
+  SQLite de production. `.env.example` sert de modèle.
+- Séparation lecture / écriture : les fiches publiques (`/jeu/...`) n'ont aucune
+  action ; les opérations de prêt et de retour sont protégées par un **jeton
+  aléatoire long** mémorisé côté appareil, avec limitation de débit par IP, et
+  renouvelé à chaque édition.
+- L'espace d'administration est protégé par un **mot de passe distinct** du
+  jeton bénévole.
+- **Zéro donnée personnelle** dans l'application : propriété centrale à
+  préserver, y compris dans les contributions.
+
+## Contribuer
+
+Signalements de bugs, propositions, périmètre du projet :
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
@@ -173,3 +238,18 @@ naturellement libre.
 **Le logo affiché par une instance déployée n'est pas dans ce dépôt** : chaque
 association dépose le sien depuis `/admin/identite`, et il vit dans `data/`.
 Sans dépôt, c'est le logo LudoteX qui s'affiche.
+
+## Support
+
+Autant le dire franchement : **LudoteX est développé et maintenu par une seule
+personne**, sur son temps libre, à côté d'un usage associatif réel.
+
+- Les **tickets sont lus**, et les questions trouvent en général une réponse.
+- **Aucun délai n'est garanti**, ni aucune correction. Selon la période, une
+  réponse peut prendre des semaines.
+- Il n'y a **ni contrat de support, ni feuille de route publique, ni engagement
+  de compatibilité** au-delà de ce que la licence dit.
+
+C'est un logiciel libre : si vous l'exploitez, prévoyez de savoir le remettre
+en marche vous-même, ou de trouver quelqu'un qui le sait. La documentation est
+écrite pour ça.
