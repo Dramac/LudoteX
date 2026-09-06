@@ -192,6 +192,34 @@ le recopier ici. Les décisions de fond, elles, sont en fin de ce fichier.
 Le compte rendu du lot précédent est **à lire avant d'attaquer le suivant**
 (`interne/comptes-rendus/`).
 
+## Ce qu'un nouveau chantier ne doit pas casser
+
+Six lots ont ouvert le projet au public. Ces acquis se défont sans bruit : un
+défaut en dur, un exemple dans une doc, et c'est reparti. À vérifier avant tout
+commit, quel que soit le sujet du chantier.
+
+1. **Aucune mention de l'association.** Ni dans le code, ni dans les docs, ni
+   dans les messages de commit, ni dans une valeur par défaut. Elle ne vit que
+   dans le `.env` de l'instance. Le contrôle tient en une commande :
+   `git grep -i "<nom de l'association>"` doit ne rien renvoyer.
+2. **Aucune couleur en dur.** Les six variables du `:root` de
+   `app/static/css/style.css` font foi ; une valeur hexadécimale écrite dans un
+   gabarit, une feuille de style ou un export PDF rompt le thème réglable.
+   Exception documentée : les couleurs sémantiques (vert, rouge, orange) et le
+   bleu des liens.
+3. **Aucun chemin de logo en dur.** Le logo se lit par les accesseurs
+   d'`app/logo.py` ; les étiquettes ont leur propre règle de repli, écrite en
+   commentaire — ne pas l'uniformiser.
+4. **L'identité se lit par la route, pas par le service** dans `planning` et
+   `tournoi` : leurs bases restent indépendantes de celle du prêt.
+5. **Les notes de travail vont dans `interne/`**, jamais dans `docs/`. Un
+   document que le code cite doit à l'inverse rester dans le dépôt.
+6. **Rien de personnel ne rentre** : l'absence de donnée personnelle est
+   l'argument central du projet. Toute proposition qui en ferait entrer une doit
+   être signalée comme telle **avant** d'être écrite.
+7. **Les captures du wiki portent une identité fictive** — jamais le vrai nom,
+   jamais le vrai logo. Une recherche de texte ne trouve rien dans un PNG.
+
 ## Workflow de développement
 
 - L'assistant édite les fichiers et **commit en local**. Il ne peut pas pousser :
