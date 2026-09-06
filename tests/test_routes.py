@@ -1389,6 +1389,57 @@ def test_pret_tournoi_route(client):
     assert "Jeux actuellement sortis" in stats and "En tournoi" in stats
 
 
+def test_repret_sur_le_meme_numero_ne_se_contredit_plus(client):
+    """
+    Série agora, lot 1, point 2. `repreter` libère l'ancien numéro puis
+    `preter()` reprend le plus petit libre : c'est presque toujours le MÊME.
+    Le gabarit annonçait alors « ancien prêt (pochette n°1) clôturé, glissez
+    la pièce d'identité dans la pochette n°1 » — deux phrases contradictoires.
+    """
+    client.post("/pret/001/preter")
+
+    r = client.post("/pret/001/repreter")
+
+    assert r.status_code == 200
+    assert "Ancien prêt (pochette n°1) clôturé" not in r.text
+    assert "repart sur la même pochette" in r.text
+    # La consigne reste ACTIONNABLE : le précédent emprunteur peut n'être
+    # jamais revenu, sa pièce d'identité être encore dans le casier.
+    assert "Vérifiez que la pochette n°1 est bien vide" in r.text
+
+
+def test_repret_sur_un_autre_numero_rend_la_consigne_actionnable(client):
+    """
+    Second cas : l'ancien numéro n'est PAS repris, parce qu'un plus petit est
+    libre. Le message ne peut plus se contenter d'un « ancien prêt clôturé »
+    informatif — personne n'allait regarder le casier qu'on vient de remettre
+    dans le pot, où la pièce d'identité du précédent emprunteur peut dormir.
+    """
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) "
+            "VALUES ('002', 'CATAN')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client.post("/pret/002/preter")     # 002 prend la n°1
+    client.post("/pret/001/preter")     # 001 prend la n°2
+    client.post("/pret/002/rendre")     # la n°1 redevient libre
+
+    # Le re-prêt de 001 clôt la n°2 et se voit attribuer la n°1, plus petite.
+    r = client.post("/pret/001/repreter")
+
+    assert r.status_code == 200
+    assert "la pochette n°2 est rendue" in r.text
+    assert "Vérifiez que la pochette n°2 est bien vide" in r.text
+    assert "Glissez la pièce d'identité dans la pochette n°1" in r.text
+
+
 def test_retour_confirme_en_vert(client):
     # M8 : un retour (prêt ou tournoi) est un SUCCÈS, affiché en vert
     # (resultat-ok) comme un prêt -- pas en bleu (resultat-info, réservé aux

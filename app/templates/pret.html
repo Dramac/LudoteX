@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pochette_oubliee.html" import verifier_pochette %}
 {% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
@@ -38,12 +39,31 @@
         <p class="resultat-consigne">Glissez-y la pièce d'identité.</p>
       </section>
     {% elif resultat.type == "repret" %}
+      {# Le re-prêt clôt un prêt qu'on n'a jamais scanné en retour : le
+         précédent emprunteur peut n'être jamais revenu, et sa pièce
+         d'identité être encore dans le casier libéré. La consigne doit donc
+         être ACTIONNABLE sur ce numéro — même phrase que l'escalade du
+         transfert (`_pochette_oubliee.html`).
+
+         Le numéro libéré redevient aussitôt le plus petit libre : `ancien` et
+         `nouveau` sont très souvent le MÊME casier, et l'annoncer en deux
+         phrases séparées se contredisait. `meme_numero` est calculé dans
+         routes/pret.py::action_repreter. #}
       <section class="resultat resultat-ok">
         <p class="resultat-libelle">Nouvelle pochette n°</p>
         <p class="pochette-num">{{ resultat.nouveau }}</p>
         <p class="resultat-consigne">
-          {% if resultat.ancien %}Ancien prêt (pochette n°{{ resultat.ancien }}) clôturé.{% endif %}
-          Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
+          {% if resultat.meme_numero %}
+            Ancien prêt clôturé : le nouveau prêt repart sur la même pochette.
+            {{ verifier_pochette(resultat.nouveau) }}, puis glissez-y la pièce d'identité.
+          {% elif resultat.ancien %}
+            Ancien prêt clôturé : la pochette n°{{ resultat.ancien }} est rendue
+            disponible pour le prochain emprunt.
+            {{ verifier_pochette(resultat.ancien) }}.
+            Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
+          {% else %}
+            Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
+          {% endif %}
         </p>
       </section>
     {% elif resultat.type == "rendu" %}
@@ -87,6 +107,17 @@
         <p class="resultat-consigne">La pièce d'identité reste en place — ne touchez pas à la pochette.</p>
         {% if not resultat.meme_boite %}
           <p class="resultat-consigne">{{ resultat.rendu_nom }} → {{ info.nom }}</p>
+        {% endif %}
+        {# Escalade : un prêt jamais scanné en retour tenait la boîte
+           emportée, il vient d'être clos. Le dire, avec le numéro rendu au
+           pot — c'est le seul écran où le bénévole apprend qu'un second casier
+           est concerné. Une sortie tournoi n'en libère aucun. #}
+        {% if resultat.oubli_clos %}
+          <p class="resultat-consigne">
+            Prêt oublié sur {{ info.nom }} clôturé{% if resultat.numero_libere %} :
+            la pochette n°{{ resultat.numero_libere }} est rendue disponible pour
+            le prochain emprunt{% endif %}.
+          </p>
         {% endif %}
       </section>
     {% elif resultat.type == "transfert_impossible" %}

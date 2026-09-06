@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pochette_oubliee.html" import escalade_oubli %}
 {% block titre %}Confirmer le transfert — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
@@ -19,16 +20,13 @@
   {% endif %}
 
   {# La nouvelle boîte est déjà prêtée : le POST refusera. Le dire ici évite
-     un tap pour rien. Le bouton reste en place — cet écran n'est qu'un
-     instantané, la boîte peut revenir entre-temps et seul le POST fait
-     autorité (voir la docstring de `transfert_confirmation`). Une sortie
-     tournoi n'a pas de pochette : on n'affiche alors aucun numéro. #}
-  {% if deja_sortie is not none %}
-    <p class="resultat resultat-attention">
-      <strong>{{ nouvelle_info.nom }}</strong> est déjà sortie{% if deja_sortie %}
-      (pochette n°{{ deja_sortie }}){% endif %}. Le transfert sera refusé si
-      elle n'est pas rendue d'ici là — scannez plutôt une autre boîte.
-    </p>
+     un tap pour rien, et le bloc porte la sortie de secours — clôturer le
+     prêt oublié — sans que le bénévole ait à se prendre le refus d'abord.
+     Le bouton « Confirmer » reste en place À CÔTÉ, et c'est délibéré : cet
+     écran n'est qu'un instantané, la boîte peut revenir entre-temps et seul
+     le POST fait autorité (voir la docstring de `transfert_confirmation`). #}
+  {% if escalade %}
+    {{ escalade_oubli(id_rendu, escalade, numero) }}
   {% endif %}
 
   <form method="post" action="/pret/{{ id_rendu }}/transfert/{{ id_nouveau }}">

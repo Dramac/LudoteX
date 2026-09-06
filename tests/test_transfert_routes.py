@@ -199,6 +199,165 @@ def test_refus_nouvelle_boite_deja_sortie(client, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Escalade « clôturer le prêt oublié » (série agora, lot 1)
+# ---------------------------------------------------------------------------
+LIBELLE_ESCALADE = "Clôturer le prêt oublié et transférer"
+
+
+def _pret_en_cours(id_exemplaire):
+    from app import db, services
+    conn = db.get_connection()
+    try:
+        return services.pret_en_cours(conn, id_exemplaire)
+    finally:
+        conn.close()
+
+
+def test_l_ecran_de_confirmation_propose_l_escalade_a_cote_du_transfert(client, tmp_path):
+    """
+    Le meilleur endroit : le bénévole n'a même pas besoin de se prendre le
+    refus. Le bouton de transfert normal reste EN PLACE à côté — l'écran n'est
+    qu'un instantané, la boîte peut être revenue entre-temps.
+    """
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    avant = _nb_prets(tmp_path)
+
+    r = client.get("/pret/001/transfert/002")
+
+    assert LIBELLE_ESCALADE in r.text
+    assert 'name="clore_oubli"' in r.text
+    assert "Vérifiez que la pochette n°2 est bien vide" in r.text
+    assert "Confirmer" in r.text            # le transfert normal reste offert
+    assert _nb_prets(tmp_path) == avant     # un GET n'écrit toujours rien
+
+
+def test_le_refus_du_post_porte_l_escalade_au_dessus_de_la_camera(client, tmp_path):
+    """
+    Second endroit imposé : le POST fait autorité, c'est lui qui découvre le
+    conflit. La page de scan doit alors porter le bloc d'escalade — et garder
+    la caméra active en dessous, « scanner une autre boîte » n'ayant besoin
+    d'aucun bouton.
+    """
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    avant = _nb_prets(tmp_path)
+
+    r = client.post("/pret/001/transfert/002")
+
+    assert LIBELLE_ESCALADE in r.text
+    assert 'action="/pret/001/transfert/002"' in r.text
+    assert 'data-scan-cible="/pret/001/transfert/"' in r.text   # caméra active
+    assert _nb_prets(tmp_path) == avant                         # rien d'écrit
+
+
+def test_l_escalade_clot_le_pret_oublie_et_transfere(client):
+    from app import db
+
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    numero_rendu = _pret_en_cours("001")["numero_pochette"]
+    numero_oubli = _pret_en_cours("002")["numero_pochette"]
+
+    r = client.post("/pret/001/transfert/002", data={"clore_oubli": "1"})
+
+    assert r.status_code == 200
+    # L'écran dit ce qui a été clos, et quel casier redevient disponible.
+    assert f"la pochette n°{numero_oubli} est rendue disponible" in r.text
+    assert _pret_en_cours("001") is None
+    assert _pret_en_cours("002")["numero_pochette"] == numero_rendu
+    # La libération est réelle en base, pas seulement annoncée à l'écran.
+    conn = db.get_connection()
+    try:
+        occupe = conn.execute(
+            "SELECT occupe FROM pochettes WHERE numero_pochette = ?",
+            (numero_oubli,),
+        ).fetchone()["occupe"]
+        conserve = conn.execute(
+            "SELECT occupe FROM pochettes WHERE numero_pochette = ?",
+            (numero_rendu,),
+        ).fetchone()["occupe"]
+    finally:
+        conn.close()
+    assert occupe == 0 and conserve == 1
+
+
+def test_l_escalade_sur_une_sortie_tournoi_ne_libere_aucun_numero(client):
+    client.post("/pret/001/preter")
+    client.post("/pret/002/tournoi")
+    numero_rendu = _pret_en_cours("001")["numero_pochette"]
+
+    r = client.post("/pret/001/transfert/002", data={"clore_oubli": "1"})
+
+    assert r.status_code == 200
+    assert "rendue disponible" not in r.text     # aucun casier à annoncer
+    assert _pret_en_cours("002")["numero_pochette"] == numero_rendu
+
+
+def test_l_escalade_sur_une_boite_revenue_entre_temps_transfere_normalement(client,
+                                                                            _journal_isole):
+    """
+    Concurrence : la boîte est rendue entre l'affichage du bouton et l'appui.
+    Le POST fait autorité et le transfert est ordinaire — ni erreur, ni
+    seconde clôture, et le journal ne doit pas annoncer une clôture qui n'a
+    pas eu lieu.
+    """
+    import json
+
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    client.post("/pret/002/rendre")               # un autre bénévole a scanné
+
+    r = client.post("/pret/001/transfert/002", data={"clore_oubli": "1"})
+
+    assert r.status_code == 200
+    assert "rendue disponible" not in r.text
+    assert _pret_en_cours("002") is not None
+    actions = [json.loads(l)["action"]
+               for l in _journal_isole.read_text(encoding="utf-8").splitlines()
+               if l.strip()]
+    assert "transfert" in actions
+    assert "transfert_avec_cloture" not in actions
+
+
+def test_l_escalade_est_journalisee_sous_son_propre_nom_sans_numero(client,
+                                                                     _journal_isole):
+    """
+    C'est la seule écriture de l'application qui ferme DEUX prêts d'un coup :
+    elle porte un nom distinct dans /admin/journal, où le nom brut s'affiche.
+    Le numéro de pochette, lui, n'y entre pas plus qu'ailleurs (§8 de
+    docs/conception-journal.md).
+    """
+    import json
+
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    numeros = {str(_pret_en_cours("001")["numero_pochette"]),
+               str(_pret_en_cours("002")["numero_pochette"])}
+
+    client.post("/pret/001/transfert/002", data={"clore_oubli": "1"})
+
+    lignes = [json.loads(l)
+              for l in _journal_isole.read_text(encoding="utf-8").splitlines()
+              if '"action":"transfert_avec_cloture"' in l]
+    assert len(lignes) == 1
+    ligne = lignes[0]
+    assert ligne["objet"] == "Catan → Dixit"
+    assert ligne["ref"] == "DIXIT"
+    assert ligne["ok"] is True
+    for champ in ("objet", "ref", "detail"):
+        assert ligne.get(champ) not in numeros
+    assert "pochette" not in json.dumps(ligne).lower()
+
+
+def test_l_escalade_exige_le_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-test-secret-32-caracteres")
+
+    r = client.post("/pret/001/transfert/002", data={"clore_oubli": "1"})
+    assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # Refus « boîte rendue entre-temps »
 # ---------------------------------------------------------------------------
 def test_refus_boite_rendue_entre_temps(client, tmp_path):

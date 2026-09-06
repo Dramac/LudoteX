@@ -119,11 +119,72 @@ dépendre d'une caméra capricieuse.
 | Situation | Comportement |
 |---|---|
 | La seconde boîte scannée est **la même** que la première | Accepté : prêt clos et rouvert **sur le même numéro**. C'est un re-prêt sans mouvement de pièce d'identité — plus juste que « Le re-prêter », qui change de numéro. Message explicite. |
-| La seconde boîte est **déjà sortie** | Rien n'est écrit. Message, et on reste sur l'écran de transfert pour rescanner autre chose. |
+| La seconde boîte est **déjà sortie** | Rien n'est écrit d'emblée : message, et on reste sur l'écran de transfert. Le message porte désormais un bouton d'**escalade** — voir §6 bis. |
 | La seconde boîte n'existe pas dans le catalogue | Message, écran de transfert réaffiché, champ prérempli (patron de `/scanner/saisie`). |
 | La première boîte a été rendue entre-temps par un autre bénévole | Rien n'est écrit. Message : il n'y a plus de pochette à transférer. |
 | La première boîte est une **sortie tournoi** (pochette n°0) | Le bouton n'est pas affiché — il n'y a pas de pièce d'identité. Le service refuse également, l'URL étant forgeable. |
 | Deux bénévoles transfèrent la même boîte au même instant | Le second se heurte au verrou d'écriture ou aux index UNIQUE, et reçoit le message « occupé » existant. Rien n'est enregistré deux fois. |
+
+### 6 bis. Escalade « clôturer le prêt oublié » — ajout de septembre 2026
+
+**Cette section corrige le tableau ci-dessus.** Jusqu'au test grandeur nature
+du 2026-09-06, le refus « la seconde boîte est déjà sortie » était une **fin de
+course** : le bénévole n'avait aucune suite, et le geste s'arrêtait là. Le
+retour de terrain qui l'a établi, mot pour mot :
+
+> « Si quelqu'un nous rapporte un jeu (Uluru) et veut emprunter un autre jeu
+> (7 Wonders), et que ce dernier n'a pas été officiellement rendu (bug ou
+> oubli), alors on ne peut pas clôturer le prêt du jeu oublié pour l'ouvrir à
+> l'emprunt. »
+
+C'est une **impasse**, donc une entorse à la règle « ne jamais bloquer », qui
+prime sur tout : toute incohérence doit donner une action de rattrapage en un
+tap. La conception initiale s'était contentée du rescan, en supposant que la
+boîte visée était réellement prêtée à quelqu'un d'autre. Le cas fréquent est
+l'inverse : la boîte est **devant le bénévole**, seul son retour n'a pas été
+scanné.
+
+**Le geste ajouté : un seul bouton** (arbitré avec Simon), qui dans **une seule
+transaction** :
+
+1. clôture le prêt oublié de la nouvelle boîte et **libère** son numéro — la
+   pièce d'identité correspondante est censée avoir quitté son casier ;
+2. clôture le prêt de la boîte rendue **sans** libérer son numéro (§4, la
+   pièce d'identité du visiteur n'a pas bougé) ;
+3. ouvre le nouveau prêt sur la nouvelle boîte, avec le numéro conservé.
+
+Les **deux** clôtures précèdent l'unique INSERT, pour la raison donnée au §4 :
+`idx_pochettes_un_seul_pret` refuserait l'écriture autrement. Les deux numéros
+ne peuvent pas être égaux — ce même index l'interdit, les deux prêts étant
+ouverts en même temps.
+
+**Le bouton apparaît à deux endroits**, jamais à la place du transfert normal :
+
+- sur l'**écran de confirmation**, dans l'avertissement « déjà sortie » — le
+  bénévole n'a même pas besoin de se prendre le refus ;
+- sur l'**écran de scan**, après le refus du POST, au-dessus de la caméra —
+  qui reste active, si bien que « scanner une autre boîte » ne demande aucun
+  bouton.
+
+Le message nomme le numéro et demande une **vérification physique** (« vérifiez
+que la pochette n°5 est bien vide : elle sera rendue disponible pour le
+prochain emprunt »). Cette formulation a **un seul domicile**, le fragment
+`app/templates/_pochette_oubliee.html`, partagé avec le message du re-prêt qui
+libère lui aussi un numéro en silence.
+
+**Cas de la sortie tournoi jamais rentrée** (atteignable) : le prêt oublié est
+clôturé, mais **aucun numéro n'est libéré** — le numéro 0 est un marqueur
+« sans emplacement », pas un casier.
+
+**Le drapeau n'est qu'une autorisation** : si la boîte a été rendue entre
+l'affichage de l'écran et l'appui, le transfert est ordinaire. L'écran reste un
+instantané, seul le POST fait autorité.
+
+**Ce qui n'est PAS fait, et pourquoi.** Aucun motif `oubli` sur les prêts
+clôturés sans scan : leur durée est fausse et pollue les statistiques de durée,
+mais `repreter` porte exactement le même défaut depuis toujours. Corriger d'un
+seul côté rendrait les deux gestes incomparables ; la fiche est ouverte pour
+les deux à la fois (`interne/chantiers.md`, série agora).
 
 ## 7. Ce que le transfert ne change pas
 
@@ -153,6 +214,12 @@ Une action nouvelle au vocabulaire fermé (`app/journal.py`), module `pret`.
 L'objet porte les **noms des deux jeux** — jamais le numéro de pochette, comme
 partout ailleurs dans le journal (`docs/conception-journal.md` §8). Le garde-fou
 d'interdiction (`tests/test_journal_interdits.py`) est étendu au scénario.
+
+L'escalade du §6 bis porte une **seconde action**, `transfert_avec_cloture` :
+c'est la seule écriture de l'application qui ferme deux prêts d'un coup, et
+`/admin/journal` affiche le nom brut (il n'existe pas de table de libellés).
+L'action est choisie sur ce qui a **réellement** été écrit — une escalade
+demandée sur une boîte revenue entre-temps produit un `transfert` ordinaire.
 
 ## 10. Hors périmètre
 

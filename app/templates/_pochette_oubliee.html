@@ -1,0 +1,51 @@
+{# Prêt oublié — formulation UNIQUE, partagée par les écrans concernés
+   (docs/conception-transfert-pochette.md §6, série agora lot 1).
+
+   Un prêt « oublié » est un prêt jamais scanné en retour : la boîte est
+   physiquement revenue, l'application la croit sortie. Deux gestes le
+   rencontrent — le transfert de pochette (la boîte emportée est bloquée) et
+   le re-prêt (le numéro libéré peut contenir encore une pièce d'identité) —
+   et les deux doivent dire exactement la même chose au bénévole, d'où ces
+   macros plutôt que trois rédactions parallèles qui divergeront.
+
+   Import dans un gabarit :
+       from "_pochette_oubliee.html" import verifier_pochette, escalade_oubli
+   Aucun accès au contexte : tout passe par les paramètres. #}
+
+{# La phrase qui compte : le geste physique, et le numéro nommé. Volontairement
+   sans ponctuation finale — chaque appelant enchaîne sur sa propre suite. #}
+{% macro verifier_pochette(numero) -%}
+<strong>Vérifiez que la pochette n°{{ numero }} est bien vide</strong>
+{%- endmacro %}
+
+{# Le bloc d'escalade du transfert : l'avertissement, puis LE bouton (un seul,
+   arbitré avec Simon). Affiché sur l'écran de confirmation AVANT le refus, et
+   sur l'écran de scan APRÈS lui — même texte, même action, même URL.
+
+   `escalade` vient de routes/pret.py::_escalade : {id_nouveau, nom, numero}.
+   `escalade.numero` vaut 0 pour une sortie tournoi : il n'y a alors aucun
+   casier à vérifier, et la clôture ne libérera aucun numéro.
+   `numero_conserve` est la pochette du visiteur, celle qui ne bouge pas. #}
+{% macro escalade_oubli(id_rendu, escalade, numero_conserve) -%}
+<div class="resultat resultat-attention">
+  <p>
+    ⚠️ <strong>{{ escalade.nom }}</strong> est déjà sortie{% if escalade.numero %},
+    enregistrée sur la <strong>pochette n°{{ escalade.numero }}</strong>{% else %}
+    pour un tournoi (sans pochette){% endif %}.
+    Si la boîte est devant vous, c'est un retour qui n'a pas été scanné.
+  </p>
+  {% if escalade.numero %}
+    <p>
+      {{ verifier_pochette(escalade.numero) }} avant de continuer : elle sera
+      rendue disponible pour le prochain emprunt.
+    </p>
+  {% endif %}
+  <form method="post" action="/pret/{{ id_rendu }}/transfert/{{ escalade.id_nouveau }}">
+    <input type="hidden" name="clore_oubli" value="1">
+    <button class="bouton bouton-secondaire" type="submit">
+      Clôturer {% if escalade.numero %}le prêt oublié{% else %}la sortie oubliée{% endif %} et transférer
+      <span class="bouton-sous">{{ escalade.nom }} repart avec la pochette n°{{ numero_conserve }}</span>
+    </button>
+  </form>
+</div>
+{%- endmacro %}

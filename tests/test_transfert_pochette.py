@@ -16,6 +16,14 @@ Le second point sensible est l'ORDRE des écritures dans la transaction (clore
 avant d'insérer). Il n'est pas cosmétique : l'index UNIQUE partiel
 `idx_pochettes_un_seul_pret` fait échouer l'écriture si on l'inverse. Le test
 qui le démontre existe pour que le commentaire du service reste vérifiable.
+L'escalade `clore_oubli` en ajoute une seconde : DEUX clôtures doivent
+précéder l'unique INSERT, et l'index sanctionnerait la moindre inversion.
+
+Le troisième est la libération du numéro : celui du prêt oublié retourne au
+pot (la pièce d'identité est censée avoir quitté son casier), celui du
+transfert non (elle n'a pas bougé). Une sortie tournoi, elle, n'a aucun
+numéro à libérer — `liberer_numero(conn, 0)` marquerait libre un marqueur
+« sans emplacement ».
 
 FIXTURES
 --------
@@ -78,7 +86,8 @@ def test_le_numero_est_conserve(conn):
     numero = services.preter(conn, "001")
     res = services.transferer_pochette(conn, "001", "002")
 
-    assert res == {"transfere": True, "numero": numero, "meme_boite": False}
+    assert res == {"transfere": True, "numero": numero, "meme_boite": False,
+                   "oubli_clos": False, "numero_libere": None}
     assert services.est_sorti(conn, "001") is False
     assert services.pret_en_cours(conn, "002")["numero_pochette"] == numero
 
@@ -183,6 +192,119 @@ def test_refus_si_la_nouvelle_boite_est_deja_sortie(conn):
     assert services.pret_en_cours(conn, "001")["numero_pochette"] == numero_001
     assert services.pret_en_cours(conn, "002")["numero_pochette"] == numero_002
     assert _nb_prets(conn) == 2
+
+
+# ---------------------------------------------------------------------------
+# Escalade : clôturer le prêt oublié qui tient la boîte emportée
+# ---------------------------------------------------------------------------
+def test_escalade_clot_les_deux_prets_et_ne_libere_que_l_oubli(conn):
+    """
+    Le cœur du lot agora-1. Le visiteur rapporte 001 (pochette n°1) et repart
+    avec 002, que l'application croit sortie sur la n°2 faute d'avoir scanné
+    son retour. Après l'escalade : deux prêts clos, un seul ouvert, la n°1
+    conservée par le visiteur et la n°2 rendue au pot.
+    """
+    numero_rendu = services.preter(conn, "001")       # n°1
+    numero_oubli = services.preter(conn, "002")       # n°2
+
+    res = services.transferer_pochette(conn, "001", "002", clore_oubli=True)
+
+    assert res == {"transfere": True, "numero": numero_rendu, "meme_boite": False,
+                   "oubli_clos": True, "numero_libere": numero_oubli}
+    # Le nouveau prêt porte le numéro de la boîte RENDUE, pas celui de l'oubli.
+    ouverts = conn.execute(
+        "SELECT id_exemplaire, numero_pochette FROM prets WHERE date_retour IS NULL"
+    ).fetchall()
+    assert len(ouverts) == 1
+    assert ouverts[0]["id_exemplaire"] == "002"
+    assert ouverts[0]["numero_pochette"] == numero_rendu
+    # La pochette du visiteur n'a jamais été libérée, celle de l'oubli si.
+    assert _occupe(conn, numero_rendu) == 1
+    assert _occupe(conn, numero_oubli) == 0
+    assert _nb_prets(conn) == 3                       # deux clos + un ouvert
+
+
+def test_escalade_sur_sortie_tournoi_ne_libere_aucun_numero(conn):
+    """
+    Cas atteignable : une boîte sortie pour un tournoi et jamais rentrée. On la
+    clôt, mais son « numéro » 0 est un marqueur « sans emplacement », pas un
+    casier — le libérer inventerait une pochette n°0 disponible.
+    """
+    numero_rendu = services.preter(conn, "001")
+    services.sortir_tournoi(conn, "002")
+
+    res = services.transferer_pochette(conn, "001", "002", clore_oubli=True)
+
+    assert res["transfere"] is True
+    assert res["oubli_clos"] is True
+    assert res["numero_libere"] is None
+    assert res["numero"] == numero_rendu
+    assert services.pret_en_cours(conn, "002")["numero_pochette"] == numero_rendu
+    assert _occupe(conn, services.NUMERO_TOURNOI) is None   # aucune pochette n°0
+    assert _occupe(conn, numero_rendu) == 1
+
+
+def test_le_refus_reste_effectif_sans_le_drapeau(conn):
+    """
+    Contre-épreuve : l'escalade est une AUTORISATION, jamais un défaut. Sans
+    le drapeau, le comportement d'origine — refuser sans rien écrire — doit
+    survivre intact (c'est lui qui protège d'un double clic).
+    """
+    services.preter(conn, "001")
+    numero_002 = services.preter(conn, "002")
+
+    res = services.transferer_pochette(conn, "001", "002")
+
+    assert res == {"nouveau_sorti": True, "numero": numero_002}
+    assert _nb_prets(conn) == 2
+    assert services.pret_en_cours(conn, "002")["numero_pochette"] == numero_002
+
+
+def test_le_drapeau_ne_change_rien_au_cas_meme_boite(conn):
+    """
+    Le visiteur se ravise et repart avec le même jeu : `id_nouveau` est la
+    boîte rendue, il n'y a aucun prêt oublié à clore. Le drapeau ne doit rien
+    y changer — surtout pas clôturer deux fois le même prêt.
+    """
+    numero = services.preter(conn, "001")
+
+    res = services.transferer_pochette(conn, "001", "001", clore_oubli=True)
+
+    assert res == {"transfere": True, "numero": numero, "meme_boite": True,
+                   "oubli_clos": False, "numero_libere": None}
+    assert _nb_prets(conn) == 2
+    assert services.pret_en_cours(conn, "001")["numero_pochette"] == numero
+
+
+def test_le_drapeau_sur_une_boite_revenue_entre_temps_transfere_normalement(conn):
+    """
+    L'écran qui porte le bouton n'est qu'un INSTANTANÉ : la boîte peut avoir
+    été rendue entre son affichage et l'appui. Le drapeau ne doit alors rien
+    déclencher de plus qu'un transfert ordinaire (`oubli_clos` faux), et
+    surtout ne pas libérer un numéro que le retour a déjà rendu au pot.
+    """
+    numero_rendu = services.preter(conn, "001")
+    services.preter(conn, "002")
+    services.rendre(conn, "002")                      # un autre bénévole a scanné
+
+    res = services.transferer_pochette(conn, "001", "002", clore_oubli=True)
+
+    assert res["transfere"] is True
+    assert res["oubli_clos"] is False
+    assert res["numero_libere"] is None
+    assert res["numero"] == numero_rendu
+
+
+def test_escalade_le_prochain_pret_recupere_le_numero_libere(conn):
+    """
+    Vérifie que la libération est réelle et pas seulement annoncée : le numéro
+    du prêt oublié doit revenir dans le pot des numéros attribuables.
+    """
+    services.preter(conn, "001")                      # n°1
+    numero_oubli = services.preter(conn, "002")       # n°2
+    services.transferer_pochette(conn, "001", "002", clore_oubli=True)
+
+    assert services.preter(conn, "003") == numero_oubli
 
 
 # ---------------------------------------------------------------------------
@@ -298,3 +420,51 @@ def test_deux_transferts_simultanes_ne_donnent_qu_un_seul_pret(base):
     conn.close()
     assert len(ouverts) == 1
     assert ouverts[0]["id_exemplaire"] == "002"
+
+
+def test_deux_escalades_simultanees_ne_donnent_qu_un_seul_pret(base):
+    """
+    Deux bénévoles appuient au même instant sur « clôturer le prêt oublié ».
+    Un seul doit passer : jamais deux prêts ouverts sur la boîte emportée,
+    jamais un numéro libéré deux fois. Même patron que le test ci-dessus, mais
+    sur le chemin qui ferme DEUX prêts d'un coup.
+    """
+    conn = _connexion(str(base))
+    services.preter(conn, "001")
+    services.preter(conn, "002")          # le prêt « oublié »
+    conn.close()
+
+    depart = threading.Barrier(2)
+    resultats = [None, None]
+
+    def escalader(indice):
+        c = _connexion(str(base))
+        try:
+            depart.wait()
+            resultats[indice] = services.transferer_pochette(
+                c, "001", "002", clore_oubli=True)
+        except (sqlite3.OperationalError, sqlite3.IntegrityError) as erreur:
+            resultats[indice] = erreur
+        finally:
+            c.close()
+
+    fils = [threading.Thread(target=escalader, args=(i,)) for i in range(2)]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join()
+
+    reussites = [r for r in resultats if isinstance(r, dict) and r.get("transfere")]
+    assert len(reussites) == 1
+
+    conn = _connexion(str(base))
+    ouverts = conn.execute(
+        "SELECT id_exemplaire, numero_pochette FROM prets WHERE date_retour IS NULL"
+    ).fetchall()
+    libres = conn.execute(
+        "SELECT COUNT(*) FROM pochettes WHERE occupe = 0"
+    ).fetchone()[0]
+    conn.close()
+    assert len(ouverts) == 1
+    assert ouverts[0]["id_exemplaire"] == "002"
+    assert libres == 1                    # la pochette de l'oubli, une seule fois

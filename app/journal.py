@@ -138,6 +138,12 @@ ACTIONS = {
     # Transfert de pochette (docs/conception-transfert-pochette.md §9) :
     # rendre une boîte et en prêter une autre sans déplacer la pochette.
     "transfert",
+    # Même geste, mais précédé de la clôture d'un prêt jamais scanné en retour
+    # sur la boîte emportée (§6 de la même note). C'est la SEULE écriture de
+    # l'application qui ferme deux prêts d'un coup : elle porte un nom distinct
+    # pour être relisible sans ambiguïté dans /admin/journal, où le nom brut
+    # s'affiche (il n'existe pas de table de libellés).
+    "transfert_avec_cloture",
     # --- Carnet de maintenance (docs/conception-signalements.md §10) --------
     # Le geste bénévole et sa clôture par le bureau. Le CRUD des catégories
     # relève, lui, de la configuration : mêmes trois verbes que les types de

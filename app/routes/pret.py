@@ -24,7 +24,12 @@ d'accès valide, FastAPI lève un 403 que main.py transforme en page
 DICTIONNAIRE `resultat` (passé au gabarit pret.html)
 ----------------------------------------------------
     {"type": "prete",            "numero": n}             prêt réussi
-    {"type": "repret",           "nouveau": n, "ancien": a|None}  re-prêt
+    {"type": "repret",           "nouveau": n, "ancien": a|None,
+                                 "meme_numero": bool}     re-prêt
+        `meme_numero` dit que le numéro réattribué est celui qu'on vient de
+        libérer (cas fréquent : `plus_petit_numero_libre` reprend très souvent
+        le numéro rendu au pot une ligne plus tôt). Calculé ICI et pas dans le
+        gabarit, qui n'a pas à comparer des valeurs métier.
     {"type": "rendu",            "numero": n, "erreur": bool}
         retour enregistré ; `erreur` est vrai quand le prêt a duré moins d'une
         minute et a donc été requalifié en erreur de prêt (hors statistiques,
@@ -33,9 +38,13 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
     {"type": "deja_sorti",       "numero": n}             déjà sorti (no-op)
     {"type": "deja_disponible"}                           rien à rendre (no-op)
     {"type": "occupe"}                                    conflit d'accès simultané, rien d'enregistré
-    {"type": "transfert",            "numero": n, "rendu_nom": …, "meme_boite": bool}
+    {"type": "transfert",            "numero": n, "rendu_nom": …, "meme_boite": bool,
+                                     "oubli_clos": bool, "numero_libere": n|None}
         transfert réussi (docs/conception-transfert-pochette.md) : la pochette
-        n'a pas bougé, seul le jeu associé change.
+        n'a pas bougé, seul le jeu associé change. `oubli_clos` signale que
+        l'escalade a d'abord clôturé un prêt jamais scanné en retour sur la
+        boîte emportée, `numero_libere` le numéro alors rendu au pot (None pour
+        une sortie tournoi, qui n'en avait pas).
     {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
         rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
     {"type": "signale"}                                    signalement envoyé
@@ -57,7 +66,7 @@ d'alerte listant les signalements ouverts se voit AVANT toute action — voir
 
 import sqlite3
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
 from app import journal, services
@@ -115,11 +124,20 @@ def _journaliser_transfert(request: Request, info_rendu: dict, info_nouveau: dic
     plus. Filtrer le journal sur une référence donne ainsi la même chose quel
     que soit le chemin emprunté pour prêter le jeu — le titre rendu, lui,
     reste lisible dans `objet`.
+
+    DEUX ACTIONS, choisies sur ce qui a RÉELLEMENT été écrit : la ligne porte
+    `transfert_avec_cloture` quand un prêt oublié a été clos au passage (la
+    seule écriture de l'application qui ferme deux prêts d'un coup), et
+    `transfert` partout ailleurs — y compris quand l'escalade a été demandée
+    mais que la boîte était revenue entre-temps, auquel cas rien de plus qu'un
+    transfert n'a eu lieu. Un refus reste journalisé sous `transfert`, son
+    motif dans `detail`.
     """
     type_ = resultat.get("type")
     echec = type_ in _ECHECS
+    action = "transfert_avec_cloture" if resultat.get("oubli_clos") else "transfert"
     journal.journaliser(
-        request, "pret", "transfert",
+        request, "pret", action,
         objet=f"{info_rendu.get('nom')} → {info_nouveau.get('nom')}",
         ref=info_nouveau.get("reference_titre"),
         ok=not echec,
@@ -369,8 +387,15 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
         def ecrire():
             res = services.repreter(conn, id_exemplaire)
             # `ancien` peut être None si l'exemplaire était déjà disponible.
-            return {"type": "repret", "nouveau": res["nouveau_numero"],
-                    "ancien": res.get("ancien_numero")}
+            ancien = res.get("ancien_numero")
+            nouveau = res["nouveau_numero"]
+            # Le numéro libéré par la clôture est aussitôt le plus petit
+            # libre : `preter()` le reprend très souvent. Sans ce drapeau, le
+            # gabarit annonçait « ancien prêt (pochette n°5) clôturé, glissez
+            # la pièce d'identité dans la pochette n°5 » — deux phrases qui se
+            # contredisent (série agora, lot 1, point 2).
+            return {"type": "repret", "nouveau": nouveau, "ancien": ancien,
+                    "meme_numero": ancien == nouveau}
 
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
@@ -403,6 +428,23 @@ def _transfert_ou_refus(conn, id_rendu: str):
     if courant["motif"] != "pret" or not courant["numero_pochette"]:
         return None, {"type": "transfert_impossible", "raison": "sans_pochette"}
     return courant["numero_pochette"], None
+
+
+def _escalade(id_nouveau: str, nouvelle_info: dict, numero_oubli) -> dict:
+    """
+    Décrit, pour le gabarit, le prêt oublié qui tient la boîte que le visiteur
+    veut emporter — et que le bouton d'escalade clôturera
+    (docs/conception-transfert-pochette.md §6).
+
+    UN SEUL DOMICILE pour cette forme : les deux écrans qui affichent le bloc
+    (confirmation avant le refus, scan après) la construisent ici, et le
+    fragment `_pochette_oubliee.html` la lit telle quelle.
+
+    `numero` peut valoir 0 (sortie tournoi) : le fragment n'annonce alors
+    aucun casier à vérifier, il n'y en a pas.
+    """
+    return {"id_nouveau": id_nouveau, "nom": nouvelle_info["nom"],
+            "numero": numero_oubli}
 
 
 @router.get("/{id_rendu}/transfert")
@@ -491,6 +533,13 @@ def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
     très bien revenir entre-temps — seul le POST fait autorité, sous le verrou
     d'écriture. Sans objet quand la nouvelle boîte est la boîte rendue
     elle-même : elle est sortie, c'est justement la situation nominale.
+
+    L'avertissement porte, depuis la série agora, le bouton d'ESCALADE
+    (« clôturer le prêt oublié ») À CÔTÉ du bouton de transfert normal, jamais
+    à sa place : les deux gestes restent possibles, pour la même raison
+    d'instantané. Le bloc est un fragment partagé avec l'écran de scan, où le
+    refus du POST le fait réapparaître — une seule formulation, un seul
+    domicile (`_pochette_oubliee.html`).
     """
     conn = get_connection()
     try:
@@ -504,34 +553,44 @@ def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
         if nouvelle_info is None:
             return _rendu(request, id_nouveau)
         meme_boite = id_nouveau == id_rendu
-        deja_sortie = None
+        escalade = None
         if not meme_boite:
             autre = services.pret_en_cours(conn, id_nouveau)
             if autre is not None:
-                deja_sortie = autre["numero_pochette"]
+                escalade = _escalade(id_nouveau, nouvelle_info,
+                                     autre["numero_pochette"])
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "transfert_confirmation.html",
         {"id_rendu": id_rendu, "id_nouveau": id_nouveau, "info": info,
          "nouvelle_info": nouvelle_info, "numero": numero,
-         "meme_boite": meme_boite, "deja_sortie": deja_sortie},
+         "meme_boite": meme_boite, "escalade": escalade},
     )
 
 
 @router.post("/{id_rendu}/transfert/{id_nouveau}")
 def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
-                         _=Depends(exiger_jeton)):
+                         clore_oubli: str = Form(""), _=Depends(exiger_jeton)):
     """
     L'opération de transfert (POST) : clôture du prêt en cours d'`id_rendu`
     et ouverture d'un nouveau prêt sur `id_nouveau`, SUR LE MÊME NUMÉRO de
     pochette (voir `services.transferer_pochette`, qui fait tout tenir dans
     une seule transaction).
 
+    `clore_oubli` est le champ caché du bouton d'ESCALADE : il autorise le
+    service à clôturer d'abord un prêt jamais scanné en retour sur
+    `id_nouveau`. Il ne force rien — si la boîte est revenue entre l'écran et
+    l'appui, le transfert est ordinaire. Un champ de formulaire plutôt qu'une
+    seconde route : c'est le MÊME geste, avec une autorisation en plus, et les
+    deux boutons visent donc la même URL.
+
     Refus possibles, aucun n'écrit rien :
-    - `nouveau_sorti` : la boîte scannée est déjà sortie -> le bénévole est
-      au milieu de son geste, on reste sur l'écran de transfert pour en
-      scanner une autre (§6 de la note) ;
+    - `nouveau_sorti` : la boîte scannée est déjà sortie et l'escalade n'a pas
+      été demandée -> le bénévole est au milieu de son geste, on reste sur
+      l'écran de transfert, qui porte désormais le bouton d'escalade au-dessus
+      de la caméra — toujours active, « scanner une autre boîte » n'a donc
+      besoin d'aucun bouton (§6 de la note) ;
     - `rien_a_rendre` / `sans_pochette` : `id_rendu` n'a plus de pochette à
       transférer -> écran /pret/{id_rendu} habituel, le bouton Rendre juste
       en dessous ;
@@ -548,7 +607,8 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
             return _rendu(request, id_nouveau)
 
         def ecrire():
-            res = services.transferer_pochette(conn, id_rendu, id_nouveau)
+            res = services.transferer_pochette(conn, id_rendu, id_nouveau,
+                                               clore_oubli=bool(clore_oubli))
             if res.get("rien_a_rendre"):
                 return {"type": "transfert_impossible", "raison": "rien_a_rendre"}
             if res.get("sans_pochette"):
@@ -556,21 +616,25 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
             if res.get("nouveau_sorti"):
                 return {"type": "nouveau_sorti", "numero": res["numero"]}
             return {"type": "transfert", "numero": res["numero"],
-                    "meme_boite": res["meme_boite"]}
+                    "meme_boite": res["meme_boite"],
+                    "oubli_clos": res["oubli_clos"],
+                    "numero_libere": res["numero_libere"]}
 
         resultat = _sans_conflit(conn, id_rendu, ecrire)
         _journaliser_transfert(request, info, nouvelle_info, resultat)
 
         if resultat["type"] == "nouveau_sorti":
             # Rien n'a été écrit : la pochette d'id_rendu n'a pas bougé, on
-            # reste sur l'écran de transfert pour rescanner autre chose.
+            # reste sur l'écran de transfert. Le message n'est plus une fin de
+            # course : le bloc d'escalade porte le bouton qui clôt le prêt
+            # oublié, et la caméra reste dessous pour viser une autre boîte.
             courant = services.pret_en_cours(conn, id_rendu)
             return templates.TemplateResponse(
                 request, "transfert_scan.html",
                 {"id_rendu": id_rendu, "info": info,
                  "numero": courant["numero_pochette"] if courant else None,
-                 "erreur": f"{nouvelle_info['nom']} est déjà sortie "
-                           f"(pochette n°{resultat['numero']}). Scannez-en une autre."},
+                 "escalade": _escalade(id_nouveau, nouvelle_info,
+                                       resultat["numero"])},
             )
         if resultat["type"] != "transfert":
             # transfert_impossible / occupe / deja_sorti (conflit rare, voir
@@ -589,7 +653,9 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
     return _rendu(
         request, id_nouveau,
         {"type": "transfert", "numero": resultat["numero"],
-         "rendu_nom": info["nom"], "meme_boite": resultat["meme_boite"]},
+         "rendu_nom": info["nom"], "meme_boite": resultat["meme_boite"],
+         "oubli_clos": resultat["oubli_clos"],
+         "numero_libere": resultat["numero_libere"]},
         emplacement_rangement=emplacement_rendu,
     )
 

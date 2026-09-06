@@ -1187,6 +1187,47 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
     return nb
 
 
+def _clore_pret_oublie(conn: sqlite3.Connection, oublie: dict | sqlite3.Row) -> int | None:
+    """
+    Clôt un prêt qu'on n'a jamais scanné en retour, et libère son numéro de
+    pochette s'il en avait un ; ne committe pas. À appeler DANS la transaction
+    qui enchaîne sur l'écriture suivante.
+
+    Le cas : une boîte est notée sortie alors qu'elle est physiquement revenue
+    (retour non scanné, ou sortie tournoi jamais rentrée). Tant que ce prêt
+    fantôme reste ouvert, la boîte est inempruntable — c'est l'impasse que
+    l'escalade du transfert lève (voir `transferer_pochette`).
+
+    LA LIGNE N'EST PAS REQUALIFIÉE. Sa durée est fausse (elle court jusqu'au
+    moment où quelqu'un s'en aperçoit) et pollue les statistiques de durée,
+    mais `repreter` a exactement le même défaut depuis toujours : le corriger
+    ici seulement rendrait les deux gestes incomparables. Un motif dédié est à
+    poser des DEUX côtés à la fois, dans un lot ultérieur (registre
+    `interne/chantiers.md`, série agora). `_marquer_erreur_si_immediat` n'est
+    pas non plus appelée : un prêt oublié n'est pas un prêt d'une minute.
+
+    Args:
+        conn: connexion SQLite ouverte, déjà en transaction.
+        oublie: la ligne du prêt à clore (`pret_en_cours`).
+
+    Returns:
+        Le numéro de pochette libéré, ou None quand il n'y en avait pas à
+        libérer — sortie tournoi (`motif != 'pret'`, numéro 0) ou ligne sans
+        numéro. Ne JAMAIS libérer dans ce cas : le numéro 0 est un marqueur
+        « sans emplacement », pas un casier.
+    """
+    numero = oublie["numero_pochette"]               # lu AVANT effacement (D5)
+    conn.execute(
+        "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
+        (maintenant(), oublie["id_pret"]),
+    )
+    _effacer_pochette(conn, oublie["id_pret"])
+    if oublie["motif"] != "pret" or not numero:
+        return None
+    liberer_numero(conn, numero)
+    return numero
+
+
 def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     """
     Re-prêt après oubli de scan (spec §5.1).
@@ -1232,7 +1273,7 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
 
 
 def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
-                        id_nouveau: str) -> dict:
+                        id_nouveau: str, *, clore_oubli: bool = False) -> dict:
     """
     Rend une boîte et en prête une autre SANS déplacer la pochette
     (docs/conception-transfert-pochette.md).
@@ -1271,20 +1312,50 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
     Cette fonction ne suppose pas que les deux boîtes existent : la route le
     vérifie avant d'appeler (patron des autres actions de prêt).
 
+    L'ESCALADE `clore_oubli` — clore un prêt oublié pour débloquer la boîte
+    ------------------------------------------------------------------------
+    Sans elle, une boîte notée sortie alors qu'elle est physiquement là (retour
+    non scanné) ne peut PAS être transférée : le refus `nouveau_sorti` est une
+    fin de course, contraire à la règle « ne jamais bloquer » (série agora,
+    lot 1 ; §6 de la note de conception, mis à jour en conséquence).
+
+    Avec `clore_oubli=True`, la même transaction clôt DEUX prêts avant
+    d'insérer le nouveau :
+      1. celui, oublié, de `id_nouveau` — dont le numéro est LIBÉRÉ, la pièce
+         d'identité étant censée avoir quitté son casier (voir
+         `_clore_pret_oublie`, qui ne libère rien pour une sortie tournoi) ;
+      2. celui de `id_rendu` — dont le numéro n'est PAS libéré, c'est tout
+         l'objet du transfert.
+    L'ordre est imposé par `idx_pochettes_un_seul_pret` : les deux clôtures
+    d'abord, l'unique INSERT ensuite.
+
+    Le drapeau ne fait que LEVER un refus : si la boîte est revenue entre
+    l'affichage de l'écran et l'appui (l'écran n'est qu'un instantané), le
+    transfert est ordinaire et `oubli_clos` est faux. Il ne concerne jamais le
+    cas `meme_boite`, où `id_nouveau` est justement la boîte rendue.
+
     Args:
         conn: connexion SQLite ouverte.
         id_rendu: boîte que le visiteur rapporte (doit être sortie).
         id_nouveau: boîte qu'il emporte. Peut être la MÊME que `id_rendu` (il
             se ravise) : le prêt est alors clos puis rouvert sur le même
             numéro, ce qui vaut mieux que `repreter` qui, lui, en change.
+        clore_oubli: lever le refus `nouveau_sorti` en clôturant le prêt oublié
+            de `id_nouveau` (voir ci-dessus). Le bénévole a alors la boîte en
+            main et a vérifié le casier concerné.
 
     Returns:
-        {"transfere": True, "numero": n, "meme_boite": bool} en cas de succès ;
+        {"transfere": True, "numero": n, "meme_boite": bool,
+         "oubli_clos": bool, "numero_libere": n|None} en cas de succès —
+        `numero_libere` est le numéro rendu au pot par la clôture du prêt
+        oublié, None quand il n'y en avait pas (sortie tournoi) ou quand
+        aucune escalade n'a eu lieu ;
         {"rien_a_rendre": True} si `id_rendu` n'a aucun prêt en cours (un autre
         bénévole a pu l'enregistrer entre-temps) ;
         {"sans_pochette": True} si le prêt en cours est une sortie tournoi, qui
         n'a pas de pièce d'identité à transférer ;
-        {"nouveau_sorti": True, "numero": n} si `id_nouveau` est déjà sortie.
+        {"nouveau_sorti": True, "numero": n} si `id_nouveau` est déjà sortie et
+        que `clore_oubli` est faux.
         Dans les trois cas de refus, RIEN n'est écrit : l'écran garde ses
         boutons et le retour classique reste à un tap (« ne jamais bloquer »).
     """
@@ -1297,11 +1368,26 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
         if courant["motif"] != "pret" or not numero:
             return {"sans_pochette": True}
         meme_boite = id_nouveau == id_rendu
+        oubli_clos = False
+        numero_libere = None
         if not meme_boite:
             autre = pret_en_cours(conn, id_nouveau)
             if autre is not None:
-                return {"nouveau_sorti": True,
-                        "numero": autre["numero_pochette"]}
+                if not clore_oubli:
+                    return {"nouveau_sorti": True,
+                            "numero": autre["numero_pochette"]}
+                # ESCALADE : la nouvelle boîte est devant le bénévole, mais un
+                # prêt jamais scanné en retour la tient encore. On le clôt
+                # AVANT d'insérer quoi que ce soit — les DEUX clôtures doivent
+                # précéder l'unique INSERT, sans quoi
+                # `idx_pochettes_un_seul_pret` refuse l'écriture.
+                #
+                # Les deux numéros ne peuvent pas être égaux : ce même index
+                # interdit que deux prêts ouverts portent le même numéro, et
+                # ces deux prêts-là sont ouverts en même temps. Aucun code
+                # défensif ici, qui laisserait croire le contraire.
+                numero_libere = _clore_pret_oublie(conn, autre)
+                oubli_clos = True
         # 1. Clôture de l'ancien prêt, dont le numéro est effacé (D5) — mais
         #    la pochette n'est PAS libérée : la pièce d'identité y est encore.
         instant = maintenant()
@@ -1327,7 +1413,8 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
         conn.execute(
             "UPDATE pochettes SET occupe = 1 WHERE numero_pochette = ?", (numero,)
         )
-    return {"transfere": True, "numero": numero, "meme_boite": meme_boite}
+    return {"transfere": True, "numero": numero, "meme_boite": meme_boite,
+            "oubli_clos": oubli_clos, "numero_libere": numero_libere}
 
 
 # ===========================================================================

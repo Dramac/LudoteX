@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pochette_oubliee.html" import escalade_oubli %}
 {% block titre %}Transfert — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {# Cible du scan caméra, lue par scanner.js (voir sa docstring `ouvrir()`) :
@@ -17,6 +18,14 @@
 
   {% if erreur %}
     <p class="resultat resultat-attention">{{ erreur }}</p>
+  {% endif %}
+
+  {# Le POST vient de refuser : la boîte visée est tenue par un prêt jamais
+     scanné en retour. Le bloc d'escalade s'intercale AU-DESSUS de la caméra,
+     qui reste active juste en dessous — viser une autre boîte ne demande
+     donc aucun bouton (§6 de la note de conception). #}
+  {% if escalade %}
+    {{ escalade_oubli(id_rendu, escalade, numero) }}
   {% endif %}
 
   <p class="scanner-statut" id="statut" aria-live="polite">Démarrage de la caméra…</p>
