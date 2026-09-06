@@ -1,0 +1,26 @@
+Code jeu;Nom jeu;Type;Type jeu;Nb joueurs;Age joueurs;Temps jeu;Marque;Auteur;Année édition;Date achat;Descriptif;Emplacement événement;Emplacement local
+0001;Catan;Jeu;Stratégie;3 - 4;10;75;Kosmos;Klaus Teuber;1995;12/03/2021;Colonisation d'une île, récolte de ressources et négociation entre joueurs.;A1;Étagère A
+0002;Catan;Jeu;Stratégie;3 - 4;10;75;Kosmos;Klaus Teuber;1995;12/03/2021;Colonisation d'une île, récolte de ressources et négociation entre joueurs.;A1;Étagère A
+0003;Carcassonne;Jeu;Familial;2 - 5;8;45;Hans im Glück;Klaus-Jürgen Wrede;2000;12/03/2021;Pose de tuiles pour bâtir routes, villes et abbayes autour d'une cité médiévale.;A1;Étagère A
+0004;Carcassonne : Auberges et Cathédrales;Extension;Familial;2 - 6;8;45;Hans im Glück;Klaus-Jürgen Wrede;2002;12/03/2021;Extension du jeu de base : nouvelles tuiles et sixième couleur de joueur.;A1;Étagère A
+0005;Dixit;Jeu;Ambiance;3 - 6;8;30;Libellud;Jean-Louis Roubira;2008;05/06/2021;Faire deviner une illustration onirique par une phrase ni trop claire ni trop obscure.;A2;Étagère A
+0006;Dixit;Jeu;Ambiance;3 - 6;8;30;Libellud;Jean-Louis Roubira;2008;05/06/2021;Faire deviner une illustration onirique par une phrase ni trop claire ni trop obscure.;A2;Étagère A
+0007;Les Aventuriers du Rail;Jeu;Familial;2 - 5;8;60;Days of Wonder;Alan R. Moon;2004;05/06/2021;Construire des lignes de chemin de fer d'une ville à l'autre en collectant des wagons.;A2;Étagère A
+0008;7 Wonders;Jeu;Stratégie;3 - 7;10;30;Repos Production;Antoine Bauza;2010;05/06/2021;Développer une cité antique en trois âges, en choisissant ses cartes par draft.;B1;Étagère B
+0009;7 Wonders : Leaders;Extension;Stratégie;3 - 7;10;40;Repos Production;Antoine Bauza;2011;05/06/2021;Extension du jeu de base : des personnages historiques recrutés à chaque âge.;B1;Étagère B
+0010;Pandemic;Jeu;Coopératif;2 - 4;8;45;Z-Man Games;Matt Leacock;2008;14/09/2021;Jeu coopératif : enrayer quatre épidémies avant qu'elles ne submergent la planète.;B1;Étagère B
+0011;Azul;Jeu;Familial;2 - 4;8;40;Plan B Games;Michael Kiesling;2017;14/09/2021;Composer une mosaïque de azulejos en choisissant ses tuiles au bon moment.;B1;Étagère B
+0012;Splendor;Jeu;Familial;2 - 4;10;30;Space Cowboys;Marc André;2014;14/09/2021;Acquérir des mines et des comptoirs pour attirer les faveurs des nobles.;B2;Étagère B
+0013;Dobble;Jeu;Rapide;2 - 8;6;15;Zygomatic;Denis Blanchot;2009;14/09/2021;Repérer le symbole commun entre deux cartes, plus vite que les autres.;C1;Bac enfants
+0014;Dobble;Jeu;Rapide;2 - 8;6;15;Zygomatic;Denis Blanchot;2009;14/09/2021;Repérer le symbole commun entre deux cartes, plus vite que les autres.;C1;Bac enfants
+0015;Dobble;Jeu;Rapide;2 - 8;6;15;Zygomatic;Denis Blanchot;2009;03/02/2022;Repérer le symbole commun entre deux cartes, plus vite que les autres.;C1;Bac enfants
+0016;Codenames;Jeu;Ambiance;2 - 8;10;15;Czech Games Edition;Vlaada Chvátil;2015;03/02/2022;Deux équipes, un mot d'indice à la fois pour retrouver ses agents secrets.;C1;Étagère B
+0017;Kingdomino;Jeu;Familial;2 - 4;8;15;Blue Orange;Bruno Cathala;2016;03/02/2022;Agrandir son royaume en posant des dominos de terrains, sans dépasser cinq cases.;C2;Étagère B
+0018;Takenoko;Jeu;Familial;2 - 4;8;45;Matagot;Antoine Bauza;2011;03/02/2022;Cultiver une bambouseraie impériale sans se laisser devancer par un panda gourmand.;C2;Étagère B
+0019;Patchwork;Jeu;Duo;2;8;30;Lookout Games;Uwe Rosenberg;2014;19/05/2022;Jeu à deux : composer la plus belle courtepointe en gérant temps et boutons.;C2;Armoire vitrée
+0020;Wingspan;Jeu;Expert;1 - 5;10;60;Stonemaier Games;Elizabeth Hargrave;2019;19/05/2022;Attirer des oiseaux dans trois habitats et enchaîner leurs pouvoirs.;D1;Armoire vitrée
+0021;Concept;Jeu;Ambiance;4 - 12;10;40;Repos Production;Alain Rivollet et Gaëtan Beaujannot;2013;19/05/2022;Faire deviner n'importe quel mot avec des icônes universelles, sans parler.;D1;Étagère B
+0022;Time's Up;Jeu;Ambiance;4 - 12;12;60;Repos Production;Peter Sarrett;1999;19/05/2022;Faire deviner des célébrités en trois manches de plus en plus contraintes.;D1;Étagère B
+0023;Jungle Speed;Jeu;Rapide;3 - 8;7;15;Asmodee;Thomas Vuarchex et Pierric Yakovenko;1997;08/11/2022;Attraper le totem au bon moment, et seulement au bon moment.;D2;Bac enfants
+0024;Sushi Go!;Jeu;Rapide;2 - 5;8;15;Gamewright;Phil Walker-Harding;2013;08/11/2022;Composer le meilleur menu en faisant tourner sa main de cartes.;D2;Bac enfants
+0025;Mysterium;Jeu;Coopératif;2 - 7;10;45;Libellud;Oleksandr Nevskiy et Oleg Sidorenko;2015;08/11/2022;Jeu coopératif : un fantôme envoie des visions, les médiums résolvent l'enquête.;D2;Armoire vitrée

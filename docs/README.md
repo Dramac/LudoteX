@@ -14,6 +14,9 @@ ni au bureau d'une association : ce guide-là vit dans le wiki du dépôt.
 3. **`lancement-local.md`** — installer et lancer l'application sur son
    propre poste, avec ou sans ligne de commande.
 4. **`deploiement.md`** — mettre l'application en ligne sur un VPS.
+5. **`personnaliser.md`** — ce qui reste à régler une fois l'installation
+   terminée : l'identité depuis `/admin/identite`, l'infrastructure dans le
+   `.env`, et la frontière entre les deux.
 
 ## Le reste du dossier
 
