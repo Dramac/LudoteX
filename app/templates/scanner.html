@@ -92,6 +92,6 @@
 </section>
 
 <!-- Décodage QR côté navigateur — jsQR hébergé en local (aucune dépendance CDN). -->
-<script src="/static/js/jsQR.js"></script>
-<script src="/static/js/scanner.js"></script>
+<script src="/static/js/jsQR.js?v={{ asset_v('js/jsQR.js') }}"></script>
+<script src="/static/js/scanner.js?v={{ asset_v('js/scanner.js') }}"></script>
 {% endblock %}

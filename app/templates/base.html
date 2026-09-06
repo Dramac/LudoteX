@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/image/favicon-192.png?v={{ logo_v() }}">
   <link rel="icon" type="image/png" sizes="512x512" href="/image/favicon-512.png?v={{ logo_v() }}">
   <link rel="apple-touch-icon" href="/image/favicon-192.png?v={{ logo_v() }}">
-  <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
+  <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v('css/style.css') }}">
   {# Couleur d'identité réglée depuis /admin/identite : les six variables du
      thème sont redéfinies ici, APRÈS la feuille de style, pour l'emporter sur
      le `:root` de style.css. Rien n'est écrit tant qu'aucune couleur n'est

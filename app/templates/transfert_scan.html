@@ -60,6 +60,6 @@
 </section>
 
 <!-- Décodage QR côté navigateur — même script que /scanner, aucune duplication. -->
-<script src="/static/js/jsQR.js"></script>
-<script src="/static/js/scanner.js"></script>
+<script src="/static/js/jsQR.js?v={{ asset_v('js/jsQR.js') }}"></script>
+<script src="/static/js/scanner.js?v={{ asset_v('js/scanner.js') }}"></script>
 {% endblock %}

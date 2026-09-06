@@ -161,19 +161,65 @@ templates.env.filters["dt_input"] = _dt_input
 # porteur canonique du numéro — jamais recopié en dur dans un gabarit.
 templates.env.globals["app_version"] = APP_VERSION
 
-# Version du CSS pour « casser » le cache navigateur : la date de modification du
-# fichier style.css. Recalculée au démarrage (uvicorn --reload redémarre quand le
-# fichier change), donc le navigateur recharge automatiquement la bonne version.
-_CSS = BASE_DIR / "static" / "css" / "style.css"
-templates.env.globals["static_v"] = int(_CSS.stat().st_mtime) if _CSS.exists() else 0
+def asset_v(chemin_relatif: str) -> int:
+    """
+    Entier qui change quand le fichier statique `chemin_relatif` change —
+    paramètre `?v=` posé par les gabarits sur une ressource de `/static/`,
+    ex. `?v={{ asset_v('js/scanner.js') }}`. `chemin_relatif` est relatif à
+    `app/static/` (ex. `"css/style.css"`, `"js/jsQR.js"`, `"js/scanner.js"`).
 
-# Même motif que `static_v`, pour les images d'identité servies par
-# /image/* (voir app/routes/images.py) : {{ logo_v() }} rend la date de
-# modification du fichier effectivement servi.
+    GÉNÉRALISATION de l'ancien `static_v` (lot agora-2) : celui-ci ne portait
+    la date de modification que de `style.css`, posée en dur. Les deux
+    scripts du scanner, eux, n'avaient AUCUN paramètre de version. Combiné à
+    `expires 7d` sur `/static/` (deploy/nginx-ludotex*.conf), un `scanner.js`
+    corrigé et déployé restait ignoré des navigateurs jusqu'à une semaine —
+    voir interne/comptes-rendus/lot-agora-2-statiques-et-logs.md. Un seul
+    domicile pour les trois : `static_v` a disparu, ses gabarits appelants
+    sont passés à `asset_v`.
+
+    UNE FONCTION, comme `logo_v` juste ci-dessous et pour la même raison
+    (voir sa docstring) : figer la date à l'import suffirait pour ces trois
+    fichiers, que seul un déploiement modifie (uvicorn --reload redémarre
+    alors le processus, qui la recalcule) — mais laisser une constante pour
+    les uns et une fonction pour les autres aurait fait deux mécanismes pour
+    une seule idée.
+
+    PAS DE CACHE mémoire : un cache invalidé par date de modification devrait
+    de toute façon lire cette date à chaque appel pour savoir s'il est
+    encore valable — le `stat()` qu'on cherche à éviter reste donc payé une
+    fois sur deux. Le seul vrai gain serait un cache PERMANENT (sans relire
+    le fichier), qui suppose un signal explicite d'invalidation ; en
+    construire un pour trois fichiers serait sur-dimensionné (le lot ne le
+    demande pas). Le coût réel est celui déjà payé, sans qu'il ait jamais
+    posé de problème, par `logo_v()` sur chaque page.
+
+    Ne lève JAMAIS — un global Jinja tourne aussi pendant le rendu de la
+    page d'erreur 500 (enseignement du lot agora-1) : un fichier absent ou
+    illisible rend 0, valeur de repli sans conséquence pour le navigateur.
+    """
+    chemin = BASE_DIR / "static" / chemin_relatif
+    try:
+        return int(chemin.stat().st_mtime)
+    except OSError:
+        return 0
+
+
+# Disponible dans tous les gabarits qui chargent une ressource de /static/ :
+# {{ asset_v('css/style.css') }}, {{ asset_v('js/jsQR.js') }},
+# {{ asset_v('js/scanner.js') }}.
+templates.env.globals["asset_v"] = asset_v
+
+# Même motif, pour les images d'identité servies par /image/* (voir
+# app/routes/images.py) : {{ logo_v() }} rend la date de modification du
+# fichier effectivement servi — sans paramètre, puisque le nom du fichier ne
+# dépend pas du gabarit appelant (toujours celui de l'identité réglée, ou à
+# défaut celui de LudoteX).
 #
-# UNE FONCTION, et non une constante comme `static_v` : une feuille de style ne
-# change qu'au déploiement (uvicorn redémarre, la valeur est recalculée), alors
-# qu'un logo se dépose depuis /admin/identite EN COURS DE SERVICE. Une valeur
-# figée à l'import laisserait les navigateurs sur l'ancienne image jusqu'au
-# prochain redémarrage. `version_servie` ne lève jamais (voir sa docstring).
+# Une fonction dédiée plutôt qu'un appel `asset_v('...')` : le logo n'est PAS
+# sous `app/static/` (voir la docstring d'`app/logo.py`, section CACHE) — il
+# se dépose depuis /admin/identite dans `data/`, EN COURS DE SERVICE, avec un
+# repli sur le fichier versionné si rien n'a été déposé. `asset_v` ne connaît
+# qu'un seul dossier et aucun repli ; lui faire porter ce cas particulier
+# aurait mélangé deux domiciles dans une seule fonction. `version_servie` ne
+# lève jamais non plus (voir sa docstring).
 templates.env.globals["logo_v"] = logo.version_servie

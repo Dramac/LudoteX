@@ -19,7 +19,7 @@ CACHE
 -----
 Ces images ne changent que lorsqu'un administrateur dépose ou retire un logo.
 Les gabarits ajoutent `?v={{ logo_v() }}` — la date de modification du fichier
-servi, motif de `static_v` (voir app/logo.py::version_servie) : l'URL change
+servi, motif d'`asset_v` (voir app/logo.py::version_servie) : l'URL change
 quand l'image change, ce qui autorise un cache long sans jamais laisser un
 navigateur sur une image périmée.
 """

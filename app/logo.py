@@ -188,13 +188,11 @@ def version_servie() -> int:
     """
     Entier qui change quand le logo change — paramètre `?v=` des gabarits.
 
-    MÊME MOTIF que `static_v` (app/templating.py) : la date de modification du
-    fichier, en secondes. Une DIFFÉRENCE, et c'est la raison d'être de cette
-    fonction : `static_v` est calculé UNE FOIS à l'import, ce qui suffit pour
-    une feuille de style que seul un déploiement modifie. Le logo, lui, change
-    en cours de service, sans redémarrage — la valeur doit donc être relue à
-    chaque rendu, d'où une fonction appelée dans le gabarit (`{{ logo_v() }}`)
-    plutôt qu'une constante.
+    MÊME MOTIF qu'`asset_v` (app/templating.py) : la date de modification du
+    fichier, en secondes. La différence est ailleurs : le logo n'est pas sous
+    `app/static/` (voir CACHE ci-dessus) et se dépose depuis /admin/identite
+    EN COURS DE SERVICE, sans redémarrage — d'où une fonction dédiée plutôt
+    qu'un appel à `asset_v`, qui ne connaît qu'un seul dossier et aucun repli.
 
     Ne lève jamais : un logo dont on ne sait pas dater le fichier vaut 0, et
     l'image reste servie.

@@ -409,7 +409,7 @@ def test_apres_depot_la_route_sert_le_fichier_depose(client, bases):
 def test_le_parametre_de_cache_change_avec_le_logo(client, bases):
     """
     Sans cela, un navigateur garderait l'ancien logo en cache et le bureau
-    croirait son dépôt raté. Motif `static_v` (app/templating.py), mais relu à
+    croirait son dépôt raté. Motif `asset_v` (app/templating.py), mais relu à
     chaque rendu : le logo change SANS redémarrage.
     """
     import os
