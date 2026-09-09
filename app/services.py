@@ -3403,14 +3403,15 @@ def get_signalement(conn: sqlite3.Connection, id_signalement: int) -> dict | Non
     """
     Un signalement et son contexte lisible, ou None s'il est inconnu.
 
-    Existe pour la LIGNE DE JOURNAL du « Marquer traité » : elle doit nommer
-    le jeu, que la table `signalements` ne porte pas (même besoin que
+    Existe pour la LIGNE DE JOURNAL du « Marquer traité », que l'administrateur
+    ET le bénévole depuis la fiche peuvent déclencher (§6 bis) : elle doit
+    nommer le jeu, que la table `signalements` ne porte pas (même besoin que
     `info_exemplaire` pour les quatre actions de prêt), et son `traite_le`
-    permet à la route de ne rien écrire quand le second appui d'un
-    administrateur ne change rien — `traiter_signalement` étant idempotent,
-    journaliser sans regarder produirait des lignes qui affirment un fait qui
-    n'a pas eu lieu (même précaution que « annonce effacée », qui n'est écrite
-    que s'il y avait bien une annonce).
+    permet à la route de ne rien écrire quand un second appui ne change
+    rien — `traiter_signalement` étant idempotent, journaliser sans regarder
+    produirait des lignes qui affirment un fait qui n'a pas eu lieu (même
+    précaution que « annonce effacée », qui n'est écrite que s'il y avait
+    bien une annonce).
 
     `texte` n'est délibérément PAS ramené : aucun appelant n'en a besoin, et
     c'est le seul champ de l'application de prêt par lequel une donnée
@@ -3434,9 +3435,11 @@ def get_signalement(conn: sqlite3.Connection, id_signalement: int) -> dict | Non
 
 def traiter_signalement(conn: sqlite3.Connection, id_signalement: int) -> None:
     """
-    Referme un signalement (l'administrateur seul, §2). `UPDATE ... WHERE
-    traite_le IS NULL` : IDEMPOTENT, un second appel ne change rien et ne
-    lève aucune erreur (piège 2 du lot 1).
+    Referme un signalement — depuis le lot agora-4, l'administrateur ET le
+    bénévole depuis la fiche de la boîte (§2 et §6 bis, la note réservait ce
+    geste à l'administrateur seul avant ce lot). `UPDATE ... WHERE traite_le
+    IS NULL` : IDEMPOTENT, un second appel ne change rien et ne lève aucune
+    erreur (piège 2 du lot 1).
     """
     conn.execute(
         "UPDATE signalements SET traite_le = ? "

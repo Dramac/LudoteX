@@ -835,6 +835,43 @@ def test_signalement_traite_journalise_une_seule_fois(client, conn, _journal_iso
     assert len(_actions(_journal_isole, "signalement_traite")) == 1
 
 
+def test_signalement_traite_depuis_la_fiche_journalise_pareillement(client, conn, _journal_isole):
+    """
+    Lot agora-4 : la fiche de la boîte referme aussi, plus seulement
+    l'administrateur (§2 de la note, corrigé). Même action de journal, même
+    idempotence — la logique est FACTORISÉE avec la route admin ci-dessus
+    (`routes/pret.py::_signalement_a_fermer` / `_journaliser_signalement_traite`),
+    pas recopiée.
+    """
+    _connexion(client)
+    categorie = _premiere_categorie(conn)
+    client.post("/pret/001/signaler", data={"id_categorie": str(categorie["id_categorie"])})
+    (id_signalement,) = conn.execute(
+        "SELECT id_signalement FROM signalements ORDER BY id_signalement DESC LIMIT 1"
+    ).fetchone()
+
+    client.post(f"/pret/001/signalements/{id_signalement}/traiter")
+    ligne = _derniere(_journal_isole, "signalement_traite")
+    assert ligne["module"] == "pret" and ligne["objet"].startswith("Catan")
+    assert ligne["ref"] == "CATAN"
+
+    client.post(f"/pret/001/signalements/{id_signalement}/traiter")  # second appui
+    assert len(_actions(_journal_isole, "signalement_traite")) == 1
+
+    # Une boîte différente de celle de l'URL : rien n'est journalisé non plus.
+    conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('DIXIT', 'Dixit')")
+    conn.execute(
+        "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('002', 'DIXIT')"
+    )
+    conn.commit()
+    client.post("/pret/002/signaler", data={"id_categorie": str(categorie["id_categorie"])})
+    (id_signalement_2,) = conn.execute(
+        "SELECT id_signalement FROM signalements ORDER BY id_signalement DESC LIMIT 1"
+    ).fetchone()
+    client.post(f"/pret/001/signalements/{id_signalement_2}/traiter")  # mauvaise boîte
+    assert len(_actions(_journal_isole, "signalement_traite")) == 1
+
+
 def test_crud_des_categories_de_signalement_journalise(client, conn, _journal_isole):
     _connexion(client)
     client.post("/admin/categories-signalement", data={"nom": "Notice envolée"})

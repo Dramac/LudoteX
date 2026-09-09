@@ -267,3 +267,108 @@ def test_lien_signaler_present_boite_sortie(client):
 def test_lien_signaler_present_sortie_tournoi(client):
     client.post("/pret/001/tournoi")
     assert "/pret/001/signaler" in client.get("/pret/001").text
+
+
+# ---------------------------------------------------------------------------
+# Fermeture depuis la fiche (lot agora-4) — §2 de la note, mis à jour : ce
+# n'est plus l'administrateur seul qui referme. La logique est FACTORISÉE
+# avec routes/admin.py::signalement_traiter (routes/pret.py::_signalement_a_fermer),
+# la journalisation en couvre l'idempotence côté tests/test_journal_appels.py.
+# ---------------------------------------------------------------------------
+def _creer_signalement(id_exemplaire, id_categorie=3, texte=None):
+    """Crée un signalement directement en base (patron de `_archiver` plus
+    haut) : le geste HTTP de création est déjà couvert par ses propres tests,
+    inutile de le rejouer pour préparer ceux-ci."""
+    from app import db, services
+
+    conn = db.get_connection()
+    try:
+        return services.creer_signalement(conn, id_exemplaire, id_categorie, texte)
+    finally:
+        conn.close()
+
+
+def _ajouter_deuxieme_boite():
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('DIXIT', 'Dixit')")
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('002', 'DIXIT')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_benevole_muni_du_jeton_referme_un_signalement(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-test-secret-32-caracteres")
+    client.cookies.set("jeton_pret", "jeton-test-secret-32-caracteres")
+    id_signalement = _creer_signalement("001")
+
+    r = client.post(f"/pret/001/signalements/{id_signalement}/traiter")
+    assert r.status_code == 200
+    assert "Signalement refermé" in r.text
+    assert "Signalements en cours" not in r.text  # le bandeau ne le liste plus
+
+    from app import db, services
+    conn = db.get_connection()
+    try:
+        assert services.get_signalement(conn, id_signalement)["traite_le"] is not None
+    finally:
+        conn.close()
+
+
+def test_fermeture_refusee_sans_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-test-secret-32-caracteres")
+    id_signalement = _creer_signalement("001")
+
+    r = client.post(f"/pret/001/signalements/{id_signalement}/traiter")
+    assert r.status_code == 403
+
+    from app import db, services
+    conn = db.get_connection()
+    try:
+        assert services.get_signalement(conn, id_signalement)["traite_le"] is None
+    finally:
+        conn.close()
+
+
+def test_second_appui_reste_idempotent_sans_erreur(client):
+    id_signalement = _creer_signalement("001")
+
+    client.post(f"/pret/001/signalements/{id_signalement}/traiter")
+    r = client.post(f"/pret/001/signalements/{id_signalement}/traiter")
+    assert r.status_code == 200
+    assert "Signalement refermé" in r.text
+
+
+def test_signalement_d_une_autre_boite_est_refuse(client):
+    """Une URL forgée (id_exemplaire de l'écran, id_signalement d'une autre
+    boîte) ne referme rien — contrôle de cohérence exigé par le lot."""
+    _ajouter_deuxieme_boite()
+    id_signalement = _creer_signalement("002")
+
+    r = client.post(f"/pret/001/signalements/{id_signalement}/traiter")
+    assert r.status_code == 200
+    assert "n'existe plus ou ne correspond pas à cette boîte" in r.text
+
+    from app import db, services
+    conn = db.get_connection()
+    try:
+        assert services.get_signalement(conn, id_signalement)["traite_le"] is None
+    finally:
+        conn.close()
+
+
+def test_signalement_inconnu_est_refuse(client):
+    r = client.post("/pret/001/signalements/999999/traiter")
+    assert r.status_code == 200
+    assert "n'existe plus ou ne correspond pas à cette boîte" in r.text
+
+
+def test_fermeture_sur_boite_inconnue_est_un_404(client):
+    id_signalement = _creer_signalement("001")
+    r = client.post(f"/pret/999/signalements/{id_signalement}/traiter")
+    assert r.status_code == 404

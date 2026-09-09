@@ -2655,32 +2655,24 @@ def signalement_traiter(request: Request, id_signalement: int,
     Referme un signalement, puis revient sur la liste AVEC LES MÊMES FILTRES
     (d'où les deux champs cachés du formulaire). Idempotent côté service : un
     second appui ne produit ni erreur ni message différent.
+
+    Depuis le lot agora-4, les bénévoles referment aussi, depuis la fiche de
+    la boîte (routes/pret.py) : la lecture/écriture/journalisation est
+    FACTORISÉE et partagée avec cette route via `_signalement_a_fermer` /
+    `_journaliser_signalement_traite` (import différé, même patron que
+    l'emprunt de `catalogue._entier_ou_none` juste en dessous).
     """
     if (garde := _garde(request)):
         return garde
     from app.routes.catalogue import _entier_ou_none
+    from app.routes.pret import _journaliser_signalement_traite, _signalement_a_fermer
 
     conn = get_connection()
     try:
-        # Lu AVANT : la ligne de journal doit nommer le jeu (la table
-        # `signalements` ne le porte pas), et `traite_le` dit si ce clic
-        # change réellement quelque chose.
-        avant = services.get_signalement(conn, id_signalement)
-        services.traiter_signalement(conn, id_signalement)
+        avant = _signalement_a_fermer(conn, id_signalement)
     finally:
         conn.close()
-    # Rien n'est journalisé pour un signalement inconnu ou DÉJÀ traité : le
-    # service est idempotent, et une ligne « traité » sur un second appui
-    # affirmerait un fait qui n'a pas eu lieu. Même précaution que « annonce
-    # effacée », qui n'est écrite que s'il y avait bien une annonce.
-    if avant is not None and avant["traite_le"] is None:
-        objet = avant["jeu_nom"]
-        if avant["categorie_nom"]:
-            objet = f"{objet} — {avant['categorie_nom']}"
-        journal.journaliser(
-            request, "pret", "signalement_traite",
-            objet=objet, ref=avant["reference_titre"],
-        )
+    _journaliser_signalement_traite(request, avant)
     etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
     return RedirectResponse(
         _url_signalements(etat_n, _entier_ou_none(categorie), "Signalement marqué traité."),

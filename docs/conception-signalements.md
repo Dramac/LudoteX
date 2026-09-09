@@ -47,7 +47,7 @@ Décisions complémentaires, prises dans la foulée et sans objection :
 
 | Question | Décision |
 |---|---|
-| Qui referme un signalement ? | **L'administrateur seul**, depuis sa page. |
+| Qui referme un signalement ? | **L'administrateur seul**, depuis sa page. ⚠️ **Rendu faux par le lot agora-4** (2026-09) : le bénévole referme aussi, depuis la fiche de la boîte. Voir §6 bis. |
 | Clôture de fin d'événement | **Ne touche pas aux signalements.** C'est justement à ce moment-là que la liste sert. |
 | Emplacement affiché en administration | **Les deux** — événement ET local — côte à côte, lus à l'affichage. |
 
@@ -237,6 +237,40 @@ La lecture se fait par un service dédié, `signalements_ouverts(conn, id)`, et
 **pas** en enrichissant `info_exemplaire` — même raison qu'`emplacement_actuel`
 (`app/services.py`) : `info` est réutilisée par les gabarits publics, et tout ce
 qu'on y ajoute fuit sur la fiche du catalogue.
+
+## 6 bis. Traiter depuis la fiche (lot agora-4, 2026-09)
+
+⚠️ **Corrige le §2 : ce n'est plus l'administrateur seul qui referme.** Retour
+du test grandeur nature (Simon) : « Il faut que les bénévoles puissent aussi
+noter un jeu comme traité. » La personne qui répare la boîte l'a devant elle,
+et le bandeau des signalements ouverts est déjà affiché sur sa fiche — un
+bouton par ligne du bandeau, un tap, aucune navigation.
+
+`POST /pret/<id>/signalements/<id_signalement>/traiter`, à la suite des deux
+routes du §5. Suit le patron sans redirection des autres actions de
+`routes/pret.py` : le POST retourne l'écran de prêt avec un `resultat` de
+confirmation, pas un POST-Redirect-GET comme la route admin.
+
+La lecture/écriture/journalisation (§10) est **factorisée**, pas dupliquée,
+entre cette route et `routes/admin.py::signalement_traiter` — un seul
+domicile (`routes/pret.py::_signalement_a_fermer` et
+`_journaliser_signalement_traite`). La route bénévole ajoute un contrôle que
+l'admin n'a pas besoin de faire : le signalement doit appartenir à la boîte de
+l'URL, sans quoi une URL forgée pourrait refermer le signalement d'une autre
+boîte. Incohérence -> message, jamais d'erreur brute, comme partout ailleurs.
+
+**Arbitrage de Simon, non négociable : pas de « Rouvrir ».** En cas d'erreur,
+on ouvre un nouveau signalement (le lien reste permanent, §5). Le tap est donc
+irréversible sur un écran manipulé à la hâte des centaines de fois par jour —
+d'où un bouton **visuellement secondaire** (`.bouton-filtrer`,
+docs/ui-composants.md §3), séparé des boutons d'action principaux et hors de
+la trajectoire du pouce. Le bandeau reste un simple avertissement : le
+signalement ne bloque jamais le prêt, aucun bouton n'est masqué, aucune
+confirmation supplémentaire n'est demandée — inchangé depuis le §6.
+
+Ce que ce lot ne change pas : pas de colonne « qui a traité », pas de champ
+« comment », aucun changement de schéma. Le carnet consultable en dehors de la
+fiche (liste dédiée aux bénévoles) est le lot suivant de la série agora.
 
 ## 7. L'écran d'administration
 

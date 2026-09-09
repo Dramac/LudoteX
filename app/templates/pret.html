@@ -26,6 +26,21 @@
           <strong>{{ s.categorie_nom or "Signalement" }}</strong>{% if s.texte %} — {{ s.texte }}{% endif %}
           <br><span class="stats-note">{{ s.cree_le | dt_local }}</span>
         </p>
+        {# Bouton de fermeture, ajouté au lot agora-4 : un par ligne, SÉPARÉ
+           des boutons d'action principaux plus bas (hors de la trajectoire du
+           pouce qui enchaîne les prêts), et visuellement discret — le tap est
+           IRRÉVERSIBLE (pas de « Rouvrir », arbitrage de Simon : en cas
+           d'erreur on ouvre un nouveau signalement). `.bouton-filtrer` est la
+           classe canonique pour une action secondaire dans une liste
+           (docs/ui-composants.md §3), déjà celle du même bouton en admin. Le
+           libellé nomme la catégorie : « Traité » seul serait ambigu à côté
+           du nom du jeu affiché plus bas. #}
+        <form method="post"
+              action="/pret/{{ info.id_exemplaire }}/signalements/{{ s.id_signalement }}/traiter">
+          <button type="submit" class="bouton-filtrer">
+            Marquer « {{ s.categorie_nom or "ce signalement" }} » comme traité
+          </button>
+        </form>
       {% endfor %}
     </section>
   {% endif %}
@@ -142,6 +157,17 @@
     {% elif resultat.type == "signale" %}
       <section class="resultat resultat-info">
         <p>Signalement envoyé. Merci !</p>
+      </section>
+    {% elif resultat.type == "signalement_traite" %}
+      {# Confirmation sobre : ce n'est pas un événement de prêt (§4 du lot
+         agora-4). Le nom du jeu est déjà le titre de la fiche juste en
+         dessous, seule la catégorie est rappelée ici. #}
+      <section class="resultat resultat-info">
+        <p>Signalement refermé{% if resultat.categorie %} : {{ resultat.categorie }}{% endif %}.</p>
+      </section>
+    {% elif resultat.type == "signalement_traite_echec" %}
+      <section class="resultat resultat-attention">
+        <p>Ce signalement n'existe plus ou ne correspond pas à cette boîte. Rien n'a été modifié.</p>
       </section>
     {% endif %}
     {% if emplacement_rangement %}

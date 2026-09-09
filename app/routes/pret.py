@@ -48,6 +48,10 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
     {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
         rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
     {"type": "signale"}                                    signalement envoyé
+    {"type": "signalement_traite",   "categorie": nom|None}  signalement refermé
+                                                             depuis la fiche
+    {"type": "signalement_traite_echec"}                    rien à refermer
+                                                             (inconnu ou autre boîte)
 
 TRANSFERT DE POCHETTE (docs/conception-transfert-pochette.md)
 ---------------------------------------------------------------
@@ -57,11 +61,19 @@ docstrings pour le détail de chaque écran.
 
 CARNET DE MAINTENANCE (docs/conception-signalements.md)
 ---------------------------------------------------------
-Deux routes dédiées, à la suite du transfert : `GET .../signaler` ouvre un
+Trois routes dédiées, à la suite du transfert : `GET .../signaler` ouvre un
 écran (rien n'est encore écrit), `POST .../signaler` enregistre. Le lien est
 PERMANENT en pied de carte (les trois états de la boîte), et le bandeau
 d'alerte listant les signalements ouverts se voit AVANT toute action — voir
 `_rendu()`, qui le calcule sans condition sur `resultat`.
+
+Depuis le lot agora-4, un bouton par ligne de ce bandeau referme le
+signalement (`POST .../signalements/<id_signalement>/traiter`) : le §2 de la
+note de conception, qui réservait ce geste à l'administrateur, est devenu
+faux et corrigé en conséquence. La lecture/écriture/journalisation est
+factorisée dans `_signalement_a_fermer` / `_journaliser_signalement_traite`
+ci-dessous, PARTAGÉES avec `routes/admin.py::signalement_traiter` (import
+différé depuis ce module, patron déjà en usage pour `catalogue._entier_ou_none`).
 """
 
 import sqlite3
@@ -753,4 +765,91 @@ async def signaler_confirmer(request: Request, id_exemplaire: str,
                              ok=refus is None, detail=motif)
     return refus if refus is not None else _rendu(
         request, id_exemplaire, {"type": "signale"}
+    )
+
+
+def _signalement_a_fermer(conn: sqlite3.Connection, id_signalement: int,
+                          id_exemplaire: str | None = None) -> dict | None:
+    """
+    Lit puis referme un signalement. Domicile UNIQUE de ce raisonnement,
+    partagé par la route bénévole ci-dessous et par
+    `routes/admin.py::signalement_traiter` (import différé depuis ce module,
+    même patron que l'emprunt de `catalogue._entier_ou_none`) — le §2 de
+    `docs/conception-signalements.md`, qui réservait ce geste à
+    l'administrateur, est devenu faux avec ce lot.
+
+    Relit le signalement AVANT l'écriture (`services.get_signalement`) : la
+    ligne de journal doit nommer le jeu, que la table `signalements` ne porte
+    pas, et son `traite_le` dit si ce clic change réellement quelque chose —
+    voir `_journaliser_signalement_traite` ci-dessous, appelée séparément
+    APRÈS la fermeture de la connexion, comme les autres actions de ce
+    fichier.
+
+    `id_exemplaire`, fourni par la route bénévole (jamais par l'admin, qui
+    agit sans boîte de référence) : contrôle qu'une URL forgée ne referme pas
+    le signalement d'une autre boîte. Incohérent -> None, RIEN n'est écrit,
+    exactement comme un identifiant inconnu — c'est à l'appelant de traduire
+    ça en message, jamais en erreur brute (règle « ne jamais bloquer »).
+
+    Returns:
+        Le signalement tel qu'AVANT l'écriture, ou None s'il est inconnu ou
+        ne correspond pas à `id_exemplaire`.
+    """
+    avant = services.get_signalement(conn, id_signalement)
+    if avant is None:
+        return None
+    if id_exemplaire is not None and avant["id_exemplaire"] != id_exemplaire:
+        return None
+    services.traiter_signalement(conn, id_signalement)
+    return avant
+
+
+def _journaliser_signalement_traite(request: Request, avant: dict | None) -> None:
+    """
+    Écrit la ligne `signalement_traite`, sauf si rien n'a réellement changé :
+    `avant` à None (signalement inconnu ou d'une autre boîte, rien n'a été
+    écrit par `_signalement_a_fermer`) ou déjà traité (second appui,
+    `traiter_signalement` étant idempotent) — une ligne l'affirmerait alors
+    que ce n'est pas arrivé. Même précaution que « annonce effacée »
+    (routes/admin.py).
+    """
+    if avant is None or avant["traite_le"] is not None:
+        return
+    objet = avant["jeu_nom"]
+    if avant["categorie_nom"]:
+        objet = f"{objet} — {avant['categorie_nom']}"
+    journal.journaliser(
+        request, "pret", "signalement_traite",
+        objet=objet, ref=avant["reference_titre"],
+    )
+
+
+@router.post("/{id_exemplaire}/signalements/{id_signalement}/traiter")
+def signalement_traiter(request: Request, id_exemplaire: str, id_signalement: int,
+                        _=Depends(exiger_jeton)):
+    """
+    Referme un signalement depuis la fiche de la boîte (§2 de la note de
+    conception, corrigé par ce lot : ce n'est plus l'administrateur seul qui
+    referme). Bouton du bandeau des signalements ouverts de `pret.html`.
+
+    Suit le patron des autres actions de ce fichier : pas de redirection, on
+    retourne l'écran de prêt avec un `resultat` de confirmation. Le tap est
+    IRRÉVERSIBLE (arbitrage de Simon, série agora : pas de « Rouvrir », en cas
+    d'erreur on ouvre un nouveau signalement) mais ne bloque jamais le prêt —
+    aucun bouton n'est masqué, aucune confirmation supplémentaire.
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return _rendu(request, id_exemplaire)  # 404, patron existant
+        avant = _signalement_a_fermer(conn, id_signalement, id_exemplaire=id_exemplaire)
+    finally:
+        conn.close()
+    _journaliser_signalement_traite(request, avant)
+    if avant is None:
+        return _rendu(request, id_exemplaire, {"type": "signalement_traite_echec"})
+    return _rendu(
+        request, id_exemplaire,
+        {"type": "signalement_traite", "categorie": avant["categorie_nom"]},
     )
