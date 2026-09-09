@@ -200,8 +200,14 @@ commit, quel que soit le sujet du chantier.
 
 1. **Aucune mention de l'association.** Ni dans le code, ni dans les docs, ni
    dans les messages de commit, ni dans une valeur par défaut. Elle ne vit que
-   dans le `.env` de l'instance. Le contrôle tient en une commande :
-   `git grep -i "<nom de l'association>"` doit ne rien renvoyer.
+   dans le `.env` de l'instance. Le contrôle est **automatique** :
+   `tests/test_neutralisation.py` cherche la suite des mots du nom séparés par
+   n'importe quoi, sauts de ligne compris. Un `git grep` du nom complet, seul
+   contrôle jusqu'ici, est aveugle à toute découpe : il a laissé passer un nom
+   réparti sur deux lignes `echo` et un nom soudé sans espaces dans trois UID
+   iCalendar, publiés l'un et l'autre. Les noms surveillés vivent dans
+   `interne/noms-bannis.txt`, hors dépôt ; sans ce fichier le test est ignoré,
+   donc vert sur un clone public.
 2. **Aucune couleur en dur.** Les six variables du `:root` de
    `app/static/css/style.css` font foi ; une valeur hexadécimale écrite dans un
    gabarit, une feuille de style ou un export PDF rompt le thème réglable.
@@ -398,6 +404,12 @@ Conséquence assumée : pas d'historique fin ni de diff sur ces documents.
 pour (a) purger les chemins internes de tout l'historique et (b) remplacer le nom
 de l'association dans le contenu des fichiers **et** dans les messages de commit
 (`--replace-text` + `--replace-message`). Un seul `push --force`.
+
+**`--replace-text` travaille ligne par ligne, sur des chaînes exactes.** Sa liste
+doit donc porter **chaque variante** ayant existé dans le dépôt, pas seulement le
+nom complet : la forme coupée par une fin de ligne et la forme soudée sans
+espaces y ont toutes deux vécu. Nourrie du seul nom complet, la réécriture les
+laisserait dans l'historique — définitivement, l'opération ne se rejouant pas.
 
 Ordre impératif : **neutralisation terminée et commitée → puis réécriture → puis
 force-push.** Préalables : arbre de travail propre, vérifier les forks sur la
