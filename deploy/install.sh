@@ -68,8 +68,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 echo "############################################################"
-echo "#  Installation — Application de prêt de jeux (Des jeux    #"
-echo "#  plein la Manche)                                        #"
+echo "#  Installation — LudoteX, prêt de jeux de société         #"
 echo "############################################################"
 echo
 echo "Ce script va configurer le serveur et déployer l'application."
