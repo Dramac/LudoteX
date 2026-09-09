@@ -25,7 +25,7 @@ from datetime import date, datetime, time, timedelta
 
 # Repli du nom de l'association quand la route ne le transmet pas — même
 # raison que dans `tournoi/services.py` : le réglage vit dans la base de PRÊT.
-from app.config import NOM_ASSOCIATION
+from app.config import DOMAINE_UID_ICS, NOM_ASSOCIATION
 from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant
 from app.tournoi.creneau import (
     DUREE_DEFAUT_MIN,
@@ -422,7 +422,7 @@ def ical_element(conn: sqlite3.Connection, id_element: int,
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",
-        f"UID:programme-{id_element}-{_ics_horodatage(debut)}@desjeuxpleinlamanche",
+        f"UID:programme-{id_element}-{_ics_horodatage(debut)}@{DOMAINE_UID_ICS}",
         f"DTSTAMP:{_ics_horodatage(datetime.now(FUSEAU_UTC))}",
         f"DTSTART:{_ics_horodatage(debut)}",
         f"DTEND:{_ics_horodatage(fin)}",

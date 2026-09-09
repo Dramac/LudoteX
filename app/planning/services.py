@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 # Repli du nom de l'association quand la route ne le transmet pas (voir la
 # docstring d'`ical_planning_benevole`). La valeur qui fait foi est réglée en
 # administration et vit dans la base de PRÊT, que ce module ne connaît pas.
-from app.config import NOM_ASSOCIATION
+from app.config import DOMAINE_UID_ICS, NOM_ASSOCIATION
 from app.planning.models import ETATS, NIVEAUX_PREFERENCE, TYPES_CRENEAU
 from app.services import FUSEAU_UTC, local_vers_utc_iso, maintenant
 
@@ -1152,7 +1152,7 @@ def ical_planning_benevole(conn: sqlite3.Connection, id_benevole: int,
         description = f"{c['libelle_jour']} — {asso}"
         lignes += [
             "BEGIN:VEVENT",
-            f"UID:planning-{a['id_affectation']}-{_ics_horodatage(debut)}@desjeuxpleinlamanche",
+            f"UID:planning-{a['id_affectation']}-{_ics_horodatage(debut)}@{DOMAINE_UID_ICS}",
             f"DTSTAMP:{dtstamp}",
             f"DTSTART:{_ics_horodatage(debut)}",
             f"DTEND:{_ics_horodatage(fin)}",

@@ -30,7 +30,7 @@ from datetime import date, datetime, time, timedelta
 # Repli du nom de l'association quand la route ne le transmet pas (voir la
 # docstring d'`ical_tournoi`). La valeur qui fait foi est réglée en
 # administration et vit dans la base de PRÊT, que ce module ne connaît pas.
-from app.config import NOM_ASSOCIATION
+from app.config import DOMAINE_UID_ICS, NOM_ASSOCIATION
 from app.services import (  # helpers partagés avec le module de prêt
     FUSEAU_LOCAL,
     FUSEAU_UTC,
@@ -1465,7 +1465,7 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int,
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",
-        f"UID:tournoi-{id_tournoi}-{_ics_horodatage(debut)}@desjeuxpleinlamanche",
+        f"UID:tournoi-{id_tournoi}-{_ics_horodatage(debut)}@{DOMAINE_UID_ICS}",
         f"DTSTAMP:{_ics_horodatage(datetime.now(FUSEAU_UTC))}",
         f"DTSTART:{_ics_horodatage(debut)}",
         f"DTEND:{_ics_horodatage(fin)}",

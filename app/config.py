@@ -92,6 +92,18 @@ load_dotenv()
 # une chaîne vide — donc un bandeau et un titre d'onglet sans nom.
 NOM_ASSOCIATION = os.getenv("NOM_ASSOCIATION", "").strip() or "LudoteX"
 
+# Domaine des UID iCalendar, partagé par les TROIS exports .ics (planning,
+# tournoi, programme). DOMICILE UNIQUE : les trois modules portaient jusqu'ici
+# le même littéral recopié, qui contenait le nom de l'association en toutes
+# lettres et SOUDÉ (sans espaces) — invisible à toute recherche de ce nom, et
+# publié tel quel dans chaque .ics exporté par un bénévole.
+#
+# C'est le nom du PRODUIT, jamais celui d'un déploiement, et il est FIGÉ : un
+# agenda reconnaît un événement déjà importé à son UID. Le changer transforme
+# une mise à jour en doublon chez tous ceux qui ont déjà importé un .ics.
+# Ne pas le dériver d'un réglage administrable, pour cette raison exactement.
+DOMAINE_UID_ICS = "ludotex"
+
 # Repli de SECOND RANG de l'URL du dépôt du code source, et DOMICILE UNIQUE du
 # dernier repli de la cascade. Voir la docstring du module.
 DEPOT_URL = (os.getenv("DEPOT_URL", "").strip()
