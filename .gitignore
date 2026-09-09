@@ -67,3 +67,10 @@ wiki/
 
 # --- Notes internes (hors dépôt public, sauvegardées avec la machine) ---
 interne/
+
+# --- Cadre de travail de l'assistant (hors dépôt public) ---
+# CLAUDE.md est versionné et le reste : il décrit le PROJET, il est utile à qui
+# reprend le code. Ces deux-ci décrivent notre façon de travailler et nos
+# chantiers en cours — ils n'ont rien à faire sur un dépôt public.
+.claude/
+CLAUDE.local.md
