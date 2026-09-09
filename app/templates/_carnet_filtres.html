@@ -1,0 +1,47 @@
+{# Fragment PARTAGÉ : filtres du carnet de maintenance (état + catégorie) et
+   puces de filtres actifs. Inclus par `maintenance.html` (bénévole) et par
+   `admin_signalements.html` (bureau) — les deux écrans filtrent la même
+   liste, seule l'adresse change.
+   `prefixe` vient de `app/carnet.py` : /maintenance ou /admin/signalements.
+   Écrire l'URL en dur ici renverrait le bénévole vers l'écran protégé par le
+   mot de passe. #}
+<details class="recherche" {% if filtres_actifs %}open{% endif %}>
+  <summary>Filtrer</summary>
+  <form method="get" action="{{ prefixe }}" class="recherche-form">
+    <div class="champ">
+      <label for="etat">État</label>
+      <select id="etat" name="etat">
+        {% for e in etats %}
+          <option value="{{ e }}" {% if e == etat %}selected{% endif %}>{{ libelles_etat[e] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="champ">
+      <label for="categorie">Catégorie</label>
+      <select id="categorie" name="categorie">
+        <option value="">Toutes</option>
+        {% for c in categories %}
+          <option value="{{ c.id_categorie }}" {% if c.id_categorie == id_categorie %}selected{% endif %}>
+            {{ c.nom }}{% if not c.actif %} (archivée){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="recherche-actions">
+      <button type="submit" class="bouton-filtrer">Filtrer</button>
+      {% if filtres_actifs %}<a class="lien" href="{{ prefixe }}">Réinitialiser</a>{% endif %}
+    </div>
+  </form>
+</details>
+
+{% if chips %}
+<div class="filtres-actifs">
+  <span class="fa-label">Filtres actifs :</span>
+  {% for c in chips %}
+    <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+  {% endfor %}
+  <a class="lien" href="{{ prefixe }}">Tout effacer</a>
+</div>
+{% endif %}

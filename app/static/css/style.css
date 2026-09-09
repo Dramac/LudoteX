@@ -553,6 +553,77 @@ summary:focus-visible,
 }
 .detail th, .admin-table th { color: var(--gris); }
 
+/* Classe d'accessibilité : contenu réservé aux lecteurs d'écran (libellé d'un
+   bouton radio sans texte visible, libellé de cellule en mode cartes…).
+   ⚠️ Elle était employée par admin_fonctionnalites.html SANS jamais avoir été
+   définie ici : les quatre libellés d'états s'affichaient donc en toutes
+   lettres à côté de chaque bouton radio. Écart corrigé au lot agora-5, au
+   moment d'en ajouter un second usage. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Variante OPT-IN du tableau de données : sous 640 px, chaque ligne devient
+   une carte empilée (docs/ui-composants.md §9).
+   POURQUOI UNE VARIANTE, et pas une retouche de .admin-table : neuf gabarits
+   l'utilisent, dont huit écrans de bureau qui n'ont pas ce besoin. Seul le
+   carnet de maintenance est posé au comptoir, sur un téléphone.
+   POURQUOI DES CARTES, et pas un défilement horizontal : le geste « faire
+   défiler pour atteindre le bouton » est mauvais sur un écran d'action
+   répétée. Précédent suivi : .planning-grille, plus haut dans ce fichier.
+   ⚠️ NE PAS retirer `word-break: break-word` des règles partagées ci-dessus
+   pour régler la césure du bouton : il a été ajouté exprès en correctif
+   anti-débordement (retour terrain iPhone 13 mini). Ce qu'on traite ici,
+   c'est la mise en page — une cellule pleine largeur n'a plus rien à couper. */
+.cartes-libelle { display: none; }
+
+@media (max-width: 640px) {
+  /* `display: block` sur les éléments de tableau efface la sémantique de
+     tableau pour les lecteurs d'écran : les en-têtes de colonnes ne sont plus
+     annoncés. D'où `.cartes-libelle`, un vrai libellé DANS le document (et
+     non un `content:` de CSS, que l'on ne peut ni sélectionner ni garantir
+     lu) devant chaque valeur. */
+  .admin-table--cartes,
+  .admin-table--cartes tbody,
+  .admin-table--cartes tr,
+  .admin-table--cartes td { display: block; width: auto; }
+  .admin-table--cartes thead { display: none; }
+  .admin-table--cartes tr {
+    border: 1px solid var(--bord);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .admin-table--cartes td {
+    border-bottom: 0;
+    padding: 2px 0;
+    font-size: 0.95rem;
+  }
+  .admin-table--cartes .cartes-libelle {
+    display: inline;
+    color: var(--gris);
+    font-size: 0.85rem;
+  }
+  .admin-table--cartes .cartes-libelle::after { content: " : "; }
+  /* Le nom du jeu porte la carte : c'est par lui qu'on la reconnaît. */
+  .admin-table--cartes .cartes-titre {
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding-bottom: 4px;
+  }
+  /* Le bouton d'action prend toute la largeur, en bas de la carte, à portée
+     de pouce — c'est le défaut que ce lot corrige. */
+  .admin-table--cartes .cartes-action { padding-top: 10px; }
+  .admin-table--cartes .cartes-action .rangement-form-inline { display: block; margin: 0; }
+  .admin-table--cartes .cartes-action .bouton-filtrer { display: block; width: 100%; }
+}
+
 .admin-menu { list-style: none; margin: 0; padding: 0; }
 .admin-menu li { margin: 10px 0; font-size: 1.1rem; }
 .admin-menu li a { display: flex; align-items: center; }

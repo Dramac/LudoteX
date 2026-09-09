@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block titre %}Carnet de maintenance — {{ nom_association }}{% endblock %}
+{# Même largeur que l'écran du bureau : sur ordinateur le tableau est dense,
+   sur téléphone il bascule en cartes (voir `_carnet_liste.html`). #}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{#
+  Carnet de maintenance, version BÉNÉVOLE (docs/conception-signalements.md §7).
+  Même liste et mêmes filtres que `/admin/signalements`, SANS les exports ni
+  le réglage des catégories, qui restent derrière le mot de passe.
+
+  Cet écran n'est JAMAIS public : la route porte son propre `exiger_jeton`
+  (app/routes/maintenance.py), indépendamment de l'état du module.
+#}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Carnet de maintenance</h1>
+  <p class="stats-note">
+    Les boîtes signalées par l'équipe : pièce manquante, boîte abîmée…
+    Quand vous en avez réglé une, marquez-la traitée — l'alerte disparaît
+    alors du comptoir.
+  </p>
+
+  {% if message %}
+    <p class="resultat resultat-ok">{{ message }}</p>
+  {% endif %}
+
+  <p class="dispo-titre">⚠️ {{ nb_ouverts }} {{ pluriel(nb_ouverts, 'signalement', 'signalements') }} {{ pluriel(nb_ouverts, 'ouvert', 'ouverts') }}</p>
+
+  <details class="aide-inline">
+    <summary>❓ Comment se lit ce carnet</summary>
+    <p>Un signalement reste ouvert tant que personne ne l'a refermé.
+       <strong>Marquer traité</strong> le referme : la boîte cesse d'afficher
+       l'alerte au comptoir, et la ligne reste consultable avec le filtre
+       « déjà traités ». <strong>C'est sans retour</strong> — en cas d'erreur,
+       ouvrez un nouveau signalement depuis la fiche de la boîte.</p>
+    <p>Les deux emplacements sont rappelés pour retrouver la boîte : celui de
+       la salle et celui du local. L'emplacement de la salle est réécrit à
+       chaque édition — sur un signalement ancien, c'est le local qui est
+       fiable.</p>
+    <p>Pour signaler un problème sur une boîte, scannez-la et utilisez
+       <strong>⚠️ Signaler un problème</strong> en bas de sa fiche.</p>
+  </details>
+
+  {% include "_carnet_filtres.html" %}
+</section>
+
+<section class="carte">
+  {% include "_carnet_liste.html" %}
+</section>
+{% endblock %}

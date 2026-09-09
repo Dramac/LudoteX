@@ -149,6 +149,45 @@ session** : les deux classes partagent maintenant les mêmes règles CSS
 utilisé tel quel dans stats/tournois, `.admin-table` en admin) : le nom
 importe peu, le rendu et le comportement mobile sont désormais identiques.
 
+### Variante en cartes — `.admin-table--cartes` (lot agora-5)
+
+**Opt-in, jamais par défaut.** Sous 640 px, cette variante transforme chaque
+ligne en **carte empilée** : la première cellule (`.cartes-titre`) porte le
+titre, les suivantes s'empilent avec leur libellé, et la cellule d'action
+(`.cartes-action`) pose son bouton **pleine largeur** en bas.
+
+*Pourquoi une variante et pas une retouche du composant* : neuf gabarits
+utilisent `.admin-table`, dont huit sont des écrans de bureau qui n'ont pas ce
+besoin. Seul le **carnet de maintenance** est consulté au comptoir, sur un
+téléphone — d'où la variante posée sur ses deux écrans (bénévole et admin) et
+sur eux seuls.
+
+*Pourquoi des cartes et pas un défilement horizontal* : « faire défiler pour
+atteindre le bouton » est un mauvais geste sur un écran d'action répétée.
+Précédent suivi dans le projet : `.planning-grille`, dont la règle
+`@media (max-width: 640px)` transforme déjà une grille en agenda empilé.
+
+⚠️ **Ne PAS retirer `word-break: break-word` des règles partagées** pour régler
+une césure malheureuse : il a été ajouté exprès en correctif anti-débordement
+(retour terrain iPhone 13 mini). C'est le symptôme qui l'a rendu visible sur le
+carnet — colonne « Action » réduite à quelques dizaines de pixels, « Marquer
+traité » coupé une lettre par ligne — pas la cause. La cause est la mise en
+page ; une cellule pleine largeur n'a plus rien à couper.
+
+**Accessibilité** : `display: block` sur les éléments de tableau efface la
+sémantique de tableau, donc les en-têtes de colonnes ne sont plus annoncés.
+Chaque valeur porte alors son libellé dans le document
+(`<span class="cartes-libelle">`, masqué sur grand écran où le `<th>` fait le
+travail) — et **pas** un `content:` de CSS, qu'un lecteur d'écran n'est pas
+tenu de lire et qu'on ne peut pas sélectionner. Un bouton d'action répété d'une
+carte à l'autre gagne un complément `.sr-only` qui dit sur quoi il agit.
+
+`.sr-only` (contenu réservé aux lecteurs d'écran) est définie dans
+`app/static/css/style.css`. ⚠️ Elle y a été **ajoutée au lot agora-5** : elle
+était employée depuis longtemps par `admin_fonctionnalites.html` sans avoir
+jamais été écrite, et les quatre libellés d'états s'affichaient donc en toutes
+lettres à côté de chaque bouton radio.
+
 Tableau de la grille planning bénévole : `.pl-grille` (préfixe `pl-*`) reste
 **volontairement séparé** — grille éditable avec cases colorées par état,
 besoin réellement différent d'un tableau de lecture. Round robin :

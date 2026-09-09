@@ -3449,6 +3449,44 @@ def traiter_signalement(conn: sqlite3.Connection, id_signalement: int) -> None:
     conn.commit()
 
 
+def fermer_signalement(conn: sqlite3.Connection, id_signalement: int,
+                       id_exemplaire: str | None = None) -> dict | None:
+    """
+    Lit puis referme un signalement. Domicile UNIQUE de ce raisonnement,
+    partagé par les TROIS écrans qui portent le bouton « traité » : la fiche
+    de la boîte (`routes/pret.py`), le carnet bénévole (`routes/maintenance.py`)
+    et le carnet d'administration (`routes/admin.py`).
+
+    Écrite au lot agora-4 dans `routes/pret.py`, PROMUE ICI au lot agora-5 :
+    à deux appelants un import différé entre modules de routes se défendait,
+    à trois il fallait un domicile qui ne soit pas un module de routes.
+    La décision de journalisation, elle, reste hors des services (règle du §5.2
+    de docs/conception-journal.md) : voir `app.carnet.journaliser_traite`.
+
+    Relit le signalement AVANT l'écriture (`get_signalement`) : la ligne de
+    journal doit nommer le jeu, que la table `signalements` ne porte pas, et
+    son `traite_le` dit si ce clic change réellement quelque chose.
+
+    `id_exemplaire`, fourni par la route de la fiche (jamais par les deux
+    carnets, qui agissent sans boîte de référence) : contrôle qu'une URL
+    forgée ne referme pas le signalement d'une autre boîte. Incohérent ->
+    None, RIEN n'est écrit, exactement comme un identifiant inconnu — c'est à
+    l'appelant de traduire ça en message, jamais en erreur brute (règle « ne
+    jamais bloquer »).
+
+    Returns:
+        Le signalement tel qu'AVANT l'écriture, ou None s'il est inconnu ou ne
+        correspond pas à `id_exemplaire`.
+    """
+    avant = get_signalement(conn, id_signalement)
+    if avant is None:
+        return None
+    if id_exemplaire is not None and avant["id_exemplaire"] != id_exemplaire:
+        return None
+    traiter_signalement(conn, id_signalement)
+    return avant
+
+
 def compter_signalements_ouverts(conn: sqlite3.Connection) -> int:
     """Nombre total de signalements ouverts, tous jeux confondus (compteur §7)."""
     (n,) = conn.execute(

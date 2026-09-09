@@ -119,10 +119,15 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   + timeout) — voir le correctif de course sur les numéros de pochette,
   `docs/protocole-stress-test.md`.
 - **Visibilité des modules** (`app/modules.py`) : tournois, programme, stats,
-  planning, écran de salle et « à propos » ont chacun quatre états — *tous*,
-  *bénévoles*, *discret* (URL ouverte, lien masqué), *désactivé* — réglés depuis
-  `/admin/fonctionnalites` et stockés dans `parametres`. L'état par défaut est
-  *tous*, donc aucune migration pour les bases existantes.
+  planning, écran de salle, « à propos » et carnet de maintenance ont chacun
+  quatre états — *tous*, *bénévoles*, *discret* (URL ouverte, lien masqué),
+  *désactivé* — réglés depuis `/admin/fonctionnalites` et stockés dans
+  `parametres`. L'état par défaut est *tous*, donc aucune migration pour les
+  bases existantes. **Un module peut restreindre ces deux règles** : le carnet
+  de maintenance a *bénévoles* pour défaut et refuse *tous* (drapeau
+  `jamais_public`, case masquée à l'écran et valeur refusée en écriture). La
+  visibilité reste un réglage d'affichage : une route qui exige un jeton porte
+  son `Depends(exiger_jeton)` en propre.
 - **Identité paramétrable** : le nom de l'association, la page « À propos », le
   logo et la couleur de thème sont des **données éditoriales** en base
   (`parametres`, écrans `/admin/identite` et `/admin/evenement`), pas des
@@ -165,7 +170,9 @@ le lot 8 du registre. Ce qui est livré, par module :
 - **Rangement** — emplacements, deux contextes interchangeables, affectation en
   lot, mode rangement visible sur toutes les pages.
 - **Carnet de maintenance** — signalements d'état des boîtes et catégories
-  administrables.
+  administrables. Consultable par les bénévoles (`/maintenance`, en cartes sur
+  téléphone) comme par le bureau (`/admin/signalements`) ; les exports et les
+  catégories restent derrière le mot de passe.
 - **Journal d'activité** — socle à vocabulaire fermé, écran `/admin/journal`,
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et

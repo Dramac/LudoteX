@@ -1,0 +1,86 @@
+{# Fragment PARTAGÉ : la liste des signalements. Inclus par `maintenance.html`
+   (bénévole, sur smartphone) et par `admin_signalements.html` (bureau).
+
+   `.admin-table--cartes` : variante OPT-IN du tableau de données
+   (docs/ui-composants.md §9). Sous 640 px chaque ligne devient une carte
+   empilée, nom du jeu en tête et bouton pleine largeur en bas. Les en-têtes
+   de colonnes disparaissant alors, chaque valeur porte son propre libellé
+   `.cartes-libelle`, masqué sur grand écran où le `<th>` fait le travail.
+
+   `prefixe` (voir app/carnet.py) porte l'adresse de l'écran courant : c'est
+   lui qui fabrique l'action du formulaire, pour que le bénévole ne soit pas
+   renvoyé vers une page qui lui demande le mot de passe. #}
+{% if signalements %}
+<table class="admin-table admin-table--cartes">
+  <thead>
+    <tr>
+      <th>Jeu</th>
+      <th>Boîte</th>
+      <th>Catégorie</th>
+      <th>Détail</th>
+      <th>Signalé le</th>
+      <th>Où la trouver</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in signalements %}
+    <tr>
+      <td class="cartes-titre">{{ s.jeu_nom }}</td>
+      <td><span class="cartes-libelle">Boîte</span>{{ s.id_exemplaire }}</td>
+      <td>
+        {% if s.categorie_nom %}
+          <span class="cartes-libelle">Catégorie</span>{{ s.categorie_nom }}
+        {% endif %}
+      </td>
+      <td>
+        {% if s.texte %}
+          <span class="cartes-libelle">Détail</span>{{ s.texte }}
+        {% endif %}
+      </td>
+      <td><span class="cartes-libelle">Signalé le</span>{{ s.cree_le | dt_local }}</td>
+      {# Chaque emplacement ne s'affiche que s'il est renseigné : jamais de
+         « non renseigné » (règle déjà appliquée au rangement et à l'annonce
+         d'écran de salle). Une boîte sans aucun des deux n'affiche rien. #}
+      <td>
+        {% if s.emplacement_evenement %}
+          <div><span class="cartes-libelle">Salle</span>{{ s.emplacement_evenement }}</div>
+        {% endif %}
+        {% if s.emplacement_local_nom %}
+          <div><span class="cartes-libelle">Local</span>{{ s.emplacement_local_nom }}</div>
+        {% endif %}
+      </td>
+      <td class="cartes-action">
+        {% if s.traite_le %}
+          <span class="badge badge-ok">Traité</span>
+          {# La date de traitement ne vivait que dans un `title` : invisible
+             sur un téléphone, où ce carnet se consulte désormais. Elle est
+             devenue du texte. #}
+          <div class="stats-note">le {{ s.traite_le | dt_local }}</div>
+        {% else %}
+          <form method="post" action="{{ prefixe }}/{{ s.id_signalement }}/traiter"
+                class="rangement-form-inline">
+            {# Les filtres courants voyagent avec l'action : on revient sur la
+               même vue, pas sur la liste par défaut. #}
+            <input type="hidden" name="etat" value="{{ etat }}">
+            <input type="hidden" name="categorie" value="{{ id_categorie if id_categorie is not none else '' }}">
+            {# En mode cartes, les en-têtes de colonnes ont disparu et le
+               libellé seul ne dirait pas QUELLE boîte on referme : le nom du
+               jeu complète le bouton pour les lecteurs d'écran. #}
+            <button type="submit" class="bouton-filtrer">Marquer traité<span class="sr-only"> — {{ s.jeu_nom }}, boîte {{ s.id_exemplaire }}</span></button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p>
+    {% if filtres_actifs %}
+      Aucun signalement ne correspond à ces filtres.
+    {% else %}
+      Aucun signalement en attente. Rien à réparer pour l'instant.
+    {% endif %}
+  </p>
+{% endif %}

@@ -21,6 +21,13 @@
   {% if module_visible(request, "live") %}
   <a href="/live">Écran salle</a>
   {% endif %}
+  {# Carnet de maintenance (lot agora-5). Pas de badge « 3 ouverts » : ce
+     serait une requête de comptage au rendu de CHAQUE page bénévole, pour une
+     information que le bandeau de la fiche donne déjà au bon moment — celui
+     où l'on tient la boîte. #}
+  {% if module_visible(request, "maintenance") %}
+  <a href="/maintenance">Carnet</a>
+  {% endif %}
   <a href="/aide">Aide</a>
   {% if est_admin(request) %}
   <a href="/admin">Administration</a>

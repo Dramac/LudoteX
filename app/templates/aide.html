@@ -67,6 +67,12 @@
     <li><a class="lien" href="/planning/aide">Consulter mon planning</a> — savoir
         où et quand je suis attendu(e).</li>
     {% endif %}
+    {# Pas de page d'aide dédiée pour le carnet : l'écran porte la sienne, en
+       bloc dépliable. Le lien mène donc à l'écran lui-même. #}
+    {% if module_visible(request, "maintenance") %}
+    <li><a class="lien" href="/maintenance">Le carnet de maintenance</a> — les
+        boîtes signalées par l'équipe, et comment marquer un problème réglé.</li>
+    {% endif %}
   </ul>
 
   {% if est_admin(request) %}

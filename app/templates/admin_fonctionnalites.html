@@ -40,15 +40,29 @@
           <td><strong>{{ infos.label }}</strong><br>
               <small><a class="lien" href="{{ infos.url }}">{{ infos.url }}</a></small>
           </td>
-          <td class="stats-note">{{ infos.description }}</td>
+          <td class="stats-note">{{ infos.description }}
+            {% if infos.jamais_public %}
+              <br><strong>Jamais visible par tous</strong> : cette liste nomme des
+              boîtes abîmées et peut porter du texte libre saisi au comptoir.
+            {% endif %}
+          </td>
+          {# Les quatre colonnes restent les mêmes pour toutes les lignes ;
+             un module qui n'accepte pas un état montre un tiret à la place
+             du bouton plutôt qu'une case qui mentirait (voir le drapeau
+             `jamais_public` dans app/modules.py). #}
           {% for etat in etats_valides %}
           <td style="text-align:center">
+            {% if etat in etats_du_module[nom] %}
             <input type="radio"
                    name="module_{{ nom }}"
                    value="{{ etat }}"
                    id="mod_{{ nom }}_{{ etat }}"
                    {{ 'checked' if etats[nom] == etat else '' }}>
             <label for="mod_{{ nom }}_{{ etat }}" class="sr-only">{{ labels_etats[etat] }}</label>
+            {% else %}
+            <span aria-hidden="true">—</span>
+            <span class="sr-only">{{ labels_etats[etat] }} : impossible pour ce module</span>
+            {% endif %}
           </td>
           {% endfor %}
         </tr>

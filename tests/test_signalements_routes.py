@@ -271,9 +271,10 @@ def test_lien_signaler_present_sortie_tournoi(client):
 
 # ---------------------------------------------------------------------------
 # Fermeture depuis la fiche (lot agora-4) — §2 de la note, mis à jour : ce
-# n'est plus l'administrateur seul qui referme. La logique est FACTORISÉE
-# avec routes/admin.py::signalement_traiter (routes/pret.py::_signalement_a_fermer),
-# la journalisation en couvre l'idempotence côté tests/test_journal_appels.py.
+# n'est plus l'administrateur seul qui referme. La logique est FACTORISÉE avec
+# les deux carnets (`services.fermer_signalement`, promue hors des modules de
+# routes au lot agora-5, et `carnet.journaliser_traite`) ; la journalisation en
+# couvre l'idempotence côté tests/test_journal_appels.py.
 # ---------------------------------------------------------------------------
 def _creer_signalement(id_exemplaire, id_categorie=3, texte=None):
     """Crée un signalement directement en base (patron de `_archiver` plus

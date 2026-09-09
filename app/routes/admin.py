@@ -25,8 +25,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
-from app import (admin_auth, auth, exports, formation, journal, logo, sauvegarde,
-                 services, supervision)
+from app import (admin_auth, auth, carnet, exports, formation, journal, logo,
+                 sauvegarde, services, supervision)
 from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -1994,7 +1994,7 @@ def _page_fonctionnalites(request: Request, message: tuple | None = None):
     """Rend la page de gestion des fonctionnalités (réutilisée par GET et POST)."""
     from app.modules import (
         DESCRIPTIONS_ETATS, ETATS_VALIDES, LABELS_ETATS, MODULES,
-        lire_etats_modules,
+        etats_valides_module, lire_etats_modules,
     )
 
     conn = get_connection()
@@ -2008,6 +2008,11 @@ def _page_fonctionnalites(request: Request, message: tuple | None = None):
             "modules": MODULES,
             "etats": etats,
             "etats_valides": ETATS_VALIDES,
+            # Les colonnes restent les quatre mêmes pour tout le tableau ;
+            # ce dictionnaire dit, module par module, lesquelles portent un
+            # bouton — le carnet de maintenance n'accepte pas « Visible par
+            # tous » (app/modules.py, drapeau `jamais_public`).
+            "etats_du_module": {nom: etats_valides_module(nom) for nom in MODULES},
             "labels_etats": LABELS_ETATS,
             "descriptions_etats": DESCRIPTIONS_ETATS,
             "message": message,
@@ -2035,7 +2040,7 @@ async def fonctionnalites_enregistrer(request: Request):
     if (garde := _garde(request)):
         return garde
     from app.modules import (
-        ETATS_VALIDES, LABELS_ETATS, MODULES, ecrire_etat_module,
+        LABELS_ETATS, MODULES, ecrire_etat_module, etats_valides_module,
         lire_etats_modules,
     )
 
@@ -2051,7 +2056,11 @@ async def fonctionnalites_enregistrer(request: Request):
         changements = []
         for nom in MODULES:
             etat = str(form.get(f"module_{nom}", ""))
-            if etat in ETATS_VALIDES:
+            # `etats_valides_module` et non `ETATS_VALIDES` : un « tous »
+            # posté à la main sur un module `jamais_public` est ignoré ici
+            # comme n'importe quelle valeur inconnue — jamais d'erreur brute,
+            # l'état précédent est conservé.
+            if etat in etats_valides_module(nom):
                 if etat != avant.get(nom):
                     changements.append((nom, etat))
                 ecrire_etat_module(conn, nom, etat)
@@ -2560,91 +2569,34 @@ def categories_signalement_descendre(request: Request, id_categorie: int):
 # est justement repassé en « local » quand on traite une boîte signalée en
 # salle (§7).
 # ---------------------------------------------------------------------------
-ETATS_SIGNALEMENTS = ("ouverts", "traites", "tous")
-_LIBELLES_ETAT_SIGNALEMENT = {
-    "ouverts": "à traiter", "traites": "déjà traités", "tous": "tous",
-}
-
-
-def _url_signalements(etat: str, id_categorie: int | None, msg: str | None = None) -> str:
-    """URL de /admin/signalements conservant les filtres (POST-Redirect-GET)."""
-    from urllib.parse import urlencode
-
-    params: dict = {}
-    if etat != "ouverts":  # « ouverts » est la vue par défaut : rien à porter
-        params["etat"] = etat
-    if id_categorie is not None:
-        params["categorie"] = id_categorie
-    if msg:
-        params["msg"] = msg
-    requete = urlencode(params)
-    return "/admin/signalements" + (f"?{requete}" if requete else "")
-
-
-def _puces_filtres_signalements(etat: str, id_categorie: int | None,
-                                nom_categorie: str | None):
-    """Puces de filtres actifs, patron exact de `routes/catalogue.py::_puces_filtres`."""
-    puces = []
-    if etat != "ouverts":
-        puces.append({
-            "label": f"état : {_LIBELLES_ETAT_SIGNALEMENT[etat]}",
-            "url": _url_signalements("ouverts", id_categorie),
-        })
-    if id_categorie is not None:
-        puces.append({
-            "label": f"catégorie : {nom_categorie or id_categorie}",
-            "url": _url_signalements(etat, None),
-        })
-    return puces
+# Les états, les libellés, les URL de filtres et la lecture filtrée vivent
+# dans `app/carnet.py` : le carnet bénévole (/maintenance, lot agora-5) est le
+# MÊME écran à une autre adresse, exports et catégories en moins. Le préfixe
+# d'URL est un paramètre — cet écran-ci passe le sien ci-dessous.
+PREFIXE_SIGNALEMENTS = "/admin/signalements"
 
 
 @router.get("/signalements")
 def signalements_page(request: Request, etat: str = "ouverts",
                       categorie: str | None = None, msg: str | None = None):
     """
-    Carnet de maintenance : une ligne par signalement, filtrable par état et
-    par catégorie. Le compteur d'ouverts est celui du tableau de bord — même
-    service, un seul domicile.
+    Carnet de maintenance, version bureau : la liste (partagée avec le carnet
+    bénévole via `carnet.contexte_liste`) PLUS les exports, qui restent
+    derrière le mot de passe (§7). Le compteur d'ouverts est celui du tableau
+    de bord — même service, un seul domicile.
     """
     if (garde := _garde(request)):
         return garde
-    from app.routes.catalogue import _entier_ou_none
 
-    etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
-    id_categorie = _entier_ou_none(categorie)
-
-    conn = get_connection()
-    try:
-        # Toutes les catégories, ARCHIVÉES COMPRISES : un signalement déjà
-        # saisi garde la sienne (FK sans cascade, §4), on doit donc pouvoir
-        # filtrer dessus après son archivage.
-        categories = services.lister_categories_signalement(conn)
-        if id_categorie is not None and not any(
-            c["id_categorie"] == id_categorie for c in categories
-        ):
-            id_categorie = None  # filtre forgé : ignoré, jamais d'erreur
-        signalements = services.lister_signalements(conn, etat_n, id_categorie)
-        nb_ouverts = services.compter_signalements_ouverts(conn)
-    finally:
-        conn.close()
-
-    nom_categorie = next(
-        (c["nom"] for c in categories if c["id_categorie"] == id_categorie), None
-    )
-    chips = _puces_filtres_signalements(etat_n, id_categorie, nom_categorie)
+    contexte = carnet.contexte_liste(PREFIXE_SIGNALEMENTS, etat, categorie)
+    contexte["message"] = msg
+    # Les exports emportent la vue courante, filtres compris.
+    contexte["url_export_xlsx"] = _url_export_signalements(
+        "xlsx", contexte["etat"], contexte["id_categorie"])
+    contexte["url_export_pdf"] = _url_export_signalements(
+        "pdf", contexte["etat"], contexte["id_categorie"])
     return templates.TemplateResponse(
-        request, "admin_signalements.html",
-        {
-            "signalements": signalements, "categories": categories,
-            "etat": etat_n, "etats": ETATS_SIGNALEMENTS,
-            "libelles_etat": _LIBELLES_ETAT_SIGNALEMENT,
-            "id_categorie": id_categorie, "nb_ouverts": nb_ouverts,
-            "chips": chips, "filtres_actifs": bool(chips),
-            "message": msg,
-            # Les exports emportent la vue courante, filtres compris.
-            "url_export_xlsx": _url_export_signalements("xlsx", etat_n, id_categorie),
-            "url_export_pdf": _url_export_signalements("pdf", etat_n, id_categorie),
-        },
+        request, "admin_signalements.html", contexte
     )
 
 
@@ -2656,26 +2608,25 @@ def signalement_traiter(request: Request, id_signalement: int,
     (d'où les deux champs cachés du formulaire). Idempotent côté service : un
     second appui ne produit ni erreur ni message différent.
 
-    Depuis le lot agora-4, les bénévoles referment aussi, depuis la fiche de
-    la boîte (routes/pret.py) : la lecture/écriture/journalisation est
-    FACTORISÉE et partagée avec cette route via `_signalement_a_fermer` /
-    `_journaliser_signalement_traite` (import différé, même patron que
-    l'emprunt de `catalogue._entier_ou_none` juste en dessous).
+    Trois écrans portent ce geste depuis le lot agora-5 — celui-ci, le carnet
+    bénévole et la fiche de la boîte : la lecture/écriture est dans
+    `services.fermer_signalement`, la décision de journalisation dans
+    `carnet.journaliser_traite`.
     """
     if (garde := _garde(request)):
         return garde
     from app.routes.catalogue import _entier_ou_none
-    from app.routes.pret import _journaliser_signalement_traite, _signalement_a_fermer
 
     conn = get_connection()
     try:
-        avant = _signalement_a_fermer(conn, id_signalement)
+        avant = services.fermer_signalement(conn, id_signalement)
     finally:
         conn.close()
-    _journaliser_signalement_traite(request, avant)
-    etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
+    carnet.journaliser_traite(request, avant)
+    etat_n = etat if etat in carnet.ETATS else "ouverts"
     return RedirectResponse(
-        _url_signalements(etat_n, _entier_ou_none(categorie), "Signalement marqué traité."),
+        carnet.url_liste(PREFIXE_SIGNALEMENTS, etat_n, _entier_ou_none(categorie),
+                         "Signalement marqué traité."),
         status_code=303,
     )
 
@@ -2709,26 +2660,15 @@ def _url_export_signalements(format_: str, etat: str, id_categorie: int | None) 
 
 def _signalements_filtres(etat: str, categorie: str | None):
     """
-    Relit la liste avec les filtres de la requête (mêmes règles que l'écran :
-    valeur inconnue ignorée, jamais d'erreur) et l'enrichit des dates locales.
+    Relit la liste avec les filtres de la requête — mêmes règles que l'écran
+    puisque c'est la même fonction (`carnet.contexte_liste` : valeur inconnue
+    ignorée, jamais d'erreur) — et l'enrichit des dates locales.
 
     Returns:
         (lignes, etat_normalisé, libellé lisible du filtre).
     """
-    from app.routes.catalogue import _entier_ou_none
-
-    etat_n = etat if etat in ETATS_SIGNALEMENTS else "ouverts"
-    id_categorie = _entier_ou_none(categorie)
-    conn = get_connection()
-    try:
-        categories = services.lister_categories_signalement(conn)
-        if id_categorie is not None and not any(
-            c["id_categorie"] == id_categorie for c in categories
-        ):
-            id_categorie = None
-        lignes = services.lister_signalements(conn, etat_n, id_categorie)
-    finally:
-        conn.close()
+    contexte = carnet.contexte_liste(PREFIXE_SIGNALEMENTS, etat, categorie)
+    lignes = contexte["signalements"]
 
     for l in lignes:
         # Heure LOCALE dans un document destiné à être lu et imprimé : l'ISO
@@ -2736,12 +2676,13 @@ def _signalements_filtres(etat: str, categorie: str | None):
         l["cree_local"] = services.format_local(l["cree_le"])
         l["traite_local"] = services.format_local(l["traite_le"]) if l["traite_le"] else ""
 
-    filtre_txt = _LIBELLES_ETAT_SIGNALEMENT[etat_n]
-    if id_categorie is not None:
-        nom = next((c["nom"] for c in categories if c["id_categorie"] == id_categorie), None)
+    filtre_txt = carnet.LIBELLES_ETAT[contexte["etat"]]
+    if contexte["id_categorie"] is not None:
+        nom = next((c["nom"] for c in contexte["categories"]
+                    if c["id_categorie"] == contexte["id_categorie"]), None)
         if nom:
             filtre_txt += f" — catégorie « {nom} »"
-    return lignes, etat_n, filtre_txt
+    return lignes, contexte["etat"], filtre_txt
 
 
 @router.get("/signalements/export.xlsx")

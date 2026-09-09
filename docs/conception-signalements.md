@@ -39,15 +39,15 @@ Trois moments distincts à couvrir, et ils n'ont pas les mêmes contraintes :
 | Question | Décision |
 |---|---|
 | Quand peut-on signaler ? | **En permanence** sur `/pret/<id>`, quel que soit l'état de la boîte — pas seulement après un retour. |
-| Qui voit le signalement ? | **Bénévoles et administrateurs.** Rien sur la fiche publique ni sur le catalogue. |
+| Qui voit le signalement ? | **Bénévoles et administrateurs.** Rien sur la fiche publique ni sur le catalogue. Depuis le lot agora-5, les bénévoles voient aussi la **liste complète** sur `/maintenance`, et pas seulement les signalements de la boîte qu'ils tiennent. Voir §7 bis. |
 | Catégories | **Configurables depuis l'administration**, amorcées à cinq entrées. |
-| Sortie pour le bureau | **Exports Excel et PDF depuis la page d'administration**, derrière le mot de passe. |
+| Sortie pour le bureau | **Exports Excel et PDF depuis la page d'administration**, derrière le mot de passe. Inchangé par le lot agora-5 : le carnet bénévole n'a pas d'export. |
 
 Décisions complémentaires, prises dans la foulée et sans objection :
 
 | Question | Décision |
 |---|---|
-| Qui referme un signalement ? | **L'administrateur seul**, depuis sa page. ⚠️ **Rendu faux par le lot agora-4** (2026-09) : le bénévole referme aussi, depuis la fiche de la boîte. Voir §6 bis. |
+| Qui referme un signalement ? | **L'administrateur seul**, depuis sa page. ⚠️ **Rendu faux par le lot agora-4** (2026-09) : le bénévole referme aussi, depuis la fiche de la boîte (§6 bis) — et depuis le lot agora-5, depuis le carnet lui-même (§7 bis). |
 | Clôture de fin d'événement | **Ne touche pas aux signalements.** C'est justement à ce moment-là que la liste sert. |
 | Emplacement affiché en administration | **Les deux** — événement ET local — côte à côte, lus à l'affichage. |
 
@@ -252,9 +252,10 @@ routes du §5. Suit le patron sans redirection des autres actions de
 confirmation, pas un POST-Redirect-GET comme la route admin.
 
 La lecture/écriture/journalisation (§10) est **factorisée**, pas dupliquée,
-entre cette route et `routes/admin.py::signalement_traiter` — un seul
-domicile (`routes/pret.py::_signalement_a_fermer` et
-`_journaliser_signalement_traite`). La route bénévole ajoute un contrôle que
+entre les trois routes qui referment — un seul domicile
+(`services.fermer_signalement` pour les données, `app.carnet.journaliser_traite`
+pour le journal ; les deux ont vécu dans `routes/pret.py` le temps du lot
+agora-4, qui n'avait que deux appelants). La route de la fiche ajoute un contrôle que
 l'admin n'a pas besoin de faire : le signalement doit appartenir à la boîte de
 l'URL, sans quoi une URL forgée pourrait refermer le signalement d'une autre
 boîte. Incohérence -> message, jamais d'erreur brute, comme partout ailleurs.
@@ -270,9 +271,15 @@ confirmation supplémentaire n'est demandée — inchangé depuis le §6.
 
 Ce que ce lot ne change pas : pas de colonne « qui a traité », pas de champ
 « comment », aucun changement de schéma. Le carnet consultable en dehors de la
-fiche (liste dédiée aux bénévoles) est le lot suivant de la série agora.
+fiche est le lot suivant de la série agora — voir §7 bis.
 
 ## 7. L'écran d'administration
+
+⚠️ **Portée élargie par le lot agora-5** : ce qui suit décrit toujours
+`/admin/signalements`, mais la liste, ses filtres et le bouton « Marquer
+traité » sont désormais partagés avec un écran bénévole (§7 bis). Ce qui reste
+**propre à l'administration** : les **exports** et le lien vers les
+**catégories**.
 
 `/admin/signalements`, sur le patron de `/admin/rangement/ranger` (liste dense,
 actions en `.bouton-filtrer`).
@@ -345,6 +352,73 @@ Le PDF suit l'analyse d'origine : fonction propre `exports.signalements_pdf`
 lignes de style recopiées assumées plutôt qu'un paramètre de plus sur
 `construire_pdf`.
 
+## 7 bis. Le carnet bénévole (lot agora-5, 2026-09)
+
+Deux retours du test grandeur nature (Simon) : « Le carnet de maintenance est à
+ce jour réservé aux admin, il faudrait le rendre disponible aux bénévoles » et
+« L'interface […] n'est pas du tout optimisée sur smartphone ».
+
+`GET /maintenance` (+ `POST /maintenance/<id_signalement>/traiter`), route
+**sœur** de celle du §7 : même liste, mêmes filtres, même bouton. Les deux
+gabarits incluent les deux mêmes fragments (`_carnet_filtres.html`,
+`_carnet_liste.html`) et lisent par la même fonction
+(`app.carnet.contexte_liste`) — le préfixe d'URL est un paramètre, pour qu'une
+puce de filtre ne renvoie pas le bénévole vers l'écran du mot de passe.
+
+### Ce que le carnet bénévole ne porte pas
+
+- **Les exports.** Le §7 le dit déjà : cette liste nomme des boîtes abîmées et
+  porte le seul champ de saisie libre de l'application. Les bénévoles la
+  *voient* déjà (le bandeau de la fiche affiche le texte libre), mais en faire
+  un fichier qui circule est une décision du bureau. Les exports restent
+  derrière le mot de passe — même raisonnement que la fiche D5 sur le numéro
+  de pochette.
+- **La gestion des catégories** (`/admin/categories-signalement`).
+
+### Un module, avec deux règles propres
+
+« maintenance » rejoint `app/modules.py` : le bureau peut le masquer ou le
+désactiver depuis `/admin/fonctionnalites`. Deux écarts assumés avec les six
+autres modules, portés par deux clés du dictionnaire `MODULES` :
+
+- `etat_defaut: "benevoles"` — le défaut global est « tous », qui ouvrirait ce
+  carnet à n'importe quel visiteur sur toute base n'ayant pas encore de ligne
+  `module_maintenance`, c'est-à-dire toutes celles d'avant ce lot ;
+- `jamais_public: True` — l'état « visible par tous » n'est **pas proposé** :
+  l'écran d'administration montre un tiret à sa place et `ecrire_etat_module`
+  refuse la valeur, y compris postée à la main. Une case qui promettrait un
+  état que la route refuse serait une interface mensongère.
+
+**Et la route porte son propre `Depends(exiger_jeton)`**, indépendamment du
+garde de module. La visibilité d'un module est un réglage d'affichage, pas une
+autorisation d'accès : s'en remettre à elle serait une faute de sécurité. Un
+test verrouille ce point — avec « tous » écrit de force en base, la page reste
+refusée sans jeton.
+
+### La mise en page — cartes empilées sous 640 px
+
+Le défaut signalé : sept colonnes sur un écran de téléphone réduisent la
+colonne « Action » à quelques dizaines de pixels, et le `word-break:
+break-word` de `.admin-table` — **ajouté exprès** en correctif
+anti-débordement après un retour terrain iPhone 13 mini — y coupe « Marquer
+traité » une lettre par ligne. Le retirer ferait revenir le bug d'origine :
+c'est la mise en page qu'il fallait traiter.
+
+Variante **opt-in** `.admin-table--cartes` (docs/ui-composants.md §9), posée
+sur les deux carnets seulement — huit autres gabarits partagent ce tableau et
+sont des écrans de bureau. Sous 640 px chaque ligne devient une carte : nom du
+jeu en tête, puis boîte, catégorie, détail, date, emplacements, et le bouton
+**pleine largeur** en bas. Option écartée : le défilement horizontal, mauvais
+geste sur un écran d'action répétée.
+
+Les en-têtes de colonnes disparaissant en mode cartes, chaque valeur porte son
+libellé **dans le document** (`<span class="cartes-libelle">`), et non par un
+`content:` de CSS qu'un lecteur d'écran n'est pas tenu de lire ; le bouton
+gagne un complément `sr-only` nommant le jeu et la boîte.
+
+Corrigé au passage : la **date de traitement** ne vivait que dans un attribut
+`title`, qui ne s'affiche jamais sur un téléphone. Elle est devenue du texte.
+
 ## 8. Cas limites — jamais bloquant
 
 | Situation | Comportement |
@@ -399,9 +473,12 @@ Garde-fou d'interdiction étendu (voir §3, point 2).
   qui masquerait la boîte du catalogue. Prolonge naturellement ce chantier,
   mais touche au catalogue public et à la disponibilité par titre — à
   instruire séparément.
-- **Liste des signalements côté bénévole** : le bandeau sur la boîte concernée
-  suffit au comptoir. Une liste de plus dans le menu bénévole serait consultée
-  une fois puis jamais.
+- ~~**Liste des signalements côté bénévole**~~ : ⚠️ **démenti par le terrain et
+  réalisé au lot agora-5** (§7 bis). L'argument d'origine — « le bandeau sur la
+  boîte concernée suffit au comptoir, une liste de plus dans le menu bénévole
+  serait consultée une fois puis jamais » — supposait qu'on ne consulte le
+  carnet que la boîte en main. Le retour de Simon décrit l'usage inverse : on
+  veut savoir ce qu'il y a à réparer **avant** d'aller chercher les boîtes.
 - **Photo du problème** : demanderait du stockage de fichiers, absent du projet
   de bout en bout, et ouvrirait une seconde porte à la donnée personnelle
   (un visiteur dans le cadre).

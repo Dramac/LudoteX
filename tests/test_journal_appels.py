@@ -292,10 +292,13 @@ def test_module_modifie_une_ligne_par_changement_reel(client, _journal_isole):
     comparaison à l'état précédent, chaque passage sur la page produirait une
     ligne par module, toutes identiques et toutes fausses.
     """
-    from app.modules import ETAT_DEFAUT, MODULES
+    from app.modules import MODULES, etat_defaut_module
 
     _connexion(client)
-    champs = {f"module_{nom}": ETAT_DEFAUT for nom in MODULES}
+    # `etat_defaut_module` et non la constante globale : le carnet de
+    # maintenance a le sien ("benevoles"), et repartir de "tous" pour lui
+    # produirait une valeur que le formulaire refuse (app/modules.py).
+    champs = {f"module_{nom}": etat_defaut_module(nom) for nom in MODULES}
 
     # 1) Enregistrement sans rien changer -> aucune ligne.
     client.post("/admin/fonctionnalites", data=champs)
@@ -840,8 +843,8 @@ def test_signalement_traite_depuis_la_fiche_journalise_pareillement(client, conn
     Lot agora-4 : la fiche de la boîte referme aussi, plus seulement
     l'administrateur (§2 de la note, corrigé). Même action de journal, même
     idempotence — la logique est FACTORISÉE avec la route admin ci-dessus
-    (`routes/pret.py::_signalement_a_fermer` / `_journaliser_signalement_traite`),
-    pas recopiée.
+    (`services.fermer_signalement` / `carnet.journaliser_traite`, promues hors
+    des modules de routes au lot agora-5), pas recopiée.
     """
     _connexion(client)
     categorie = _premiere_categorie(conn)
@@ -869,6 +872,32 @@ def test_signalement_traite_depuis_la_fiche_journalise_pareillement(client, conn
         "SELECT id_signalement FROM signalements ORDER BY id_signalement DESC LIMIT 1"
     ).fetchone()
     client.post(f"/pret/001/signalements/{id_signalement_2}/traiter")  # mauvaise boîte
+    assert len(_actions(_journal_isole, "signalement_traite")) == 1
+
+
+def test_signalement_traite_depuis_le_carnet_benevole_journalise_pareillement(
+        client, conn, _journal_isole):
+    """
+    Lot agora-5 : troisième écran qui referme (`/maintenance`). Même action,
+    même contenu, même idempotence — trois appelants d'un seul domicile.
+    """
+    _connexion(client)
+    categorie = _premiere_categorie(conn)
+    client.post("/pret/001/signaler", data={"id_categorie": str(categorie["id_categorie"])})
+    (id_signalement,) = conn.execute(
+        "SELECT id_signalement FROM signalements ORDER BY id_signalement DESC LIMIT 1"
+    ).fetchone()
+
+    client.post(f"/maintenance/{id_signalement}/traiter")
+    ligne = _derniere(_journal_isole, "signalement_traite")
+    assert ligne["module"] == "pret" and ligne["objet"].startswith("Catan")
+    assert ligne["ref"] == "CATAN"
+
+    client.post(f"/maintenance/{id_signalement}/traiter")  # second appui
+    assert len(_actions(_journal_isole, "signalement_traite")) == 1
+
+    # Identifiant inconnu : rien n'est journalisé non plus.
+    client.post("/maintenance/999999/traiter")
     assert len(_actions(_journal_isole, "signalement_traite")) == 1
 
 
