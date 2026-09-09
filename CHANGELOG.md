@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.12.0 — 2026-09-09
+
+- **Rendre un jeu et en emprunter un autre marche désormais même si le précédent n'a jamais été rendu.** Jusqu'ici, si le jeu que le visiteur voulait emporter était encore noté « sorti » — retour oublié, scan manqué —, le transfert s'arrêtait là et le bénévole n'avait aucune issue. Un bouton propose maintenant de clôturer ce prêt oublié et de continuer dans le même geste : la pièce d'identité du visiteur ne bouge pas de sa pochette, et l'écran rappelle de vérifier que le casier libéré est bien vide avant qu'il ne reparte au prochain emprunt.
+- **Les bénévoles peuvent marquer un signalement comme traité eux-mêmes**, depuis la fiche du jeu, sans passer par l'administration. Quand on scanne une boîte réparée, l'alerte affichée en haut de l'écran porte un bouton qui la referme. Ce geste est définitif : en cas de fausse manœuvre, il faut ouvrir un nouveau signalement.
+- **Le scan est nettement plus rapide.** L'image de la caméra est désormais analysée en taille réduite : là où l'écran semblait « chercher » longtemps avant de reconnaître une étiquette, la fiche s'ouvre presque aussitôt. La caméra s'éteint aussi dès qu'un jeu est reconnu, au lieu de continuer à tourner pendant le chargement de l'écran suivant.
+- **Le site s'ouvre plus vite la première fois.** Ses fichiers sont maintenant compressés et conservés par le navigateur d'une visite à l'autre : sur le wifi d'une salle, c'est l'essentiel de l'attente du tout premier écran qui disparaît.
+- **Le message affiché après « Le re-prêter » dit enfin quoi faire.** Il nomme la pochette qui vient d'être libérée et demande d'aller vérifier qu'elle est vide, au lieu de se contenter d'annoncer que l'ancien prêt est clos. Il ne se contredit plus non plus quand le nouveau prêt repart sur ce même numéro.
+- **Les fichiers d'agenda (.ics) changent d'identifiant, une seule fois.** Un bénévole qui avait déjà importé un de ces fichiers dans son agenda et qui importe le nouveau y verra deux événements au lieu d'un. Pour l'éviter : supprimer l'ancien événement de son agenda avant d'importer le fichier retéléchargé depuis le site.
+
 ## 1.11.0 — 2026-09-06
 
 - **À faire après la mise à jour : redéposer votre logo.** Il n'est plus livré avec l'application — il vous appartient, et il vit maintenant avec vos données. Tant qu'il n'est pas redéposé depuis Administration → **Identité**, c'est le logo du logiciel (un meeple jaune) qui s'affiche sur le site, dans l'onglet du navigateur et sur les étiquettes. C'est l'affaire d'une minute, et c'est le seul geste que demande cette version. À faire **avant** toute réimpression d'étiquettes.
