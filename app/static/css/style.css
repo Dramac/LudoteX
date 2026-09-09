@@ -742,6 +742,16 @@ summary:focus-visible,
 .scanner-video { display: block; width: 100%; height: auto; }
 .scanner-statut { font-weight: 600; }
 .scanner-aide { color: var(--gris); font-size: 0.9rem; }
+/* Ligne de mesure du mode diagnostic (/scanner?debug=1), créée par
+   scanner.js. Chiffres alignés en chasse fixe, plus petits que le statut :
+   c'est un outil de mise au point, il ne doit pas concurrencer « Visez un QR
+   code… » du regard. */
+.scanner-diagnostic {
+  color: var(--gris);
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin: 0.2rem 0 0;
+}
 .saisie-manuelle { display: grid; gap: 12px; margin-top: 8px; }
 .saisie-manuelle .bouton-filtrer { width: 100%; }
 

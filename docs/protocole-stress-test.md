@@ -693,7 +693,12 @@ Phase 5 — terrain (…… personnes)
   aurait pu poser problème ; ce n'est pas le cas. Rien à tester, mais bon à
   savoir.
 - Le scanner caméra (`getUserMedia`, jsQR) ne peut être évalué qu'en phase 5,
-  sur de vrais téléphones.
+  sur de vrais téléphones. Depuis le lot agora-3, `/scanner?debug=1` affiche
+  sur place la définition fournie par la caméra, celle réellement décodée, le
+  temps moyen d'un appel jsQR et le délai jusqu'à la première image analysée —
+  de quoi rapporter des chiffres plutôt qu'une impression. Affichage local
+  uniquement : rien n'est envoyé au serveur ni journalisé. Mode d'emploi
+  destiné à l'exploitant : `wiki/Deploiement.md` §15.
 - `charge.py` lit le résultat des actions dans le **HTML** de `pret.html`. Si
   ce gabarit change, les expressions de `scripts/stress/commun.py` sont à
   revoir — sinon le script rapportera « inconnu » partout.

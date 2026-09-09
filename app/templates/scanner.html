@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block titre %}Scanner — {{ nom_association }}{% endblock %}
-{# Drapeau lu par scanner.js : tant qu'il est posé, un QR détecté redirige
-   vers /scanner/ranger au lieu de /pret/<id> (mode rangement, §4.a). #}
-{% block body_attrs %}{% if rangement.actif %} data-rangement="1"{% endif %}{% endblock %}
+{# Drapeaux lus par scanner.js.
+   - data-rangement : tant qu'il est posé, un QR détecté redirige vers
+     /scanner/ranger au lieu de /pret/<id> (mode rangement, §4.a).
+   - data-scan-debug : mode diagnostic (?debug=1), qui affiche les temps de
+     décodage sous la ligne de statut. Absent = aucune mesure, aucun coût. #}
+{% block body_attrs %}{% if rangement.actif %} data-rangement="1"{% endif %}{% if scan_debug %} data-scan-debug="1"{% endif %}{% endblock %}
 
 {% block contenu %}
 {% if rangement.actif %}

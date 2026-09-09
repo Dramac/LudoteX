@@ -80,17 +80,39 @@ def _contexte_scanner(conn, request: Request, etat: dict, **extra) -> dict:
         "rangement": etat,
         "emplacements_locaux": emplacements,
         "appareil": services.appareil_de(request),
+        # Mode diagnostic du scanner : FAUX par défaut pour toutes les routes
+        # qui rendent scanner.html (saisie manuelle, retour de rangement).
+        # Seul le GET /scanner le passe à vrai, sur ?debug=1.
+        "scan_debug": False,
     }
     ctx.update(extra)
     return ctx
 
 
 @router.get("/scanner")
-def scanner(request: Request, _=Depends(exiger_jeton)):
+def scanner(request: Request, debug: str = "", _=Depends(exiger_jeton)):
+    """
+    Page du scanner caméra.
+
+    `?debug=1` allume le MODE DIAGNOSTIC de static/js/scanner.js : sous la
+    ligne de statut s'affichent la résolution fournie par la caméra, celle
+    réellement décodée, le temps moyen d'un décodage et le délai jusqu'à la
+    première image analysée. Sert à mesurer la lenteur perçue au scan sur un
+    vrai téléphone, plutôt qu'à la supposer.
+
+    C'est un affichage LOCAL : rien n'est envoyé au serveur, rien n'est
+    journalisé, et sans le paramètre le script ne mesure rien du tout. Le
+    drapeau voyage par un attribut de <body>, comme `data-rangement` et
+    `data-scan-cible` : c'est la voie déjà établie pour configurer ce script
+    depuis le serveur.
+
+    Toute autre valeur que « 1 » laisse le mode éteint — un `?debug=0` collé
+    dans une barre d'adresse ne doit pas l'allumer.
+    """
     conn = get_connection()
     try:
         etat = _etat_rangement(conn, request)
-        ctx = _contexte_scanner(conn, request, etat)
+        ctx = _contexte_scanner(conn, request, etat, scan_debug=debug == "1")
     finally:
         conn.close()
     return templates.TemplateResponse(request, "scanner.html", ctx)
