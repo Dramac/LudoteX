@@ -84,13 +84,22 @@ def _contexte_scanner(conn, request: Request, etat: dict, **extra) -> dict:
         # qui rendent scanner.html (saisie manuelle, retour de rangement).
         # Seul le GET /scanner le passe à vrai, sur ?debug=1.
         "scan_debug": False,
+        # Clavier de la saisie manuelle. Porté ICI, et non dans chacune des
+        # trois routes qui rendent scanner.html : le drapeau doit survivre au
+        # réaffichage après erreur, sans quoi le bénévole qui a demandé les
+        # lettres perd son clavier à l'instant où il corrige son code.
+        "lettres": services.clavier_lettres_demande(
+            request.query_params.get("lettres", "")
+        ),
+        "lien_bascule": services.lien_bascule_clavier(request),
     }
     ctx.update(extra)
     return ctx
 
 
 @router.get("/scanner")
-def scanner(request: Request, debug: str = "", _=Depends(exiger_jeton)):
+def scanner(request: Request, debug: str = "", lettres: str = "",
+            _=Depends(exiger_jeton)):
     """
     Page du scanner caméra.
 
@@ -108,6 +117,11 @@ def scanner(request: Request, debug: str = "", _=Depends(exiger_jeton)):
 
     Toute autre valeur que « 1 » laisse le mode éteint — un `?debug=0` collé
     dans une barre d'adresse ne doit pas l'allumer.
+
+    `?lettres=1` bascule la saisie manuelle sur le clavier complet, avec la
+    même rigueur (`services.clavier_lettres_demande`). Le paramètre est déclaré
+    ici pour être documenté et validé ; c'est `_contexte_scanner` qui le lit,
+    puisque les trois routes rendant cet écran doivent le porter à l'identique.
     """
     conn = get_connection()
     try:
@@ -119,36 +133,50 @@ def scanner(request: Request, debug: str = "", _=Depends(exiger_jeton)):
 
 
 @router.get("/scanner/saisie")
-def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
+def saisie_manuelle(request: Request, code: str = "", lettres: str = "",
+                    _=Depends(exiger_jeton)):
     """
     Secours clavier. Comportement inchangé hors mode rangement (ouvre
     /pret/<id>). En mode rangement, AFFECTE l'emplacement actif au lieu
     d'ouvrir la fiche de prêt — même endpoint logique que le canal caméra
     (§4.b), cohérent avec /scanner/ranger.
+
+    C'est ici qu'un humain TAPE le code, donc ici que `resoudre_code_saisi`
+    tolère un zéro de tête oublié, une minuscule ou un espace — et sur les DEUX
+    branches : sans cela, taper « 1 » ouvrirait bien la fiche de la boîte 001
+    mais échouerait à la ranger, ce que personne ne comprendrait.
+
+    La redirection porte toujours le code CANONIQUE, celui du catalogue : un
+    « 1 » résolu mène à /pret/001, jamais à /pret/1, sinon l'URL affichée et
+    l'historique du navigateur portent un identifiant qui n'existe pas.
     """
-    id_exemplaire = (code or "").strip()
+    saisi = (code or "").strip()
     conn = get_connection()
     try:
         etat = _etat_rangement(conn, request)
 
-        if not id_exemplaire:
+        if not saisi:
             return templates.TemplateResponse(
                 request, "scanner.html",
                 _contexte_scanner(conn, request, etat, erreur="Veuillez saisir un code.", code_saisi=""),
             )
 
+        id_exemplaire, proches = services.resoudre_code_saisi(conn, saisi)
+
         if etat["actif"]:
-            resultat = services.affecter_emplacement(
-                conn, id_exemplaire, etat["contexte"], etat["valeur"]
+            resultat = (
+                services.affecter_emplacement(
+                    conn, id_exemplaire, etat["contexte"], etat["valeur"]
+                )
+                if id_exemplaire else None
             )
             if resultat is None:
                 return templates.TemplateResponse(
                     request, "scanner.html",
                     _contexte_scanner(
                         conn, request, etat,
-                        erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
-                               "Vérifiez et réessayez.",
-                        code_saisi=id_exemplaire,
+                        erreur=services.message_code_introuvable(saisi, proches),
+                        code_saisi=saisi,
                     ),
                 )
             return templates.TemplateResponse(
@@ -160,15 +188,13 @@ def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
             )
 
         # Hors mode rangement : comportement historique (ouvre la fiche de prêt).
-        info = services.info_exemplaire(conn, id_exemplaire)
-        if info is None:
+        if id_exemplaire is None:
             return templates.TemplateResponse(
                 request, "scanner.html",
                 _contexte_scanner(
                     conn, request, etat,
-                    erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
-                           "Vérifiez et réessayez.",
-                    code_saisi=id_exemplaire,
+                    erreur=services.message_code_introuvable(saisi, proches),
+                    code_saisi=saisi,
                 ),
             )
     finally:
@@ -178,13 +204,24 @@ def saisie_manuelle(request: Request, code: str = "", _=Depends(exiger_jeton)):
 
 
 @router.get("/scanner/ranger")
-def ranger(request: Request, code: str = "", _=Depends(exiger_jeton)):
+def ranger(request: Request, code: str = "", lettres: str = "",
+           _=Depends(exiger_jeton)):
     """
     Cible du scan caméra EN MODE RANGEMENT (scanner.js redirige ici au lieu de
     /pret/<id> tant que <body data-rangement="1"> est posé). Affecte
     l'emplacement actif à la boîte scannée puis réaffiche /scanner, caméra
     prête pour la suivante. Jamais bloquant : code inconnu -> message, pas
     d'erreur brute ; mode déjà quitté entre-temps -> écran scanner normal.
+
+    PAS de `resoudre_code_saisi` ici, contrairement à /scanner/saisie : le code
+    arrive d'un QR décodé, donc EXACT par construction. Le tolérer flou
+    n'apporterait rien et masquerait un vrai problème (un QR d'un autre
+    système, une étiquette d'une autre instance) derrière une correspondance
+    approximative.
+
+    `lettres` est déclaré parce que cette route RÉAFFICHE l'écran du scanner,
+    formulaire de saisie compris : le drapeau doit lui survivre comme aux
+    autres, sans quoi la bascule serait perdue au premier scan caméra.
     """
     id_exemplaire = (code or "").strip()
     conn = get_connection()
@@ -205,8 +242,7 @@ def ranger(request: Request, code: str = "", _=Depends(exiger_jeton)):
                 request, "scanner.html",
                 _contexte_scanner(
                     conn, request, etat,
-                    erreur=f"Aucune boîte ne porte le code « {id_exemplaire} ». "
-                           "Vérifiez et réessayez.",
+                    erreur=services.message_code_introuvable(id_exemplaire),
                     code_saisi=id_exemplaire,
                 ),
             )

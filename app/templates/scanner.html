@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_saisie_manuelle.html" import saisie_manuelle %}
 {% block titre %}Scanner — {{ nom_association }}{% endblock %}
 {# Drapeaux lus par scanner.js.
    - data-rangement : tant qu'il est posé, un QR détecté redirige vers
@@ -71,28 +72,14 @@
   {% endif %}
 </section>
 
-<section class="carte">
-  <h2>Saisie manuelle</h2>
-  <p class="scanner-aide">
-    {% if rangement.actif %}
-      QR illisible ou caméra capricieuse ? Tapez le code de la boîte à ranger.
-    {% else %}
-      QR illisible ou caméra capricieuse ? Tapez le code de la boîte.
-    {% endif %}
-  </p>
-  <form method="get" action="/scanner/saisie" class="saisie-manuelle">
-    <div class="champ">
-      <label for="code">Code de la boîte</label>
-      <input type="text" id="code" name="code" value="{{ code_saisi or '' }}"
-             inputmode="text" autocomplete="off" autocapitalize="off"
-             spellcheck="false" placeholder="ex. 00472" required
-             {% if erreur %}autofocus{% endif %}>
-    </div>
-    <button type="submit" class="bouton-filtrer">
-      {{ 'Ranger cette boîte' if rangement.actif else 'Ouvrir la fiche de prêt' }}
-    </button>
-  </form>
-</section>
+{{ saisie_manuelle(
+     action="/scanner/saisie",
+     bouton='Ranger cette boîte' if rangement.actif else 'Ouvrir la fiche de prêt',
+     aide='QR illisible ou caméra capricieuse ? Tapez le code de la boîte à ranger.'
+          if rangement.actif else
+          'QR illisible ou caméra capricieuse ? Tapez le code de la boîte.',
+     code_saisi=code_saisi, erreur=erreur, lettres=lettres,
+     lien_bascule=lien_bascule) }}
 
 <!-- Décodage QR côté navigateur — jsQR hébergé en local (aucune dépendance CDN). -->
 <script src="/static/js/jsQR.js?v={{ asset_v('js/jsQR.js') }}"></script>

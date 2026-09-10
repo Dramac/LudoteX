@@ -1,0 +1,75 @@
+{# Secours clavier — DOMICILE UNIQUE du formulaire « tapez le code de la boîte ».
+
+   Ce formulaire a vécu en double, à dix mots près, dans scanner.html et
+   transfert_scan.html : le placeholder faux et le clavier alphabétique y ont
+   survécu à plusieurs passages parce qu'on ne corrigeait qu'une copie sur deux.
+   Un test compte les occurrences dans app/templates/ pour que la troisième
+   copie n'apparaisse jamais.
+
+   Une MACRO plutôt qu'un {% include %} : l'action, le libellé du bouton et la
+   phrase d'aide diffèrent d'un appelant à l'autre, et le fragment ne doit rien
+   deviner du contexte.
+
+   Import dans un gabarit :
+       from "_saisie_manuelle.html" import saisie_manuelle
+   Aucun accès au contexte : tout passe par les paramètres. #}
+
+{# LE CLAVIER, ET SA PORTE DE SORTIE.
+
+   97 % des codes sont des chiffres, d'où `inputmode="numeric"` par défaut :
+   un pavé numérique, touches larges, geste répété des centaines de fois.
+   Mais sur iOS ce pavé N'A AUCUNE SORTIE vers les lettres — les codes
+   d'extension (E001…) y deviendraient intapables, ce qui serait un blocage
+   net, et « ne jamais bloquer » prime sur tout le reste. D'où le lien de
+   bascule, rendu par le SERVEUR : il recharge le même écran, code compris,
+   avec `inputmode="text"`. Un rechargement pour les 19 boîtes à lettre du
+   catalogue, contre un clavier correct pour les 685 autres.
+
+   `type="text"` et NON `type="number"`, qui perdrait les zéros de tête,
+   ajouterait des flèches et lirait « e » comme un exposant : le pire choix
+   possible pour un identifiant.
+
+   Ni `pattern` ni `maxlength` : `inputmode` est une SUGGESTION faite au
+   navigateur, pas une validation. Un clavier matériel, un collage ou un
+   navigateur qui l'ignore doivent pouvoir envoyer ce qu'ils veulent — c'est
+   la route qui décide, et elle ne refuse jamais la saisie.
+
+   Le drapeau voyage en CHAMP CACHÉ autant qu'en paramètre d'URL : un
+   formulaire GET n'envoie que ses champs nommés, et sans lui le bénévole qui
+   se trompe de code perdrait son clavier à l'instant où il le corrige.
+
+   La bascule va dans les DEUX SENS : le pavé numérique reste le bon outil
+   pour 97 % du catalogue, et l'écran se réaffichant depuis sa propre URL
+   après chaque code accepté, une seule boîte d'extension condamnerait sinon
+   au clavier complet tout le reste d'une séance de rangement. #}
+{% macro saisie_manuelle(action, bouton, aide, code_saisi='', erreur=False,
+                         lettres=False, lien_bascule='') -%}
+<section class="carte">
+  <h2>Saisie manuelle</h2>
+  <p class="scanner-aide">{{ aide }}</p>
+  <form method="get" action="{{ action }}" class="saisie-manuelle">
+    <div class="champ">
+      <label for="code">Code de la boîte</label>
+      <input type="text" id="code" name="code" value="{{ code_saisi or '' }}"
+             inputmode="{{ 'text' if lettres else 'numeric' }}"
+             autocomplete="off" autocapitalize="off"
+             spellcheck="false" placeholder="ex. 0012" required
+             {% if erreur %}autofocus{% endif %}>
+    </div>
+    {% if lettres %}
+      <input type="hidden" name="lettres" value="1">
+    {% endif %}
+    {% if lien_bascule %}
+      <p class="scanner-aide saisie-clavier">
+        {# Intitulés compréhensibles HORS CONTEXTE : lus seuls par un lecteur
+           d'écran qui parcourt les liens de la page, « clavier complet » ou
+           « pavé numérique » ne dit pas de quoi il s'agit. #}
+        <a class="lien" href="{{ lien_bascule }}">{% if lettres %}Revenir au
+          pavé numérique pour saisir le code{% else %}Le code de ma boîte
+          contient une lettre — afficher le clavier complet{% endif %}</a>
+      </p>
+    {% endif %}
+    <button type="submit" class="bouton-filtrer">{{ bouton }}</button>
+  </form>
+</section>
+{%- endmacro %}

@@ -461,14 +461,56 @@ def _escalade(id_nouveau: str, nouvelle_info: dict, numero_oubli) -> dict:
             "numero": numero_oubli}
 
 
+def _contexte_transfert(request: Request, id_rendu: str, info: dict, numero: int,
+                        **extra) -> dict:
+    """
+    Contexte de rendu de `transfert_scan.html` — UN SEUL DOMICILE pour les deux
+    routes qui affichent cet écran (celle qui l'ouvre, celle qui réaffiche
+    après une saisie refusée).
+
+    Il était construit à la main dans chacune, ce qui ne coûtait rien tant que
+    les clés étaient les trois mêmes ; le drapeau de clavier de la saisie
+    manuelle en ajoute deux, qu'une seule des deux routes aurait fini par
+    porter. Le mécanisme est celui de `_contexte_scanner` (routes/scanner.py).
+
+    Le lien de bascule du clavier se recalcule DEPUIS L'ÉCRAN COURANT sur un
+    GET. Sur le rendu qui suit un POST (l'écran d'escalade « déjà sortie »),
+    `request.url.path` désigne la route d'écriture : la rejouer en GET
+    ouvrirait l'écran de confirmation, pas celui-ci. On renvoie donc vers
+    l'écran de transfert, clavier complet allumé. Le bloc d'escalade est perdu
+    au passage — il naît d'un POST et ne se reconstruit pas — mais il
+    reparaîtra en visant la même boîte, et le bénévole a ses lettres. Le seul
+    autre choix serait de ne pas offrir la bascule ici, c'est-à-dire de laisser
+    un iPhone sans aucun moyen de taper un code d'extension : un blocage net,
+    exactement ce que ce projet refuse.
+    """
+    ctx = {
+        "id_rendu": id_rendu, "info": info, "numero": numero,
+        "lettres": services.clavier_lettres_demande(
+            request.query_params.get("lettres", "")
+        ),
+        "lien_bascule": (
+            services.lien_bascule_clavier(request) if request.method == "GET"
+            else f"/pret/{id_rendu}/transfert?lettres=1"
+        ),
+    }
+    ctx.update(extra)
+    return ctx
+
+
 @router.get("/{id_rendu}/transfert")
-def transfert_ecran(request: Request, id_rendu: str, _=Depends(exiger_jeton)):
+def transfert_ecran(request: Request, id_rendu: str, lettres: str = "",
+                    _=Depends(exiger_jeton)):
     """
     Écran de transfert (§5 de la note) : caméra embarquée pour scanner le
     NOUVEAU jeu. RIEN n'est encore écrit — c'est le scan de la seconde boîte
     (ou sa saisie manuelle) qui déclenchera l'écran de confirmation, jamais
     directement une écriture (règle générale du scan, voir §2 des trois
     pièges en tête de la note d'implémentation).
+
+    `?lettres=1` bascule la saisie manuelle sur le clavier complet. Contexte
+    construit par `_contexte_transfert`, partagé avec la route de saisie : le
+    drapeau doit survivre au réaffichage après erreur.
     """
     conn = get_connection()
     try:
@@ -482,13 +524,13 @@ def transfert_ecran(request: Request, id_rendu: str, _=Depends(exiger_jeton)):
         conn.close()
     return templates.TemplateResponse(
         request, "transfert_scan.html",
-        {"id_rendu": id_rendu, "info": info, "numero": numero},
+        _contexte_transfert(request, id_rendu, info, numero),
     )
 
 
 @router.get("/{id_rendu}/transfert/saisie")
 def transfert_saisie(request: Request, id_rendu: str, code: str = "",
-                      _=Depends(exiger_jeton)):
+                      lettres: str = "", _=Depends(exiger_jeton)):
     """
     Secours clavier de l'écran de transfert (patron exact de
     `/scanner/saisie`). N'ÉCRIT RIEN : redirige (303) vers l'écran de
@@ -497,8 +539,12 @@ def transfert_saisie(request: Request, id_rendu: str, code: str = "",
 
     ⚠️ Cette route DOIT être déclarée avant `/transfert/{id_nouveau}` : sinon
     FastAPI capture « saisie » comme un `id_nouveau` (un test le verrouille).
+
+    Le code de la NOUVELLE boîte est tapé au clavier : il passe donc par
+    `resoudre_code_saisi`, comme /scanner/saisie, et la redirection porte le
+    code canonique. `id_rendu`, lui, vient de l'URL — il reste exact.
     """
-    id_nouveau = (code or "").strip()
+    saisi = (code or "").strip()
     conn = get_connection()
     try:
         info = services.info_exemplaire(conn, id_rendu)
@@ -508,19 +554,20 @@ def transfert_saisie(request: Request, id_rendu: str, code: str = "",
         if refus:
             return _rendu(request, id_rendu, refus)
 
-        if not id_nouveau:
+        if not saisi:
             return templates.TemplateResponse(
                 request, "transfert_scan.html",
-                {"id_rendu": id_rendu, "info": info, "numero": numero,
-                 "erreur": "Veuillez saisir un code.", "code_saisi": ""},
+                _contexte_transfert(request, id_rendu, info, numero,
+                                    erreur="Veuillez saisir un code.", code_saisi=""),
             )
-        if services.info_exemplaire(conn, id_nouveau) is None:
+        id_nouveau, proches = services.resoudre_code_saisi(conn, saisi)
+        if id_nouveau is None:
             return templates.TemplateResponse(
                 request, "transfert_scan.html",
-                {"id_rendu": id_rendu, "info": info, "numero": numero,
-                 "erreur": f"Aucune boîte ne porte le code « {id_nouveau} ». "
-                           "Vérifiez et réessayez.",
-                 "code_saisi": id_nouveau},
+                _contexte_transfert(
+                    request, id_rendu, info, numero,
+                    erreur=services.message_code_introuvable(saisi, proches),
+                    code_saisi=saisi),
             )
     finally:
         conn.close()
@@ -645,10 +692,11 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
             courant = services.pret_en_cours(conn, id_rendu)
             return templates.TemplateResponse(
                 request, "transfert_scan.html",
-                {"id_rendu": id_rendu, "info": info,
-                 "numero": courant["numero_pochette"] if courant else None,
-                 "escalade": _escalade(id_nouveau, nouvelle_info,
-                                       resultat["numero"])},
+                _contexte_transfert(
+                    request, id_rendu, info,
+                    courant["numero_pochette"] if courant else None,
+                    escalade=_escalade(id_nouveau, nouvelle_info,
+                                       resultat["numero"])),
             )
         if resultat["type"] != "transfert":
             # transfert_impossible / occupe / deja_sorti (conflit rare, voir

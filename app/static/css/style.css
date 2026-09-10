@@ -836,6 +836,10 @@ summary:focus-visible,
 }
 .saisie-manuelle { display: grid; gap: 12px; margin-top: 8px; }
 .saisie-manuelle .bouton-filtrer { width: 100%; }
+/* Ligne du clavier, entre le champ et le bouton : porte du lien de bascule
+   vers le clavier complet, ou le rappel qu'on y est déjà. Marges annulées —
+   l'écart vient du `gap` de la grille, sinon la ligne se décolle deux fois. */
+.saisie-clavier { margin: 0; }
 
 .pied {
   max-width: 540px;

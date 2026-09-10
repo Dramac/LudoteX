@@ -46,6 +46,7 @@ import secrets
 import sqlite3
 import unicodedata
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 # Fuseau de l'événement (saisies « 20h », « 2h du matin » = heure locale FR).
@@ -197,6 +198,181 @@ def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None
         (id_exemplaire,),
     ).fetchone()
     return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# SAISIE AU CLAVIER DU CODE DE LA BOÎTE
+#
+# Le secours clavier (« QR illisible ? tapez le code ») est le SEUL chemin où
+# le code n'arrive pas d'un QR : il est recopié à l'oeil, depuis une étiquette
+# collée sur une boîte, par quelqu'un qui en scanne des centaines dans la
+# journée. Trois écarts de frappe sont donc attendus — un zéro de tête oublié
+# (« 42 » pour « 042 »), une minuscule (« e001 »), un espace collé — et aucun
+# ne doit renvoyer « Aucune boîte ne porte le code ».
+#
+# CE RÉSOLVEUR NE SERT QUE LÀ. Il n'a rien à faire dans `info_exemplaire`, que
+# vingt appelants utilisent pour la fiche publique /jeu/<id>, l'administration
+# et toutes les routes de prêt : ces valeurs-là viennent d'un QR ou d'une URL,
+# elles sont EXACTES par construction. Les rendre floues ferait répondre
+# /jeu/42 pour la boîte 042 — une seconde URL pour une même boîte, que rien ne
+# demande et que les moteurs de recherche indexeraient deux fois.
+# ---------------------------------------------------------------------------
+
+# Zéros de tête du premier nombre du code, quel que soit ce qui le précède :
+# « 001 » -> « 1 », « E001 » -> « E1 », « A0001 » -> « A1 ». Le lookahead
+# garde le dernier chiffre, donc « 000 » -> « 0 » et « 0 » ne bouge pas.
+_ZEROS_DE_TETE = re.compile(r"^([^0-9]*)0+(?=[0-9])")
+
+# Au-delà, la liste des codes proches cesse d'aider et devient un mur de texte
+# sur un écran de téléphone. Le plafond est posé à L'AFFICHAGE et non dans le
+# résolveur : celui-ci rend tout ce qu'il a trouvé, à charge de l'écran d'en
+# montrer ce qui tient.
+MAX_CODES_PROCHES = 5
+
+
+def cle_saisie(code: str) -> str:
+    """
+    Clé de RAPPROCHEMENT d'un code tapé au clavier — espaces retirés, casse
+    ignorée, zéros de tête ignorés.
+
+    Sert uniquement à retrouver une boîte. Ce qui est stocké en base et affiché
+    à l'écran reste la chaîne d'origine : `id_exemplaire` est du TEXT, jamais
+    réinterprété comme un entier (docs/specification.md §3).
+
+    Args:
+        code: ce que le bénévole a tapé, ou un code du catalogue.
+
+    Returns:
+        La clé normalisée, éventuellement vide si `code` ne portait que des
+        espaces.
+    """
+    return _ZEROS_DE_TETE.sub(r"\1", "".join(code.split()).upper())
+
+
+def resoudre_code_saisi(
+    conn: sqlite3.Connection, code: str
+) -> tuple[str | None, list[str]]:
+    """
+    Retrouve l'`id_exemplaire` EXACT d'une boîte à partir d'un code tapé au
+    clavier. Essai exact d'abord, repli normalisé ensuite.
+
+    Le repli n'est accepté que s'il ramène UNE SEULE boîte : deux
+    correspondances, on ne devine pas, on redemande. Sur notre catalogue les
+    704 codes donnent 704 clés distinctes, donc cette garde n'y sert jamais —
+    elle est là pour un catalogue où « 042 » et « 42 » coexisteraient, et c'est
+    précisément pour celui-là qu'elle ne doit pas sauter.
+
+    Le parcours du catalogue se fait en Python et non en SQL : la
+    normalisation n'aurait alors plus un seul domicile, et elle vivrait en
+    double dans deux langages qui divergeraient. Le coût est négligeable — ce
+    chemin ne s'emprunte qu'à la frappe d'un humain, quelques fois par jour.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        code: ce que le bénévole a tapé (espaces de bord tolérés).
+
+    Returns:
+        Un couple `(id_exemplaire, codes_proches)`. `id_exemplaire` est
+        l'identifiant exact tel qu'il est écrit en base, ou ``None`` si rien
+        n'a pu être retrouvé SANS DEVINER. `codes_proches` ne porte quelque
+        chose que dans ce dernier cas et seulement s'il y avait PLUSIEURS
+        candidats — de quoi nommer l'ambiguïté à l'écran plutôt que d'annoncer
+        à tort que la boîte n'existe pas.
+    """
+    code = (code or "").strip()
+    if not code:
+        return None, []
+
+    # 1) Essai exact — toujours prioritaire : un code réellement présent au
+    #    catalogue ne doit jamais être arbitré par la normalisation.
+    row = conn.execute(
+        "SELECT id_exemplaire FROM exemplaires WHERE id_exemplaire = ?", (code,)
+    ).fetchone()
+    if row:
+        return row[0], []
+
+    # 2) Repli normalisé.
+    cle = cle_saisie(code)
+    if not cle:
+        return None, []
+    proches = [
+        ligne[0]
+        for ligne in conn.execute("SELECT id_exemplaire FROM exemplaires")
+        if cle_saisie(ligne[0]) == cle
+    ]
+    if len(proches) == 1:
+        return proches[0], []
+    return None, sorted(proches)
+
+
+def message_code_introuvable(code: str, codes_proches: list[str] | None = None) -> str:
+    """
+    Le message rendu quand un code saisi ne mène à aucune boîte — UN SEUL
+    DOMICILE pour les quatre écrans qui l'affichent.
+
+    Jamais bloquant (docs/specification.md, règle générale) : il nomme le code
+    refusé, que le champ garde prérempli, et dit quoi faire. Quand plusieurs
+    boîtes se ressemblent, il les liste au lieu de prétendre qu'aucune
+    n'existe — ce qui ferait retaper la même chose.
+
+    Args:
+        code: le code tel que tapé, restitué à l'identique.
+        codes_proches: les candidats d'une saisie ambiguë (`resoudre_code_saisi`).
+
+    Returns:
+        La phrase à afficher.
+    """
+    if codes_proches:
+        liste = ", ".join(f"« {c} »" for c in codes_proches[:MAX_CODES_PROCHES])
+        return (f"Plusieurs boîtes ressemblent à « {code} » : {liste}. "
+                "Tapez le code exact, zéros compris.")
+    return f"Aucune boîte ne porte le code « {code} ». Vérifiez et réessayez."
+
+
+def clavier_lettres_demande(valeur: str) -> bool:
+    """
+    Le clavier complet est-il demandé ?
+
+    Même rigueur que le `?debug=1` du scanner : SEULE la valeur « 1 » allume le
+    mode. Un « lettres=0 » collé dans une barre d'adresse ne doit pas
+    l'allumer, et une valeur inattendue retombe sur le pavé numérique, qui
+    convient à 97 % du catalogue.
+    """
+    return valeur == "1"
+
+
+def lien_bascule_clavier(request) -> str:
+    """
+    URL de l'écran COURANT, clavier de la saisie manuelle BASCULÉ — cible du
+    lien du fragment `_saisie_manuelle.html`.
+
+    Reconstruite depuis la requête plutôt qu'écrite en dur dans chaque
+    gabarit : cet écran se réaffiche depuis cinq routes différentes selon
+    qu'on l'ouvre, qu'on s'y trompe de code ou qu'on y range une boîte, et la
+    bascule doit rendre exactement le même écran, code saisi et message
+    d'erreur compris. Écrire « /scanner?lettres=1 » en dur ferait perdre au
+    bénévole ce qu'il vient de taper à l'instant précis où il découvre qu'il
+    lui faut des lettres.
+
+    La bascule va DANS LES DEUX SENS. Le pavé numérique reste le bon outil
+    pour 97 % du catalogue : y renvoyer une porte, c'est éviter qu'une seule
+    boîte d'extension condamne au clavier complet tout le reste d'une séance
+    de rangement, l'écran se réaffichant depuis sa propre URL après chaque
+    code accepté.
+
+    Args:
+        request: la requête en cours de rendu.
+
+    Returns:
+        Le chemin courant, ses autres paramètres conservés, `lettres` posé ou
+        retiré selon l'état présent.
+    """
+    parametres = dict(request.query_params)
+    if clavier_lettres_demande(parametres.get("lettres", "")):
+        parametres.pop("lettres")
+    else:
+        parametres["lettres"] = "1"
+    return f"{request.url.path}?{urlencode(parametres)}"
 
 
 def pret_en_cours(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None:
