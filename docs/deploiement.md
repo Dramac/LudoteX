@@ -297,6 +297,61 @@ automatiques et sans perte de données).
 > sudo systemctl status ludotex
 > ```
 
+### Mettre à jour la configuration nginx
+
+`update.sh` ne touche **jamais** à nginx : le fichier que nginx lit est une
+copie posée dans `/etc/nginx/sites-available/` au moment de l'installation.
+Une mise à jour qui modifie `deploy/nginx-*.conf` demande donc ce geste en
+plus — et rien ne le rappelle tout seul, c'est le compte rendu de la version
+qui doit l'annoncer.
+
+**Ne pas reporter les lignes à la main.** On réinstalle le fichier du dépôt,
+puis on laisse `certbot --nginx` réinstaller ses propres lignes SSL par-dessus,
+sans réémettre le certificat. C'est reproductible, et ça ne laisse rien
+diverger.
+
+```bash
+# 1. sauvegarder l'existant, HORS /etc/nginx, avant tout
+sudo mkdir -p /root/sauvegarde-nginx
+sudo cp -a /etc/nginx/sites-available/ludotex \
+           /root/sauvegarde-nginx/ludotex.$(date +%Y%m%d-%H%M%S)
+
+# 2. installer le fichier du dépôt, en substituant les deux valeurs
+#    (mêmes `sed` que deploy/install.sh, étape 7)
+sudo cp /opt/ludotex/deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludotex
+sudo sed -i 's#/opt/ludotex#<chemin d installation>#g' /etc/nginx/sites-available/ludotex
+sudo sed -i 's/pret\.example\.fr/<domaine réel>/g'     /etc/nginx/sites-available/ludotex
+sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex   # ne doit RIEN afficher
+
+# 3. tester — SANS recharger (voir l'avertissement ci-dessous)
+sudo nginx -t
+
+# 4. certbot réinstalle les lignes SSL et recharge lui-même.
+#    Répondre 1 (« reinstall this existing certificate »), jamais 2.
+sudo certbot --nginx -d <domaine réel> --redirect
+
+# 5. confirmer
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+> **Ne pas recharger nginx entre les étapes 2 et 4.** Le fichier du dépôt
+> écoute en `80` et ne porte aucun bloc 443 (certbot les ajoute). Si
+> `sites-enabled/default` n'a pas de `listen 443 default_server` — c'est le
+> cas par défaut sur Debian/Ubuntu, la ligne y est commentée — le bloc 443 de
+> ce site sert de serveur HTTPS par défaut, et le recharger sans ses lignes
+> SSL fait tomber les visiteurs HTTPS sur **un autre site et son certificat**
+> (celui de l'instance de formation, le cas échéant) : avertissement de
+> sécurité du navigateur, puis mauvais site.
+> `nginx -t` ne fait que lire le fichier, il n'applique rien : entre les
+> étapes 2 et 4 la configuration en service reste l'ancienne, intacte. Comme
+> certbot recharge lui-même une fois les lignes 443 réécrites, l'opération se
+> fait **sans aucune fenêtre de coupure**.
+
+Sur une installation qui porte aussi le site de formation, faire les deux
+fichiers **l'un après l'autre, la formation d'abord** : geste identique sur un
+site dont l'indisponibilité ne coûte rien, ce qui valide la manœuvre avant de
+toucher à la production.
+
 ## 9. En cas de problème
 
 - **Le site ne répond pas** : `sudo systemctl status ludotex` puis
@@ -318,20 +373,37 @@ automatiques et sans perte de données).
 - **Une page semble cassée après une mise à jour de nginx (SEC-01/02/04/
   ROB-03)** : vérifier d'abord la console développeur (F12 → Console) pour
   une ligne « Refused to... » liée à la Content-Security-Policy. Pour
-  revenir en arrière sans rien deviner : la configuration précédente est
-  dans l'historique git du dépôt —
+  revenir en arrière : **restaurer la sauvegarde horodatée** prise juste
+  avant l'installation (§ « Mettre à jour la configuration nginx », qui
+  impose de la prendre avant tout geste) —
   ```bash
-  cd /opt/ludotex
-  git log --oneline -- deploy/nginx-ludotex.conf   # repérer le commit voulu
-  git show <commit_precedent>:deploy/nginx-ludotex.conf | sudo tee /etc/nginx/sites-available/ludotex
+  ls -l /root/sauvegarde-nginx/
+  sudo cp -a /root/sauvegarde-nginx/ludotex.<horodatage> /etc/nginx/sites-available/ludotex
   sudo nginx -t && sudo systemctl reload nginx
   ```
-  (adapter le chemin pour `deploy/nginx-ludotex-formation.conf` si c'est le
-  site de formation qui est concerné). Si `sudo nginx -t` signale une erreur
-  de syntaxe juste après une modification manuelle, la configuration n'est
-  **jamais** rechargée par `nginx -t` seul : le site continue de tourner sur
-  l'ancienne configuration tant que `systemctl reload nginx` n'a pas été
-  exécuté avec succès — pas de coupure pendant qu'on corrige.
+  (adapter pour `ludotex-formation.<horodatage>` si c'est le site de
+  formation qui est concerné). Cette sauvegarde porte les lignes ajoutées
+  par certbot **et** les valeurs substituées à l'installation (domaine,
+  chemin) : la restauration remet donc exactement l'état d'avant, HTTPS
+  compris.
+
+  > **Ne jamais récrire le fichier installé depuis l'historique git**
+  > (`git show <commit>:deploy/nginx-ludotex.conf | sudo tee
+  > /etc/nginx/sites-available/ludotex`, procédure décrite ici jusqu'au
+  > 10/09/2026). Le fichier du dépôt ne porte ni les lignes `ssl_*` de
+  > certbot, ni le vrai nom de domaine : ce `tee` ferait perdre au site son
+  > HTTPS **et** son tri par nom de domaine, au moment précis où l'on
+  > cherche à réparer.
+
+  Si aucune sauvegarde n'a été prise, il n'y a pas de raccourci : il faut
+  refaire l'installation complète du fichier (copie depuis le dépôt,
+  substitution du domaine et du chemin, `nginx -t`, `certbot --nginx`) —
+  voir « Mettre à jour la configuration nginx ».
+
+  Dans tous les cas, si `sudo nginx -t` signale une erreur de syntaxe, la
+  configuration n'est **jamais** appliquée par `nginx -t` seul : le site
+  continue de tourner sur l'ancienne tant que `systemctl reload nginx` n'a
+  pas été exécuté avec succès — pas de coupure pendant qu'on corrige.
 - **429 (« Too Many Requests ») sur `/live/data` ou un export de `/stats`** :
   limite de débit posée le 24/07/2026 (SEC-04) — normale en cas d'usage
   automatisé/répété rapide, anormale en usage courant. Si l'écran de salle
@@ -438,12 +510,24 @@ sudo systemctl status ludotex
 
 ### G. nginx (reverse proxy)
 
+Deux valeurs sont à substituer, pas une : le domaine **et** le chemin
+d'installation (le fichier du dépôt porte `/opt/ludotex` à deux endroits, dont
+l'`alias` de `location /static/` — sans quoi le CSS et le scanner ne seraient
+pas servis). Ce sont les deux mêmes `sed` que `deploy/install.sh`, étape 7 ; le
+`grep` final est le garde-fou.
+
 ```bash
 sudo cp deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludotex
-sudo sed -i 's/pret.example.fr/VOTRE_SOUS_DOMAINE/' /etc/nginx/sites-available/ludotex
+sudo sed -i 's#/opt/ludotex#VOTRE_CHEMIN_INSTALL#g' /etc/nginx/sites-available/ludotex
+sudo sed -i 's/pret\.example\.fr/VOTRE_SOUS_DOMAINE/g' /etc/nginx/sites-available/ludotex
+sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex   # ne doit RIEN afficher
 sudo ln -s /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+(Ici le `reload` est sans risque : c'est une première installation, il n'y a
+pas encore de bloc 443 à perdre. Pour une **mise à jour** d'un site déjà en
+HTTPS, voir l'avertissement de « Mettre à jour la configuration nginx ».)
 
 ### H. HTTPS (Let's Encrypt)
 
