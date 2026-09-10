@@ -21,6 +21,7 @@ Usage :
     python -m scripts.generate_qr --base-url https://abcd.trycloudflare.com
     python -m scripts.generate_qr --limit 12               # échantillon (tests)
     python -m scripts.generate_qr --simple                 # QR nu, sans décor
+    python -m scripts.generate_qr --sans-code              # sans le code de la boîte
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from pathlib import Path
 # Permet « python scripts/generate_qr.py » comme « python -m scripts.generate_qr ».
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import services  # noqa: E402
 from app.db import get_connection  # noqa: E402
 from app.etiquettes import (  # noqa: E402
     charger_logo,
@@ -71,7 +73,22 @@ def charger_exemplaires(limit: int | None = None) -> list[dict]:
         conn.close()
 
 
-def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
+def lire_reglage_code() -> bool:
+    """
+    Lit en base le réglage « imprimer le code de la boîte » (/admin/etiquettes).
+
+    Le DOMICILE de ce réglage et de son défaut est `app/services.py` : ce script
+    ne le recopie pas, il l'interroge — comme les deux routes d'administration.
+    """
+    conn = get_connection()
+    try:
+        return services.lire_etiquette_code(conn)
+    finally:
+        conn.close()
+
+
+def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool,
+                 afficher_code: bool = True) -> int:
     """
     Écrit un PNG par exemplaire dans `out` (fichier `<id>.png`).
 
@@ -81,6 +98,8 @@ def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
         out: dossier de sortie (créé au besoin).
         logo: image PIL du logo, ou None (placeholder).
         simple: True = QR nu ; False = étiquette complète.
+        afficher_code: imprimer ou non le code de la boîte (sans effet sur un
+            QR nu, qui n'a pas de décor).
 
     Returns:
         Le nombre d'étiquettes générées.
@@ -88,13 +107,15 @@ def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool) -> int:
     out.mkdir(parents=True, exist_ok=True)
     for ex in exemplaires:
         url = url_fiche(base_url, ex["id_exemplaire"])
-        img = image_qr_nu(url) if simple else image_etiquette(url, ex, logo)
+        img = (image_qr_nu(url) if simple
+               else image_etiquette(url, ex, logo, afficher_code=afficher_code))
         img.save(out / f"{ex['id_exemplaire']}.png")
     return len(exemplaires)
 
 
 def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
-                    colonnes: int, logo, simple: bool, marge_mm: float = 2.0) -> int:
+                    colonnes: int, logo, simple: bool, marge_mm: float = 2.0,
+                    afficher_code: bool = True) -> int:
     """
     Génère une planche A4 multipage prête à imprimer.
 
@@ -103,7 +124,7 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
     dépendre du codec JPEG, absent de certains builds Pillow.
 
     Args:
-        exemplaires, base_url, logo, simple: voir generer_pngs.
+        exemplaires, base_url, logo, simple, afficher_code: voir generer_pngs.
         chemin_pdf: fichier PDF de sortie.
         lignes, colonnes: disposition de la grille.
         marge_mm: marge intérieure de chaque cellule, en millimètres.
@@ -138,7 +159,8 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
     for i in range(0, len(exemplaires), par_page):
         for j, ex in enumerate(exemplaires[i:i + par_page]):
             url = url_fiche(base_url, ex["id_exemplaire"])
-            label = image_qr_nu(url) if simple else image_etiquette(url, ex, logo)
+            label = (image_qr_nu(url) if simple
+                     else image_etiquette(url, ex, logo, afficher_code=afficher_code))
             iw, ih = label.size
             # Position dans la grille (colonne, ligne) à partir de l'indice j.
             col, row = j % colonnes, j // colonnes
@@ -186,6 +208,9 @@ def main() -> None:
     p.add_argument("--grille", default="8x2",
                    help="Disposition planche 'lignesxcolonnes' (défaut 8x2, paysage).")
     p.add_argument("--simple", action="store_true", help="QR nu, sans décor.")
+    p.add_argument("--sans-code", action="store_true",
+                   help="Ne pas imprimer le code de la boîte, pour CE tirage "
+                        "seulement (le réglage enregistré n'est pas modifié).")
     p.add_argument("--limit", type=int, help="Limiter le nombre d'exemplaires (tests).")
     args = p.parse_args()
 
@@ -202,6 +227,13 @@ def main() -> None:
         raise SystemExit(f"Logo introuvable : {args.logo}")
     logo = charger_logo(args.logo)
 
+    # Le code de la boîte suit le RÉGLAGE ENREGISTRÉ (/admin/etiquettes), comme
+    # les deux producteurs de l'application : les trois doivent rendre la même
+    # étiquette. `--sans-code` force un tirage sans code ici et maintenant, et
+    # n'écrit RIEN en base — une option de ligne de commande ne doit pas
+    # modifier le réglage du bureau derrière son dos.
+    afficher_code = lire_reglage_code() and not args.sans_code
+
     exemplaires = charger_exemplaires(args.limit)
     if not exemplaires:
         raise SystemExit("Aucun exemplaire en base. Lancer d'abord : "
@@ -213,14 +245,18 @@ def main() -> None:
     print(f"Logo : {'fourni' if logo else 'PLACEHOLDER (aucun logo déposé — '
                      'le déposer depuis /admin/identite avant le tirage définitif)'}")
 
-    n = generer_pngs(exemplaires, args.base_url, args.out, logo, args.simple)
+    if not args.simple:
+        print(f"Code de la boîte : {'imprimé' if afficher_code else 'masqué'}")
+
+    n = generer_pngs(exemplaires, args.base_url, args.out, logo, args.simple,
+                     afficher_code)
     print(f"{n} étiquette(s) PNG écrites dans : {args.out}/")
 
     if args.planche:
         lignes, colonnes = _parse_grille(args.grille)
         pdf = args.out / "planche-qr.pdf"
         pages = generer_planche(exemplaires, args.base_url, pdf, lignes, colonnes,
-                                logo, args.simple)
+                                logo, args.simple, afficher_code=afficher_code)
         print(f"Planche PDF : {pdf} — grille {lignes}x{colonnes} "
               f"({lignes * colonnes}/page), {pages} page(s).")
 

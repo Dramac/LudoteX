@@ -80,6 +80,10 @@ ACTIONS = {
     "alerte_effacee",
     "evenement_date_modifiee",
     "evenement_nom_modifie",
+    # Réglage d'impression des étiquettes (/admin/etiquettes) : le code de la
+    # boîte y figure ou non. `objet` porte l'état retenu (« affiché » /
+    # « masqué ») — un réglage d'affichage, aucune donnée personnelle.
+    "etiquette_code_modifie",
     # Identité de l'association (/admin/identite) : le nom du déploiement,
     # distinct du nom de l'ÉDITION ci-dessus, et les trois réglages qui
     # alimentent la page « À propos ».

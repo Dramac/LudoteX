@@ -325,18 +325,23 @@ def etiquette_png(request: Request, id_exemplaire: str):
     Utilise le rendu PARTAGÉ (app/etiquettes) : identique aux étiquettes générées
     en lot. C'est ce qui permet de réimprimer une étiquette abîmée sans changer
     le code du QR.
+
+    D'où la lecture du réglage `etiquette_code` ICI aussi, alors que cette route
+    n'a aucun formulaire : le code de la boîte se porte ou ne se porte pas, mais
+    jamais sur la moitié du parc (voir services.CLE_ETIQUETTE_CODE).
     """
     if (garde := _garde(request)):
         return garde
     conn = get_connection()
     try:
         info = services.info_exemplaire(conn, id_exemplaire)
+        afficher_code = services.lire_etiquette_code(conn)
     finally:
         conn.close()
     if info is None:
         return Response(status_code=404)
     url = url_fiche(_base_url(request), id_exemplaire)
-    img = image_etiquette(url, info, charger_logo())
+    img = image_etiquette(url, info, charger_logo(), afficher_code=afficher_code)
     buf = BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
@@ -361,18 +366,61 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
         categories = services.lister_categories(conn)
         filtre = categorie if categorie in categories else None
         jeux = services.titres_pour_etiquettes(conn, filtre)
+        afficher_code = services.lire_etiquette_code(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "admin_etiquettes.html",
         {"jeux": jeux, "categories": categories, "filtre": filtre,
          "base_url": _base_url(request), "message": message,
+         # Le réglage TEL QU'ENREGISTRÉ : la case doit rouvrir dans l'état où
+         # le bureau l'a laissée, jamais sur son défaut.
+         "afficher_code": afficher_code,
          # Lot 3c : le cadre « LOGO » a disparu des étiquettes (voir
          # app/etiquettes.py::charger_logo) — le signal qu'il portait déménage
          # ici, seul endroit où il peut encore être lu et corrigé avant
          # d'imprimer un tirage entier.
          "logo_regle": logo.logo_regle()},
     )
+
+
+@router.post("/etiquettes/code")
+def etiquettes_code(request: Request, afficher_code: str = Form("")):
+    """
+    Enregistre le réglage « imprimer le code de la boîte », puis REDIRIGE.
+
+    Formulaire SÉPARÉ de celui qui génère la planche, et non une case de plus
+    dans celui-ci : `etiquettes_pdf` renvoie un fichier et ne réaffiche jamais
+    la page. Un réglage porté par ce formulaire ne serait enregistré qu'en
+    imprimant, et son auteur n'aurait aucun retour lui disant que son choix est
+    pris — la réponse est un PDF.
+
+    Une case décochée n'est pas transmise par le navigateur : d'où la lecture
+    par présence (`Form("")` + `bool`), et non un `Form(True)` qui rendrait la
+    case impossible à décocher.
+    """
+    if (garde := _garde(request)):
+        return garde
+    afficher = bool(afficher_code)
+    conn = get_connection()
+    try:
+        precedent = services.lire_etiquette_code(conn)
+        services.ecrire_etiquette_code(conn, afficher)
+    finally:
+        conn.close()
+    if afficher != precedent:
+        journal.journaliser(
+            request, "admin", "etiquette_code_modifie",
+            objet="affiché" if afficher else "masqué",
+        )
+    message = (
+        "Le code de la boîte sera imprimé sur les étiquettes, "
+        "réimpressions comprises."
+        if afficher else
+        "Le code de la boîte ne sera plus imprimé, réimpressions comprises."
+    )
+    return RedirectResponse(
+        "/admin/etiquettes?message=" + quote(message), status_code=303)
 
 
 def _float_ou(defaut: float, valeur: str) -> float:
@@ -413,6 +461,7 @@ def etiquettes_pdf(
     conn = get_connection()
     try:
         exemplaires = services.exemplaires_pour_etiquettes(conn, references)
+        afficher_code = services.lire_etiquette_code(conn)
     finally:
         conn.close()
     if not exemplaires:
@@ -426,6 +475,7 @@ def etiquettes_pdf(
             marge_droite_mm=_float_ou(8, marge_droite),
             marge_haut_mm=_float_ou(8, marge_haut),
             marge_bas_mm=_float_ou(8, marge_bas),
+            afficher_code=afficher_code,
         )
     except ValueError as exc:
         return etiquettes_selection(request, message=str(exc))

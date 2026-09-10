@@ -801,6 +801,17 @@ summary:focus-visible,
 .grille-params input { padding: 6px 8px; border: 1px solid var(--bord); border-radius: 6px; }
 .compteur { font-weight: 700; color: var(--primaire); margin: 10px 0; }
 .filtre-cat { margin-bottom: 12px; }
+/* Réglage STOCKÉ « code de la boîte sur l'étiquette » : encadré à part, entre
+   les avertissements et le formulaire de génération. Il ne décrit pas la
+   planche en cours (il vaut aussi pour les réimpressions individuelles), d'où
+   un bloc distinct plutôt qu'un champ de plus dans .grille-params. */
+.reglage-etiquette {
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+.reglage-etiquette .stats-note { margin: 6px 0 10px; }
 .select-actions { display: flex; gap: 12px; margin-bottom: 8px; }
 .lien-bouton { background: none; border: none; color: #1a73e8; font-weight: 600; cursor: pointer; padding: 0; }
 .liste-jeux { list-style: none; margin: 0 0 16px; padding: 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }

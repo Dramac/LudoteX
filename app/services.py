@@ -1684,6 +1684,45 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
 
 
 # ===========================================================================
+# Étiquettes imprimées — affichage du CODE DE LA BOÎTE
+# ===========================================================================
+# Le code de la boîte (`id_exemplaire`, celui que le QR encode) s'imprime
+# désormais sur l'étiquette : c'est lui que réclame la saisie manuelle de
+# secours quand le QR ne se lit pas, et il n'était jusque-là écrit nulle part
+# où un bénévole puisse le lire.
+#
+# ⚠️ LE RÉGLAGE EST STOCKÉ, PAS PORTÉ PAR LE FORMULAIRE D'EXPORT. Trois
+# producteurs doivent rendre EXACTEMENT la même étiquette — la planche en lot
+# (POST /admin/etiquettes/pdf), la réimpression d'une étiquette abîmée
+# (GET /admin/etiquette/<id>.png) et `scripts/generate_qr.py` — et les deux
+# derniers n'ont pas de formulaire. Une case portée par le seul export ferait
+# sortir les réimpressions sans code, six mois plus tard, en silence.
+#
+# Défaut : le code EST imprimé, y compris sur une base qui n'a jamais vu la
+# clé. C'est un écart ASSUMÉ avec la règle « une base d'avant se comporte
+# exactement comme avant » : il est cosmétique (il ne change rien à ce que le
+# QR encode, ni à aucune donnée), et l'inverse aurait livré la fonctionnalité
+# éteinte à tout le monde.
+CLE_ETIQUETTE_CODE = "etiquette_code"
+
+
+def lire_etiquette_code(conn: sqlite3.Connection) -> bool:
+    """
+    True si le code de la boîte doit être imprimé sur les étiquettes.
+
+    Même patron booléen que les panneaux de l'écran de salle : seule la valeur
+    « 0 » éteint le réglage, tout le reste (y compris une clé absente) laisse
+    le code affiché.
+    """
+    return lire_parametre(conn, CLE_ETIQUETTE_CODE, "1") != "0"
+
+
+def ecrire_etiquette_code(conn: sqlite3.Connection, afficher: bool) -> None:
+    """Enregistre le réglage d'affichage du code de la boîte."""
+    ecrire_parametre(conn, CLE_ETIQUETTE_CODE, "1" if afficher else "0")
+
+
+# ===========================================================================
 # Identité de l'ASSOCIATION, réglée depuis /admin/identite
 # ===========================================================================
 # Le nom de l'association (bandeau, pied de page, « À propos », exports, .ics,

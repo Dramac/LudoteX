@@ -22,6 +22,31 @@
     Pour le tirage <strong>définitif</strong>, cette adresse doit être le domaine final.
   </p>
 
+  {# Formulaire À PART, hors de #form-etiquettes (les formulaires HTML ne
+     s'imbriquent pas) : celui de génération renvoie un PDF et ne réaffiche
+     jamais la page, il ne pourrait donc rien confirmer. Celui-ci enregistre le
+     réglage et recharge la page. #}
+  <form method="post" action="/admin/etiquettes/code" class="reglage-etiquette">
+    <label class="case" for="afficher-code">
+      <input type="checkbox" id="afficher-code" name="afficher_code" value="1"
+             {% if afficher_code %}checked{% endif %}>
+      Imprimer le code de la boîte sur l'étiquette
+    </label>
+    <p class="stats-note">
+      {% if afficher_code %}
+        Chaque étiquette porte le code à taper quand le QR ne se lit pas
+        (le champ « Code de la boîte » du scanner). Décocher cette case le
+        retire des prochaines impressions.
+      {% else %}
+        Les étiquettes s'impriment sans le code à taper. La saisie manuelle du
+        scanner reste possible, mais rien sur la boîte ne dit quel code entrer.
+      {% endif %}
+      Ce réglage vaut aussi pour la <strong>réimpression d'une étiquette
+      abîmée</strong> depuis la fiche d'un jeu.
+    </p>
+    <button type="submit" class="bouton-filtrer">Enregistrer ce réglage</button>
+  </form>
+
   {# Filtre par catégorie : formulaire GET indépendant (recharge la page). #}
   <form method="get" action="/admin/etiquettes" class="filtre-cat">
     <label>Catégorie
