@@ -1490,10 +1490,11 @@ def test_scanner_saisie_manuelle_lien(client):
 
 def test_saisie_manuelle_code_valide_redirige(client):
     # Code existant (avec espaces autour, à tolérer) -> redirection vers /pret/<id>.
+    # `?saisi=1` marque l'arrivée par le clavier (bandeau d'identité).
     r = client.get("/scanner/saisie", params={"code": "  001 "},
                    follow_redirects=False)
     assert r.status_code == 303
-    assert r.headers["location"] == "/pret/001"
+    assert r.headers["location"] == "/pret/001?saisi=1"
 
 
 def test_saisie_manuelle_code_inconnu_message(client):

@@ -567,7 +567,7 @@ def test_saisie_manuelle_en_mode_rangement_affecte_au_lieu_de_pret(client):
 def test_saisie_manuelle_hors_mode_rangement_redirige_toujours_vers_pret(client):
     r = client.get("/scanner/saisie", params={"code": "001"}, follow_redirects=False)
     assert r.status_code == 303
-    assert r.headers["location"] == "/pret/001"
+    assert r.headers["location"] == "/pret/001?saisi=1"
 
 
 def test_quitter_mode_efface_le_cookie(client):

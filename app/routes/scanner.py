@@ -149,6 +149,13 @@ def saisie_manuelle(request: Request, code: str = "", lettres: str = "",
     La redirection porte toujours le code CANONIQUE, celui du catalogue : un
     « 1 » résolu mène à /pret/001, jamais à /pret/1, sinon l'URL affichée et
     l'historique du navigateur portent un identifiant qui n'existe pas.
+
+    Elle y ajoute `?saisi=1`, qui fait afficher à l'écran de prêt le bandeau
+    nommant la boîte avant toute action (services.arrivee_par_saisie). Le
+    drapeau ne dit que le CHEMIN D'ARRIVÉE — jamais le code tapé, que le
+    bandeau n'a aucune raison de répéter. En mode rangement, rien à poser :
+    cette branche n'atteint jamais la redirection, et l'écran de rangement
+    nomme déjà le jeu dans sa confirmation.
     """
     saisi = (code or "").strip()
     conn = get_connection()
@@ -200,7 +207,7 @@ def saisie_manuelle(request: Request, code: str = "", lettres: str = "",
     finally:
         conn.close()
 
-    return RedirectResponse(f"/pret/{id_exemplaire}", status_code=303)
+    return RedirectResponse(f"/pret/{id_exemplaire}?saisi=1", status_code=303)
 
 
 @router.get("/scanner/ranger")

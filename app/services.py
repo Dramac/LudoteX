@@ -329,16 +329,48 @@ def message_code_introuvable(code: str, codes_proches: list[str] | None = None) 
     return f"Aucune boîte ne porte le code « {code} ». Vérifiez et réessayez."
 
 
-def clavier_lettres_demande(valeur: str) -> bool:
+def drapeau_url_actif(valeur: str) -> bool:
     """
-    Le clavier complet est-il demandé ?
+    Un drapeau passé en paramètre d'URL est-il allumé ?
 
-    Même rigueur que le `?debug=1` du scanner : SEULE la valeur « 1 » allume le
-    mode. Un « lettres=0 » collé dans une barre d'adresse ne doit pas
-    l'allumer, et une valeur inattendue retombe sur le pavé numérique, qui
-    convient à 97 % du catalogue.
+    DOMICILE UNIQUE de la règle, née avec le `?debug=1` du scanner : SEULE la
+    valeur « 1 » allume un mode. Un « ?lettres=0 » ou un « ?saisi=oui » collé
+    dans une barre d'adresse retombe sur le comportement par défaut au lieu de
+    l'allumer à moitié.
+
+    Les lecteurs NOMMÉS ci-dessous délèguent ici : ce n'est pas la comparaison
+    qui mérite un domicile commun, c'est le motif de ce choix — le dupliquer,
+    c'est le voir diverger au premier drapeau qui accepterait « true ».
     """
     return valeur == "1"
+
+
+def clavier_lettres_demande(valeur: str) -> bool:
+    """
+    Le clavier complet est-il demandé ? (`?lettres=1` de la saisie manuelle)
+
+    Une valeur inattendue retombe sur le pavé numérique, qui convient à 97 %
+    du catalogue.
+    """
+    return drapeau_url_actif(valeur)
+
+
+def arrivee_par_saisie(valeur: str) -> bool:
+    """
+    Est-on arrivé sur la fiche de prêt en TAPANT un code ? (`?saisi=1`)
+
+    Posé par `/scanner/saisie` sur sa redirection, lu par l'écran de prêt pour
+    y afficher le bandeau qui NOMME la boîte avant toute action. La saisie
+    manuelle est le seul chemin qui puisse atterrir sur une mauvaise boîte
+    EXISTANTE : un scan ne se trompe pas de code, une frappe si, et taper
+    « 042 » au lieu de « 043 » ouvre un écran parfaitement valide.
+
+    Le drapeau ne dit QUE le chemin d'arrivée, jamais ce qui a été tapé : le
+    bandeau nomme le code canonique — celui qui est imprimé sur la boîte qu'on
+    tient — et le nom du jeu. C'est cette confrontation-là qui fait repérer une
+    faute de frappe, pas la répétition des touches qu'on vient d'appuyer.
+    """
+    return drapeau_url_actif(valeur)
 
 
 def lien_bascule_clavier(request) -> str:

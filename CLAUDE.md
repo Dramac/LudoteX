@@ -138,12 +138,12 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   unique ; les helpers de dates dans `app/services.py`). Les rares duplications
   assumées sont justifiées en commentaire.
 
-## État de l'application — au 2026-09-01
+## État de l'application — au 2026-09-10
 
-**Dernière version publiée : 1.10.0** (2026-08-14, voir `VERSION` et
-`CHANGELOG.md`). L'application est **en production**. Des commits postérieurs
-(lots 1 à 3c du chantier d'ouverture publique) attendent la **1.11.0**, qui est
-le lot 8 du registre. Ce qui est livré, par module :
+**Dernière version au dépôt : 1.13.0** (2026-09-10, voir `VERSION` et
+`CHANGELOG.md`). L'application est **en production**, où tourne la **1.11.0** :
+les 1.12.0 et 1.13.0 sont commitées et attendent un push. Ce qui est livré, par
+module :
 
 - **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
   scanner caméra (jsQR) avec saisie manuelle de secours, prêt / retour /

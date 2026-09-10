@@ -11,6 +11,54 @@
   </section>
 {% else %}
 
+  {# --- Arrivée par le CLAVIER : nommer la boîte avant d'agir ---
+     La saisie manuelle est le seul chemin qui puisse atterrir sur une
+     mauvaise boîte EXISTANTE : un scan ne se trompe pas de code, une frappe
+     si, et « 042 » au lieu de « 043 » ouvre un écran parfaitement valide, au
+     nom de jeu plausible, dont le geste suivant est un tap sur « Prêter ».
+
+     Un BANDEAU, pas un écran de confirmation (arbitrage) : un écran de plus
+     coûterait un tap à CHAQUE saisie, au moment précis où le comptoir
+     bouchonne — et on ne tape que lorsque le scan coince déjà. Le bandeau
+     coûte zéro tap dans le cas nominal et rend le rattrapage à un tap dans le
+     cas d'erreur. Il ne masque aucun bouton et n'ajoute aucune confirmation
+     obligatoire : « ne jamais bloquer » prime.
+
+     AVANT le bandeau des signalements : savoir qu'on tient la bonne boîte
+     précède la lecture de ses avertissements, et une identité reléguée sous
+     une liste de signalements ne serait pas lue.
+
+     Le code affiché est le code CANONIQUE, celui qui est IMPRIMÉ sur la boîte
+     qu'on tient — pas la répétition des touches qu'on vient d'appuyer, qu'il
+     faudrait comparer à une intention dont on ne se souvient plus. Depuis la
+     tolérance de frappe, les deux diffèrent : on tape « 42 », la boîte porte
+     « 042 », et c'est bien « 042 » qu'il faut lire sur l'étiquette.
+
+     Le lien de rattrapage ne peut pas repréremplir le champ : le code
+     précédent est justement celui qu'on veut changer. Intitulé
+     compréhensible HORS CONTEXTE, lu seul par un lecteur d'écran.
+
+     `resultat-info` (bleu) et non `resultat-attention` (orange) : ce n'est ni
+     une erreur ni une alerte, c'est une information à vérifier — et l'orange
+     est déjà celui du bandeau de signalement juste en dessous, qui doit
+     rester le plus voyant des deux.
+
+     DEUX paragraphes, et PAS de `.resultat-libelle`, pour deux raisons
+     mesurées à 375 px de large : cette classe est verte, et le vert est la
+     couleur du prêt réussi dans toute l'application — un titre vert au-dessus
+     d'un texte qui demande de VÉRIFIER se lirait comme une confirmation ; et
+     la ligne de titre coûtait 50 px qui, cumulés au bandeau de signalement,
+     repoussaient « Prêter » à 764 px sur un écran de 812, c'est-à-dire hors
+     de vue dès qu'on ajoute la barre d'un navigateur. #}
+  {% if arrivee_par_saisie %}
+    <section class="resultat resultat-info">
+      <p>⌨️ <strong>Code tapé au clavier</strong> — vérifiez la boîte que vous
+         avez en main : <strong>{{ info.id_exemplaire }}</strong> —
+         <strong>{{ info.nom }}</strong>.</p>
+      <p><a class="lien" href="/scanner">Ressaisir le code de la boîte</a></p>
+    </section>
+  {% endif %}
+
   {# --- Signalements ouverts (docs/conception-signalements.md §6) ---
      Visible DÈS L'OUVERTURE de l'écran, AVANT toute action : c'est avant de
      tendre la boîte qu'il faut prévenir, pas seulement dans la confirmation

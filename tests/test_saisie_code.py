@@ -257,12 +257,15 @@ def test_le_scan_camera_reste_exact(client):
 # LES TROIS CHEMINS OÙ UN HUMAIN TAPE
 # ===========================================================================
 @pytest.mark.parametrize("tape,attendu", [
-    ("1", "/pret/001"), ("01", "/pret/001"), ("001", "/pret/001"),
-    ("  001 ", "/pret/001"), ("e018", "/pret/E018"), ("a1", "/pret/A0001"),
+    ("1", "/pret/001?saisi=1"), ("01", "/pret/001?saisi=1"),
+    ("001", "/pret/001?saisi=1"), ("  001 ", "/pret/001?saisi=1"),
+    ("e018", "/pret/E018?saisi=1"), ("a1", "/pret/A0001?saisi=1"),
 ])
 def test_saisie_redirige_vers_le_code_canonique(client, tape, attendu):
     # La redirection porte le code du CATALOGUE, jamais celui qui a été tapé :
     # sinon l'URL affichée et l'historique portent un identifiant inexistant.
+    # Égalité STRICTE, jamais un `startswith` : c'est elle qui verrouille le
+    # code canonique, l'acquis du lot 2.
     r = client.get("/scanner/saisie", params={"code": tape}, follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"] == attendu
@@ -521,3 +524,130 @@ def test_la_bascule_conserve_les_autres_parametres(client):
     # des lettres : la bascule ne touche QU'À son propre paramètre.
     r = client.get("/scanner", params={"debug": "1"})
     assert "debug=1" in _lien_bascule(r.text)
+
+
+# ===========================================================================
+# LE BANDEAU D'IDENTITÉ (lot code-boite-3)
+#
+# La saisie manuelle est le SEUL chemin qui puisse atterrir sur une mauvaise
+# boîte EXISTANTE : un scan ne se trompe pas de code, une frappe si. Taper
+# « 1 » au lieu de « 2 » ouvre un écran parfaitement valide, au nom de jeu
+# plausible, dont le geste suivant est un tap sur « Prêter ». Le bandeau nomme
+# la boîte avant toute action, et offre le rattrapage en un tap.
+# ===========================================================================
+_MARQUEUR_BANDEAU = "Code tapé au clavier"
+
+
+def _bandeau_saisie(page: str) -> str:
+    """
+    La SECTION du bandeau d'identité, extraite — jamais un mot cherché dans la
+    page entière (piège des lots 1 et 2 : `checked` vivait dans un script,
+    et `resultat-info` sert à cinq autres bandeaux de cet écran).
+
+    Renvoie "" quand le bandeau est absent.
+    """
+    for bloc in re.findall(
+        r'<section class="resultat resultat-info">(.*?)</section>', page, re.S
+    ):
+        if _MARQUEUR_BANDEAU in bloc:
+            return bloc
+    return ""
+
+
+def test_le_bandeau_apparait_sur_une_arrivee_clavier(client):
+    assert _bandeau_saisie(client.get("/pret/001", params={"saisi": "1"}).text)
+
+
+def test_le_bandeau_est_absent_d_une_fiche_ouverte_normalement(client):
+    # Le cas du QR scanné, de loin le plus fréquent : aucun bruit ajouté.
+    assert _bandeau_saisie(client.get("/pret/001").text) == ""
+
+
+def test_le_bandeau_nomme_le_jeu_et_le_code(client):
+    bandeau = _bandeau_saisie(client.get("/pret/002", params={"saisi": "1"}).text)
+    assert "Dixit" in bandeau
+    assert "002" in bandeau
+
+
+def test_le_bandeau_porte_un_lien_de_rattrapage_cliquable(client):
+    """
+    Le rattrapage est à UN TAP, et c'est un vrai lien : atteignable au clavier,
+    listé par un lecteur d'écran, et qui mène réellement quelque part.
+    """
+    bandeau = _bandeau_saisie(client.get("/pret/001", params={"saisi": "1"}).text)
+    cible = re.search(r'<a class="lien" href="([^"]+)"', bandeau)
+    assert cible, bandeau
+    href = html_mod.unescape(cible.group(1))     # Jinja échappe « & » en « &amp; »
+    assert client.get(href).status_code == 200
+
+
+@pytest.mark.parametrize("valeur", ["0", "oui", "", "true", "01"])
+def test_seule_la_valeur_1_allume_le_bandeau(client, valeur):
+    # Même rigueur que `?debug=1` et `?lettres=1` : un paramètre collé dans une
+    # barre d'adresse ne doit pas allumer un mode à moitié.
+    page = client.get("/pret/001", params={"saisi": valeur}).text
+    assert _bandeau_saisie(page) == ""
+
+
+def test_le_bandeau_disparait_apres_l_action(client):
+    """
+    Un « code tapé » encore affiché au-dessus de « Pochette n° 7 » serait du
+    bruit au moment où l'écran doit dire UNE SEULE chose.
+    """
+    avant = client.get("/pret/001", params={"saisi": "1"})
+    assert _bandeau_saisie(avant.text)
+
+    apres = client.post("/pret/001/preter")
+    assert apres.status_code == 200
+    assert "Pochette n°" in apres.text            # l'action a bien eu lieu
+    assert _bandeau_saisie(apres.text) == ""
+
+
+def test_le_chemin_complet_depuis_la_frappe(client):
+    # De la touche au bandeau : « 2 » tapé mène à la fiche de 002, qui NOMME
+    # le jeu et le code CANONIQUE — celui qui est imprimé sur la boîte tenue
+    # en main, pas les touches qu'on vient d'appuyer.
+    r = client.get("/scanner/saisie", params={"code": "2"})
+    assert r.status_code == 200
+    bandeau = _bandeau_saisie(r.text)
+    assert "Dixit" in bandeau
+    assert "002" in bandeau
+
+
+def test_le_mode_rangement_ne_declenche_pas_le_bandeau(client):
+    # Il a déjà sa confirmation nommant le jeu : « <jeu> rangé en <lieu> ».
+    _activer_rangement(client)
+    r = client.get("/scanner/saisie", params={"code": "1"})
+    assert "rangé en Étagère 2" in r.text
+    assert _MARQUEUR_BANDEAU not in r.text
+
+
+def test_le_transfert_ne_declenche_pas_le_bandeau(client):
+    # Le transfert a son propre écran de confirmation, qui nomme les DEUX jeux
+    # et la pochette conservée : un bandeau y dirait deux fois la même chose.
+    client.post("/pret/001/preter")
+    r = client.get("/pret/001/transfert/saisie", params={"code": "2"})
+    assert r.status_code == 200
+    assert _MARQUEUR_BANDEAU not in r.text
+
+
+def test_les_deux_bandeaux_coexistent_et_l_identite_vient_en_premier(client):
+    """
+    Savoir qu'on tient la bonne boîte précède la lecture de ses
+    avertissements — et une identité reléguée sous une liste de signalements
+    ne serait pas lue.
+    """
+    conn = _connexion()
+    try:
+        conn.execute(
+            "INSERT INTO signalements (id_exemplaire, id_categorie, texte, cree_le) "
+            "VALUES ('001', NULL, 'Boîte déchirée', '2026-09-10T09:00:00')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    page = client.get("/pret/001", params={"saisi": "1"}).text
+    assert _bandeau_saisie(page)
+    assert "Boîte déchirée" in page
+    assert page.index(_MARQUEUR_BANDEAU) < page.index("Signalements en cours")

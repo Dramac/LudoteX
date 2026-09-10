@@ -196,7 +196,8 @@ _AUTO = object()
 
 
 def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
-           status: int = 200, emplacement_rangement=_AUTO):
+           status: int = 200, emplacement_rangement=_AUTO,
+           arrivee_par_saisie: bool = False):
     """
     Rend l'écran prêt/retour avec l'état COURANT de l'exemplaire.
 
@@ -217,6 +218,15 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
             sortie, mais c'est la boîte RENDUE qu'il faut ranger — deviner à
             partir de `id_exemplaire` donnerait l'emplacement de la mauvaise
             boîte.
+        arrivee_par_saisie: True quand on ouvre cet écran depuis un code TAPÉ
+            au clavier (`/scanner/saisie`, qui pose `?saisi=1`) ; le gabarit y
+            affiche alors le bandeau nommant la boîte avant toute action.
+            Faux par DÉFAUT, donc pour tous les appelants d'écriture : le
+            bandeau doit disparaître dès que l'action est faite, et il
+            disparaît ici PAR CONSTRUCTION plutôt qu'en relisant les
+            paramètres de la requête — un POST n'en porte pas, mais s'en
+            remettre à cette absence serait un raisonnement fragile à la
+            première URL d'action qui en porterait un.
 
     Returns:
         La page pret.html.
@@ -247,7 +257,8 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
         {"id_exemplaire": id_exemplaire, "info": info,
          "pret_actuel": pret_actuel, "resultat": resultat,
          "emplacement_rangement": emplacement_rangement,
-         "signalements_ouverts": signalements_ouverts},
+         "signalements_ouverts": signalements_ouverts,
+         "arrivee_par_saisie": arrivee_par_saisie},
         status_code=status if info else 404,
     )
 
@@ -291,17 +302,26 @@ def _sans_conflit(conn, id_exemplaire: str, ecrire) -> dict:
 
 
 @router.get("/{id_exemplaire}")
-def ecran(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+def ecran(request: Request, id_exemplaire: str, saisi: str = "",
+          _=Depends(exiger_jeton)):
     """
     Affiche l'écran prêt/retour (GET).
 
     Le gabarit pré-sélectionne l'action probable : « Prêter » si l'exemplaire est
     disponible, « Rendre » / « Le re-prêter » s'il est sorti.
 
+    `?saisi=1` signale une arrivée par le CLAVIER et fait afficher le bandeau
+    d'identité (services.arrivee_par_saisie). Déclaré ici pour être documenté
+    et validé, avec la même rigueur que les autres drapeaux : toute autre
+    valeur laisse le bandeau éteint. Cette route reste un pur AFFICHAGE — le
+    drapeau ne déclenche aucune écriture, et le bandeau ne masque ni ne
+    conditionne aucun bouton.
+
     Le paramètre `_=Depends(exiger_jeton)` applique la protection par jeton ; sa
     valeur n'est pas utilisée (d'où le nom `_`).
     """
-    return _rendu(request, id_exemplaire)
+    return _rendu(request, id_exemplaire,
+                  arrivee_par_saisie=services.arrivee_par_saisie(saisi))
 
 
 @router.post("/{id_exemplaire}/preter")
