@@ -10,15 +10,16 @@ Centraliser le rendu ici garantit que les deux produisent EXACTEMENT la même
 étiquette. Ce module ne touche pas à la base : il reçoit les données déjà lues.
 
 DISPOSITION DE L'ÉTIQUETTE (format paysage)
-    +------------------+---------------------------+---------+
-    |                  |  [LOGO]          (gommette)| si le QR|
-    |     QR code      |        Nom du jeu          | ne se   |
-    |                  |     [ CODE CLASSEMENT ]    |  00472  |
-    +------------------+---------------------------+---------+
+    +------------------+-----------------------------+
+    |                  |  [LOGO]           (gommette)|
+    |     QR code      |         Nom du jeu          |
+    |                  | [ 00472 | CODE CLASSEMENT ] |
+    +------------------+-----------------------------+
 
-La colonne de droite porte le CODE DE LA BOÎTE (`id_exemplaire`), celui que la
-saisie manuelle de secours réclame quand le QR ne se lit pas. Elle s'ajoute en
-LARGEUR et jamais en hauteur : voir le commentaire de `image_etiquette`.
+La case de gauche du cadre du bas porte le CODE DE LA BOÎTE (`id_exemplaire`),
+celui que la saisie manuelle de secours réclame quand le QR ne se lit pas. Il
+partage le cadre existant plutôt que d'occuper une zone à lui : voir le
+commentaire de `image_etiquette`, qui donne les mesures.
 """
 
 from __future__ import annotations
@@ -166,20 +167,30 @@ def _police(taille: int):
     return ImageFont.load_default()
 
 
-def _police_ajustee(draw, texte, largeur_max, taille_max, taille_min=20):
+def _police_encre(draw, texte, largeur_max, hauteur_max,
+                  taille_max=72, taille_min=14):
     """
-    La plus grande police (entre `taille_min` et `taille_max`) où `texte` tient
-    dans `largeur_max` pixels.
+    La plus grande police où l'ENCRE de `texte` tient dans (largeur, hauteur).
 
-    Sert au CODE DE LA BOÎTE, qui doit rester lisible sans jamais être tronqué
-    ni recomposé : `_tronquer` conviendrait à un nom de jeu, pas à un
-    identifiant que quelqu'un va recopier caractère par caractère. Un code de
-    trois chiffres sort donc plus gros qu'un code de cinq, mais les deux
-    s'impriment en entier.
+    Deux raisons de mesurer l'encre et non la taille nominale de la police :
+
+    - le code de la boîte doit rester lisible sans jamais être tronqué ni
+      recomposé (`_tronquer` conviendrait à un nom de jeu, pas à un identifiant
+      que quelqu'un recopie caractère par caractère) : c'est la police qui
+      cède, jamais la chaîne ;
+    - un code n'a ni jambage ni accent. Dans un cadre bas, dimensionner sur la
+      boîte de la police gaspillerait un bon tiers de la hauteur disponible.
+      Mesuré : 2,58 mm de chiffres imprimés en dimensionnant sur la police,
+      3,51 mm en dimensionnant sur l'encre — à cadre RIGOUREUSEMENT identique.
+
+    Effet de bord voulu : toutes les formes de code réelles (`042`, `E018`,
+    `00472`, `A0001`) sortent à la MÊME taille, parce que c'est la hauteur qui
+    limite et non la largeur. Le parc est homogène.
     """
-    for taille in range(taille_max, taille_min - 1, -2):
+    for taille in range(taille_max, taille_min - 1, -1):
         police = _police(taille)
-        if draw.textbbox((0, 0), texte, font=police)[2] <= largeur_max:
+        b = draw.textbbox((0, 0), texte, font=police)
+        if b[2] - b[0] <= largeur_max and b[3] - b[1] <= hauteur_max:
             return police
     return _police(taille_min)
 
@@ -234,40 +245,45 @@ def image_qr_nu(url: str, box: int = 8) -> Image.Image:
 
 
 # ---------------------------------------------------------------------------
-# Colonne du CODE DE LA BOÎTE (`id_exemplaire`)
+# CODE DE LA BOÎTE (`id_exemplaire`) dans le cadre du bas
 # ---------------------------------------------------------------------------
 # Le code que le QR encode est aussi celui que réclame la saisie manuelle de
 # secours (« Code de la boîte », /scanner/saisie). Tant qu'il n'était écrit
 # nulle part, ce secours était inutilisable au comptoir : l'étiquette le porte
-# désormais.
+# désormais, dans la case gauche du cadre du bas.
 #
-# POURQUOI UNE COLONNE, ET PAS UNE BANDE SOUS LE QR — mesuré, contre-intuitif.
+# POURQUOI PARTAGER LE CADRE EXISTANT — mesuré, et contre-intuitif deux fois.
 # `planche_pdf` met chaque étiquette à l'échelle de sa cellule
-# (scale = min(largeur_dispo/iw, hauteur_dispo/ih)). Sur la grille par DÉFAUT
-# (A4, 8 lignes x 2 colonnes, marges 8 mm), la cellule utile fait
-# 94,0 x 32,1 mm et l'étiquette 722 x 311 px : elle est limitée par la HAUTEUR,
-# et laisse ~20 mm de largeur inutilisés. Grandir en hauteur rétrécit donc
-# TOUTE l'étiquette, QR compris (-17 % sur une bande de 64 px sous le QR) — au
-# moment précis où l'on cherche à fiabiliser le scan. Grandir en largeur ne
-# coûte rien tant qu'on reste sous la largeur de la cellule.
+# (scale = min(largeur_dispo/iw, hauteur_dispo/ih)).
 #
-# ⚠️ Ce raisonnement vaut pour la grille par défaut. Lignes, colonnes et marges
-# sont réglables (/admin/etiquettes) : une grille plus dense en colonnes rend
-# la cellule plus étroite, et l'étiquette redevient limitée par la largeur —
-# tout le monde rétrécit alors ensemble, sans que le QR soit désavantagé.
+# 1. Sur la grille par DÉFAUT (A4, 8 lignes x 2 colonnes, marges 8 mm), la
+#    cellule utile fait 94,0 x 32,1 mm et l'étiquette 722 x 311 px : elle est
+#    limitée par la HAUTEUR. Ajouter de la hauteur rétrécit donc TOUT, QR
+#    compris (-17 % pour une bande de 64 px sous le QR) — au moment précis où
+#    l'on cherche à fiabiliser le scan. D'où un code logé dans la hauteur
+#    DÉJÀ occupée par le cadre du classement : zéro pixel ajouté.
+# 2. Élargir semblait gratuit — sur cette grille-là seulement. Une colonne à
+#    droite (+144 px) laissait bien le QR à 27,3 mm en 8x2, mais faisait
+#    basculer l'étiquette en « limitée par la largeur » dès qu'on resserre la
+#    grille : en 8x3, QR à 18,8 mm contre 22,6 mm en partageant le cadre, soit
+#    20 % de QR perdus. Lignes, colonnes et marges sont réglables depuis
+#    /admin/etiquettes : la mise en page ne doit pas parier sur 8x2.
 #
-# LARGEUR RETENUE : 130 + 14 px, soit +14,9 mm sur l'étiquette imprimée à
-# l'échelle de la cellule par défaut — 89,5 mm sur les 94,0 disponibles. Une
-# colonne plus large (170 px) tenait encore, à 93,8 mm : trop juste. La largeur
-# du QR dépend de la LONGUEUR DE L'URL encodée (un domaine plus long ajoute un
-# rang de modules, +32 px), et la marge conservée ici absorbe ce cas. Au-delà,
-# l'étiquette redevient limitée par la largeur et rétrécit d'un bloc — dégradé,
-# jamais cassé.
+# Ce que le cadre partagé donne, mesuré à l'échelle de la cellule par défaut :
+# chiffres imprimés à 3,51 mm (code court) et 3,16 mm (code de 5 caractères),
+# contre 2,51 mm pour la colonne sur un code de 5 caractères — une case large
+# de 168 px sert mieux cinq caractères qu'une colonne large de 130.
+#
+# Le code sort environ DEUX FOIS plus haut que le code de classement voisin :
+# c'est cette hiérarchie, et non un libellé, qui dit lequel taper. Une mention
+# imprimée (« Si le QR ne se lit pas, tapez : ») a été essayée et écartée :
+# elle coûte 14 px de hauteur, soit 4 % de QR, pour un texte haut de 1,3 mm
+# (~3,8 pt) que personne ne lit à bout de bras. Le message vit là où il est
+# lisible : l'écran de saisie et le guide.
+CADRE_BAS_H = 46         # hauteur du cadre du bas, px — inchangée depuis 2026
+CODE_PART_CADRE = 0.42   # part du cadre revenant au code de la boîte
+CODE_TAILLE_MAX = 72     # borne haute de l'ajustement (voir _police_encre)
 MARGE_EXTERIEURE = 18    # marge blanche autour de l'étiquette, px
-CODE_COLONNE_W = 130     # largeur de la colonne, px
-CODE_COLONNE_GAP = 14    # espace entre le panneau central et la colonne
-CODE_TAILLE_MAX = 60     # police du code, ajustée vers le bas si besoin
-CODE_MENTION = "Si le QR ne se lit pas, tapez :"
 
 
 def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
@@ -275,9 +291,10 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     """
     Compose l'étiquette complète d'un exemplaire (format paysage).
 
-    QR à gauche ; au centre : logo, cercle gommette, nom du jeu, et code de
-    classement ; à droite, sauf si `afficher_code` est faux, le CODE DE LA
-    BOÎTE. Dimensionnement dynamique pour qu'un nom long ne déborde pas.
+    QR à gauche ; à droite : logo, cercle gommette, nom du jeu, et le cadre du
+    bas. Ce cadre porte le code de classement seul, ou — c'est le défaut — le
+    CODE DE LA BOÎTE puis le code de classement, séparés d'un trait.
+    Dimensionnement dynamique pour qu'un nom long ne déborde pas.
 
     Le code imprimé est la chaîne `id_exemplaire` EXACTE : ni reformatée, ni
     mise en majuscules, ni amputée de ses zéros de tête — c'est ce que le QR
@@ -294,7 +311,7 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
             `charger_logo()` (le logo déposé par l'association, sinon le
             meeple LudoteX par défaut).
         box: taille de module du QR.
-        afficher_code: imprimer ou non la colonne du code de la boîte. Le
+        afficher_code: imprimer ou non le code de la boîte. Le
             DOMICILE de ce choix est le réglage `etiquette_code` de la base
             (`services.lire_etiquette_code`) : ce module ne lit jamais la
             base, ce sont ses appelants qui lui transmettent la valeur.
@@ -309,16 +326,14 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     panel_w = 400
     logo_w, logo_h = 240, 150
     gom_d = 64
-    classif_h = 46
+    classif_h = CADRE_BAS_H
 
     f_nom = _police(24)
     f_classif = _police(24)
     f_small = _police(13)
-    f_mention = _police(14)
 
     code = str(ex.get("id_exemplaire") or "")
     montrer_code = bool(afficher_code and code)
-    colonne_w = CODE_COLONNE_GAP + CODE_COLONNE_W if montrer_code else 0
 
     # Mesure préalable (sur une image jetable) pour calculer la hauteur finale
     # en fonction du nombre de lignes du nom, et éviter tout débordement.
@@ -328,7 +343,7 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     header_h = max(logo_h, gom_d + 16)
     panel_h = header_h + 22 + len(lignes) * lh + 22 + classif_h
 
-    W = pad + qr.width + gap + panel_w + colonne_w + pad
+    W = pad + qr.width + gap + panel_w + pad
     H = pad + max(qr.height, panel_h) + pad
 
     img = Image.new("RGB", (W, H), BLANC)
@@ -337,7 +352,7 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     # QR à gauche, centré verticalement.
     img.paste(qr, (pad, (H - qr.height) // 2))
 
-    px = pad + qr.width + gap          # bord gauche du panneau central
+    px = pad + qr.width + gap          # bord gauche du panneau de droite
     panel_cx = px + panel_w // 2
 
     # Logo : jamais None ici (voir la docstring), toujours une vignette.
@@ -346,9 +361,8 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     img.paste(vignette, (px + (logo_w - vignette.width) // 2,
                          pad + (logo_h - vignette.height) // 2))
 
-    # Gommette : cercle réservé en haut à droite DU PANNEAU (et non de
-    # l'image) — sans quoi la colonne du code la pousserait hors du panneau.
-    gx0 = px + panel_w - gom_d
+    # Gommette : cercle réservé en haut à droite.
+    gx0 = W - pad - gom_d
     d.ellipse([gx0, pad, gx0 + gom_d, pad + gom_d], outline=NOIR, width=3)
     _texte_centre(d, gx0 + gom_d // 2, pad + gom_d + 1, "gommette", f_small)
 
@@ -360,49 +374,46 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
         _texte_centre(d, panel_cx, ny, ligne, f_nom)
         ny += lh
 
-    # Code de classement, encadré, en bas du panneau.
+    # Cadre du bas : code de la boîte (à gauche) et code de classement.
     cy = H - pad - classif_h
     d.rectangle([px, cy, px + panel_w, cy + classif_h], outline=NOIR, width=3)
-    _texte_centre(d, panel_cx, cy + 11, code_classement(ex), f_classif)
-
     if montrer_code:
-        _dessiner_code_boite(d, code, W, H, pad, f_mention)
+        _dessiner_cadre_partage(d, code, code_classement(ex), px, cy,
+                                panel_w, classif_h, f_classif)
+    else:
+        _texte_centre(d, panel_cx, cy + 11, code_classement(ex), f_classif)
 
     return img
 
 
-def _dessiner_code_boite(d, code, W, H, pad, f_mention):
+def _texte_cale(d, texte, police, gauche, haut, largeur, hauteur):
+    """Dessine `texte` centré dans le rectangle donné, à l'encre près."""
+    b = d.textbbox((0, 0), texte, font=police)
+    d.text((gauche + (largeur - (b[2] - b[0])) // 2 - b[0],
+            haut + (hauteur - (b[3] - b[1])) // 2 - b[1]),
+           texte, fill=NOIR, font=police)
+
+
+def _dessiner_cadre_partage(d, code, classement, px, cy, panel_w, cadre_h,
+                            f_classif):
     """
-    Dessine la colonne du code de la boîte, à droite de l'étiquette.
+    Partage le cadre du bas : [ code de la boîte | code de classement ].
 
-    Un bloc À LUI, jamais fondu dans le cadre du code de classement : ce
-    dernier n'est pas un identifiant (ses trois lettres sont un placeholder) et
-    changera le jour où la nomenclature sera fixée. Demander à quelqu'un
-    d'extraire un identifiant d'une chaîne composite au comptoir est exactement
-    ce que cette colonne évite.
+    Les deux ne sont PAS de même nature, et l'étiquette doit le dire sans un
+    mot : le code de la boîte est un identifiant qu'on recopie, le code de
+    classement une chaîne composite dont les trois lettres sont encore un
+    placeholder. D'où la case propre, le trait de séparation, et surtout la
+    taille — le code sort environ deux fois plus haut que son voisin.
     """
-    interieur = 12
-    x0 = W - pad - CODE_COLONNE_W
-    x1 = W - pad
-    cx = (x0 + x1) // 2
-    largeur_texte = CODE_COLONNE_W - 2 * interieur
+    part_code = int(panel_w * CODE_PART_CADRE)
+    sep = px + part_code
+    d.line([sep, cy, sep, cy + cadre_h], fill=NOIR, width=3)
 
-    d.rectangle([x0, pad, x1, H - pad], outline=NOIR, width=3)
-
-    # Mention : ce qu'il faut faire du code. Repliée sur plusieurs lignes,
-    # jamais coupée au milieu d'un mot (`_wrap` découpe aux espaces).
-    y = pad + interieur
-    for ligne in _wrap(d, CODE_MENTION, f_mention, largeur_texte, max_lignes=4):
-        y += _texte_centre(d, cx, y, ligne, f_mention) + 8
-
-    # Le code lui-même : le plus gros caractère de l'étiquette après le QR,
-    # centré dans la hauteur restante.
-    police = _police_ajustee(d, code, largeur_texte, CODE_TAILLE_MAX)
-    bbox = d.textbbox((0, 0), code, font=police)
-    reste_haut, reste_bas = y, H - pad - interieur
-    d.text((cx - (bbox[2] - bbox[0]) // 2 - bbox[0],
-            reste_haut + (reste_bas - reste_haut - (bbox[3] - bbox[1])) // 2 - bbox[1]),
-           code, fill=NOIR, font=police)
+    marge_i = 11
+    f_code = _police_encre(d, code, part_code - 2 * marge_i, cadre_h - 12,
+                           taille_max=CODE_TAILLE_MAX)
+    _texte_cale(d, code, f_code, px, cy, part_code, cadre_h)
+    _texte_cale(d, classement, f_classif, sep, cy, panel_w - part_code, cadre_h)
 
 
 # Espace intérieur de chaque cellule (mm) pour ne pas coller les étiquettes.

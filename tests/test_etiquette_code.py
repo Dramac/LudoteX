@@ -3,11 +3,12 @@ CODE DE LA BOÎTE SUR L'ÉTIQUETTE (lot code-boite-1).
 
 Ce que ce fichier vérifie, et pourquoi c'est ce qui compte :
 
-1. **La colonne du code s'ajoute en LARGEUR, jamais en hauteur.** La planche
-   met chaque étiquette à l'échelle de sa cellule : sur la grille par défaut
-   elle est limitée par la HAUTEUR, donc grandir en hauteur rétrécirait tout,
-   QR compris. Le test compare les deux rendus pixel à pixel : la partie
-   gauche (QR + panneau central) doit être IDENTIQUE, seule la largeur change.
+1. **Le code n'agrandit l'étiquette d'aucun pixel.** Il partage le cadre du
+   bas avec le code de classement. La planche met chaque étiquette à l'échelle
+   de sa cellule : toute croissance, en hauteur comme en largeur, finit par
+   rétrécir le QR sur l'une des grilles réglables. Le test compare les deux
+   rendus pixel à pixel : tout ce qui est au-dessus du cadre du bas doit être
+   IDENTIQUE, et les dimensions inchangées.
 2. **Le code imprimé est la chaîne `id_exemplaire` exacte** — zéros de tête
    conservés, casse respectée. Deux codes qui ne diffèrent que par là doivent
    donner deux images différentes.
@@ -17,7 +18,9 @@ Ce que ce fichier vérifie, et pourquoi c'est ce qui compte :
    dicté de stocker le réglage plutôt que de le porter dans le formulaire
    d'export : réimprimer une étiquette abîmée ne doit pas produire une
    étiquette d'un autre genre que le reste du parc.
-5. **Le défaut d'une base vierge est « affiché »**, et l'aller-retour du
+5. **Le code domine son voisin.** Aucun libellé imprimé ne dit lequel des deux
+   codes taper — c'est la taille qui le dit, et elle est vérifiée ici.
+6. **Le défaut d'une base vierge est « affiché »**, et l'aller-retour du
    formulaire rend la case dans l'état où le bureau l'a laissée.
 
 Aucun rendu n'est comparé à une image de référence : `_police` retombe sur
@@ -29,7 +32,7 @@ eux, largeur, présence de pixels noirs) ne dépendent pas de la police install�
 import pytest
 
 from app import services
-from app.etiquettes import (CODE_COLONNE_GAP, CODE_COLONNE_W, MARGE_EXTERIEURE,
+from app.etiquettes import (CADRE_BAS_H, CODE_PART_CADRE, MARGE_EXTERIEURE,
                             image_etiquette, url_fiche)
 
 MOT_DE_PASSE = "secret-admin-etiquettes"
@@ -56,22 +59,86 @@ def _pixels_noirs(image) -> int:
     return sum(image.convert("L").histogram()[:128])
 
 
+def _hauteur_encre(image) -> int:
+    """Hauteur de la tache d'encre dans une image, en pixels (0 si vide)."""
+    gris = image.convert("L")
+    lignes = [y for y in range(gris.height)
+              if any(gris.getpixel((x, y)) < 128 for x in range(gris.width))]
+    return lignes[-1] - lignes[0] + 1 if lignes else 0
+
+
+def _cadre_est_partage(image) -> bool:
+    """
+    True si le cadre du bas porte le trait de séparation du code.
+
+    Critère plus sûr que « la case gauche est vide » : sans code, le code de
+    classement est centré sur TOUTE la largeur du cadre et déborde donc dans la
+    moitié gauche. Ce qui distingue les deux états, c'est le trait.
+    """
+    panneau_w = 400
+    px = image.width - MARGE_EXTERIEURE - panneau_w
+    cy = image.height - MARGE_EXTERIEURE - CADRE_BAS_H
+    x = px + int(panneau_w * CODE_PART_CADRE)
+    gris = image.convert("L")
+    hauteurs = range(cy + 5, cy + CADRE_BAS_H - 5)
+    encre = sum(1 for y in hauteurs if gris.getpixel((x, y)) < 128)
+    return encre >= 0.9 * len(list(hauteurs))
+
+
+def _cases_du_cadre(image):
+    """
+    Les deux cases INTÉRIEURES du cadre du bas : (code, classement).
+
+    Le cadre occupe toute la largeur du panneau de droite ; le panneau commence
+    là où finit le QR. Les bords (trait de 3 px) sont exclus, sans quoi on
+    mesurerait l'encre du cadre lui-même.
+    """
+    panneau_w = 400
+    px = image.width - MARGE_EXTERIEURE - panneau_w
+    cy = image.height - MARGE_EXTERIEURE - CADRE_BAS_H
+    part = int(panneau_w * CODE_PART_CADRE)
+    marge = 5
+    return (image.crop((px + marge, cy + marge,
+                        px + part - marge, cy + CADRE_BAS_H - marge)),
+            image.crop((px + part + marge, cy + marge,
+                        px + panneau_w - marge, cy + CADRE_BAS_H - marge)))
+
+
 # ---------------------------------------------------------------------------
 # Le dessin
 # ---------------------------------------------------------------------------
-def test_le_code_ajoute_une_colonne_sans_toucher_au_reste():
+def test_le_code_partage_le_cadre_du_bas_sans_rien_deplacer():
     avec, sans = _etiquette(), _etiquette(afficher_code=False)
 
-    assert avec.height == sans.height
-    assert avec.width == sans.width + CODE_COLONNE_GAP + CODE_COLONNE_W
-    assert _pixels_noirs(avec) > _pixels_noirs(sans)
+    # Pas un pixel de plus, ni en hauteur ni en largeur.
+    assert avec.size == sans.size
 
-    # Tout ce qui précède la colonne est inchangé, au pixel près : le QR ne
-    # bouge pas, ne rétrécit pas, et le panneau central n'est pas recomposé.
-    # La comparaison s'arrête au bord du panneau (l'étiquette sans code garde
-    # au-delà sa marge blanche, que la colonne occupe désormais).
-    jusqu_au_panneau = (0, 0, sans.width - MARGE_EXTERIEURE, sans.height)
-    assert avec.crop(jusqu_au_panneau).tobytes() == sans.crop(jusqu_au_panneau).tobytes()
+    # Tout ce qui surplombe le cadre du bas est inchangé, au pixel près : le QR
+    # ne bouge pas, ne rétrécit pas, le nom n'est pas recomposé.
+    au_dessus = (0, 0, avec.width, avec.height - MARGE_EXTERIEURE - CADRE_BAS_H)
+    assert avec.crop(au_dessus).tobytes() == sans.crop(au_dessus).tobytes()
+
+    # Et le cadre, lui, a bien changé : une case de plus, du texte de plus.
+    cadre = (0, avec.height - MARGE_EXTERIEURE - CADRE_BAS_H, avec.width, avec.height)
+    assert _pixels_noirs(avec.crop(cadre)) > _pixels_noirs(sans.crop(cadre))
+
+
+def test_le_code_est_deux_fois_plus_haut_que_le_code_de_classement():
+    """
+    Rien n'est imprimé pour dire lequel des deux codes taper : une mention
+    tiendrait à 1,3 mm de haut une fois l'étiquette à l'échelle, et coûterait
+    4 % de QR. C'est la HIÉRARCHIE DE TAILLE qui porte le message — donc elle
+    se teste.
+    """
+    from PIL import ImageFont
+
+    from app.etiquettes import _police
+
+    if not isinstance(_police(24), ImageFont.FreeTypeFont):
+        pytest.skip("aucune police TrueType : toutes les tailles se valent ici")
+
+    case_code, case_classement = _cases_du_cadre(_etiquette("042"))
+    assert _hauteur_encre(case_code) >= 1.7 * _hauteur_encre(case_classement)
 
 
 def test_le_reglage_ne_change_pas_ce_que_le_qr_encode():
@@ -88,18 +155,35 @@ def test_le_reglage_ne_change_pas_ce_que_le_qr_encode():
 
 
 @pytest.mark.parametrize("code", ["001", "00472", "A0001", "E018", "685"])
-def test_tous_les_codes_reels_tiennent_dans_la_colonne(code):
+def test_toutes_les_formes_de_code_sortent_a_la_meme_taille(code):
     """
     Les cinq formes présentes en base : trois chiffres, un zéro de tête, le
     code créé par l'admin (`A0001`), une extension. Aucune n'est tronquée —
-    `_police_ajustee` réduit la police plutôt que de couper la chaîne — et la
-    colonne porte bien de l'encre.
+    `_police_encre` réduit la police plutôt que de couper la chaîne — et toutes
+    sortent à la MÊME hauteur d'encre, parce que c'est la hauteur du cadre qui
+    limite, pas la largeur du texte. Un parc homogène, quel que soit le code.
     """
-    image = _etiquette(code)
-    colonne = image.crop((image.width - CODE_COLONNE_W, 0, image.width, image.height))
+    case_code, _ = _cases_du_cadre(_etiquette(code))
+    reference, _ = _cases_du_cadre(_etiquette("001"))
 
-    assert _pixels_noirs(colonne) > 0
-    assert image.width == _etiquette("001").width  # largeur constante
+    assert _pixels_noirs(case_code) > 0
+    assert _hauteur_encre(case_code) == _hauteur_encre(reference)
+
+
+@pytest.mark.parametrize("code", ["001", "00472", "A0001", "E018"])
+def test_le_code_ne_deborde_pas_de_sa_case(code):
+    """
+    `A0001` est le cas le plus large (deux lettres pleines). Les colonnes de
+    bord de la case doivent rester blanches : sans quoi le code toucherait le
+    trait de séparation ou le cadre, et deviendrait pénible à lire.
+    """
+    case_code, _ = _cases_du_cadre(_etiquette(code))
+    bord_gauche = case_code.crop((0, 0, 3, case_code.height))
+    bord_droit = case_code.crop((case_code.width - 3, 0,
+                                 case_code.width, case_code.height))
+
+    assert _pixels_noirs(bord_gauche) == 0
+    assert _pixels_noirs(bord_droit) == 0
 
 
 def test_un_zero_de_tete_n_est_jamais_perdu():
@@ -117,11 +201,11 @@ def test_la_casse_est_respectee():
     assert _etiquette("A0001").tobytes() != _etiquette("a0001").tobytes()
 
 
-def test_un_nom_long_ne_fait_pas_grandir_la_colonne():
+def test_un_nom_long_ne_change_rien_a_la_largeur():
     """
-    Arbitrage de mise en page : le panneau central garde sa largeur, la
-    colonne aussi. Un nom long se replie comme avant (jusqu'à trois lignes) et
-    fait grandir la HAUTEUR — comportement d'avant ce lot, inchangé.
+    Arbitrage de mise en page : le panneau de droite garde sa largeur. Un nom
+    long se replie comme avant (jusqu'à trois lignes) et fait grandir la
+    HAUTEUR — comportement d'avant ce lot, inchangé.
     """
     court = _etiquette(nom="Catan")
     long_ = _etiquette(nom="Les Aventuriers du Rail Europe Edition Anniversaire")
@@ -255,8 +339,10 @@ def test_la_route_png_suit_le_meme_reglage_que_la_planche(client):
     client.post("/admin/etiquettes/code", data={})          # on décoche
     sans = Image.open(io.BytesIO(client.get("/admin/etiquette/001.png").content))
 
-    assert avec.width == sans.width + CODE_COLONNE_GAP + CODE_COLONNE_W
-    assert avec.height == sans.height
+    # Le code ne change pas les dimensions : le cadre du bas se partage en deux
+    # cases, ou reste d'un seul tenant.
+    assert avec.size == sans.size
+    assert _cadre_est_partage(avec) and not _cadre_est_partage(sans)
     # La planche reste générable dans les deux états (jamais d'erreur brute).
     assert client.post("/admin/etiquettes/pdf",
                        data={"references": "CATAN"}).content[:4] == b"%PDF"
@@ -281,7 +367,8 @@ def test_le_script_lit_le_reglage_et_sait_le_forcer(client, tmp_path):
 
     with Image.open(tmp_path / "avec" / "001.png") as avec, \
             Image.open(tmp_path / "sans" / "001.png") as sans:
-        assert avec.width == sans.width + CODE_COLONNE_GAP + CODE_COLONNE_W
+        assert avec.size == sans.size
+        assert _cadre_est_partage(avec) and not _cadre_est_partage(sans)
 
     # Le forçage n'a rien écrit : le réglage du bureau est intact.
     assert lire_reglage_code() is True
