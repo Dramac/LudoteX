@@ -47,9 +47,10 @@ compétence informatique.
 Python 3 + **FastAPI**, servi par `uvicorn`. Bases **SQLite**. Pages rendues
 côté serveur (Jinja2), **pas de SPA**. CSS mobile-first **sans framework ni
 build**. Le JS reste marginal (scanner caméra, quelques scripts inline) et
-**sans aucune dépendance CDN** (jsQR est versionné dans `app/static/js/`).
-**PWA** (« ajouter à l'écran d'accueil »). Déploiement : VPS Debian/Ubuntu,
-nginx, systemd, HTTPS Let's Encrypt.
+**sans aucune dépendance CDN** (jsQR est versionné dans `app/static/js/`). Le
+site s'ajoute à l'écran d'accueil du téléphone, avec sa propre icône, sans
+passer par un store — **ce n'est pas une PWA** (aucun manifeste, aucun service
+worker). Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
 
 ## Règles métier non négociables
 
@@ -140,10 +141,12 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 
 ## État de l'application — au 2026-09-10
 
-**Dernière version au dépôt : 1.13.0** (2026-09-10, voir `VERSION` et
-`CHANGELOG.md`). L'application est **en production**, où tourne la **1.11.0** :
-les 1.12.0 et 1.13.0 sont commitées et attendent un push. Ce qui est livré, par
-module :
+**Dernière version au dépôt : 1.13.0** (voir `VERSION` et `CHANGELOG.md`,
+verrouillés ensemble par `tests/test_version_coherente.py`). **La version
+servie en production ne figure pas ici**, volontairement : elle peut diverger
+du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
+sur `/sante` une fois que son numéro y aura été ajouté (`PROD-10`). Ce qui est
+livré, par module :
 
 - **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
   scanner caméra (jsQR) avec saisie manuelle de secours, prêt / retour /
@@ -190,11 +193,12 @@ fait diverger l'ancien fichier soixante et une fois. Il se lit en lançant la
 suite (`pytest -q`) et se consigne au lot correspondant dans
 `interne/chantiers.md`.
 
-## Chantier en cours — ouverture publique de LudoteX
+## Chantiers en cours
 
-**Le registre fait foi : `interne/chantiers.md`.** Il porte l'état de chaque lot,
-les enseignements à reporter dans les prompts suivants et les invariants. Ne pas
-le recopier ici. Les décisions de fond, elles, sont en fin de ce fichier.
+**Le registre fait foi : `interne/chantiers.md`.** Il porte l'état de chaque
+série et de chaque lot, les enseignements à reporter dans les prompts suivants
+et les invariants. Ne pas le recopier ici. Les décisions de fond de la série
+« ouverture publique », elles, sont en fin de ce fichier.
 
 Le compte rendu du lot précédent est **à lire avant d'attaquer le suivant**
 (`interne/comptes-rendus/`).

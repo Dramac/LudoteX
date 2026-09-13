@@ -142,7 +142,8 @@ contact : [docs/personnaliser.md](docs/personnaliser.md).
   framework ni build. Le JavaScript se limite au scanner caméra (jsQR,
   versionné dans le dépôt) et à quelques scripts courts : **aucune dépendance
   CDN**.
-- **PWA :** « ajouter à l'écran d'accueil » pour un lancement en un tap.
+- **Écran d'accueil :** le site s'ajoute à l'écran d'accueil du téléphone,
+  avec sa propre icône, pour un lancement en un tap sans passer par un store.
 
 ### Deux clés non négociables
 
