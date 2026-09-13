@@ -17,8 +17,16 @@ seul** des trois nombres et on remet à zéro ceux de droite :
   d'e-mails, nouvelle option d'administration).
 - **MAJEUR** (`1.4.2` → `2.0.0`) — une grande étape ou un changement de cap :
   refonte d'un pan de l'application, changement de fonctionnement visible et
-  structurant, ou évolution qui demande une intervention à la mise à jour
-  (au-delà d'un simple `update.sh`). `1.0.0` = première mise en production.
+  structurant, ou **une intervention sans laquelle la mise à jour casse** : un
+  geste que `update.sh` ne fait pas, sans lequel l'application cesse de
+  fonctionner ou perd une fonction déjà en service. `1.0.0` = première mise en
+  production. Un geste **facultatif**, décrit dans
+  `docs/notes-de-deploiement.md` et signalé par le contrôle de report
+  (`scripts/controle_report.py`), ne déclenche pas le MAJEUR : un geste oublié
+  ne passe alors plus inaperçu. *Exemple* : la 1.14.0 demande d'installer un
+  minuteur systemd pour que la sauvegarde de nuit tourne réellement — sans ce
+  geste, la production continue avec sa tâche cron réparée, et le contrôle de
+  report signale ce qui manque ; ce n'est donc pas un MAJEUR.
 
 En cas de doute entre deux niveaux, prendre le plus élevé.
 

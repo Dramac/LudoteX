@@ -6,6 +6,11 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.14.0 — 2026-09-13
+
+- **La sauvegarde automatique de chaque nuit fonctionne désormais pour de bon.** Sur toute installation de LudoteX faite jusqu'ici, la tâche censée sauvegarder les trois bases chaque nuit échouait avant même de créer une archive, sans qu'aucun message ne le signale — un défaut resté invisible depuis l'installation. Il est corrigé dans cette version, qui explique aussi comment vérifier, chaque matin, qu'une sauvegarde a bien eu lieu. **Un geste est nécessaire sur un serveur déjà en service** pour que la sauvegarde se mette à fonctionner ; la personne qui s'occupe du serveur le trouvera dans la documentation de déploiement.
+- **La fin d'une mise à jour de serveur indique maintenant la version qui répond**, pour chaque site actif, et signale ce qu'il reste à installer à la main pour que le serveur porte tout ce que porte le nouveau code.
+
 ## 1.13.0 — 2026-09-10
 
 - **Le carnet des boîtes abîmées s'ouvre aux bénévoles.** Réservé jusqu'ici à l'administration, il a maintenant son propre écran : **Carnet**, dans le menu. On y retrouve la même liste, les mêmes filtres et le même bouton **Marquer traité** que le bureau. Sur un téléphone, chaque signalement se présente en carte plutôt qu'en tableau de sept colonnes, où le bouton d'action devenait illisible. Les exports et le réglage des catégories, eux, restent derrière le mot de passe de l'administration.

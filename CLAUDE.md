@@ -322,8 +322,10 @@ numéro adapté :
   d'accessibilité, refactorisations : rien de neuf pour l'utilisateur.
 - **MINEUR** (`x.Y.0`) — une nouvelle fonctionnalité ou un nouveau module, sans
   casse.
-- **MAJEUR** (`X.0.0`) — grande étape, ou évolution qui demande une intervention
-  à la mise à jour au-delà d'`update.sh`.
+- **MAJEUR** (`X.0.0`) — grande étape, ou évolution qui casse la mise à jour
+  sans un geste serveur en plus d'`update.sh` (un geste facultatif, signalé par
+  le contrôle de report, n'en est pas un) ; règle précise et exemple dans
+  `docs/versioning.md`, qui fait foi.
 
 En cas de doute entre deux niveaux, proposer le plus élevé en expliquant
 pourquoi. Ne PAS proposer de montée pour un travail qui ne change rien au

@@ -82,7 +82,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.14.0 — 2026-09-13
 
 ### Premier passage du contrôle de report
 
@@ -111,6 +111,21 @@ une étape 6 sans numéro de version, et sans étape 7. C'est attendu.
 4. Traiter chaque ligne « à examiner » **après décision**, jamais à la chaîne :
    nginx selon `docs/deploiement.md` § 8, le reste selon la section de la
    version qui l'a introduit.
+
+Deux cas, propres à une installation antérieure à cette version, peuvent
+apparaître dans les lignes « à examiner » de ce premier passage :
+
+- **le dossier des sauvegardes de l'instance de formation, si elle existe,
+  peut être absent** — si elle a été installée avant qu'`install.sh` ne le
+  crée. Le créer, avec les droits et le propriétaire attendus :
+  ```bash
+  sudo install -d -m 700 -o pretjeux -g pretjeux /var/lib/ludotex-formation/sauvegardes
+  ```
+  (chemin par défaut ; l'adapter si l'installation est ailleurs).
+- **le fichier d'environnement de l'instance de formation, si elle existe,
+  peut ne porter ni le jeton bénévole ni la limite de débit.** Laisser cette
+  ligne « à examiner » pour l'instant : la correction attend une version à
+  venir, et un geste improvisé ici la devancerait mal.
 
 Retour en arrière : aucun. Ces gestes ne font que lire.
 
