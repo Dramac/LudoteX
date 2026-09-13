@@ -119,10 +119,18 @@
   <h3 id="pendant-supervision">Vérifier que tout va bien</h3>
   <p><a class="lien" href="/admin/supervision">Supervision</a> — également
      affichée à droite du tableau de bord sur un écran d'ordinateur — répond en
-     quelques secondes : les trois bases de données sont-elles là, reste-t-il de
-     la place sur le disque, à quand remonte la dernière sauvegarde, l'accès
-     bénévole est-il encore valable, quelle version est installée. C'est une
-     page de lecture seule : rien ne peut y être cassé.</p>
+     quelques secondes : les trois bases de données sont-elles saines,
+     reste-t-il de la place sur le disque, la sauvegarde de la nuit a-t-elle eu
+     lieu, le journal d'activité est-il bien écrit, l'accès bénévole est-il
+     encore valable, quelle version est installée. C'est une page de lecture
+     seule : rien ne peut y être cassé.</p>
+  <p>Chaque vérification commence par <strong>Ok</strong> ou par
+     <strong>Attention</strong>. Un « Attention » n'apparaît que lorsque quelque
+     chose ne va réellement pas : une base introuvable, vide ou abîmée, moins de
+     10 % de disque libre, aucune sauvegarde de routine depuis plus de 26 heures,
+     ou un prêt enregistré sans que le journal le note. Dans ce cas, prévenez la
+     personne qui s'occupe du serveur ; les prêts, eux, continuent de
+     fonctionner.</p>
 
   <h3 id="pendant-benevole">Un bénévole n'arrive plus à prêter</h3>
   <p>Le plus souvent, son téléphone n'a jamais été activé, ou il a effacé ses
@@ -250,14 +258,17 @@
 
   <h3 id="probleme-restauration">« J'ai restauré la mauvaise sauvegarde »</h3>
   <p>Une restauration <strong>remplace la totalité</strong> des données
-     actuelles. L'application conserve bien une copie de l'état précédent sur
-     le serveur avant de remplacer quoi que ce soit, mais
-     <strong>elle n'est pas récupérable depuis cet écran</strong> : il faut
-     l'aide de la personne qui s'occupe du serveur.</p>
-  <p>D'où le réflexe qui évite tout : <strong>téléchargez une sauvegarde juste
-     avant d'en restaurer une</strong>
-     (<a class="lien" href="/admin/donnees">Données &amp; sauvegarde</a>).
-     Vous disposez alors d'un retour en arrière que vous maîtrisez seul.</p>
+     actuelles. L'application conserve une copie de l'état précédent sur le
+     serveur avant de remplacer quoi que ce soit, et
+     <strong>elle est récupérable depuis
+     <a class="lien" href="/admin/donnees#archives">Données &amp; sauvegarde</a></strong>,
+     section « Archives du serveur » : téléchargez la ligne
+     <strong>Filet avant restauration</strong> la plus récente, puis
+     restaurez ce fichier depuis la même page.</p>
+  <p>Ce filet est effacé du serveur au bout de 30 jours. Le réflexe qui évite
+     tout reste donc de <strong>télécharger une sauvegarde juste avant d'en
+     restaurer une</strong> : vous disposez alors d'un retour en arrière que
+     vous conservez aussi longtemps que vous le voulez.</p>
 
   <h3 id="probleme-motdepasse">« J'ai oublié le mot de passe administrateur »</h3>
   <p>Il n'y a <strong>aucune récupération depuis l'application</strong>, et pas

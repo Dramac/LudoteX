@@ -29,7 +29,8 @@ RESTAURATION : SÛRETÉ
 - Le zip est entièrement VALIDÉ (présence des 3 bases + `PRAGMA
   integrity_check` sur chacune) avant toute modification.
 - Un filet de sécurité silencieux (`sauvegarde_de_securite`) exporte l'état
-  actuel dans `data/sauvegardes/` juste avant de remplacer quoi que ce soit.
+  actuel dans le dossier des sauvegardes juste avant de remplacer quoi que ce
+  soit.
 - Le remplacement se fait fichier par fichier : chaque route de l'application
   ouvre puis referme sa propre connexion (pas de pool ni de connexion
   persistante), donc remplacer les fichiers entre deux requêtes est sûr. Les
@@ -48,10 +49,34 @@ où l'on restaure justement parce qu'un incident vient d'avoir lieu.
 `restaurer_zip_sauvegarde` rejoue donc les trois `init_db()` juste après avoir
 remplacé les fichiers. Ils sont idempotents par conception, donc sans risque
 sur une base déjà à jour.
+
+LES ARCHIVES DU SERVEUR : UNE NATURE, LUE DANS LE NOM
+-----------------------------------------------------
+Le dossier des sauvegardes (`dossier_sauvegardes`) reçoit trois sortes
+d'archives, au même format, que seul leur NOM distingue :
+
+- `ludotex-backup-*`     : la sauvegarde de ROUTINE (minuteur de nuit) ;
+- `avant-mise-a-jour-*`  : le filet posé par `deploy/update.sh` ;
+- `avant-restauration-*` : le filet posé par `sauvegarde_de_securite`.
+
+Pourquoi le nom et pas l'heure : une archive de routine rattrapée au démarrage
+du serveur porte l'heure du démarrage, et un filet de mise à jour peut tomber à
+l'heure d'un passage de routine. Or la supervision doit prouver que la ROUTINE
+tourne : un dossier qui ne contient que des filets n'est pas un dossier
+sauvegardé — c'est ce qui a masqué, sept semaines durant, une sauvegarde de
+nuit qui ne tournait pas.
+
+Cette convention, la rotation et la purge vivent ICI et nulle part ailleurs :
+`deploy/sauvegarde.sh` appelle `ecrire_archive` puis `purger_archives`, la
+supervision et l'écran « Données & sauvegarde » appellent `lister_archives`.
+Chaque nature a sa règle de fin de vie (`purger_archives`) : ces archives
+contiennent les trois bases, dont les noms et contacts du planning, et une
+archive qu'aucune règle ne purge resterait pour toujours.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -76,6 +101,46 @@ _MODULES: dict[str, ModuleType] = {
 
 NOMS_BASES: tuple[str, ...] = tuple(_MODULES)
 NOM_INFO = "INFO.txt"
+
+# ---------------------------------------------------------------------------
+# Archives du dossier des sauvegardes (voir « LES ARCHIVES DU SERVEUR »)
+# ---------------------------------------------------------------------------
+NATURE_ROUTINE = "routine"
+NATURE_AVANT_MISE_A_JOUR = "avant-mise-a-jour"
+NATURE_AVANT_RESTAURATION = "avant-restauration"
+
+# Préfixe du nom de fichier de chaque nature. `ludotex-backup` ne doit PAS
+# changer : les archives déjà présentes sur les serveurs le portent, et la
+# documentation d'exploitation s'en sert pour reconnaître l'archive de la nuit.
+PREFIXES_ARCHIVE: dict[str, str] = {
+    NATURE_ROUTINE: "ludotex-backup",
+    NATURE_AVANT_MISE_A_JOUR: "avant-mise-a-jour",
+    NATURE_AVANT_RESTAURATION: "avant-restauration",
+}
+
+# Libellés affichés à l'administration (et cités mot pour mot par le wiki).
+LIBELLES_NATURE: dict[str, str] = {
+    NATURE_ROUTINE: "Sauvegarde de routine",
+    NATURE_AVANT_MISE_A_JOUR: "Filet avant mise à jour",
+    NATURE_AVANT_RESTAURATION: "Filet avant restauration",
+}
+
+# Nom d'une archive : un préfixe connu, puis seulement des chiffres et des
+# tirets (« 20260913-030001 », ou « 2026-09-13 » pour un fichier téléchargé
+# puis redéposé à la main), puis `.zip`. Ni point, ni barre oblique : un nom
+# qui respecte ce motif ne peut désigner qu'un fichier du dossier lui-même.
+MOTIF_ARCHIVE = re.compile(
+    "(" + "|".join(re.escape(p) for p in PREFIXES_ARCHIVE.values()) + r")-[0-9][0-9-]*\.zip"
+)
+
+# Rotation de la routine : les 30 plus récentes sont gardées. Au rythme d'une
+# par nuit, c'est un mois d'historique.
+GARDER_ROUTINES = 30
+
+# Fin de vie des deux filets (SEC-11, audit du 24/07/2026) : 30 jours laissent
+# largement le temps de s'apercevoir d'une mise à jour ou d'une restauration
+# malheureuse, sans garder indéfiniment les données qu'elles contiennent.
+GARDER_JOURS_FILETS = 30
 
 
 class ZipInvalide(Exception):
@@ -179,23 +244,147 @@ def valider_zip_sauvegarde(chemin_zip: Path) -> None:
                     raise ZipInvalide(f"Base « {nom} » corrompue ou invalide dans l'archive.")
 
 
+def dossier_sauvegardes() -> Path:
+    """
+    Dossier des archives du serveur : `sauvegardes/` à côté de la base de prêt.
+
+    Dérivé du chemin configuré (`DATABASE_PATH`), jamais codé en dur — la même
+    dérivation que `deploy/update.sh` et `deploy/sauvegarde.sh`, qui la
+    recalculent en shell faute de pouvoir importer cette fonction.
+    """
+    return pret_db.get_database_path().parent / "sauvegardes"
+
+
+def nom_archive(nature: str, maintenant: datetime) -> str:
+    """Nom d'une archive : « <préfixe de la nature>-AAAAMMJJ-HHMMSS.zip »."""
+    return f"{PREFIXES_ARCHIVE[nature]}-{maintenant.strftime('%Y%m%d-%H%M%S')}.zip"
+
+
+def nature_archive(nom: str) -> str | None:
+    """Nature d'une archive d'après son nom, ou None s'il n'est pas un nom d'archive."""
+    correspondance = MOTIF_ARCHIVE.fullmatch(nom)
+    if not correspondance:
+        return None
+    prefixe = correspondance.group(1)
+    return next(n for n, p in PREFIXES_ARCHIVE.items() if p == prefixe)
+
+
+def lister_archives(dossier: Path | None = None) -> list[dict]:
+    """
+    Archives réellement présentes dans le dossier des sauvegardes, de la plus
+    récente à la plus ancienne. LECTURE SEULE.
+
+    Chaque entrée : `nom`, `nature`, `libelle`, `horodatage` (mtime, secondes),
+    `modifie` (ISO UTC, pour le filtre `dt_local`), `octets`.
+
+    Ne retient que les fichiers ordinaires dont le nom respecte
+    `MOTIF_ARCHIVE` ; un lien symbolique est écarté même s'il porte un nom
+    d'archive, puisqu'il pourrait désigner un fichier hors du dossier. Un
+    dossier absent donne une liste vide ; un dossier illisible lève `OSError`,
+    à l'appelant de le dire.
+    """
+    dossier = dossier if dossier is not None else dossier_sauvegardes()
+    if not dossier.exists():
+        return []
+    archives = []
+    for fichier in dossier.iterdir():
+        nature = nature_archive(fichier.name)
+        if nature is None or fichier.is_symlink() or not fichier.is_file():
+            continue
+        etat = fichier.stat()
+        archives.append({
+            "nom": fichier.name,
+            "nature": nature,
+            "libelle": LIBELLES_NATURE[nature],
+            "horodatage": etat.st_mtime,
+            "modifie": datetime.fromtimestamp(etat.st_mtime, tz=timezone.utc).isoformat(),
+            "octets": etat.st_size,
+        })
+    archives.sort(key=lambda a: a["horodatage"], reverse=True)
+    return archives
+
+
+def archive_telechargeable(nom: str) -> Path | None:
+    """
+    Chemin de l'archive `nom` si, et seulement si, elle peut être servie en
+    téléchargement ; None sinon.
+
+    Deux conditions, toutes deux nécessaires : le nom respecte `MOTIF_ARCHIVE`
+    ET il figure dans la liste réellement lue dans le dossier. Le nom reçu de
+    l'URL n'est jamais ouvert tel quel : c'est l'entrée de la liste qui l'est.
+    """
+    if not isinstance(nom, str) or not MOTIF_ARCHIVE.fullmatch(nom):
+        return None
+    dossier = dossier_sauvegardes()
+    for archive in lister_archives(dossier):
+        if archive["nom"] == nom:
+            return dossier / archive["nom"]
+    return None
+
+
+def ecrire_archive(nature: str, dossier: Path, maintenant: datetime | None = None) -> Path:
+    """
+    Écrit une archive complète de la nature donnée dans `dossier` (appelé par
+    `deploy/sauvegarde.sh`). Lève `ValueError` pour une nature inconnue, avant
+    d'avoir rien écrit.
+
+    L'horodatage du nom est l'heure LOCALE du serveur, comme le faisait
+    `date +%Y%m%d-%H%M%S` dans le script avant ce module : c'est l'heure que
+    règle le minuteur (`OnCalendar=`), et celle que la documentation demande de
+    reconnaître dans le nom de l'archive de la nuit.
+    """
+    if nature not in PREFIXES_ARCHIVE:
+        raise ValueError(
+            f"nature de sauvegarde inconnue « {nature} » "
+            f"(attendu : {', '.join(PREFIXES_ARCHIVE)})"
+        )
+    dossier.mkdir(parents=True, exist_ok=True)
+    chemin = dossier / nom_archive(nature, maintenant or datetime.now())
+    chemin.write_bytes(creer_zip_sauvegarde())
+    return chemin
+
+
+def purger_archives(dossier: Path, maintenant: float | None = None) -> list[str]:
+    """
+    Applique à `dossier` la règle de fin de vie de CHAQUE nature ; renvoie les
+    noms supprimés.
+
+    - routine : les `GARDER_ROUTINES` plus récentes sont gardées ;
+    - filets (avant mise à jour, avant restauration) : supprimés au-delà de
+      `GARDER_JOURS_FILETS` jours.
+
+    Toute archive reconnue par `lister_archives` relève de l'une de ces deux
+    règles : aucune n'échappe à la purge. Un fichier dont le nom n'est pas un
+    nom d'archive n'est jamais touché. Une suppression impossible lève
+    `OSError` : le script échoue alors visiblement plutôt que de laisser des
+    archives s'accumuler en silence.
+    """
+    maintenant = maintenant if maintenant is not None else datetime.now().timestamp()
+    limite_filets = maintenant - GARDER_JOURS_FILETS * 86400
+    archives = lister_archives(dossier)
+    routines = [a for a in archives if a["nature"] == NATURE_ROUTINE]
+    a_supprimer = routines[GARDER_ROUTINES:] + [
+        a for a in archives
+        if a["nature"] != NATURE_ROUTINE and a["horodatage"] < limite_filets
+    ]
+    for archive in a_supprimer:
+        (dossier / archive["nom"]).unlink()
+    return [a["nom"] for a in a_supprimer]
+
+
 def sauvegarde_de_securite() -> Path:
     """
-    Filet de sécurité SILENCIEUX : exporte l'état ACTUEL des 3 bases dans un
-    zip horodaté sous `data/sauvegardes/` (dossier déjà exclu de git, voir
-    .gitignore), appelé automatiquement avant toute restauration.
-
-    Le dossier est dérivé du chemin configuré de la base de prêt (et non codé
-    en dur), pour rester cohérent avec un déploiement qui personnalise
-    `DATABASE_PATH`.
+    Filet de sécurité SILENCIEUX : exporte l'état ACTUEL des 3 bases dans une
+    archive `avant-restauration-*` du dossier des sauvegardes (voir
+    `dossier_sauvegardes` ; exclu de git), appelé automatiquement avant toute
+    restauration. Horodatage en UTC, comme depuis toujours pour ce filet.
 
     Returns:
         Le chemin du zip de sécurité créé.
     """
-    dossier = pret_db.get_database_path().parent / "sauvegardes"
+    dossier = dossier_sauvegardes()
     dossier.mkdir(parents=True, exist_ok=True)
-    horodatage = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    chemin = dossier / f"avant-restauration-{horodatage}.zip"
+    chemin = dossier / nom_archive(NATURE_AVANT_RESTAURATION, datetime.now(timezone.utc))
     chemin.write_bytes(creer_zip_sauvegarde())
     return chemin
 

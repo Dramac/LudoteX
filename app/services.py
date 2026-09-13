@@ -105,6 +105,17 @@ def format_duree(secondes: float | None) -> str:
     return f"{minutes} min"
 
 
+def format_taille(octets: int) -> str:
+    """Taille lisible : « 512 o », « 84 Ko », « 3,2 Mo », « 16,4 Go »."""
+    if octets < 1024:
+        return f"{octets} o"
+    if octets < 1024 ** 2:
+        return f"{octets / 1024:.0f} Ko"
+    if octets < 1024 ** 3:
+        return f"{octets / 1024 ** 2:.1f} Mo".replace(".", ",")
+    return f"{octets / 1024 ** 3:.1f} Go".replace(".", ",")
+
+
 def pluriel(n: int, singulier: str, pluriel: str) -> str:
     """
     Accord au singulier ou au pluriel selon `n` (grammaire FR : -1/0/1 =
@@ -1393,6 +1404,23 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
         conn.execute("UPDATE pochettes SET occupe = 0")
         purger_appareils_anciens(conn)
     return nb
+
+
+def derniere_operation_pret(conn: sqlite3.Connection) -> str | None:
+    """
+    Horodatage ISO UTC de la dernière écriture dans `prets` — une sortie ou un
+    retour, le plus récent des deux —, ou None si la table est vide.
+
+    Lecture seule. Sert à la supervision pour vérifier que le journal
+    d'activité suit bien les prêts (voir `supervision.etat_journal`) : chaque
+    route qui écrit ici journalise juste après.
+    """
+    ligne = conn.execute(
+        "SELECT MAX(d) FROM ("
+        " SELECT MAX(date_sortie) AS d FROM prets"
+        " UNION ALL SELECT MAX(date_retour) FROM prets)"
+    ).fetchone()
+    return ligne[0] if ligne else None
 
 
 def _clore_pret_oublie(conn: sqlite3.Connection, oublie: dict | sqlite3.Row) -> int | None:

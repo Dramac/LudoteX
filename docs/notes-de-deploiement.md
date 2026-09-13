@@ -82,6 +82,40 @@ est installée.
 
 ---
 
+## À paraître
+
+### Filets de mise à jour renommés : rien à faire, un décalage à connaître
+
+Cette version donne un nom propre aux archives qu'`update.sh` pose avant chaque
+mise à jour (`avant-mise-a-jour-*.zip` au lieu de `ludotex-backup-*.zip`), pour
+que la supervision ne les prenne plus pour la sauvegarde de nuit. Comme elle
+modifie `update.sh`, **la mise à jour qui installe cette version pose encore son
+archive sous l'ancien nom** : c'est l'ancien script qui s'exécute jusqu'au bout.
+
+Aucun geste. Ce que l'on constate, et pourquoi c'est sans danger :
+
+1. Juste après la mise à jour, lister le dossier :
+   ```bash
+   sudo ls -1t /var/lib/ludotex/sauvegardes/ | head -3
+   ```
+   *À voir :* en tête, une archive `ludotex-backup-…` à l'heure de la mise à
+   jour. Elle tourne avec les sauvegardes de routine (les 30 plus récentes sont
+   gardées) et en sortira d'elle-même, comme les filets des mises à jour
+   précédentes, qui portent le même nom.
+2. Pendant les 26 heures qui suivent, `/admin/supervision` peut compter cette
+   archive comme la dernière sauvegarde de routine. La vérification du
+   lendemain matin (`docs/deploiement.md` § 7, commande 2 : une archive `03xxxx`
+   à la date du jour) reste la preuve que la sauvegarde de nuit tourne.
+3. **À la mise à jour suivante**, l'archive de l'étape 1 s'appelle
+   `avant-mise-a-jour-…`, et la fin d'`update.sh` indique où la télécharger.
+
+Retour en arrière : revenir à la version précédente ne demande rien non plus.
+Les archives `avant-mise-a-jour-…` déjà posées restent restaurables, mais
+l'ancien `sauvegarde.sh` ne les voit plus : elles ne seraient alors plus
+purgées, à supprimer à la main au-delà de 30 jours.
+
+---
+
 ## 1.14.0 — 2026-09-13
 
 ### Premier passage du contrôle de report

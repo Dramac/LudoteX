@@ -420,15 +420,17 @@ etape "Sauvegarde automatique"
 chmod +x "$INSTALL_DIR/deploy/sauvegarde.sh"
 
 # SEC-11 (audit du 24/07/2026) : ce dossier reçoit à la fois les sauvegardes
-# de routine (ludotex-backup-*.zip, si le minuteur ci-dessous est accepté)
-# ET les filets de sécurité automatiques posés par l'application AVANT
+# de routine (ludotex-backup-*.zip, si le minuteur ci-dessous est accepté),
+# les filets posés par update.sh AVANT CHAQUE mise à jour
+# (avant-mise-a-jour-*.zip) ET les filets posés par l'application AVANT
 # CHAQUE restauration (avant-restauration-*.zip, voir
 # app.sauvegarde.sauvegarde_de_securite — dossier dérivé du chemin de
 # DATABASE_PATH, donc systématiquement $DATA_DIR/sauvegardes quelle que
-# soit l'acceptation du minuteur). Ces DEUX types d'archive contiennent
-# les TROIS bases en clair, dont les numéros de pochette des prêts EN COURS
-# au moment de chaque sauvegarde/restauration (D5 ne les efface qu'à la
-# clôture) — sensible, donc posé en 0700 propriétaire du service, créé ici
+# soit l'acceptation du minuteur). Ces TROIS types d'archive contiennent
+# les TROIS bases en clair, dont les noms et contacts du planning et les
+# numéros de pochette des prêts EN COURS au moment de chaque archive (D5 ne
+# les efface qu'à la clôture) — sensible, donc posé en 0700 propriétaire du
+# service, créé ici
 # de façon inconditionnelle (l'app peut créer ce dossier à tout moment via
 # une restauration, avec les permissions par défaut du umask si on ne le
 # fait pas nous-mêmes en amont).

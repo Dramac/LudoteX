@@ -256,16 +256,31 @@ sudo ls -1 /var/lib/ludotex/sauvegardes/ | grep 'backup-[0-9]*-03'
 exemple `ludotex-backup-20260913-030001.zip` : `20260913` est la date,
 `030001` l'heure, **03:00:01**.
 
-**C'est la seule preuve qui distingue une sauvegarde de nuit** : `update.sh`
-dépose dans le même dossier, sous exactement le même nom
-(`ludotex-backup-…`), une archive avant chaque mise à jour. Un dossier plein
-d'archives ne prouve donc pas que la sauvegarde de nuit tourne ; **une archive
-horodatée `03xxxx`, si.**
+**Le nom dit la nature de l'archive.** `ludotex-backup-…` est réservé à la
+sauvegarde de routine ; les deux autres archives que reçoit ce dossier portent
+leur propre nom : `avant-mise-a-jour-…` (posée par `update.sh` avant chaque
+mise à jour) et `avant-restauration-…` (posée par l'application avant chaque
+restauration). Un dossier plein d'archives ne prouve donc pas que la sauvegarde
+de nuit tourne ; **une archive `ludotex-backup-…-03xxxx` à la date du jour,
+si.**
+
+> Deux exceptions à connaître. Les mises à jour faites **avant** la version qui
+> a introduit ces noms ont laissé leur archive sous le nom `ludotex-backup-…` :
+> elles tournent avec les sauvegardes de routine et en sortent d'elles-mêmes.
+> Et une sauvegarde lancée **à la main** sans troisième argument (commande de
+> test plus bas) est une sauvegarde de routine.
 
 *Si ce n'est pas le cas* : aucune ligne, ou aucune à la date du jour, veut dire
 qu'aucune sauvegarde n'a été produite cette nuit — reprendre la commande 1.
 Seule exception : si le serveur était éteint à 3h, la sauvegarde manquée est
 lancée à son redémarrage, et l'archive porte alors l'heure du démarrage.
+
+**Sans accès au serveur**, le bureau lit la même information dans
+`/admin/supervision`, bloc « Sauvegarde » : la date et l'âge de la dernière
+sauvegarde de **routine** (les filets sont affichés à part), en « Attention »
+au-delà de 26 heures (`SEUIL_AGE_SAUVEGARDE`, `app/supervision.py`). Toutes les
+archives du dossier se téléchargent depuis `/admin/donnees`, section « Archives
+du serveur ».
 
 > L'heure est celle du serveur, souvent réglé en UTC : 03:00 UTC, c'est 5h du
 > matin à Paris en été, 4h en hiver (`timedatectl` affiche le fuseau).
@@ -278,13 +293,15 @@ tournois, planning) — directement restaurable depuis l'espace admin
 
 > **Dossier sensible (SEC-11)** : `deploy/install.sh` pose
 > `$DATA_DIR/sauvegardes` en **0700, propriétaire du service** — ces
-> archives contiennent les trois bases en clair, dont les numéros de
-> pochette des prêts en cours au moment de chaque sauvegarde. Ce même
-> dossier reçoit aussi les **filets de sécurité automatiques**
-> (`avant-restauration-*.zip`) posés par l'application juste avant chaque
-> restauration ; `deploy/sauvegarde.sh` les purge désormais au-delà de
-> 30 jours (ils n'étaient auparavant jamais nettoyés). Vérifier les
-> permissions :
+> archives contiennent les trois bases en clair, dont les noms et contacts
+> du planning et les numéros de pochette des prêts en cours au moment de
+> chaque sauvegarde. Ce même dossier reçoit aussi les **filets de sécurité
+> automatiques** : `avant-mise-a-jour-*.zip` (posés par `update.sh`) et
+> `avant-restauration-*.zip` (posés par l'application juste avant chaque
+> restauration). À chaque passage, `deploy/sauvegarde.sh` garde les 30
+> sauvegardes de routine les plus récentes et supprime les filets de plus de
+> 30 jours ; les règles vivent dans `app/sauvegarde.py`
+> (`purger_archives`). Vérifier les permissions :
 > ```bash
 > ls -ld /var/lib/ludotex/sauvegardes   # doit afficher drwx------ pretjeux pretjeux
 > ```
@@ -292,7 +309,9 @@ tournois, planning) — directement restaurable depuis l'espace admin
 Pour une copie **hors serveur** (recommandé, protège contre une panne du VPS
 lui-même) : installer `rclone`, configurer une cible (Nextcloud, Google
 Drive...), puis décommenter la ligne `rclone copy` dans
-`deploy/sauvegarde.sh`. Test manuel d'une sauvegarde :
+`deploy/sauvegarde.sh`. Test manuel d'une sauvegarde (elle compte comme une
+sauvegarde de routine ; ajouter `avant-mise-a-jour` en troisième argument pour
+un simple filet) :
 
 ```bash
 sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes

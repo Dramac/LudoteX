@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from app import (admin_auth, auth, carnet, exports, formation, journal, logo,
                  sauvegarde, services, supervision)
@@ -515,9 +515,23 @@ def _page_donnees(
         conn.close()
     return templates.TemplateResponse(
         request, "admin_donnees.html",
-        {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message, "manques": manques},
+        {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message, "manques": manques,
+         "archives": _archives_du_serveur()},
         status_code=status_code,
     )
+
+
+def _archives_du_serveur() -> list[dict] | None:
+    """
+    Archives du dossier des sauvegardes, avec leur taille lisible, pour la
+    section « Archives du serveur » ; None si le dossier est illisible (la page
+    le dit, sans tomber en erreur).
+    """
+    try:
+        archives = sauvegarde.lister_archives()
+    except OSError:
+        return None
+    return [{**a, "taille": services.format_taille(a["octets"])} for a in archives]
 
 
 @router.get("/donnees")
@@ -650,6 +664,33 @@ def sauvegarde_export(request: Request):
     )
 
 
+@router.get("/sauvegarde/archives/{nom}")
+def sauvegarde_archive(request: Request, nom: str):
+    """
+    Télécharge une archive du dossier des sauvegardes du serveur (EXP-06).
+
+    Le nom reçu n'est jamais ouvert tel quel : `archive_telechargeable` exige
+    qu'il respecte le motif d'un nom d'archive ET qu'il figure dans la liste
+    réellement lue dans le dossier. Refus (nom inconnu, purgé entre-temps,
+    tentative de chemin) : la page « Données & sauvegarde » réaffichée avec
+    un message et la liste à jour — le rattrapage est sous les yeux.
+    """
+    if (garde := _garde(request)):
+        return garde
+    try:
+        chemin = sauvegarde.archive_telechargeable(nom)
+    except OSError:
+        chemin = None
+    if chemin is None:
+        return _page_donnees(
+            request,
+            ("erreur", "Cette archive n'est pas (ou plus) sur le serveur : "
+                       "choisissez-en une dans la liste à jour ci-dessous."),
+            status_code=404,
+        )
+    return FileResponse(chemin, media_type="application/zip", filename=chemin.name)
+
+
 @router.post("/sauvegarde/import")
 def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
     """
@@ -700,8 +741,9 @@ def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
         message = (
             "succes",
             "Restauration réussie : les 3 bases ont été remplacées par le "
-            "contenu de la sauvegarde. L'état précédent a été conservé dans "
-            "data/sauvegardes/ au cas où.",
+            "contenu de la sauvegarde. L'état précédent a été conservé sur le "
+            "serveur : il figure dans « Archives du serveur », en bas de cette "
+            "page, sous « Filet avant restauration ».",
         )
         status_code = 200
     except sauvegarde.ZipInvalide as exc:

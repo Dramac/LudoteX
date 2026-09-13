@@ -142,7 +142,7 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 
 ## État de l'application — au 2026-09-10
 
-**Dernière version au dépôt : 1.13.0** (voir `VERSION` et `CHANGELOG.md`,
+**Dernière version au dépôt : 1.14.0** (voir `VERSION` et `CHANGELOG.md`,
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
 du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
@@ -182,7 +182,9 @@ livré, par module :
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
   appareils, fiches et étiquettes en lot, import/export du catalogue,
-  **sauvegarde et restauration des trois bases**, supervision, identité,
+  **sauvegarde et restauration des trois bases**, archives du serveur
+  téléchargeables (routine et filets, distingués par leur nom), supervision à
+  seuils qui ne rassure pas à tort, identité,
   gestion de l'événement, visibilité des fonctionnalités, aide admin.
 - **Mode formation** — seconde instance du même code, catalogue importable
   depuis un CSV pour scanner de vraies boîtes sans rien inscrire pour de bon.

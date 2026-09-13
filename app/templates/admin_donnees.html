@@ -84,7 +84,8 @@
   <p class="resultat resultat-attention">
     ⚠️ Ceci remplacera l'intégralité des données actuelles (prêts, tournois,
     planning) par le contenu du fichier choisi. Un filet de sécurité de l'état
-    actuel est conservé automatiquement, mais cette action reste lourde de
+    actuel est conservé automatiquement (il apparaît ensuite dans
+    « Archives du serveur », en bas de page), mais cette action reste lourde de
     conséquences — à réserver à une vraie restauration.
   </p>
   <form method="post" action="/admin/sauvegarde/import" enctype="multipart/form-data"
@@ -95,6 +96,57 @@
     </div>
     <button type="submit" class="bouton bouton-secondaire">Restaurer</button>
   </form>
+</section>
+
+{# EXP-06 : les archives que le serveur a déposées lui-même, jusqu'ici
+   récupérables seulement avec un accès au serveur. Lecture et téléchargement,
+   rien d'autre : ni suppression, ni action en lot — la fin de vie des
+   archives est réglée par app.sauvegarde.purger_archives. #}
+<section class="carte" id="archives">
+  <h2>Archives du serveur</h2>
+  <p class="stats-note">
+    Les archives que le serveur dépose lui-même : chaque nuit
+    (<strong>Sauvegarde de routine</strong>), juste avant une mise à jour de
+    l'application (<strong>Filet avant mise à jour</strong>) et juste avant
+    une restauration (<strong>Filet avant restauration</strong>). Pour revenir
+    à l'une d'elles, téléchargez-la, puis choisissez le fichier dans
+    « Sauvegarde complète — restaurer », ci-dessus.
+  </p>
+  <p class="stats-note">
+    Chaque archive contient les <strong>3 bases</strong>, planning bénévole
+    compris : les noms et contacts des bénévoles y figurent.
+  </p>
+  {% if archives is none %}
+    <p class="resultat resultat-attention">
+      <strong>Attention :</strong> le dossier des sauvegardes n'a pas pu être
+      lu. Prévenez la personne qui s'occupe du serveur.
+    </p>
+  {% elif not archives %}
+    <p>Aucune archive sur le serveur pour l'instant.</p>
+  {% else %}
+  <table class="admin-table admin-table--cartes">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Nature</th>
+        <th>Taille</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in archives %}
+      <tr>
+        <td class="cartes-titre">{{ a.modifie | dt_local }}</td>
+        <td><span class="cartes-libelle">Nature</span>{{ a.libelle }}<br><small class="stats-note">{{ a.nom }}</small></td>
+        <td><span class="cartes-libelle">Taille</span>{{ a.taille }}</td>
+        <td>
+          <a class="lien" href="/admin/sauvegarde/archives/{{ a.nom }}">⬇️ Télécharger<span class="sr-only"> l'archive du {{ a.modifie | dt_local }}</span></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </section>
 </div>
 {% endblock %}

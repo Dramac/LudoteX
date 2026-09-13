@@ -251,3 +251,119 @@ def test_sauvegarde_sh_dit_clairement_quand_la_destination_est_introuvable(tmp_p
     )
     assert resultat.returncode == 1
     assert "dossier des sauvegardes introuvable" in resultat.stderr
+
+
+# ===========================================================================
+# 4. La nature de l'archive, choisie par l'appelant, et la purge de chaque nature
+# ===========================================================================
+# Le minuteur de nuit n'en passe pas : routine. `update.sh` demande
+# « avant-mise-a-jour », pour que la supervision ne prenne pas son filet pour la
+# sauvegarde de nuit (PROD-02). Les noms et les règles de fin de vie vivent dans
+# app/sauvegarde.py ; ici, on vérifie que le script les applique réellement.
+def _installation_jetable(tmp_path: Path) -> tuple[Path, Path]:
+    installation = tmp_path / "installation"
+    donnees = tmp_path / "donnees"
+    (installation / "deploy").mkdir(parents=True)
+    donnees.mkdir()
+    shutil.copy2(RACINE / "deploy" / "sauvegarde.sh", installation / "deploy" / "sauvegarde.sh")
+    os.symlink(RACINE / "app", installation / "app")
+    _python_de_l_installation(installation)
+    (installation / ".env").write_text(
+        f"DATABASE_PATH={donnees / 'pret-jeux.db'}\n"
+        f"TOURNOI_DATABASE_PATH={donnees / 'tournoi.db'}\n"
+        f"PLANNING_DATABASE_PATH={donnees / 'planning.db'}\n"
+        f"JOURNAL_PATH={donnees / 'journal.log'}\n",
+        encoding="utf-8",
+    )
+    return installation, donnees
+
+
+def _lancer_sauvegarde(installation: Path, tmp_path: Path, *arguments: str):
+    return subprocess.run(
+        ["bash", str(installation / "deploy" / "sauvegarde.sh"), str(installation), *arguments],
+        cwd=tmp_path,
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponible")
+def test_sauvegarde_sh_nature_avant_mise_a_jour_dans_un_dossier_vide(tmp_path):
+    """Dossier sans aucune archive de routine : la rotation ne doit pas faire
+    échouer le script (un « ls ludotex-backup-*.zip » sans correspondance, sous
+    pipefail, l'aurait fait après avoir créé l'archive)."""
+    from app import sauvegarde
+
+    installation, donnees = _installation_jetable(tmp_path)
+    destination = donnees / "sauvegardes"
+
+    resultat = _lancer_sauvegarde(installation, tmp_path, str(destination), "avant-mise-a-jour")
+
+    assert resultat.returncode == 0, resultat.stderr
+    archives = sorted(p.name for p in destination.iterdir())
+    assert len(archives) == 1
+    assert sauvegarde.nature_archive(archives[0]) == sauvegarde.NATURE_AVANT_MISE_A_JOUR
+    assert resultat.stdout.strip() == f"Sauvegarde créée : {destination / archives[0]}"
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponible")
+def test_sauvegarde_sh_sans_nature_fait_une_routine_et_purge_chaque_nature(tmp_path):
+    import time
+
+    from app import sauvegarde
+
+    installation, donnees = _installation_jetable(tmp_path)
+    destination = donnees / "sauvegardes"
+    destination.mkdir()
+    vieux = time.time() - (sauvegarde.GARDER_JOURS_FILETS + 2) * 86400
+    for nom in ("avant-mise-a-jour-20260701-120000.zip", "avant-restauration-20260701-120000.zip"):
+        (destination / nom).write_bytes(b"zip")
+        os.utime(destination / nom, (vieux, vieux))
+    for i in range(sauvegarde.GARDER_ROUTINES):
+        nom = destination / f"ludotex-backup-202608{i:02d}-030001.zip"
+        nom.write_bytes(b"zip")
+        os.utime(nom, (vieux - i, vieux - i))
+    (destination / "notes.txt").write_text("à garder")
+
+    resultat = _lancer_sauvegarde(installation, tmp_path)
+
+    assert resultat.returncode == 0, resultat.stderr
+    restantes = sauvegarde.lister_archives(destination)
+    assert {a["nature"] for a in restantes} == {sauvegarde.NATURE_ROUTINE}
+    assert len(restantes) == sauvegarde.GARDER_ROUTINES
+    assert restantes[0]["nom"] == Path(resultat.stdout.split(" : ", 1)[1].strip()).name
+    assert not (destination / "ludotex-backup-20260829-030001.zip").exists()
+    assert (destination / "notes.txt").exists()
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash indisponible")
+def test_sauvegarde_sh_refuse_une_nature_inconnue_sans_rien_ecrire(tmp_path):
+    installation, donnees = _installation_jetable(tmp_path)
+    destination = donnees / "sauvegardes"
+
+    resultat = _lancer_sauvegarde(installation, tmp_path, str(destination), "hebdomadaire")
+
+    assert resultat.returncode == 1
+    assert "ERREUR : nature de sauvegarde inconnue « hebdomadaire »" in resultat.stderr
+    assert "Sauvegarde créée" not in resultat.stdout
+    assert not destination.exists()
+
+
+def test_update_sh_demande_un_filet_avant_mise_a_jour():
+    """Lu dans le texte : update.sh n'est pas exécutable hors d'un serveur."""
+    from app import sauvegarde
+
+    update_sh = (RACINE / "deploy" / "update.sh").read_text(encoding="utf-8")
+    appels = [l for l in update_sh.splitlines()
+              if "deploy/sauvegarde.sh" in l and not l.lstrip().startswith("#")]
+    assert len(appels) == 1
+    assert appels[0].rstrip().endswith(f'"$DATA_DIR/sauvegardes" {sauvegarde.NATURE_AVANT_MISE_A_JOUR}')
+
+
+def test_l_unite_de_nuit_ne_passe_pas_de_nature():
+    """Sans 3e argument, sauvegarde.sh fait une routine : c'est ce que la
+    supervision compte comme preuve que la sauvegarde de nuit tourne."""
+    unite = (RACINE / "deploy" / "ludotex-sauvegarde.service").read_text(encoding="utf-8")
+    assert "ExecStart=/opt/ludotex/deploy/sauvegarde.sh /opt/ludotex\n" in unite

@@ -51,8 +51,11 @@ fi
 DATA_DIR="$(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" -c 'from app.db import get_database_path; print(get_database_path().parent)')"
 
 # --- 1. Sauvegarde de sécurité ----------------------------------------------
+# Nature « avant-mise-a-jour » : l'archive porte un nom à elle
+# (avant-mise-a-jour-*.zip), pour que la supervision ne la prenne pas pour la
+# sauvegarde de nuit, et elle a sa propre fin de vie (app/sauvegarde.py).
 etape "[1/7] Sauvegarde des trois bases avant mise à jour"
-sudo -u "$SERVICE_USER" "$INSTALL_DIR/deploy/sauvegarde.sh" "$INSTALL_DIR" "$DATA_DIR/sauvegardes"
+sudo -u "$SERVICE_USER" "$INSTALL_DIR/deploy/sauvegarde.sh" "$INSTALL_DIR" "$DATA_DIR/sauvegardes" avant-mise-a-jour
 
 # --- 2. Récupération du code -------------------------------------------------
 # ATTENTION : ce pull peut réécrire CE fichier. git le remplace par un nouveau
@@ -153,4 +156,6 @@ etape "[7/7] Contrôle de report : le serveur porte-t-il tout ce que porte le d�
 
 echo
 echo "Mise à jour terminée. En cas de souci, restaurer la sauvegarde faite à"
-echo "l'étape 1 depuis /admin/données, ou consulter : journalctl -u ludotex -e"
+echo "l'étape 1 : elle se télécharge depuis /admin/donnees, section « Archives du"
+echo "serveur » (« Filet avant mise à jour »), puis se restaure depuis la même"
+echo "page. Ou consulter : journalctl -u ludotex -e"

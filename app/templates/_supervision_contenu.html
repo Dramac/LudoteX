@@ -1,11 +1,22 @@
 {#
   Fragment RÉUTILISABLE : contenu de la supervision légère (bases, disque,
-  sauvegarde, jeton, version). Entrée : {{ etat }} (voir supervision.etat_supervision).
+  sauvegarde, jeton, annonce, journal, version). Entrée : {{ etat }} (voir supervision.etat_supervision).
   Utilisé par admin_supervision.html (page dédiée, sous h1) et admin_dashboard.html
   (colonne latérale grand écran, sous h2 "Supervision") — titres ici en h3 pour
   rester cohérent dans les deux contextes.
 #}
+{#
+  Chaque bloc contrôlé dit son état EN TEXTE (« Ok : », « Attention : »), pas
+  seulement par la couleur. `erreur` : le bloc n'a pas pu être lu
+  (supervision._sans_exception) — jamais une page d'erreur à la place.
+#}
 <h3>Bases de données</h3>
+{% if etat.bases.erreur %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> l'état des bases n'a pas pu être lu. Prévenez
+    la personne qui s'occupe du serveur.
+  </p>
+{% else %}
 <table class="admin-table">
   <thead>
     <tr>
@@ -19,39 +30,80 @@
     {% for base in etat.bases %}
     <tr>
       <td><strong>{{ base.nom }}</strong><br><small class="stats-note">{{ base.chemin }}</small></td>
-      {% if base.existe %}
-        <td><span class="badge badge-ok">Ok</span></td>
-        <td>{{ base.taille }}</td>
-        <td>{{ base.modifie | dt_local }}</td>
-      {% else %}
-        <td><span class="badge badge-attention">Introuvable</span></td>
-        <td>—</td>
-        <td>—</td>
-      {% endif %}
+      <td><span class="badge {{ 'badge-ok' if base.sain else 'badge-attention' }}">{{ base.libelle }}</span></td>
+      <td>{{ base.taille or "—" }}</td>
+      <td>{{ (base.modifie | dt_local) if base.modifie else "—" }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+{% if etat.bases | rejectattr("sain") | list %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> une base au moins n'est pas saine (introuvable,
+    vide, corrompue ou illisible). Prévenez la personne qui s'occupe du serveur ;
+    « Illisible pour l'instant » peut disparaître en rechargeant la page.
+  </p>
+{% endif %}
+{% endif %}
 
 <h3>Espace disque</h3>
-<p>
-  <strong>{{ etat.disque.libre }}</strong> libres sur {{ etat.disque.total }}
-  ({{ etat.disque.pourcentage_libre }} % libre).
-</p>
+{% if etat.disque.erreur %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> l'espace disque n'a pas pu être mesuré.
+  </p>
+{% elif etat.disque.sous_seuil %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> il ne reste que <strong>{{ etat.disque.libre }}</strong>
+    libres sur {{ etat.disque.total }} ({{ etat.disque.pourcentage_libre }} % libre,
+    moins de {{ etat.disque.seuil }} %). Les sauvegardes et le journal risquent
+    de ne plus pouvoir s'écrire : prévenez la personne qui s'occupe du serveur.
+  </p>
+{% else %}
+  <p class="resultat resultat-ok">
+    <strong>Ok :</strong> <strong>{{ etat.disque.libre }}</strong> libres sur
+    {{ etat.disque.total }} ({{ etat.disque.pourcentage_libre }} % libre).
+  </p>
+{% endif %}
 
 <h3>Sauvegarde</h3>
-{% if etat.sauvegarde.existe %}
+{% set sv = etat.sauvegarde %}
+{% if sv.erreur %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> le dossier des sauvegardes n'a pas pu être lu.
+    Prévenez la personne qui s'occupe du serveur.
+  </p>
+{% elif sv.formation %}
+  <p>Instance de formation : ses données sont jetables, la sauvegarde de nuit
+     ne la concerne pas.</p>
+{% elif sv.ok %}
   <p class="resultat resultat-ok">
-    Dernière sauvegarde : <strong>{{ etat.sauvegarde.nom }}</strong>,
-    le {{ etat.sauvegarde.modifie | dt_local }}.
+    <strong>Ok :</strong> dernière sauvegarde de routine le
+    {{ sv.routine.modifie | dt_local }}, il y a {{ sv.routine.age }}.
+  </p>
+{% elif sv.routine %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> la dernière sauvegarde de routine date du
+    {{ sv.routine.modifie | dt_local }}, il y a <strong>{{ sv.routine.age }}</strong>.
+    Elle a lieu chaque nuit : au-delà de {{ sv.seuil }}, au moins une nuit a été
+    manquée. Prévenez la personne qui s'occupe du serveur.
   </p>
 {% else %}
   <p class="resultat resultat-attention">
-    Aucune sauvegarde trouvée dans <code>data/sauvegardes/</code>.
+    <strong>Attention :</strong> aucune sauvegarde de routine dans le dossier des
+    sauvegardes du serveur (<code>{{ sv.dossier }}</code>). La sauvegarde de nuit
+    ne tourne pas, ou pas encore : prévenez la personne qui s'occupe du serveur.
   </p>
 {% endif %}
-<p class="stats-note">Pour une sauvegarde complète à télécharger,
-   voir <a class="lien" href="/admin/donnees">Données &amp; sauvegarde</a>.</p>
+{% if sv.filet %}
+  <p>
+    Dernier filet de sécurité : <strong>{{ sv.filet.libelle }}</strong>, le
+    {{ sv.filet.modifie | dt_local }}. Un filet sert à revenir en arrière ; il
+    ne remplace pas la sauvegarde de nuit.
+  </p>
+{% endif %}
+<p class="stats-note">Pour télécharger une archive du serveur ou une sauvegarde
+   complète de l'état actuel, voir
+   <a class="lien" href="/admin/donnees#archives">Données &amp; sauvegarde</a>.</p>
 
 <h3>Jeton bénévole</h3>
 {% if not etat.jeton.defini %}
@@ -82,13 +134,31 @@
 {% endif %}
 
 <h3>Journal d'activité</h3>
-{% if etat.journal.existe and not etat.journal.vide %}
-  <p class="resultat resultat-ok">
-    Fichier courant : <strong>{{ etat.journal.taille }}</strong>,
-    dernière écriture le {{ etat.journal.modifie | dt_local }}.
+{% set jr = etat.journal %}
+{% if jr.erreur %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> l'état du journal n'a pas pu être lu.
   </p>
+{% elif jr.etat == "introuvable" %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> le fichier du journal est introuvable
+    (<code>{{ jr.chemin }}</code>) : aucune action n'y est enregistrée. Prévenez
+    la personne qui s'occupe du serveur.
+  </p>
+{% elif jr.etat == "en_retard" %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> un prêt ou un retour a été enregistré le
+    {{ jr.derniere_operation | dt_local }}, après la dernière écriture du journal
+    (le {{ jr.modifie | dt_local }}) : le journal n'est plus écrit. Les prêts,
+    eux, fonctionnent. Prévenez la personne qui s'occupe du serveur.
+  </p>
+{% elif jr.etat == "neutre" %}
+  <p>Aucune activité enregistrée pour l'instant.</p>
 {% else %}
-  <p class="resultat resultat-attention">Aucune activité enregistrée pour l'instant.</p>
+  <p class="resultat resultat-ok">
+    <strong>Ok :</strong> fichier courant de <strong>{{ jr.taille }}</strong>,
+    dernière écriture le {{ jr.modifie | dt_local }}.
+  </p>
 {% endif %}
 <p class="stats-note">Pour consulter le détail,
    voir <a class="lien" href="/admin/journal">Journal d'activité</a>.</p>
