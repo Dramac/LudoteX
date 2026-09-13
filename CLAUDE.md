@@ -187,7 +187,7 @@ livré, par module :
 - **Mode formation** — seconde instance du même code, catalogue importable
   depuis un CSV pour scanner de vraies boîtes sans rien inscrire pour de bon.
 - **Exploitation** — `deploy/` (install.sh, update.sh, systemd, nginx,
-  sauvegarde), contrôle de report en fin d'`update.sh`
+  sauvegarde de nuit par minuteur systemd, jamais par cron), contrôle de report en fin d'`update.sh`
   (`scripts/controle_report.py`, lecture seule) et lanceur local sans ligne de
   commande (`lancer.py`, `lancer.command`, `lancer.bat`).
 

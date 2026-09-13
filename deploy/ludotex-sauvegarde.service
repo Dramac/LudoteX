@@ -1,0 +1,48 @@
+# Sauvegarde quotidienne des trois bases — lancée par ludotex-sauvegarde.timer.
+#
+# POURQUOI UN MINUTEUR SYSTEMD, ET PLUS UNE LIGNE DE CRON : la tâche cron
+# d'origine redirigeait sa sortie vers /var/log/, où l'utilisateur du service
+# ne peut pas créer de fichier. La redirection échouait avant même le lancement
+# du script, l'erreur partait dans un courrier que personne ne recevait, et
+# `crontab -l` affichait pendant sept semaines une tâche qui n'a jamais produit
+# une seule archive. Ici, la sortie part dans journald sans permission à
+# négocier, et `systemctl status` montre le dernier passage et son résultat.
+#
+# Installation : deploy/install.sh (étape « Sauvegarde automatique »), ou à la
+# main, voir docs/deploiement.md :
+#   sudo cp deploy/ludotex-sauvegarde.service deploy/ludotex-sauvegarde.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ludotex-sauvegarde.timer
+#   systemctl list-timers ludotex-sauvegarde.timer    # prochain et dernier passage
+#   journalctl -u ludotex-sauvegarde -e               # ce qu'a affiché chaque passage
+#
+# Pas de section [Install] : ce service n'est pas activé pour lui-même, c'est le
+# minuteur qui le déclenche (`systemctl is-enabled` répond « static », c'est
+# normal).
+#
+# Le dossier de destination n'est PAS écrit ici : sauvegarde.sh le dérive du
+# .env (DATABASE_PATH), exactement comme update.sh et comme l'application pour
+# ses filets de sécurité. Un seul domicile : l'archive de nuit atterrit toujours
+# là où la supervision la cherche.
+
+[Unit]
+Description=LudoteX — sauvegarde quotidienne des trois bases
+# Pas de dépendance à ludotex.service : la copie passe par SQLite, pas par
+# l'application, et doit tourner même si celle-ci est arrêtée.
+
+[Service]
+Type=oneshot
+# Même utilisateur que l'application (à créer : sudo adduser --system --group pretjeux)
+User=pretjeux
+Group=pretjeux
+
+# Racine du dépôt cloné sur le serveur (à adapter) ; le .env est lu depuis ce dossier.
+WorkingDirectory=/opt/ludotex
+ExecStart=/opt/ludotex/deploy/sauvegarde.sh /opt/ludotex
+
+# Durcissement léger, comme ludotex.service. ProtectSystem=full laisse /var
+# accessible en écriture : c'est là que vivent les bases et les archives.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true

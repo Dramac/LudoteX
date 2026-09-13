@@ -29,8 +29,10 @@ CE QU'IL VÉRIFIE
 3. `.env` : les clés attendues par `.env.example` absentes du `.env` de
    l'instance, et de `/etc/ludotex-formation.env` si la formation existe.
    **Seuls des noms de clés sortent d'ici, jamais une valeur.**
-4. Tâche de sauvegarde planifiée : la ligne de crontab que pose `install.sh`,
-   relue dans `install.sh` lui-même (un seul domicile).
+4. Tâche de sauvegarde planifiée : chaque minuteur de `deploy/*.timer` est
+   actif (`systemctl is-active` ; « activé » ne suffit pas, un minuteur activé
+   sans `--now` ne tourne qu'après un redémarrage), et la crontab du service ne
+   lance plus `sauvegarde.sh` — l'ancienne méthode, qui doublerait le minuteur.
 5. Paquets système : la liste `PAQUETS_BASE` d'`install.sh`, relue de même.
 6. Permissions et propriétaires qu'`install.sh` pose et qu'`update.sh` ne
    rejoue pas : dossiers des sauvegardes en `0700`, fichiers d'environnement en
@@ -305,46 +307,28 @@ def cles_manquantes(texte_exemple: str, texte_env: str) -> list[str]:
 # ===========================================================================
 # Ce que pose install.sh — relu dans install.sh, jamais recopié ici
 # ===========================================================================
-def _resoudre(modele: str, variables: dict[str, str]) -> str:
-    for nom, valeur in variables.items():
-        modele = modele.replace("${" + nom + "}", valeur).replace("$" + nom, valeur)
-    if re.search(r"\$\{?[A-Za-z_]", modele):
-        raise ValueError("variable non résolue")
-    return modele
-
-
-def ligne_cron_attendue(install_sh: str, install_dir: str, data_dir: str) -> str:
+def ecarts_cron(crontab: str) -> list[str]:
     """
-    La ligne de crontab qu'`install.sh` pose (`LIGNE_CRON="..."`), variables
-    résolues. Lève ValueError si `install.sh` n'en porte plus : le contrôle le
-    dira plutôt que de se taire.
+    Lignes actives de la crontab du service qui lancent encore `sauvegarde.sh`.
+
+    Aucune n'est attendue : la sauvegarde de nuit est un minuteur systemd
+    (`deploy/ludotex-sauvegarde.timer`). Une ligne restante est soit la tâche
+    cassée d'origine (journal dans /var/log/, jamais une archive), soit une
+    réparation manuelle qui fonctionne — et qui, à côté du minuteur, produit
+    deux archives par nuit.
     """
-    trouve = re.search(r'^\s*LIGNE_CRON="(.*)"\s*$', install_sh, re.MULTILINE)
-    if not trouve:
-        raise ValueError("LIGNE_CRON introuvable dans install.sh")
-    return _resoudre(trouve.group(1), {"INSTALL_DIR": install_dir, "DATA_DIR": data_dir})
-
-
-def _compacter_cron(ligne: str) -> str:
-    return " ".join(ligne.split())
-
-
-def ecarts_cron(crontab: str, attendue: str) -> list[str]:
-    """Écarts entre la crontab du service et la tâche de sauvegarde attendue."""
     taches = [
         ligne.strip()
         for ligne in crontab.splitlines()
         if ligne.strip() and not ligne.strip().startswith("#") and "sauvegarde.sh" in ligne
     ]
     if not taches:
-        return ["aucune tâche de sauvegarde dans la crontab du service (install.sh en pose une)."]
-    if len(taches) == 1 and _compacter_cron(taches[0]) == _compacter_cron(attendue):
         return []
-    ecarts = ["le serveur et le dépôt diffèrent :"]
-    if len(taches) > 1:
-        ecarts = [f"{len(taches)} tâches de sauvegarde planifiées, une seule attendue :"]
+    ecarts = [
+        f"{len(taches)} tâche(s) cron lancent encore sauvegarde.sh ; le dépôt planifie la sauvegarde "
+        "par un minuteur systemd, et les deux ensemble font deux archives par nuit :"
+    ]
     ecarts.extend(f"  sur le serveur : {tache}" for tache in taches)
-    ecarts.append(f"  dans le dépôt  : {attendue}   (deploy/install.sh)")
     return ecarts
 
 
@@ -440,6 +424,9 @@ class Serveur:
     def etat_activation(self, unite: str) -> str:
         return self._commande("systemctl", "is-enabled", unite).stdout.strip() or "inconnu"
 
+    def etat_actif(self, unite: str) -> str:
+        return self._commande("systemctl", "is-active", unite).stdout.strip() or "inconnu"
+
     def rechargement_attendu(self, unite: str) -> bool:
         resultat = self._commande("systemctl", "show", "--property=NeedDaemonReload", "--value", unite)
         return resultat.stdout.strip() == "yes"
@@ -531,11 +518,22 @@ def controler_env(depot: Path, serveur: Serveur, install_dir: str) -> Constat:
     return constat
 
 
-def controler_cron(depot: Path, serveur: Serveur, install_dir: str, data_dir: str) -> Constat:
+def controler_cron(depot: Path, serveur: Serveur) -> Constat:
     constat = Constat("Tâche de sauvegarde planifiée")
-    attendue = ligne_cron_attendue((depot / "deploy/install.sh").read_text(encoding="utf-8"), install_dir, data_dir)
-    constat.ecarts = ecarts_cron(serveur.crontab(), attendue)
-    constat.detail_conforme = "identique à celle que pose install.sh"
+    taches_cron = ecarts_cron(serveur.crontab())
+    minuteurs = sorted(fichier.name for fichier in depot.glob("deploy/*.timer"))
+    for nom in minuteurs:
+        if not serveur.existe(f"/etc/systemd/system/{nom}"):
+            # Le fichier absent est déjà nommé par la famille « Unités systemd ».
+            # Ici, on ne dit que la conséquence, si rien d'autre ne sauvegarde.
+            if not taches_cron:
+                constat.ecarts.append(f"{nom} : absent du serveur, et aucune tâche cron : aucune sauvegarde de nuit.")
+            continue
+        etat = serveur.etat_actif(nom)
+        if etat != "active":
+            constat.ecarts.append(f"{nom} : état « {etat} », le minuteur ne tourne pas (systemctl enable --now {nom}).")
+    constat.ecarts.extend(taches_cron)
+    constat.detail_conforme = f"{len(minuteurs)} minuteur(s) actif(s), aucune tâche cron de sauvegarde en double"
     return constat
 
 
@@ -578,7 +576,7 @@ def executer(depot: Path, serveur: Serveur, install_dir: str, data_dir: str, uti
         ("Unités systemd", lambda: controler_unites(depot, serveur, install_dir)),
         ("Configuration nginx", lambda: controler_nginx(depot, serveur, install_dir)),
         ("Fichiers d'environnement", lambda: controler_env(depot, serveur, install_dir)),
-        ("Tâche de sauvegarde planifiée", lambda: controler_cron(depot, serveur, install_dir, data_dir)),
+        ("Tâche de sauvegarde planifiée", lambda: controler_cron(depot, serveur)),
         ("Paquets système", lambda: controler_paquets(depot, serveur)),
         ("Permissions posées par install.sh", lambda: controler_droits(serveur, install_dir, data_dir, utilisateur)),
     ]

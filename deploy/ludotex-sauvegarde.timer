@@ -1,0 +1,18 @@
+# Déclenche ludotex-sauvegarde.service chaque nuit à 3h (heure du serveur).
+#
+# Voir ludotex-sauvegarde.service pour la raison d'être et l'installation.
+#
+# Persistent=true : systemd note sur le disque l'heure du dernier passage. Si le
+# serveur était arrêté à 3h, la sauvegarde manquée est lancée dès le démarrage
+# suivant (systemd.timer(5) ; sans effet sur autre chose qu'un OnCalendar=).
+# Une archive rattrapée ainsi porte l'heure du démarrage, pas 03:xx.
+
+[Unit]
+Description=LudoteX — sauvegarde quotidienne à 3h
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

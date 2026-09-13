@@ -420,12 +420,12 @@ etape "Sauvegarde automatique"
 chmod +x "$INSTALL_DIR/deploy/sauvegarde.sh"
 
 # SEC-11 (audit du 24/07/2026) : ce dossier reçoit à la fois les sauvegardes
-# de routine (ludotex-backup-*.zip, si la tâche cron ci-dessous est acceptée)
+# de routine (ludotex-backup-*.zip, si le minuteur ci-dessous est accepté)
 # ET les filets de sécurité automatiques posés par l'application AVANT
 # CHAQUE restauration (avant-restauration-*.zip, voir
 # app.sauvegarde.sauvegarde_de_securite — dossier dérivé du chemin de
 # DATABASE_PATH, donc systématiquement $DATA_DIR/sauvegardes quelle que
-# soit l'acceptation de la tâche cron). Ces DEUX types d'archive contiennent
+# soit l'acceptation du minuteur). Ces DEUX types d'archive contiennent
 # les TROIS bases en clair, dont les numéros de pochette des prêts EN COURS
 # au moment de chaque sauvegarde/restauration (D5 ne les efface qu'à la
 # clôture) — sensible, donc posé en 0700 propriétaire du service, créé ici
@@ -438,18 +438,64 @@ chown "$SERVICE_USER:$SERVICE_USER" "$SAUVEGARDES_DIR"
 chmod 700 "$SAUVEGARDES_DIR"
 info "Dossier des sauvegardes sécurisé (0700, propriétaire $SERVICE_USER) : $SAUVEGARDES_DIR"
 
+# La sauvegarde de nuit est un minuteur systemd (deploy/ludotex-sauvegarde.timer),
+# plus une ligne de cron. L'ancienne ligne écrivait son journal dans /var/log/,
+# où l'utilisateur du service ne peut pas créer de fichier : la redirection
+# échouait avant le lancement du script, sans aucun message visible, et aucune
+# archive de nuit n'a jamais été produite. Voir ludotex-sauvegarde.service.
+
+# La crontab du service, amputée de toute ligne active qui lance sauvegarde.sh
+# (les commentaires et les autres tâches sont gardés tels quels). Un seul awk
+# qui lit toute l'entrée : pas de « grep -q » en fin de tube, qui peut faire
+# échouer le tube entier sous pipefail.
+CRON_MARQUE="deploy/sauvegarde.sh"
+crontab_sans_sauvegarde() {
+    printf '%s\n' "$1" | awk -v marque="$CRON_MARQUE" '/^[[:space:]]*#/ || index($0, marque) == 0'
+}
+
+# Retire l'ancienne tâche cron de sauvegarde, quelle que soit sa redirection :
+# cassée, elle ne sert à rien ; réparée à la main, elle doublerait le minuteur
+# (deux archives par nuit). Sans ligne à retirer, ne touche à rien : relancé,
+# ce bloc ne fait rien de plus.
+retirer_ancienne_tache_cron() {
+    local actuel restant
+    actuel="$(crontab -u "$SERVICE_USER" -l 2>/dev/null || true)"
+    restant="$(crontab_sans_sauvegarde "$actuel")"
+    if [[ "$restant" == "$(printf '%s\n' "$actuel" | awk '1')" ]]; then
+        return 0
+    fi
+    if [[ -z "${restant//[[:space:]]/}" ]]; then
+        crontab -u "$SERVICE_USER" -r
+    else
+        printf '%s\n' "$restant" | crontab -u "$SERVICE_USER" -
+    fi
+    info "Ancienne tâche cron de sauvegarde retirée de la crontab de $SERVICE_USER (remplacée par le minuteur)."
+}
+
 read -r -p "Configurer la sauvegarde quotidienne automatique (3h du matin) ? [O/n] : " CONFIG_SAUVEGARDE
 if [[ "${CONFIG_SAUVEGARDE,,}" != n* ]]; then
-    LIGNE_CRON="0 3 * * * $INSTALL_DIR/deploy/sauvegarde.sh $INSTALL_DIR $DATA_DIR/sauvegardes >> /var/log/ludotex-sauvegarde.log 2>&1"
-    CRON_ACTUEL="$(crontab -u "$SERVICE_USER" -l 2>/dev/null || true)"
-    if echo "$CRON_ACTUEL" | grep -qF "sauvegarde.sh"; then
-        info "Une tâche de sauvegarde existe déjà dans le crontab de $SERVICE_USER."
+    for UNITE in ludotex-sauvegarde.service ludotex-sauvegarde.timer; do
+        cp "$INSTALL_DIR/deploy/$UNITE" "/etc/systemd/system/$UNITE"
+        sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" "/etc/systemd/system/$UNITE"
+    done
+    systemctl daemon-reload
+    systemctl enable --now ludotex-sauvegarde.timer
+    # Seulement une fois le minuteur activé : si l'activation échoue, le script
+    # s'arrête là et l'ancienne tâche reste en place.
+    retirer_ancienne_tache_cron
+    if systemctl is-active --quiet ludotex-sauvegarde.timer; then
+        info "Sauvegarde quotidienne programmée (3h) vers $SAUVEGARDES_DIR."
+        info "Prochain passage : systemctl list-timers ludotex-sauvegarde.timer"
     else
-        { echo "$CRON_ACTUEL"; echo "$LIGNE_CRON"; } | grep -v '^$' | crontab -u "$SERVICE_USER" -
-        info "Sauvegarde quotidienne programmée (3h) vers $DATA_DIR/sauvegardes."
+        avert "Le minuteur de sauvegarde ne semble pas actif. Voir : systemctl status ludotex-sauvegarde.timer"
     fi
 else
     info "Sauvegarde automatique non configurée. Voir docs/deploiement.md pour la mettre en place plus tard."
+    CRON_ACTUEL="$(crontab -u "$SERVICE_USER" -l 2>/dev/null || true)"
+    if [[ "$(crontab_sans_sauvegarde "$CRON_ACTUEL")" != "$(printf '%s\n' "$CRON_ACTUEL" | awk '1')" ]]; then
+        avert "La crontab de $SERVICE_USER lance encore sauvegarde.sh : ancienne méthode, laissée en place."
+        avert "Relancer ce script en acceptant la sauvegarde automatique pour la remplacer par le minuteur."
+    fi
 fi
 
 # ============================================================================

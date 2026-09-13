@@ -257,10 +257,17 @@ def test_le_vrai_env_example_n_exige_pas_les_cles_facultatives():
 class ServeurFactice(cr.Serveur):
     """Arborescence dans tmp_path ; commandes système simulées."""
 
-    def __init__(self, racine: Path, crontab: str = "", paquets_absents: tuple[str, ...] = ()):
+    def __init__(
+        self,
+        racine: Path,
+        crontab: str = "",
+        paquets_absents: tuple[str, ...] = (),
+        etats_actifs: dict[str, str] | None = None,
+    ):
         super().__init__(racine)
         self._crontab = crontab
         self._paquets_absents = paquets_absents
+        self._etats_actifs = etats_actifs or {}
 
     def ecrire(self, absolu: str, texte: str, mode: int = 0o644) -> Path:
         chemin = self.chemin(absolu)
@@ -274,6 +281,9 @@ class ServeurFactice(cr.Serveur):
 
     def etat_activation(self, unite: str) -> str:
         return "enabled"
+
+    def etat_actif(self, unite: str) -> str:
+        return self._etats_actifs.get(unite, "active")
 
     def rechargement_attendu(self, unite: str) -> bool:
         return False
@@ -312,43 +322,72 @@ def test_une_erreur_imprevue_ne_cite_jamais_son_message(tmp_path, monkeypatch):
 # ===========================================================================
 # Tâche de sauvegarde planifiée
 # ===========================================================================
-ATTENDUE = "0 3 * * * /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes >> /var/log/x.log 2>&1"
+REPAREE = "0 3 * * * /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes >> /var/lib/ludotex/sauvegarde.log 2>&1"
+# La ligne cassée d'origine, reconstituée : écrite telle quelle, elle ferait
+# tomber le garde-fou de tests/test_sauvegarde_planifiee.py.
+CASSEE = REPAREE.replace("/var/lib/ludotex/sauvegarde.log", "/var/log/ludotex-sauvegarde.log")
 
 
-def test_cron_identique_aucune_difference():
-    assert cr.ecarts_cron(f"# commentaire\nMAILTO=\"\"\n{ATTENDUE.replace(' ', '   ')}\n", ATTENDUE) == []
+def test_crontab_sans_sauvegarde_aucune_difference():
+    assert cr.ecarts_cron("") == []
+    assert cr.ecarts_cron(f"# commentaire\nMAILTO=\"\"\n# {CASSEE}\n*/5 * * * * /usr/bin/true\n") == []
 
 
-def test_cron_different_dit_que_les_deux_different_sans_accuser_le_serveur():
-    serveur = ATTENDUE.replace("/var/log/x.log", "/var/lib/ludotex/sauvegarde.log")
-    ecarts = cr.ecarts_cron(serveur, ATTENDUE)
-    assert ecarts[0] == "le serveur et le dépôt diffèrent :"
-    assert any("sur le serveur" in e and "/var/lib/ludotex/sauvegarde.log" in e for e in ecarts)
-    assert any("dans le dépôt" in e and "/var/log/x.log" in e for e in ecarts)
-    assert not any("pas à jour" in e for e in ecarts)
+def test_une_ligne_cron_restante_est_signalee_cassee_ou_reparee():
+    # La réparation manuelle fonctionne, mais à côté du minuteur elle double
+    # les archives : elle doit être nommée comme la ligne cassée.
+    for ligne in (CASSEE, REPAREE):
+        ecarts = cr.ecarts_cron(f"# en-tête\n{ligne}\n")
+        assert "deux archives par nuit" in ecarts[0]
+        assert ecarts[1] == f"  sur le serveur : {ligne}"
+        assert not any("pas à jour" in e for e in ecarts)
 
 
-def test_cron_absent_est_signale():
-    assert cr.ecarts_cron("", ATTENDUE) != []
-    assert cr.ecarts_cron(f"# {ATTENDUE}\n", ATTENDUE) != []
-
-
-def test_cron_en_double_est_signale():
-    assert cr.ecarts_cron(f"{ATTENDUE}\n{ATTENDUE}\n", ATTENDUE)[0].startswith("2 tâches")
-
-
-def test_la_ligne_de_cron_se_relit_dans_le_vrai_install_sh():
-    # Si un lot remplace la crontab (minuteur systemd, par exemple), ce test
-    # tombe : c'est le signal pour adapter la famille « tâche planifiée ».
+def test_le_depot_ne_pose_plus_aucune_ligne_de_cron():
+    # Si LIGNE_CRON revenait dans install.sh, la famille « tâche planifiée »
+    # crierait sur toute installation qui la suit : l'un ou l'autre, pas les deux.
     install_sh = (_RACINE / "deploy/install.sh").read_text(encoding="utf-8")
-    ligne = cr.ligne_cron_attendue(install_sh, "/srv/app", "/srv/data")
-    assert ligne.startswith("0 3 * * * /srv/app/deploy/sauvegarde.sh /srv/app /srv/data/sauvegardes")
-    assert "$" not in ligne
+    assert "LIGNE_CRON=" not in install_sh
+    assert sorted(f.name for f in (_RACINE / "deploy").glob("*.timer")) == ["ludotex-sauvegarde.timer"]
 
 
-def test_une_variable_inconnue_dans_le_modele_de_cron_est_refusee():
-    with pytest.raises(ValueError):
-        cr.ligne_cron_attendue('LIGNE_CRON="0 3 * * * $AUTRE/x.sh"\n', "/a", "/b")
+def _depot_avec_minuteur(tmp_path: Path) -> Path:
+    depot = tmp_path / "depot"
+    (depot / "deploy").mkdir(parents=True)
+    (depot / "deploy/ludotex-sauvegarde.timer").write_text("[Timer]\nOnCalendar=*-*-* 03:00:00\n", encoding="utf-8")
+    return depot
+
+
+def test_minuteur_installe_mais_inactif_est_signale(tmp_path):
+    # Activé sans --now : il ne tournera qu'après un redémarrage.
+    serveur = ServeurFactice(tmp_path / "srv", etats_actifs={"ludotex-sauvegarde.timer": "inactive"})
+    serveur.ecrire("/etc/systemd/system/ludotex-sauvegarde.timer", "")
+    ecarts = cr.controler_cron(_depot_avec_minuteur(tmp_path), serveur).ecarts
+    assert ecarts == [
+        "ludotex-sauvegarde.timer : état « inactive », le minuteur ne tourne pas "
+        "(systemctl enable --now ludotex-sauvegarde.timer)."
+    ]
+
+
+def test_minuteur_absent_et_crontab_vide_dit_qu_aucune_sauvegarde_ne_tourne(tmp_path):
+    serveur = ServeurFactice(tmp_path / "srv", crontab="")
+    ecarts = cr.controler_cron(_depot_avec_minuteur(tmp_path), serveur).ecarts
+    assert ecarts == ["ludotex-sauvegarde.timer : absent du serveur, et aucune tâche cron : aucune sauvegarde de nuit."]
+
+
+def test_etat_de_la_production_avant_report_minuteur_absent_cron_repare(tmp_path):
+    # Relevé le 2026-09-13 : crontab réparée à la main, aucun minuteur. On
+    # nomme la ligne cron ; l'absence des unités est dite par leur famille.
+    serveur = ServeurFactice(tmp_path / "srv", crontab=REPAREE + "\n")
+    ecarts = cr.controler_cron(_depot_avec_minuteur(tmp_path), serveur).ecarts
+    assert len(ecarts) == 2 and REPAREE in ecarts[1]
+
+
+def test_minuteur_actif_et_cron_restant_font_deux_sauvegardes(tmp_path):
+    serveur = ServeurFactice(tmp_path / "srv", crontab=REPAREE + "\n")
+    serveur.ecrire("/etc/systemd/system/ludotex-sauvegarde.timer", "")
+    ecarts = cr.controler_cron(_depot_avec_minuteur(tmp_path), serveur).ecarts
+    assert "deux archives par nuit" in ecarts[0]
 
 
 def test_les_paquets_se_relisent_dans_le_vrai_install_sh():
@@ -394,7 +433,7 @@ def test_mauvais_proprietaire_est_signale():
 # ===========================================================================
 def _serveur_aligne(tmp_path: Path, crontab: str) -> ServeurFactice:
     serveur = ServeurFactice(tmp_path / "srv", crontab=crontab)
-    for fichier in (_RACINE / "deploy").glob("*.service"):
+    for fichier in [*(_RACINE / "deploy").glob("*.service"), *(_RACINE / "deploy").glob("*.timer")]:
         serveur.ecrire(f"/etc/systemd/system/{fichier.name}", fichier.read_text(encoding="utf-8"))
     for fichier in (_RACINE / "deploy").glob("nginx-*.conf"):
         site = fichier.stem[len("nginx-") :]
@@ -410,9 +449,7 @@ def _serveur_aligne(tmp_path: Path, crontab: str) -> ServeurFactice:
 
 
 def test_serveur_aligne_sur_le_depot_rien_a_examiner(tmp_path):
-    install_sh = (_RACINE / "deploy/install.sh").read_text(encoding="utf-8")
-    ligne = cr.ligne_cron_attendue(install_sh, "/opt/ludotex", "/var/lib/ludotex")
-    serveur = _serveur_aligne(tmp_path, crontab=ligne + "\n")
+    serveur = _serveur_aligne(tmp_path, crontab="# aucune tâche\n")
     constats = cr.executer(_RACINE, serveur, "/opt/ludotex", "/var/lib/ludotex", getpass.getuser())
     assert [c.ecarts for c in constats] == [[]] * 6
     assert "Serveur aligné sur le dépôt" in cr.rendre(constats)
