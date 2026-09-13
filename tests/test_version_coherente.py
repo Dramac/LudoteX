@@ -53,3 +53,27 @@ def test_la_version_courante_annonce_des_nouveautes():
     # Tournées UTILISATEUR : elles s'affichent telles quelles sur /apropos.
     for puce in puces:
         assert ".py" not in puce and "tests/" not in puce, puce
+
+
+# Un geste de serveur n'a rien à faire sur /apropos. `nouveautes_recentes`
+# ramasse TOUTES les puces de la première section `## `, sous-titres `###`
+# compris : une rubrique « gestes de déploiement » glissée dans CHANGELOG.md
+# partirait telle quelle sur la page publique. Ces gestes ont leur propre
+# domicile, docs/notes-de-deploiement.md.
+_MARQUES_DE_GESTE_SERVEUR = ("/etc/", "systemctl", "sudo", "nginx", "deploy/", "crontab", "certbot")
+
+
+def test_aucun_geste_de_serveur_dans_les_nouveautes_affichees():
+    for puce in nouveautes_recentes():
+        for marque in _MARQUES_DE_GESTE_SERVEUR:
+            assert marque not in puce, (
+                f"« {marque} » dans une puce de /apropos : ce geste va dans "
+                f"docs/notes-de-deploiement.md, pas dans CHANGELOG.md — {puce}"
+            )
+
+
+def test_les_gestes_de_deploiement_ont_un_domicile_cite_par_la_marche_a_suivre():
+    assert (_RACINE / "docs/notes-de-deploiement.md").is_file()
+    for document in ("docs/versioning.md", "docs/deploiement.md"):
+        texte = (_RACINE / document).read_text(encoding="utf-8")
+        assert "notes-de-deploiement.md" in texte, document

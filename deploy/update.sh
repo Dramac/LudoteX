@@ -8,7 +8,11 @@
 #   3. Mise à jour des dépendances Python (requirements.txt).
 #   4. Migrations des bases (idempotentes).
 #   5. Redémarrage du service (et de l'instance de formation si présente).
-#   6. Vérification que l'application répond.
+#   6. Vérification que chaque instance répond, et avec quelle version.
+#   7. Contrôle de report : ce que le dépôt porte et que ce script ne pose pas
+#      (unités systemd, nginx, .env, crontab, paquets, permissions) est-il en
+#      place sur le serveur ? Il NOMME les écarts, ne corrige rien, et ne peut
+#      pas faire échouer la mise à jour.
 #
 # À lancer APRÈS avoir poussé le nouveau code sur GitHub (git push), depuis le
 # serveur :
@@ -47,28 +51,34 @@ fi
 DATA_DIR="$(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" -c 'from app.db import get_database_path; print(get_database_path().parent)')"
 
 # --- 1. Sauvegarde de sécurité ----------------------------------------------
-etape "[1/6] Sauvegarde des trois bases avant mise à jour"
+etape "[1/7] Sauvegarde des trois bases avant mise à jour"
 sudo -u "$SERVICE_USER" "$INSTALL_DIR/deploy/sauvegarde.sh" "$INSTALL_DIR" "$DATA_DIR/sauvegardes"
 
 # --- 2. Récupération du code -------------------------------------------------
-etape "[2/6] Récupération du nouveau code (git pull)"
+# ATTENTION : ce pull peut réécrire CE fichier. git le remplace par un nouveau
+# fichier, et bash continue de lire l'ancien jusqu'au bout : une modification
+# d'update.sh ne s'applique donc qu'à la mise à jour SUIVANTE. C'est pourquoi le
+# contrôle de l'étape 7 vit dans un script à part, relu à neuf à chaque appel ;
+# et c'est un geste à écrire dans docs/notes-de-deploiement.md chaque fois
+# qu'une version modifie ce fichier.
+etape "[2/7] Récupération du nouveau code (git pull)"
 sudo -u "$SERVICE_USER" git -C "$INSTALL_DIR" pull --ff-only
 
 # --- 3. Dépendances ----------------------------------------------------------
-etape "[3/6] Mise à jour des dépendances Python"
+etape "[3/7] Mise à jour des dépendances Python"
 sudo -u "$SERVICE_USER" "$PIP" install --quiet --upgrade pip
 sudo -u "$SERVICE_USER" "$PIP" install --quiet -r "$INSTALL_DIR/requirements.txt"
 
 # --- 4. Migrations -----------------------------------------------------------
 # Idempotentes : elles n'ajoutent que ce qui manque. Jouées explicitement pour
 # repérer un souci AVANT le redémarrage plutôt qu'au premier accès.
-etape "[4/6] Migrations des bases (prêt, tournois, planning)"
+etape "[4/7] Migrations des bases (prêt, tournois, planning)"
 (cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" -m app.db)
 (cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" -m app.tournoi.db)
 (cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" -m app.planning.db)
 
 # --- 5. Redémarrage ----------------------------------------------------------
-etape "[5/6] Redémarrage du/des service(s)"
+etape "[5/7] Redémarrage du/des service(s)"
 systemctl restart ludotex
 info "ludotex redémarré."
 # Instance de formation : redémarrée seulement si elle a été installée (ses
@@ -79,18 +89,67 @@ if systemctl list-unit-files | grep -q '^ludotex-formation\.service'; then
 fi
 
 # --- 6. Vérification ---------------------------------------------------------
-etape "[6/6] Vérification"
+etape "[6/7] Vérification"
 sleep 2
-if systemctl is-active --quiet ludotex; then
-    info "Service ludotex actif."
-else
-    avert "ludotex n'est PAS actif. Voir : journalctl -u ludotex -e"
+
+# Version que porte le code tout juste récupéré : chaque instance doit
+# répondre avec celle-là, sinon le redémarrage n'a pas pris.
+VERSION_DEPOT="$(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" -c 'from app.version import APP_VERSION; print(APP_VERSION)')" || VERSION_DEPOT=""
+
+# Port lu dans l'unité INSTALLÉE, jamais écrit ici : c'est elle qui décide où
+# l'instance écoute.
+port_du_service() {
+    local unite="/etc/systemd/system/$1.service"
+    [[ -r "$unite" ]] || return 0
+    sed -n '/--port/{s/.*--port[[:space:]=]*\([0-9][0-9]*\).*/\1/p;q;}' "$unite"
+}
+
+verifier_instance() {
+    local service="$1" port reponse version
+    if systemctl is-active --quiet "$service"; then
+        info "Service $service actif."
+    else
+        avert "$service n'est PAS actif. Voir : journalctl -u $service -e"
+    fi
+    port="$(port_du_service "$service")" || port=""
+    if [[ -z "$port" ]]; then
+        avert "Port de $service introuvable dans /etc/systemd/system/$service.service : /sante non vérifié."
+        return 0
+    fi
+    # --retry-connrefused : l'instance peut mettre quelques secondes à ouvrir
+    # son port après le redémarrage ; ne pas crier avant de lui avoir laissé
+    # le temps.
+    if reponse="$(curl -fsS --max-time 5 --retry 10 --retry-delay 1 --retry-connrefused "http://127.0.0.1:$port/sante" 2>/dev/null)"; then
+        version="$(printf '%s' "$reponse" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')" || version=""
+        if [[ -z "$version" ]]; then
+            info "$service répond sur /sante (port $port), sans annoncer de version."
+        elif [[ -n "$VERSION_DEPOT" && "$version" != "$VERSION_DEPOT" ]]; then
+            avert "$service répond en version $version, alors que le dépôt porte la $VERSION_DEPOT. Voir : journalctl -u $service -e"
+        else
+            info "$service répond sur /sante (port $port) : version $version."
+        fi
+    else
+        avert "$service ne répond pas sur /sante (port $port). Voir : journalctl -u $service -e"
+    fi
+}
+
+verifier_instance ludotex
+# Le fichier d'unité plutôt qu'un « systemctl list-unit-files | grep -q » :
+# sous pipefail, un grep qui s'arrête au premier résultat peut faire échouer
+# le tube entier. C'est aussi ce fichier qui donne le port.
+if [[ -f /etc/systemd/system/ludotex-formation.service ]]; then
+    verifier_instance ludotex-formation
 fi
-if curl -fsS http://127.0.0.1:8000/sante >/dev/null 2>&1; then
-    info "L'application répond (/sante OK)."
-else
-    avert "Pas de réponse sur /sante. Voir les logs : journalctl -u ludotex -e"
-fi
+
+# --- 7. Contrôle de report ---------------------------------------------------
+# Lecture seule, sous l'utilisateur du service (il lit tout ce qu'il faut, voir
+# l'en-tête du script). Le script termine toujours en code 0 ; le « || » ne
+# sert qu'au cas où Python lui-même serait introuvable ou planterait, et
+# empêche alors « set -e » d'interrompre la fin de la mise à jour.
+etape "[7/7] Contrôle de report : le serveur porte-t-il tout ce que porte le dépôt ?"
+(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$PYTHON" "$INSTALL_DIR/scripts/controle_report.py" \
+    --install-dir "$INSTALL_DIR" --data-dir "$DATA_DIR" --utilisateur "$SERVICE_USER") \
+    || avert "Le contrôle de report n'a pas pu s'exécuter : le lancer à la main (docs/notes-de-deploiement.md)."
 
 echo
 echo "Mise à jour terminée. En cas de souci, restaurer la sauvegarde faite à"

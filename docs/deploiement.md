@@ -137,7 +137,8 @@ L'import est **idempotent** (peut être relancé, met à jour sans dupliquer).
 
 Depuis un navigateur, en remplaçant par le vrai domaine :
 
-- `https://jeux.monasso.fr/sante` → doit afficher `{"statut":"ok"}`.
+- `https://jeux.monasso.fr/sante` → doit afficher `{"statut":"ok","version":"…"}`,
+  avec le numéro de la version installée.
 - `https://jeux.monasso.fr/catalogue` → le catalogue s'affiche (vide tant que
   l'étape 4 n'est pas faite).
 - `https://jeux.monasso.fr/admin` → se connecter avec le mot de passe défini
@@ -284,6 +285,21 @@ de souci après la mise à jour, on peut restaurer cet état depuis
 `/admin/données`. Le schéma des bases se met à jour tout seul (migrations
 automatiques et sans perte de données).
 
+**Avant de lancer le script**, lire `docs/notes-de-deploiement.md` : il porte,
+version par version, les gestes que `update.sh` ne fait pas.
+
+**À la fin, deux vérifications :**
+
+- **étape 6** — chaque instance répond sur `/sante`, et avec **quelle
+  version** : le numéro doit être celui du code récupéré, sinon le script le
+  signale. Le port est lu dans l'unité systemd installée ;
+- **étape 7, le contrôle de report** — `scripts/controle_report.py` compare le
+  serveur au dépôt (unités systemd, fichiers nginx, clés de `.env`, tâche de
+  sauvegarde, paquets, permissions) et nomme chaque écart. Il **ne modifie
+  rien** et **ne peut pas faire échouer** la mise à jour : un écart se reporte
+  à la main, après décision. Le détail de ce qu'il vérifie, et de ce qu'il ne
+  vérifie pas, est dans `docs/notes-de-deploiement.md`.
+
 > Équivalent manuel, si besoin de dépanner une étape précise (le `git pull` se
 > fait sous l'utilisateur `pretjeux`, propriétaire du dossier — sinon git
 > refuse pour « dubious ownership ») :
@@ -295,6 +311,7 @@ automatiques et sans perte de données).
 > sudo -u pretjeux .venv/bin/pip install -r requirements.txt
 > sudo systemctl restart ludotex
 > sudo systemctl status ludotex
+> sudo -u pretjeux .venv/bin/python scripts/controle_report.py   # lecture seule
 > ```
 
 ### Mettre à jour la configuration nginx
@@ -302,8 +319,10 @@ automatiques et sans perte de données).
 `update.sh` ne touche **jamais** à nginx : le fichier que nginx lit est une
 copie posée dans `/etc/nginx/sites-available/` au moment de l'installation.
 Une mise à jour qui modifie `deploy/nginx-*.conf` demande donc ce geste en
-plus — et rien ne le rappelle tout seul, c'est le compte rendu de la version
-qui doit l'annoncer.
+plus. Deux choses le rappellent : la section de la version dans
+`docs/notes-de-deploiement.md`, et le contrôle de report de l'étape 7
+d'`update.sh`, qui signale tout fichier nginx du dépôt différent de sa copie
+installée — domaine et lignes de certbot mis de côté.
 
 **Ne pas reporter les lignes à la main.** On réinstalle le fichier du dépôt,
 puis on laisse `certbot --nginx` réinstaller ses propres lignes SSL par-dessus,

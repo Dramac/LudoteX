@@ -20,6 +20,7 @@ session va dans le message de commit, dans `CHANGELOG.md` et dans
 | `docs/ui-composants.md` | Les dix composants d'interface canoniques et leurs règles d'emploi. |
 | `wiki/` | Le **guide utilisateur** (bénévoles, bureau). Aucun jargon, aucun chemin de fichier. Dépôt git **séparé**, à committer à part. |
 | `CHANGELOG.md`, `VERSION`, `app/version.py` | L'histoire livrée, tournée utilisateur. Les trois portent toujours le même numéro. |
+| `docs/notes-de-deploiement.md` | Les gestes de serveur qu'une version demande en plus d'`update.sh`. Jamais dans `CHANGELOG.md`, dont les puces partent sur `/apropos`. |
 | `interne/chantiers.md` | Le **registre vivant** du chantier en cours : lots, états, enseignements, invariants. Hors Git. |
 | `interne/comptes-rendus/` | Un compte rendu par lot livré, à lire avant d'attaquer le lot suivant. Hors Git. |
 | `interne/historique-sessions.md` | Archive du journal détaillé de juin à août 2026. Lecture d'appoint, chiffres périmés. Hors Git. |
@@ -145,7 +146,8 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
 du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
-sur `/sante` une fois que son numéro y aura été ajouté (`PROD-10`). Ce qui est
+sur `/sante` dès qu'une version qui l'y publie est déployée ; `update.sh` l'affiche
+alors pour chaque instance. Ce qui est
 livré, par module :
 
 - **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
@@ -185,8 +187,9 @@ livré, par module :
 - **Mode formation** — seconde instance du même code, catalogue importable
   depuis un CSV pour scanner de vraies boîtes sans rien inscrire pour de bon.
 - **Exploitation** — `deploy/` (install.sh, update.sh, systemd, nginx,
-  sauvegarde) et lanceur local sans ligne de commande (`lancer.py`,
-  `lancer.command`, `lancer.bat`).
+  sauvegarde), contrôle de report en fin d'`update.sh`
+  (`scripts/controle_report.py`, lecture seule) et lanceur local sans ligne de
+  commande (`lancer.py`, `lancer.command`, `lancer.bat`).
 
 **Le total de tests ne figure pas ici**, volontairement : c'est le chiffre qui a
 fait diverger l'ancien fichier soixante et une fois. Il se lit en lançant la

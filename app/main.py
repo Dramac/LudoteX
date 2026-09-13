@@ -208,7 +208,13 @@ def sante():
     """
     Point de santé pour la supervision (monitoring, reverse proxy).
 
+    Porte aussi le numéro de la version qui répond : c'est ce que
+    `deploy/update.sh` affiche en fin de mise à jour, pour prouver que le
+    nouveau code est bien celui qui tourne, et pas seulement qu'un code tourne.
+    Aucune fuite : `/apropos` publie déjà ce numéro.
+
     Returns:
-        {"statut": "ok"} avec un code 200 si l'application répond.
+        {"statut": "ok", "version": "<APP_VERSION>"} avec un code 200 si
+        l'application répond. `statut` reste la clé qu'un outil externe lit.
     """
-    return {"statut": "ok"}
+    return {"statut": "ok", "version": APP_VERSION}

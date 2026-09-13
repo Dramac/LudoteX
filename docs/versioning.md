@@ -45,6 +45,18 @@ En cas de doute entre deux niveaux, prendre le plus élevé.
 Le numéro doit être **identique** dans `app/version.py`, `VERSION` et l'entête
 de la section `CHANGELOG.md`.
 
+4. **`docs/notes-de-deploiement.md`** — s'il porte une section « À paraître »,
+   la renommer au nouveau numéro.
+
+## Les gestes de déploiement
+
+Ce qu'une version demande de faire sur le serveur **en plus** de
+`sudo ./deploy/update.sh` — copier une unité systemd ou un fichier nginx,
+ajouter une clé au `.env`, reprendre une permission — ne va **pas** dans
+`CHANGELOG.md` : ses puces s'affichent sur `/apropos`, sous-titres compris.
+Ces gestes vivent dans **`docs/notes-de-deploiement.md`**, qui dit aussi quand
+une version doit y avoir sa section.
+
 ## Poser le tag git (après le push)
 
 Une fois le commit poussé sur GitHub :
