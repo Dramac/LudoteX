@@ -90,7 +90,9 @@
      téléphone, qui devient alors autorisé à prêter et à scanner.</p>
   <p>Ce lien a une <strong>date de fin de validité</strong>, une semaine par
      défaut. Vérifiez qu'elle couvre bien tout l'événement, et prolongez-la
-     depuis le même écran si besoin.</p>
+     depuis le même écran si besoin, avec <strong>Prolonger sans changer le
+     lien</strong> : le lien reste le même, rien à rediffuser. Trois jours
+     avant la date, le tableau de bord et la supervision vous préviennent.</p>
 </section>
 
 <!-- ------------------------------------------------------------------ -->
@@ -218,14 +220,25 @@
   <h2>En cas de problème</h2>
 
   <h3 id="probleme-jeton">« Les bénévoles ne peuvent plus rien scanner »</h3>
-  <p>Le lien d'activation a probablement dépassé sa date de validité : dans ce
-     cas, l'accès est fermé pour tout le monde d'un coup. Le
+  <p>L'accès bénévole a probablement dépassé sa date de validité : dans ce
+     cas, il est fermé pour tout le monde d'un coup, et les bénévoles voient
+     « L'accès bénévole a expiré ». Le
      <a class="lien" href="/admin/supervision">tableau de supervision</a> vous
      le dit, et votre <strong>mot de passe administrateur reste valable</strong>
      — il est indépendant de l'accès bénévole.</p>
-  <p>Rendez-vous sur <a class="lien" href="/admin/jeton">Accès bénévole</a> et
-     réinitialisez l'accès en choisissant une nouvelle date de fin, puis
-     rediffusez le lien : chaque bénévole doit l'ouvrir à nouveau.</p>
+  <p>Rendez-vous sur <a class="lien" href="/admin/jeton">Accès bénévole</a>,
+     choisissez une nouvelle date de fin et appuyez sur <strong>Prolonger sans
+     changer le lien</strong>. Le lien ne change pas : les téléphones déjà
+     activés reprennent d'eux-mêmes, sans que personne ait rien à rouvrir. Un
+     téléphone qui n'avait jamais ouvert le lien l'ouvre normalement.</p>
+  <p><strong>Ne réinitialisez pas</strong> pour réparer une date dépassée :
+     « Réinitialiser le jeton » fabrique un lien entièrement nouveau et coupe
+     tous les téléphones, qui devront chacun ouvrir le nouveau lien. C'est le
+     geste à garder pour <strong>retirer l'accès</strong>, par exemple si le
+     lien a circulé là où il ne devait pas. Dans ce cas, choisissez une date
+     de fin, puis rediffusez le nouveau lien.</p>
+  <p>Si un téléphone reste bloqué après la prolongation (données du navigateur
+     effacées, par exemple), la personne rouvre simplement le même lien.</p>
 
   <h3 id="probleme-module">« Une rubrique a disparu du site »</h3>
   <p>Les tournois, les statistiques, le planning, l'écran de salle et la page

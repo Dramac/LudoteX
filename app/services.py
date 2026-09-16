@@ -3261,6 +3261,36 @@ def enregistrer_appareil(
     conn.commit()
 
 
+def aligner_echeance_appareils(conn: sqlite3.Connection, generation: str | None,
+                               expire_iso: str) -> int:
+    """
+    Reporte une nouvelle échéance du jeton sur les appareils de SA génération.
+
+    Appelée par la prolongation du jeton (`POST /admin/jeton/prolonger`), jamais
+    sur un chemin de requête bénévole. Sans elle, `expire_le` garderait
+    l'ancienne échéance et la liste afficherait « Validité dépassée » pour des
+    téléphones qui écrivent toujours — le cookie ne meurt plus avec le jeton
+    (`auth.DUREE_COOKIE_JETON`).
+
+    Les appareils d'une AUTRE génération (activés avec un jeton depuis
+    réinitialisé) ne sont pas touchés : ils restent « jeton renouvelé ». Ceux
+    sans génération (postes d'administration purs) non plus.
+
+    Ne committe pas : la route l'appelle dans la transaction qui écrit
+    l'échéance.
+
+    Returns:
+        Le nombre de lignes réalignées.
+    """
+    if generation is None:
+        return 0
+    cur = conn.execute(
+        "UPDATE appareils SET expire_le = ? WHERE generation = ?",
+        (expire_iso, generation),
+    )
+    return cur.rowcount
+
+
 def renommer_appareil(conn: sqlite3.Connection, appareil: str, libelle: str) -> None:
     """
     Pose (ou efface) le libellé libre d'un appareil.

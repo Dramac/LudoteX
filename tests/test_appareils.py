@@ -662,11 +662,13 @@ def test_aucun_controle_de_revocation_dans_le_rendu(client, conn):
     # La seule action possible SUR UN APPAREIL est de le nommer.
     par_appareil = re.findall(r'action="(/admin/jeton/appareil/[^"]*)"', page)
     assert par_appareil and all(a.endswith("/libelle") for a in par_appareil), par_appareil
-    # Et la seule autre action de la page est la réinitialisation du jeton,
-    # qui déconnecte tout le monde — jamais un appareil en particulier.
+    # Les deux seules autres actions portent sur le JETON, donc sur tous les
+    # appareils à la fois : la réinitialisation, qui déconnecte tout le monde,
+    # et la prolongation (lot-5-pré-production), qui ne coupe personne.
     autres = [a for a in re.findall(r'action="(/admin/jeton[^"]*)"', page)
               if a not in par_appareil]
-    assert autres == ["/admin/jeton/reinitialiser"], autres
+    assert sorted(autres) == ["/admin/jeton/prolonger",
+                              "/admin/jeton/reinitialiser"], autres
     # ... et la page dit explicitement quel est le seul geste possible.
     assert "déconnecte" in page and "tous" in page
 
@@ -843,7 +845,10 @@ def test_scanner_naffiche_rien_quand_aucun_cookie_dappareil(client, conn):
 def test_activation_benevole_pose_le_cookie_et_cree_une_ligne(client, conn):
     from app import services
 
-    jeton = _poser_jeton(conn)
+    # Échéance du jeton posée : c'est elle que le registre recopie
+    # (lot-5-pré-production — le cookie, lui, vit bien au-delà).
+    echeance = _dans(3)
+    jeton = _poser_jeton(conn, expire_iso=echeance)
     r = client.get(f"/acces?jeton={jeton}", follow_redirects=False)
     assert r.status_code == 303
 
@@ -854,7 +859,7 @@ def test_activation_benevole_pose_le_cookie_et_cree_une_ligne(client, conn):
     assert ligne["appareil"] == appareil
     assert ligne["role"] == "benevole"
     assert ligne["generation"] == services.empreinte_jeton(jeton)
-    assert ligne["expire_le"] > ligne["active_le"]
+    assert ligne["expire_le"] == echeance
 
 
 def test_le_cookie_nest_pas_reecrit_sil_existe_deja(client, conn):

@@ -69,7 +69,10 @@ routeurs, gestionnaire d'erreur 403 (page « accès réservé »).
 ## 6. Authentification (voir `app/auth.py`)
 
 Pas de comptes : un **jeton** unique (`PRET_TOKEN`) protège `/pret/*` et
-`/scanner`. Lien d'activation `/acces?jeton=…` → cookie (3 jours). Sans jeton
+`/scanner`. Lien d'activation `/acces?jeton=…` → cookie de
+400 jours (`auth.DUREE_COOKIE_JETON`), reposé à chaque requête autorisée ;
+l'échéance du jeton, elle, est vérifiée par le serveur à chaque requête et se
+prolonge sans changer le jeton (`auth.prolonger_jeton`). Sans jeton
 configuré → **mode ouvert** (dev) avec avertissement au démarrage. Le reste
 (catalogue, fiches, stats) est public.
 

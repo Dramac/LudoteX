@@ -62,6 +62,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Action | Route |
 |---|---|
 | Jeton bénévole réinitialisé | `POST /admin/jeton/reinitialiser` |
+| Échéance du jeton bénévole prolongée, sans changer le jeton | `POST /admin/jeton/prolonger` |
 | Mot de passe admin changé | `POST /admin/motdepasse` |
 | Connexion admin (réussie **et** échouée) | `POST /admin/login` |
 | Import CSV du catalogue | `POST /admin/donnees/import` |
@@ -192,6 +193,12 @@ Il est posé à **deux endroits seulement** : l'activation `/acces?jeton=` (bén
 `POST /admin/login` (administration). Autrement dit, uniquement pour les personnes qui
 écrivent.
 
+*Mise à jour lot-5-pré-production.* Un troisième passage le **repose** sans jamais le
+créer : le middleware de `app/main.py`, sur une requête que le cookie de jeton vient
+d'autoriser, repose ce cookie et, s'il est présent, le cookie `appareil` **avec la même
+valeur** — seule leur durée de vie est repoussée, l'identité ne change pas. Un visiteur
+sans jeton valide ne reçoit toujours rien.
+
 Conséquence à souligner : **aucun cookie n'est posé pour le public**. Un visiteur qui
 consulte le catalogue ou s'inscrit à un tournoi ne reçoit rien de nouveau, et ses
 lignes de journal portent simplement `"qui":"visiteur"` sans identifiant. La question
@@ -224,7 +231,7 @@ CREATE TABLE appareils (
     appareil    TEXT PRIMARY KEY,   -- les 6 caractères du cookie
     role        TEXT NOT NULL,      -- 'benevole' | 'admin'
     active_le   TEXT NOT NULL,      -- UTC ISO, instant de la pose du cookie
-    expire_le   TEXT,               -- UTC ISO, même échéance que le cookie
+    expire_le   TEXT,               -- UTC ISO, échéance du jeton pour cet appareil
     generation  TEXT                -- empreinte du jeton en vigueur (§4.5)
 );
 ```
@@ -234,9 +241,14 @@ cookie. Aucun `UPDATE` sur le chemin des requêtes : la table ne participe pas a
 trafic et n'ajoute aucun écrivain SQLite aux chemins chauds — point sur lequel le
 projet vient de payer cher (courses de pochettes).
 
-`expire_le` reprend exactement le calcul de `_duree_cookie()` dans
-`app/routes/acces.py`, pour que la table dise la même chose que le cookie plutôt
-qu'une approximation qui divergera.
+`expire_le` reprend l'**échéance du jeton** au moment de l'activation (NULL si le
+jeton n'en a pas). *Mise à jour lot-5-pré-production* : il reprenait auparavant la
+durée du cookie, qui expirait alors avec le jeton. Le cookie vit désormais 400 jours
+(`auth.DUREE_COOKIE_JETON`), pour qu'une prolongation du jeton ne coupe pas les
+téléphones déjà activés ; c'est donc l'échéance du jeton qui dit jusqu'à quand
+l'appareil peut écrire. La prolongation (`POST /admin/jeton/prolonger`) la reporte sur
+les appareils de la génération en vigueur (`services.aligner_echeance_appareils`) —
+une écriture à un geste d'administration, jamais sur le chemin des requêtes.
 
 Table neuve, donc `CREATE TABLE IF NOT EXISTS` suffit à mettre à niveau une base
 existante — aucune migration de colonne. Elle est dans la base de prêt, donc

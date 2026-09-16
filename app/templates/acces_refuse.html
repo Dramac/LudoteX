@@ -7,6 +7,18 @@
 
   {% if motif == "trop" %}
     <p>Trop de tentatives en peu de temps. Merci de réessayer dans une minute.</p>
+  {% elif motif == "expire" %}
+    {# SEC-12 : jeton expiré, lien BON. La bénévole ne peut rien réparer
+       elle-même ; ce qu'on lui doit, c'est de ne pas l'envoyer chercher un
+       autre lien, et de lui dire vers qui se tourner. #}
+    <p class="resultat resultat-attention">
+      L'accès bénévole a expiré{% if expire_local %} le {{ expire_local }}{% endif %},
+      pour tous les téléphones à la fois.
+    </p>
+    <p>Ce n'est <strong>pas votre lien</strong> qui est en cause, et il est
+       inutile d'en chercher un autre. <strong>Prévenez le bureau</strong> : il
+       peut prolonger l'accès en un geste, sans changer le lien. Ce même lien
+       fonctionnera alors de nouveau.</p>
   {% elif motif == "invalide" %}
     <p>Ce lien d'activation n'est pas valide. Demandez le lien à jour à
        l'association.</p>

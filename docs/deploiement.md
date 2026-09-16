@@ -497,7 +497,9 @@ toucher à la production.
   après y avoir édité la ligne à la main, ou demander de l'aide au référent
   technique.
 - **Jeton bénévole expiré** : se reconnecter à `/admin` (le mot de passe
-  admin reste valide) → « Accès bénévole » → réinitialiser.
+  admin reste valide) → « Accès bénévole » → **Prolonger sans changer le
+  lien**. Les téléphones déjà activés reprennent sans rouvrir le lien. Ne
+  réinitialiser qu'en cas de fuite du lien : il faudrait le rediffuser.
 - **Une page semble cassée après une mise à jour de nginx (SEC-01/02/04/
   ROB-03)** : vérifier d'abord la console développeur (F12 → Console) pour
   une ligne « Refused to... » liée à la Content-Security-Policy. Pour

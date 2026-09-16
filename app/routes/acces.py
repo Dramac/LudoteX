@@ -2,10 +2,18 @@
 Activation de l'accès bénévole — pose le cookie de jeton (voir spec §8).
 
 Le lien `/acces?jeton=<JETON>` est distribué aux bénévoles via le canal interne.
-En l'ouvrant, l'appareil mémorise le jeton dans un cookie (validité 3 jours) et
-peut ensuite accéder à /pret et /scanner. Passé ce délai, on rouvre le lien.
-Rotation du jeton = changer `PRET_TOKEN` (les anciens cookies cessent d'être
-valides).
+En l'ouvrant, l'appareil mémorise le jeton dans un cookie et peut ensuite
+accéder à /pret et /scanner tant que le jeton est valable.
+
+Le cookie vit `auth.DUREE_COOKIE_JETON` (400 jours), indépendamment de
+l'échéance du jeton, et il est reposé à chaque requête autorisée : c'est ce qui
+permet de PROLONGER le jeton sans que les téléphones déjà activés se coupent à
+l'ancienne échéance (voir le commentaire de la constante). L'échéance, elle,
+est vérifiée par le serveur à chaque requête.
+
+Rotation du jeton = réinitialisation depuis /admin/jeton (ou changer
+`PRET_TOKEN`) : les anciens cookies cessent d'être valides, quelle que soit
+leur durée de vie.
 
 Sécurité : limitation de débit par IP (anti-force brute) et comparaison du jeton
 en temps constant. Le cookie est HttpOnly (inaccessible au JS), SameSite=Lax, et
@@ -22,10 +30,9 @@ qui consulte le catalogue ne reçoit rien.
 
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from app import auth, services
 from app.db import get_connection
@@ -34,29 +41,30 @@ from app.templating import templates
 router = APIRouter(tags=["acces"])
 
 
-def _duree_cookie(expire_iso: str | None) -> int:
-    """Durée du cookie (s) : jusqu'à l'expiration du jeton, ou défaut 1 semaine."""
-    defaut = auth.DUREE_DEFAUT_JOURS * 86400
-    if not expire_iso:
-        return defaut
-    try:
-        restant = int((datetime.fromisoformat(expire_iso)
-                       - datetime.now(timezone.utc)).total_seconds())
-    except ValueError:
-        return defaut
-    return max(60, restant)   # au moins 1 minute
-
-
-def _echeance(duree_s: int) -> str:
+def poser_cookies_benevole(reponse: Response, request: Request, jeton: str,
+                           appareil: str | None) -> None:
     """
-    Instant (UTC ISO) où le cookie posé maintenant cessera d'être valide.
+    Pose (ou repose) le cookie de jeton et, si fourni, le cookie d'appareil.
 
-    Calculé À PARTIR de `_duree_cookie`, et non par une règle parallèle : la
-    ligne du registre doit dire exactement la même chose que le cookie, pas une
-    approximation qui divergerait au premier changement de durée.
+    SEUL domicile des attributs de ces deux cookies : l'activation (/acces) et
+    le rafraîchissement du middleware (`app/main.py`) passent par ici, pour
+    qu'un cookie reposé ne perde jamais `HttpOnly`, `SameSite=Lax` ni `Secure`.
+
+    Reposer le cookie d'appareil avec la MÊME valeur ne change pas l'identité de
+    l'appareil : seule sa durée de vie est repoussée.
     """
-    return (datetime.now(timezone.utc)
-            + timedelta(seconds=duree_s)).isoformat(timespec="seconds")
+    securise = request.url.scheme == "https"
+    reponse.set_cookie(
+        auth.COOKIE_NAME, jeton,
+        max_age=auth.DUREE_COOKIE_JETON, httponly=True, samesite="lax",
+        secure=securise,
+    )
+    if appareil is not None:
+        reponse.set_cookie(
+            services.COOKIE_APPAREIL, appareil,
+            max_age=auth.DUREE_COOKIE_JETON, httponly=True, samesite="lax",
+            secure=securise,
+        )
 
 
 @router.get("/acces")
@@ -71,6 +79,8 @@ def acces(request: Request, jeton: str = ""):
        on pose le cookie et on redirige vers /scanner (303 = "See Other").
     3. Sinon : page « accès réservé » avec un motif explicatif :
        - "ouvert"   : aucun jeton requis sur cette installation (mode dev).
+       - "expire"   : le lien est BON, mais le jeton a dépassé son échéance
+         (`auth.jeton_expire_reconnu`) — c'est au bureau de le prolonger ;
        - "invalide" : le lien/jeton est erroné.
 
     Args:
@@ -96,44 +106,50 @@ def acces(request: Request, jeton: str = ""):
 
         if attendu and not expire and secrets.compare_digest(jeton, attendu):
             # 303 force le navigateur à faire un GET sur /scanner après l'activation.
-            # Le cookie expire en même temps que le jeton (ou défaut 1 semaine).
-            duree = _duree_cookie(expire_iso)
             reponse = RedirectResponse("/scanner", status_code=303)
-            reponse.set_cookie(
-                auth.COOKIE_NAME, jeton,
-                max_age=duree, httponly=True, samesite="lax",
-                secure=(request.url.scheme == "https"),
-            )
 
             # Identifiant d'appareil : POSÉ SEULEMENT S'IL EST ABSENT. Un
             # bénévole rouvre son lien d'activation plus souvent qu'on ne le
-            # croit (cookie expiré, lien repartagé) ; le réécrire lui donnerait
+            # croit (cookie effacé, lien repartagé) ; le réécrire lui donnerait
             # une nouvelle identité à chaque fois, et la liste montrerait cinq
             # appareils là où il n'y en a qu'un.
             appareil = services.appareil_de(request)
-            if appareil is None:
+            nouveau = appareil is None
+            if nouveau:
                 appareil = services.nouvel_appareil()
-                reponse.set_cookie(
-                    services.COOKIE_APPAREIL, appareil,
-                    max_age=duree, httponly=True, samesite="lax",
-                    secure=(request.url.scheme == "https"),
-                )
+            poser_cookies_benevole(reponse, request, jeton,
+                                   appareil if nouveau else None)
             # Le registre, lui, est mis à jour à CHAQUE activation réussie :
             # après une rotation du jeton, c'est ce qui fait repasser en actif
             # l'appareil qui vient de rouvrir le lien (voir
             # `services.enregistrer_appareil`). Une écriture par activation,
             # jamais sur un chemin chaud.
+            #
+            # `expire_le` porte l'échéance DU JETON (None s'il n'en a pas), et
+            # non plus celle du cookie, qui vit désormais bien au-delà : c'est
+            # elle qui dit jusqu'à quand l'appareil peut écrire. Une
+            # prolongation la réaligne (`services.aligner_echeance_appareils`).
             services.enregistrer_appareil(
                 conn, appareil, "benevole",
-                expire_le=_echeance(duree),
+                expire_le=expire_iso,
                 generation=services.empreinte_jeton(attendu),
             )
             return reponse
+
+        # Échec : mode ouvert (aucun jeton), jeton expiré, ou jeton erroné.
+        # Un jeton expiré avec le BON lien ne doit pas s'entendre dire « lien
+        # invalide » : la bénévole partirait chercher un autre lien, qui
+        # n'existe pas (SEC-12).
+        if attendu is None:
+            contexte = {"motif": "ouvert"}
+        elif auth.jeton_expire_reconnu(conn, jeton):
+            contexte = {"motif": "expire",
+                        "expire_local": services.format_local(expire_iso)}
+        else:
+            contexte = {"motif": "invalide"}
     finally:
         conn.close()
 
-    # Échec : mode ouvert (aucun jeton), jeton expiré, ou jeton erroné.
-    motif = "ouvert" if attendu is None else "invalide"
     return templates.TemplateResponse(
-        request, "acces_refuse.html", {"motif": motif}, status_code=403
+        request, "acces_refuse.html", contexte, status_code=403
     )

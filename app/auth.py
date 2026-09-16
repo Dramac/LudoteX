@@ -24,7 +24,20 @@ SÉCURITÉ
   d'information par le temps de réponse.
 - Limitation de débit par IP sur l'activation (voir `trop_de_tentatives`), comme
   garde-fou « ceinture et bretelles » contre la force brute.
-- Rotation : changer `PRET_TOKEN` invalide tous les anciens cookies.
+- Rotation : réinitialiser le jeton (ou changer `PRET_TOKEN`) invalide tous
+  les anciens cookies. C'est le SEUL geste de révocation.
+
+ÉCHÉANCE ET PROLONGATION (lot-5-pré-production)
+-----------------------------------------------
+Le jeton porte une échéance (`pret_token_expire`) : passée, l'accès se FERME
+pour tous les appareils (décision n° 15 de l'audit du 2026-09-12, non tranchée :
+on garde la fermeture). Trois choses rendent cette fermeture moins brutale :
+- `echeance_proche` : le bureau est averti `SEUIL_EXPIRE_BIENTOT` avant ;
+- `prolonger_jeton` : l'échéance se repousse SANS changer le jeton, donc sans
+  rediffuser le lien ;
+- `DUREE_COOKIE_JETON` : le cookie de l'appareil ne meurt plus à l'échéance du
+  jeton, sans quoi une prolongation ne servirait à rien aux téléphones déjà
+  activés (voir le commentaire de la constante).
 """
 
 from __future__ import annotations
@@ -42,6 +55,44 @@ from app.db import get_connection
 
 # Durée de validité par défaut du jeton si aucune date de fin n'est choisie.
 DUREE_DEFAUT_JOURS = 7
+
+# Seuil à partir duquel l'échéance du jeton est signalée au bureau (« expire
+# bientôt »), sur la supervision, le tableau de bord et /admin/jeton.
+#
+# 72 heures, et pas davantage ni moins, pour deux raisons :
+# - un événement tient sur un week-end. Le bureau ouvre l'administration la
+#   veille ou le matin du premier jour : une échéance qui tomberait avant la
+#   fin du week-end est alors déjà signalée ;
+# - le seuil reste NETTEMENT plus court que la durée par défaut
+#   (`DUREE_DEFAUT_JOURS`) : un jeton tout juste créé n'est pas déjà « en
+#   alerte ». Un avertissement allumé en permanence apprend à ne plus le lire.
+SEUIL_EXPIRE_BIENTOT = timedelta(hours=72)
+
+# Durée de vie du cookie de jeton posé sur l'appareil — DÉCOUPLÉE de l'échéance
+# du jeton.
+#
+# Jusqu'au lot-5-pré-production, le cookie expirait à l'échéance du jeton telle
+# qu'elle était au moment de l'activation. Conséquence : prolonger le jeton ne
+# prolongeait PAS les téléphones déjà activés — leurs navigateurs effaçaient le
+# cookie à l'ancienne échéance, tous au même instant. Et le jour d'une échéance
+# passée par surprise, le cookie avait déjà disparu : prolonger ne rendait
+# l'accès à personne sans rouvrir le lien.
+#
+# Un cookie plus long ne donne AUCUN droit de plus : sa valeur est le jeton
+# lui-même (qui le possède connaît le lien), et le serveur vérifie à CHAQUE
+# requête l'égalité avec le jeton en vigueur ET l'échéance (`acces_valide`).
+# La réinitialisation reste la révocation : elle change le jeton, donc tous les
+# cookies cessent d'être égaux.
+#
+# 400 jours : le plafond que les navigateurs récents appliquent de toute façon
+# à un cookie. Le cookie est en outre reposé à chaque requête autorisée (voir
+# `ETAT_RAFRAICHIR_COOKIE`) : un appareil qui sert ne le perd jamais.
+DUREE_COOKIE_JETON = 400 * 86400
+
+# Clé posée sur `request.state` quand l'accès a été accordé par le cookie de
+# jeton : le middleware de `app/main.py` repose alors le cookie (voir
+# `routes/acces.poser_cookies_benevole`).
+ETAT_RAFRAICHIR_COOKIE = "rafraichir_cookie_jeton"
 
 # Nom du cookie déposé sur l'appareil bénévole après activation.
 COOKIE_NAME = "jeton_pret"
@@ -83,15 +134,88 @@ def expiration_jeton(conn: sqlite3.Connection) -> str | None:
     return row[0] if row and row[0] else None
 
 
+def _maintenant() -> datetime:
+    """Instant présent (UTC). Isolé pour que les tests puissent avancer l'horloge."""
+    return datetime.now(timezone.utc)
+
+
+def _date(expire_iso: str | None) -> datetime | None:
+    """Échéance lue en `datetime`, ou None si absente ou illisible."""
+    if not expire_iso:
+        return None
+    try:
+        return datetime.fromisoformat(expire_iso)
+    except ValueError:
+        return None
+
+
 def jeton_expire(conn: sqlite3.Connection) -> bool:
     """True si une date d'expiration est définie ET dépassée."""
-    e = expiration_jeton(conn)
-    if not e:
+    echeance = _date(expiration_jeton(conn))
+    return echeance is not None and _maintenant() > echeance
+
+
+def echeance_proche(expire_iso: str | None) -> bool:
+    """
+    True si l'échéance est encore à venir mais tombe dans `SEUIL_EXPIRE_BIENTOT`.
+
+    SEUL endroit où « expire bientôt » se calcule : la supervision (donc le
+    tableau de bord) et /admin/jeton l'appellent sur l'échéance qu'ils ont
+    déjà lue. Une échéance passée n'est PAS « proche » : elle est expirée, et
+    les écrans le disent autrement.
+    """
+    echeance = _date(expire_iso)
+    if echeance is None:
         return False
-    try:
-        return datetime.now(timezone.utc) > datetime.fromisoformat(e)
-    except ValueError:
+    maintenant = _maintenant()
+    return maintenant <= echeance <= maintenant + SEUIL_EXPIRE_BIENTOT
+
+
+def prolonger_jeton(conn: sqlite3.Connection, expire_iso: str | None) -> None:
+    """
+    Repousse l'échéance du jeton SANS toucher au jeton : le lien reste valable.
+
+    N'écrit que `pret_token_expire`. Ne committe pas : la route l'appelle dans
+    une transaction qui réaligne aussi le registre des appareils.
+
+    Lève l'accès fermé par une échéance passée : dès l'écriture, `acces_valide`
+    accepte de nouveau les cookies égaux au jeton — ils sont encore dans les
+    navigateurs, puisqu'ils vivent `DUREE_COOKIE_JETON`.
+
+    Raises:
+        ValueError: "sans_jeton" (mode ouvert : rien à prolonger),
+            "date_absente" (saisie vide ou illisible), "date_passee".
+    """
+    if jeton_actuel(conn) is None:
+        raise ValueError("sans_jeton")
+    echeance = _date(expire_iso)
+    if echeance is None:
+        raise ValueError("date_absente")
+    if echeance <= _maintenant():
+        raise ValueError("date_passee")
+    conn.execute(
+        "INSERT INTO parametres (cle, valeur) VALUES ('pret_token_expire', ?) "
+        "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+        (expire_iso,),
+    )
+
+
+def jeton_expire_reconnu(conn: sqlite3.Connection, presente: str | None) -> bool:
+    """
+    True si le jeton est expiré ET que `presente` est bien le jeton en vigueur.
+
+    C'est la condition exacte sous laquelle on peut dire à une bénévole « ce
+    n'est pas votre lien qui est en cause » : avec un jeton encore valide, elle
+    serait entrée ; avec un autre jeton, son lien EST en cause. Sert à /acces
+    (jeton du lien) et à la page du 403 (jeton du cookie), quelle que soit la
+    garde qui a levé le 403.
+
+    Comparaison en temps constant, comme dans `acces_valide`.
+    """
+    attendu = jeton_actuel(conn)
+    if attendu is None or not presente or not jeton_expire(conn):
         return False
+    return secrets.compare_digest(presente, attendu)
 
 
 def reinitialiser_jeton(conn: sqlite3.Connection,
@@ -104,7 +228,8 @@ def reinitialiser_jeton(conn: sqlite3.Connection,
 
     Args:
         conn: connexion SQLite ouverte.
-        expire_iso: date de fin de validité (UTC ISO), ou None → défaut 1 semaine.
+        expire_iso: date de fin de validité (UTC ISO), ou None → défaut
+            `DUREE_DEFAUT_JOURS`.
 
     Returns:
         Le nouveau jeton (à diffuser via le lien d'activation).
@@ -131,7 +256,8 @@ def acces_valide(request: Request) -> bool:
     - aucun jeton configuré → accès OUVERT (mode dev) ;
     - jeton configuré mais EXPIRÉ → accès FERMÉ (refusé) ;
     - sinon, le cookie de l'appareil doit égaler le jeton (comparaison en temps
-      constant).
+      constant). Accès accordé ainsi → la requête est marquée pour que le
+      cookie soit reposé à la réponse (`ETAT_RAFRAICHIR_COOKIE`).
 
     Args:
         request: la requête entrante (on y lit le cookie).
@@ -150,7 +276,16 @@ def acces_valide(request: Request) -> bool:
     if expire:
         return False  # jeton expiré → fermé
     presente = request.cookies.get(COOKIE_NAME, "")
-    return bool(presente) and secrets.compare_digest(presente, attendu)
+    valide = bool(presente) and secrets.compare_digest(presente, attendu)
+    if valide:
+        # Demande au middleware de reposer le cookie (voir DUREE_COOKIE_JETON).
+        # Seulement ici : un cookie refusé n'est jamais prolongé. `state` est
+        # lu sans exiger sa présence : le journal appelle aussi cette fonction,
+        # et son contrat ne demande à la requête que ses cookies.
+        etat = getattr(request, "state", None)
+        if etat is not None:
+            setattr(etat, ETAT_RAFRAICHIR_COOKIE, True)
+    return valide
 
 
 def peut_ecrire(request: Request) -> bool:

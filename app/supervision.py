@@ -371,14 +371,24 @@ def etat_journal(derniere_operation: str | None = None) -> dict:
 
 
 def etat_jeton(conn: sqlite3.Connection) -> dict:
-    """Jeton bénévole : défini ou non, date d'expiration, expiré ou valide."""
+    """
+    Jeton bénévole : défini ou non, date d'expiration, expiré, expire bientôt.
+
+    `bientot` est calculé par `auth.echeance_proche` — le seuil vit dans `auth`,
+    à côté de l'échéance qu'il qualifie, parce que /admin/jeton en a besoin
+    aussi et qu'il ne doit exister qu'une seule règle. Il porte sur l'échéance
+    DÉJÀ lue ici : aucune lecture de plus, donc aucune nouvelle raison
+    d'échouer pour ce bloc, qui ne passe pas par `_sans_exception`.
+    """
     jeton = auth.jeton_actuel(conn)
     if not jeton:
         return {"defini": False}
+    expire_iso = auth.expiration_jeton(conn)
     return {
         "defini": True,
-        "expire_iso": auth.expiration_jeton(conn),
+        "expire_iso": expire_iso,
         "expire": auth.jeton_expire(conn),
+        "bientot": auth.echeance_proche(expire_iso),
     }
 
 

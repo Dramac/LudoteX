@@ -106,22 +106,30 @@
    <a class="lien" href="/admin/donnees#archives">Données &amp; sauvegarde</a>.</p>
 
 <h3>Jeton bénévole</h3>
+{# Quatre états, dits EN TEXTE comme les autres blocs. L'échéance est lue en
+   base : ce bloc ne suppose rien, il ne peut donc pas rassurer à tort. #}
 {% if not etat.jeton.defini %}
   <p class="resultat resultat-attention">
-    Aucun jeton défini — les écrans bénévole sont ouverts à tous.
+    <strong>Attention :</strong> aucun jeton défini — les écrans bénévole sont ouverts à tous.
   </p>
 {% elif etat.jeton.expire %}
   <p class="resultat resultat-attention">
-    Jeton EXPIRÉ depuis le {{ etat.jeton.expire_iso | dt_local }} — l'accès bénévole est fermé.
+    <strong>Attention :</strong> jeton EXPIRÉ depuis le {{ etat.jeton.expire_iso | dt_local }} —
+    l'accès bénévole est fermé sur tous les téléphones. Prolongez-le sans changer le lien.
+  </p>
+{% elif etat.jeton.bientot %}
+  <p class="resultat resultat-attention">
+    <strong>Attention :</strong> le jeton expire bientôt, le {{ etat.jeton.expire_iso | dt_local }}.
+    À cette heure-là, tous les téléphones seront coupés. Prolongez-le sans changer le lien.
   </p>
 {% elif etat.jeton.expire_iso %}
   <p class="resultat resultat-ok">
-    Jeton valide, jusqu'au {{ etat.jeton.expire_iso | dt_local }}.
+    <strong>Ok :</strong> jeton valide, jusqu'au {{ etat.jeton.expire_iso | dt_local }}.
   </p>
 {% else %}
-  <p class="resultat resultat-ok">Jeton valide (sans date d'expiration).</p>
+  <p class="resultat resultat-ok"><strong>Ok :</strong> jeton valide (sans date d'expiration).</p>
 {% endif %}
-<p class="stats-note">Pour le lien d'activation ou le réinitialiser,
+<p class="stats-note">Pour le lien d'activation, le prolonger ou le réinitialiser,
    voir <a class="lien" href="/admin/jeton">Accès bénévole</a>.</p>
 
 {% if etat.annonce %}

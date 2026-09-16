@@ -37,7 +37,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import auth, journal
+from app import auth, journal, services
 from app.db import get_connection, init_db
 from app.modules import ModuleDesactive, garde_module
 from app.routes import (acces, admin, catalogue, images, live, maintenance, pret,
@@ -83,6 +83,38 @@ app.include_router(routes_programme.router, dependencies=[garde_module("programm
 app.include_router(planning_routes.router,  dependencies=[garde_module("planning")])   # /planning, /planning/*
 
 
+@app.middleware("http")
+async def rafraichir_cookie_benevole(request, call_next):
+    """
+    Repose le cookie de jeton sur la réponse d'une requête qu'il a autorisée.
+
+    `auth.acces_valide` marque la requête (`auth.ETAT_RAFRAICHIR_COOKIE`)
+    UNIQUEMENT quand le cookie présenté égale le jeton en vigueur et que celui-ci
+    n'est pas expiré : un cookie refusé n'est jamais prolongé, et une
+    réinitialisation du jeton révoque toujours tous les appareils.
+
+    Pourquoi reposer (lot-5-pré-production) : les téléphones activés AVANT que
+    le cookie ne soit découplé de l'échéance du jeton portent encore un cookie
+    qui meurt à l'ancienne échéance. Sans ce passage, prolonger le jeton les
+    couperait quand même, tous au même instant. Aucune écriture en base : un
+    en-tête de réponse, rien de plus.
+
+    Ne touche pas une réponse qui pose déjà ce cookie (l'activation /acces).
+    """
+    reponse = await call_next(request)
+    if getattr(request.state, auth.ETAT_RAFRAICHIR_COOKIE, False):
+        jeton = request.cookies.get(auth.COOKIE_NAME)
+        deja_pose = any(
+            nom == b"set-cookie" and valeur.startswith(auth.COOKIE_NAME.encode() + b"=")
+            for nom, valeur in reponse.raw_headers
+        )
+        if jeton and not deja_pose:
+            acces.poser_cookies_benevole(
+                reponse, request, jeton, services.appareil_de(request)
+            )
+    return reponse
+
+
 @app.exception_handler(ModuleDesactive)
 async def gestion_module_desactive(request, exc: ModuleDesactive):
     """
@@ -119,6 +151,34 @@ _MESSAGE_HTTP_DEFAUT = (
 )
 
 
+def _contexte_refus(request) -> dict:
+    """
+    Motif de la page « accès réservé » servie pour un 403.
+
+    Deux gardes lèvent ce 403 : `auth.exiger_jeton` (écrans bénévole) et
+    `modules.garde_module` (module réglé sur « bénévoles »). Le module
+    DÉSACTIVÉ, lui, ne passe jamais ici : il a son propre gestionnaire
+    (`ModuleDesactive`, page « module désactivé », 404).
+
+    « expire » n'est pas choisi selon la garde, mais selon la CAUSE : le jeton
+    est expiré ET le cookie de l'appareil est bien le jeton en vigueur
+    (`auth.jeton_expire_reconnu`). C'est exactement la condition sous laquelle
+    cet appareil serait entré sans l'échéance — donc la seule où « rouvrez le
+    lien d'activation » est faux, et où « ce n'est pas votre lien qui est en
+    cause » est vrai. Un visiteur sans cookie, sur un module réservé comme sur
+    le scanner, garde le message habituel : il n'a pas encore activé l'accès,
+    et c'est /acces qui lui dira que le jeton a expiré s'il ouvre le bon lien.
+    """
+    conn = get_connection()
+    try:
+        if auth.jeton_expire_reconnu(conn, request.cookies.get(auth.COOKIE_NAME)):
+            return {"motif": "expire",
+                    "expire_local": services.format_local(auth.expiration_jeton(conn))}
+    finally:
+        conn.close()
+    return {"motif": "reserve"}
+
+
 @app.exception_handler(StarletteHTTPException)
 async def gestion_http(request, exc: StarletteHTTPException):
     """
@@ -147,7 +207,7 @@ async def gestion_http(request, exc: StarletteHTTPException):
     """
     if exc.status_code == 403:
         return templates.TemplateResponse(
-            request, "acces_refuse.html", {"motif": "reserve"}, status_code=403
+            request, "acces_refuse.html", _contexte_refus(request), status_code=403
         )
     if exc.status_code == 404:
         return templates.TemplateResponse(

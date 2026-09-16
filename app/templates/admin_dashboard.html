@@ -13,6 +13,20 @@
         {{ message[1] }}
       </p>
     {% endif %}
+    {# Échéance du jeton : rappelée ICI, en tête, parce que la colonne de
+       supervision est masquée sur téléphone — et que c'est sur téléphone que
+       le bureau ouvre l'administration un jour d'événement. Même lecture que
+       le bloc « Jeton » (etat.jeton), aucune requête de plus. #}
+    {% if etat.jeton.defini and (etat.jeton.expire or etat.jeton.bientot) %}
+      <p class="resultat resultat-attention">
+        <strong>Attention :</strong>
+        {% if etat.jeton.expire %}l'accès bénévole a expiré le {{ etat.jeton.expire_iso | dt_local }} :
+          aucun téléphone ne peut plus enregistrer de prêt.
+        {% else %}l'accès bénévole expire le {{ etat.jeton.expire_iso | dt_local }} :
+          tous les téléphones seront alors coupés.{% endif %}
+        <a class="lien" href="/admin/jeton">Le prolonger sans changer le lien</a>
+      </p>
+    {% endif %}
     <h2>Gérer</h2>
 
     <div class="admin-groupes">

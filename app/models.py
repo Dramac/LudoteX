@@ -258,7 +258,7 @@ CREATE TABLE IF NOT EXISTS parametres (
 # les courses de pochettes, services.transaction).
 #
 # `generation` — la colonne qui rend la liste HONNÊTE. Un cookie de jeton cesse
-# d'être valide pour DEUX raisons : son échéance passe, ou le jeton est
+# d'être valide pour DEUX raisons : l'échéance du jeton passe, ou le jeton est
 # réinitialisé (ce qui invalide instantanément TOUS les cookies). Une liste qui
 # ne regarderait que `expire_le` afficherait comme actifs des appareils morts
 # depuis la dernière rotation. On stocke donc une EMPREINTE TRONQUÉE du jeton en
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS appareils (
     appareil    TEXT PRIMARY KEY,   -- les 6 caractères hexadécimaux du cookie
     role        TEXT NOT NULL,      -- 'benevole' | 'admin' (dernière activation)
     active_le   TEXT NOT NULL,      -- UTC ISO, instant de la pose du cookie
-    expire_le   TEXT,               -- UTC ISO, même échéance que le cookie ; NULL pour un admin (la session en mémoire fait foi)
+    expire_le   TEXT,               -- UTC ISO, échéance du jeton pour cet appareil (reportée par une prolongation) ; NULL pour un admin (la session en mémoire fait foi) ou un jeton sans échéance
     generation  TEXT,               -- empreinte tronquée du jeton en vigueur ; NULL en mode ouvert et pour un admin
     libelle     TEXT                -- libellé libre saisi en admin : un POSTE (« comptoir 2 »), jamais une personne
 );

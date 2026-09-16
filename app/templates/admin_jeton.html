@@ -7,6 +7,12 @@
   <h1>Accès bénévole</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
 
+  {% if message %}
+    <p class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}">
+      {{ message[1] }}
+    </p>
+  {% endif %}
+
   {# Fiche C1 point 3 : écran à risque — réinitialiser déconnecte TOUS les
      appareils déjà activés, ce que le confirm() dit au moment du clic mais
      que rien n'expliquait avant. #}
@@ -15,10 +21,14 @@
     <p>Pour dépanner <strong>une seule personne</strong>, ne réinitialisez
        pas : renvoyez-lui simplement le lien d'activation ci-dessus, il suffit
        qu'elle l'ouvre sur son téléphone.</p>
+    <p>Pour repousser la <strong>date de fin de validité</strong>, ne
+       réinitialisez pas non plus : utilisez « Prolonger sans changer le
+       lien ». Le lien reste le même et les téléphones déjà activés continuent,
+       y compris quand la date est déjà dépassée.</p>
     <p>Réinitialiser fabrique un lien entièrement nouveau et
        <strong>déconnecte tous les autres téléphones</strong>, qui devront
-       tous rouvrir le nouveau lien. À réserver à une fin de validité
-       dépassée, à une fuite du lien, ou à la rotation annuelle.</p>
+       tous rouvrir le nouveau lien. À réserver à une fuite du lien, ou à la
+       rotation annuelle.</p>
     <p><a class="lien" href="/admin/aide#probleme-jeton">Voir l'aide complète — accès bénévole</a></p>
   </details>
 
@@ -29,8 +39,16 @@
 
     {% if expire_local %}
       {% if expire_depasse %}
-        <p class="resultat resultat-attention">Jeton EXPIRÉ depuis le {{ expire_local }} —
-           l'accès bénévole est fermé. Réinitialisez-le ci-dessous.</p>
+        <p class="resultat resultat-attention"><strong>Attention :</strong>
+           jeton EXPIRÉ depuis le {{ expire_local }} — l'accès bénévole est
+           fermé sur tous les téléphones. Prolongez-le ci-dessous : le lien ne
+           change pas, et les téléphones déjà activés reprennent sans rien
+           refaire.</p>
+      {% elif expire_bientot %}
+        <p class="resultat resultat-attention"><strong>Attention :</strong>
+           le jeton expire bientôt, le <strong>{{ expire_local }}</strong>. À
+           cette heure-là, tous les téléphones seront coupés. Prolongez-le
+           ci-dessous, sans changer le lien.</p>
       {% else %}
         <p class="dispo-titre">Valable jusqu'au <strong>{{ expire_local }}</strong>.</p>
       {% endif %}
@@ -64,6 +82,25 @@
     </p>
   {% endif %}
 
+  {% if jeton %}
+    {# SEC-12 : le geste qui manquait. N'écrit QUE l'échéance ; le jeton, donc
+       le lien, ne change pas. Pas de confirm() : rien n'est coupé. #}
+    <h2>Prolonger sans changer le lien</h2>
+    <form method="post" action="/admin/jeton/prolonger">
+      <div class="champ">
+        <label for="prolonger-expire">Nouvelle date de fin de validité</label>
+        <input type="datetime-local" id="prolonger-expire" name="expire" required>
+      </div>
+      <p class="stats-note">Le lien d'activation reste le même : rien à
+         rediffuser. Les téléphones déjà activés continuent sans rien refaire.</p>
+      <button type="submit" class="bouton bouton-principal">Prolonger sans changer le lien</button>
+    </form>
+
+    <h2>Réinitialiser le jeton</h2>
+    <p class="stats-note">Fabrique un nouveau lien et <strong>coupe tous les
+       téléphones</strong>. C'est le seul moyen de retirer l'accès, par exemple
+       après une fuite du lien.</p>
+  {% endif %}
   <form method="post" action="/admin/jeton/reinitialiser"
         onsubmit="return confirm('Générer un nouveau jeton ? Les anciens liens et appareils déjà activés cesseront de fonctionner.');">
     <div class="champ">
@@ -126,6 +163,7 @@
         <td>{{ a.active_le | dt_local }}</td>
         <td>
           {% if a.expire_le %}{{ a.expire_le | dt_local }}
+          {% elif a.benevole_actif %}sans échéance
           {% else %}session en cours{% endif %}
         </td>
         {# Déduite du journal, jamais d'une colonne de base. Un appareil sorti
@@ -180,8 +218,9 @@
         {% endfor %}
       </table>
       <p class="stats-note">Un appareil périmé ne peut plus rien enregistrer.
-         Il redevient actif dès que la personne rouvre le lien d'activation
-         ci-dessus — rien à faire de votre côté.</p>
+         « Validité dépassée » : prolongez le jeton ci-dessus, l'appareil
+         reprend sans que la personne ait rien à refaire. « Jeton renouvelé
+         depuis » : la personne doit ouvrir le lien d'activation actuel.</p>
     </details>
   {% endif %}
 

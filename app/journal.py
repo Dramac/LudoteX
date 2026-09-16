@@ -58,6 +58,7 @@ MODULES = {
 ACTIONS = {
     # --- Priorité 1 — configuration et administration (§2.1) --------------
     "jeton_reinitialise",
+    "jeton_prolonge",
     "motdepasse_change",
     "connexion_reussie",
     "connexion_echouee",

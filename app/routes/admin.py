@@ -875,6 +875,13 @@ def motdepasse_changer(
 # ---------------------------------------------------------------------------
 @router.get("/jeton")
 def jeton_page(request: Request):
+    """Écran « Accès bénévole » (voir `_page_jeton`)."""
+    if (garde := _garde(request)):
+        return garde
+    return _page_jeton(request)
+
+
+def _page_jeton(request: Request, message: tuple | None = None):
     """
     Affiche le lien d'activation bénévole, les options de partage et la LISTE
     DES APPAREILS qui ont utilisé ce lien (docs/conception-journal.md §6.2).
@@ -892,9 +899,11 @@ def jeton_page(request: Request):
     La colonne « Dernière activité » vient d'une TROISIÈME source, le fichier
     journal — pas d'une colonne de base (§6.2) : aucune écriture n'est ajoutée
     au chemin des requêtes pour la produire.
+
+    Réutilisée par la prolongation, qui réaffiche l'écran avec son `message`
+    (("succes" | "erreur", texte)). La garde d'administration reste dans chaque
+    route appelante.
     """
-    if (garde := _garde(request)):
-        return garde
     conn = get_connection()
     try:
         jeton = auth.jeton_actuel(conn)
@@ -924,21 +933,23 @@ def jeton_page(request: Request):
     lien, partage = None, {}
     if jeton:
         lien = f"{_base_url(request)}/acces?jeton={jeton}"
-        message = f"Accès bénévole — {nom_asso} : {lien}"
+        texte_partage = f"Accès bénévole — {nom_asso} : {lien}"
         partage = {
-            "whatsapp": "https://wa.me/?text=" + quote(message),
+            "whatsapp": "https://wa.me/?text=" + quote(texte_partage),
             "mail": ("mailto:?subject=" + quote("Accès bénévole — prêt de jeux")
-                     + "&body=" + quote(message)),
-            "sms": "sms:?&body=" + quote(message),
+                     + "&body=" + quote(texte_partage)),
+            "sms": "sms:?&body=" + quote(texte_partage),
             # Discord n'a pas de lien de partage pré-rempli : on copie le message
             # (le gabarit fournit un bouton « copier pour Discord »).
-            "message": message,
+            "message": texte_partage,
         }
     return templates.TemplateResponse(
         request, "admin_jeton.html",
         {"jeton": jeton, "lien": lien, "partage": partage,
          "expire_local": expire_local, "expire_depasse": expire_depasse,
-         "defaut_jours": auth.DUREE_DEFAUT_JOURS, "registre": registre},
+         "expire_bientot": auth.echeance_proche(expire_iso),
+         "defaut_jours": auth.DUREE_DEFAUT_JOURS, "registre": registre,
+         "message": message},
     )
 
 
@@ -2077,6 +2088,66 @@ def jeton_reinitialiser(request: Request, expire: str = Form("")):
         objet=f"valable jusqu'au {expire_lisible}" if expire_lisible else None,
     )
     return RedirectResponse("/admin/jeton", status_code=303)
+
+
+# Message affiché quand une prolongation est refusée, par motif levé par
+# `auth.prolonger_jeton`. Jamais d'erreur brute : l'écran est réaffiché, rien
+# n'est écrit, et la phrase dit quoi faire.
+_REFUS_PROLONGATION = {
+    "sans_jeton": ("Aucun jeton n'est actif : il n'y a rien à prolonger. "
+                   "Utilisez « Réinitialiser le jeton » pour en créer un."),
+    "date_absente": ("Choisissez la nouvelle date de fin de validité avant "
+                     "d'appuyer sur « Prolonger sans changer le lien »."),
+    "date_passee": ("Cette date est déjà passée : choisissez une date à venir. "
+                    "Rien n'a été modifié."),
+}
+
+
+@router.post("/jeton/prolonger")
+def jeton_prolonger(request: Request, expire: str = Form("")):
+    """
+    Repousse l'échéance du jeton bénévole SANS changer le jeton (SEC-12).
+
+    Le lien d'activation reste le même : rien à rediffuser, et les téléphones
+    déjà activés continuent (y compris après une échéance passée par surprise,
+    leur cookie vivant bien au-delà — `auth.DUREE_COOKIE_JETON`).
+
+    Dans la même transaction, l'échéance est reportée sur les appareils de la
+    génération en vigueur, pour que la liste des appareils ne les déclare pas
+    « Validité dépassée » à tort.
+
+    Ce n'est PAS une révocation : pour retirer l'accès, seule la
+    réinitialisation fait foi.
+    """
+    if (garde := _garde(request)):
+        return garde
+    expire_utc = services.local_vers_utc_iso(expire.strip() or None)
+    conn = get_connection()
+    try:
+        try:
+            with services.transaction(conn):
+                auth.prolonger_jeton(conn, expire_utc)
+                services.aligner_echeance_appareils(
+                    conn, services.empreinte_jeton(auth.jeton_actuel(conn)), expire_utc
+                )
+        except ValueError as refus:
+            return _page_jeton(
+                request, ("erreur", _REFUS_PROLONGATION.get(
+                    str(refus), _REFUS_PROLONGATION["date_absente"]))
+            )
+        expire_lisible = services.format_local(expire_utc)
+    finally:
+        conn.close()
+    # Sur le modèle exact de `jeton_reinitialise` : l'ÉCHÉANCE, jamais le jeton
+    # ni son empreinte (§8).
+    journal.journaliser(
+        request, "admin", "jeton_prolonge",
+        objet=f"valable jusqu'au {expire_lisible}",
+    )
+    return _page_jeton(
+        request, ("succes", f"Accès bénévole prolongé jusqu'au {expire_lisible}. "
+                            "Le lien n'a pas changé : rien à rediffuser.")
+    )
 
 
 # ---------------------------------------------------------------------------

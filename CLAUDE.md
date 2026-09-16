@@ -76,7 +76,8 @@ worker). Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
 - **Séparation lecture / écriture** : catalogue et fiches publics et sans
   action ; prêt/retour derrière un **jeton bénévole** aléatoire long mémorisé
   côté appareil, + limitation de débit par IP. Pas de comptes individuels.
-  Rotation du jeton par l'admin, avec date d'expiration.
+  Rotation du jeton par l'admin, avec date d'expiration prolongeable sans
+  changer le lien.
 - **Zéro donnée personnelle** dans l'application de prêt — propriété à
   préserver. Toute proposition qui ferait entrer une donnée personnelle doit
   être **signalée comme telle avant d'être écrite**. Deux exceptions assumées et
