@@ -20,8 +20,8 @@ Production, depuis le dossier d'installation :
     cd /opt/ludotex
     sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py
 
-Instance de formation — son environnement est lu par systemd, pas par un
-`.env` du dossier, d'où l'option `--env` :
+Instance de formation — son environnement est le fichier que lit systemd, pas
+le `.env` du dossier, d'où l'option `--env` :
 
     sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py \\
         --env /etc/ludotex-formation.env
@@ -49,10 +49,12 @@ QUELLE BASE EST VISÉE
 ---------------------
 Celle de `DATABASE_PATH`, résolue EXACTEMENT comme l'application la résout
 (`app.db.get_database_path`), après chargement :
-1. du fichier `--env`, s'il est donné, qui l'EMPORTE sur tout le reste ;
-2. puis du `.env` que trouve `python-dotenv` en remontant depuis le dossier
-   de `app/` — celui du dossier d'installation (et non celui du dossier
-   courant : un script lancé d'ailleurs vise la même base).
+1. du fichier `--env`, s'il est donné, qui l'EMPORTE sur tout le reste — et
+   qui devient le SEUL fichier d'environnement du processus : le `.env` du
+   dossier d'installation n'est pas relu derrière lui (`LUDOTEX_ENV_FILE`,
+   voir `app/environnement.py`), comme pour l'instance de formation elle-même ;
+2. sinon, du fichier d'environnement de l'instance selon `app/environnement.py`
+   — le `.env` du dossier d'installation, quel que soit le dossier courant.
 Un chemin relatif se lit, lui, depuis le dossier COURANT : d'où `cd /opt/ludotex`
 dans l'usage ci-dessus, et le chemin absolu affiché avant toute écriture.
 """
@@ -61,6 +63,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -75,15 +78,22 @@ ERREUR = 3         # base illisible ou d'un autre format
 
 
 def _charger_env(fichier: str | None) -> None:
-    """Charge `--env` en priorité (override), avant tout import de `app`."""
+    """
+    Charge `--env` en priorité (override), avant tout import d'un module d'`app`
+    qui lit l'environnement, puis en fait le fichier de l'instance : sans cela,
+    `app` compléterait les clés absentes avec le `.env` de la production.
+    """
     if not fichier:
         return
     from dotenv import load_dotenv
 
-    chemin = Path(fichier)
+    from app.environnement import VARIABLE_FICHIER_ENV
+
+    chemin = Path(fichier).resolve()
     if not chemin.is_file():
         raise FileNotFoundError(fichier)
     load_dotenv(chemin, override=True)
+    os.environ[VARIABLE_FICHIER_ENV] = str(chemin)
 
 
 def _ouvrir_sans_creer(chemin: Path) -> sqlite3.Connection:

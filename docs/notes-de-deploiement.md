@@ -76,13 +76,192 @@ est installée.
 | L'utilisateur du service, le propriétaire de chaque fichier du code | `update.sh` agit sous cet utilisateur dès sa première ligne et échoue bruyamment s'il manque ou si le code ne lui appartient pas |
 | Le bit exécutable des scripts de `deploy/` | git le porte lui-même, le `git pull` le rétablit |
 | Environnement Python, dépendances, schéma des bases | `update.sh` les pose à chaque passage (étapes 3 et 4) |
-| Le **résultat** de la dernière sauvegarde de nuit | un minuteur actif peut lancer un script qui échoue : la preuve est une archive `03xxxx`, à vérifier le matin selon `docs/deploiement.md` § 7 |
+| Le **résultat** de la dernière sauvegarde automatique | un minuteur actif peut lancer un script qui échoue : la preuve est une sauvegarde de routine de moins de 14 heures, à vérifier selon `docs/deploiement.md` § 7 |
 | Le jeton bénévole, les données de démonstration de la formation | ce sont des données, pas de la configuration du serveur |
 | `FORMATION_URL` dans le `.env` de production | clé facultative, propre à une instance ; son absence masque seulement un lien |
 
 ---
 
 ## À paraître
+
+### Unités systemd, fichier de la formation, sauvegarde à 3h et à 15h
+
+Trois changements, **un seul passage** : ils touchent tous aux fichiers que
+systemd lit, et `update.sh` n'en copie aucun.
+
+- **Plus aucune requête journalisée par l'application** (`--no-access-log`
+  dans `ludotex.service` et `ludotex-formation.service`). Sans cette option,
+  uvicorn écrivait chaque requête dans journald, **chaîne de requête
+  comprise** : liens d'activation (`?jeton=…`) et codes personnels du planning
+  (`?code=…`), lisibles par tout membre du groupe `adm`. nginx journalise déjà
+  chaque requête, secrets retirés : rien n'est perdu.
+- **Le site de formation ne lit plus le `.env` de la production.** Son unité
+  désigne son propre fichier à l'application (`LUDOTEX_ENV_FILE`). Jusqu'ici,
+  toute clé absente de `/etc/ludotex-formation.env` lui venait de la
+  production — le jeton bénévole compris : `/scanner` y répondait `403`.
+- **Deux sauvegardes par jour**, à 3h et à 15h (heure du serveur), et 60
+  archives de routine gardées au lieu de 30 : toujours un mois. La
+  supervision passe « Attention » au-delà de 14 heures sans sauvegarde de
+  routine (26 heures avant).
+
+**Facultatif au sens de `docs/versioning.md`** : sans ces gestes, rien ne
+casse, chaque instance se comporte comme avant. Deux effets visibles à
+connaître si on les remet à plus tard : le contrôle de report signale les
+quatre unités et le fichier de la formation ; et, le minuteur n'ayant qu'un
+passage, le bloc « Sauvegarde » de `/admin/supervision` passe **« Attention »
+chaque après-midi**, de 17h à 3h (heure du serveur) — c'est exact : il manque
+le passage de 15h.
+
+`update.sh` n'est **pas** modifié par cette version : aucun décalage d'une mise
+à jour. `install.sh` l'est (il écrit les deux nouvelles lignes du fichier de
+formation, et ne redemande plus le chemin des bases quand on garde le `.env`),
+mais il ne tourne pas pendant une mise à jour : rien à faire pour lui.
+
+Chemins par défaut ci-dessous (`/opt/ludotex`, `/var/lib/ludotex…`) : les
+adapter si l'installation est ailleurs. **Hors d'un moment de prêt** : les
+deux sites redémarrent (quelques secondes).
+
+1. **Avant**, constater que la production journalise encore les requêtes :
+   ```bash
+   curl -s -o /dev/null "http://127.0.0.1:8000/sante?essai=journald-avant"
+   journalctl -u ludotex --since "2 min ago" --no-pager | grep -c "journald-avant"
+   ```
+   *À voir :* `1`. (Une adresse sans effet, avec une chaîne de requête
+   factice : rien n'est écrit nulle part ailleurs.)
+
+2. Ajouter au fichier de la formation les deux clés qui lui venaient de la
+   production. D'abord compter, sans rien afficher :
+   ```bash
+   sudo grep -c -E '^(PRET_TOKEN|RATE_LIMIT_PER_MINUTE)=' /etc/ludotex-formation.env
+   ```
+   *À voir :* `0`. **Autre chose que `0` : ne pas ajouter**, passer à
+   l'étape 3 (une ligne existe déjà ; ne pas la dupliquer). Sinon :
+   ```bash
+   printf '\n# Accès bénévole ouvert : vide = pas de jeton (lot-7-pré-production).\nPRET_TOKEN=\nRATE_LIMIT_PER_MINUTE=60\n' | sudo tee -a /etc/ludotex-formation.env > /dev/null
+   sudo grep -c -E '^(PRET_TOKEN|RATE_LIMIT_PER_MINUTE)=' /etc/ludotex-formation.env
+   sudo stat -c '%a %U:%G' /etc/ludotex-formation.env
+   ```
+   *À voir :* `2`, puis `600 pretjeux:pretjeux` (`tee -a` ajoute sans toucher
+   aux droits). Rien d'autre à reporter : les autres clés attendues y sont
+   déjà (relevé du 2026-09-18, noms seuls).
+
+3. Copier les quatre unités, recharger systemd :
+   ```bash
+   cd /opt/ludotex
+   sudo cp deploy/ludotex.service deploy/ludotex-formation.service \
+           deploy/ludotex-sauvegarde.service deploy/ludotex-sauvegarde.timer \
+           /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+   Installation hors de `/opt/ludotex` : remplacer ce chemin dans les quatre
+   fichiers copiés (`sudo sed -i 's#/opt/ludotex#<dossier>#g' …`), comme le
+   fait `install.sh`, avant le `daemon-reload`.
+
+4. Redémarrer les deux sites et le minuteur :
+   ```bash
+   sudo systemctl restart ludotex ludotex-formation
+   sudo systemctl restart ludotex-sauvegarde.timer
+   systemctl is-active ludotex ludotex-formation ludotex-sauvegarde.timer
+   ```
+   *À voir :* trois fois `active`. Si l'heure de 15:00 est déjà passée depuis
+   la dernière sauvegarde, `Persistent=true` peut lancer tout de suite une
+   sauvegarde de rattrapage : c'est sans danger, une archive de plus.
+
+5. **Constater** — la production ne journalise plus les requêtes :
+   ```bash
+   curl -s -o /dev/null "http://127.0.0.1:8000/sante?essai=journald-apres"
+   journalctl -u ludotex --since "2 min ago" --no-pager | grep -c "journald-apres"
+   ```
+   *À voir :* `0` (l'étape 1 donnait `1`). Même contrôle sur la formation avec
+   le port `8100` et `-u ludotex-formation`.
+
+6. **Constater** — la formation est ouverte, la production ne l'est pas :
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8100/scanner
+   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/scanner
+   ```
+   *À voir :* `200`, puis `403` (sans jeton, la production refuse ; c'est
+   voulu). **`403` sur la formation** : sa propre base porte un jeton, posé un
+   jour par « Réinitialiser » sur son écran d'administration — le jeton en
+   base l'emporte sur le fichier. Le vérifier en lecture seule :
+   ```bash
+   sudo -u pretjeux sqlite3 "file:/var/lib/ludotex-formation/pret-jeux.db?mode=ro" "SELECT count(*) FROM parametres WHERE cle='pret_token' AND valeur <> '';"
+   ```
+   `1` confirme. Si l'on veut la formation ouverte (données fictives, aucun
+   enjeu), retirer ce jeton de **la base de formation seulement** :
+   ```bash
+   sudo -u pretjeux sqlite3 /var/lib/ludotex-formation/pret-jeux.db "DELETE FROM parametres WHERE cle IN ('pret_token','pret_token_expire');"
+   ```
+   puis refaire la première commande de cette étape : `200`, sans
+   redémarrage.
+
+7. **Constater** — deux passages de sauvegarde :
+   ```bash
+   systemctl list-timers ludotex-sauvegarde.timer --no-pager
+   ```
+   *À voir :* la colonne `NEXT` au prochain 03:00 ou 15:00. Le lendemain, la
+   vérification de `docs/deploiement.md` § 7.
+
+8. Relancer le contrôle de report :
+   ```bash
+   sudo -u pretjeux /opt/ludotex/.venv/bin/python /opt/ludotex/scripts/controle_report.py
+   ```
+   *À voir :* « Unités systemd » et « Fichiers d'environnement » conformes.
+
+**Retour en arrière**, par partie :
+
+- *Unités* : recopier celles de la version précédente, puis recharger et
+  redémarrer comme aux étapes 3 et 4 :
+  ```bash
+  cd /opt/ludotex
+  for u in ludotex.service ludotex-formation.service ludotex-sauvegarde.service ludotex-sauvegarde.timer; do
+      sudo -u pretjeux git show v1.14.0:deploy/$u | sudo tee /etc/systemd/system/$u > /dev/null
+  done
+  ```
+  (étiquette de la version précédente ; l'adapter). Sans `LUDOTEX_ENV_FILE`,
+  la formation relit le `.env` de la production, comme avant.
+- *Fichier de la formation* : les deux lignes peuvent rester, elles sont sans
+  effet sur une ancienne version (le jeton de la production y comblait déjà
+  l'absence de la clé ; une clé vide l'ouvre).
+- *Rétention* : revenir à l'ancienne version ramène la rotation à 30 : les
+  archives de routine au-delà sont supprimées à la sauvegarde suivante. Les
+  télécharger avant, si on y tient.
+
+### Purger les journaux de journald — hors événement, après la section précédente
+
+**Facultatif, et seulement une fois les étapes 3 à 5 ci-dessus faites** (sinon
+de nouvelles lignes arrivent aussitôt). Le jeton bénévole a été réinitialisé le
+2026-09-13 : les jetons présents dans journald ne sont plus valables. Restent
+des codes personnels du planning. Relevé le 2026-09-18, en comptant sans
+afficher : 290 lignes `jeton=` et 14 lignes `code=` sur les deux services.
+
+**Ce que la purge détruit** : journald ne s'expurge pas ligne à ligne. On ne
+peut que supprimer des fichiers de journal entiers, **tous services
+confondus** : l'historique de diagnostic de LudoteX (erreurs, redémarrages),
+mais aussi celui du système (connexions SSH, usage de `sudo`, noyau, mises à
+jour). Ce qui n'est **pas** touché : les journaux de nginx (fichiers de
+`/var/log/nginx/`), le journal d'activité de l'application, les bases.
+
+D'où : **jamais pendant un événement ni juste après un incident** que l'on
+voudrait encore comprendre.
+
+1. Compter, sans rien afficher :
+   ```bash
+   sudo journalctl -u ludotex -u ludotex-formation --no-pager | grep -c "jeton="
+   sudo journalctl -u ludotex -u ludotex-formation --no-pager | grep -c "code="
+   journalctl --disk-usage
+   ```
+2. Clore le fichier en cours, puis supprimer tous les fichiers clos :
+   ```bash
+   sudo journalctl --rotate
+   sudo journalctl --vacuum-time=1s
+   ```
+   *À voir :* une liste de fichiers `Deleted archived journal …` et l'espace
+   libéré.
+3. Recompter comme à l'étape 1. *À voir :* `0` et `0`, et `journalctl
+   --disk-usage` presque nul.
+
+Retour en arrière : aucun, la suppression est définitive.
 
 ### Filets de mise à jour renommés : rien à faire, un décalage à connaître
 
@@ -99,13 +278,13 @@ Aucun geste. Ce que l'on constate, et pourquoi c'est sans danger :
    sudo ls -1t /var/lib/ludotex/sauvegardes/ | head -3
    ```
    *À voir :* en tête, une archive `ludotex-backup-…` à l'heure de la mise à
-   jour. Elle tourne avec les sauvegardes de routine (les 30 plus récentes sont
+   jour. Elle tourne avec les sauvegardes de routine (les 60 plus récentes sont
    gardées) et en sortira d'elle-même, comme les filets des mises à jour
    précédentes, qui portent le même nom.
-2. Pendant les 26 heures qui suivent, `/admin/supervision` peut compter cette
-   archive comme la dernière sauvegarde de routine. La vérification du
-   lendemain matin (`docs/deploiement.md` § 7, commande 2 : une archive `03xxxx`
-   à la date du jour) reste la preuve que la sauvegarde de nuit tourne.
+2. Pendant les 14 heures qui suivent, `/admin/supervision` peut compter cette
+   archive comme la dernière sauvegarde de routine. La preuve que la
+   sauvegarde automatique tourne reste le passage suivant du minuteur (03:00
+   ou 15:00) : `docs/deploiement.md` § 7, commande 1.
 3. **À la mise à jour suivante**, l'archive de l'étape 1 s'appelle
    `avant-mise-a-jour-…`, et la fin d'`update.sh` indique où la télécharger.
 

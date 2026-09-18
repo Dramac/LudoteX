@@ -79,11 +79,10 @@ from __future__ import annotations
 
 import os
 
-from dotenv import load_dotenv
+from app.environnement import charger_env
 
-# Charge .env à la racine s'il existe (sans effet en test/sandbox, comme dans
-# app/db.py et app/tournoi/db.py).
-load_dotenv()
+# Charge le fichier d'environnement de l'instance (voir app/environnement.py).
+charger_env()
 
 # Repli de SECOND RANG du nom de l'association : la valeur réglée en
 # administration (base) l'emporte. Voir la docstring du module.

@@ -15,8 +15,8 @@
 #   nuit, par défaut) ou « avant-mise-a-jour » (avant-mise-a-jour-*.zip,
 #   demandée par update.sh). La supervision ne compte que la routine.
 # - Rotation et purge, à chaque passage, pour CHAQUE nature
-#   (app.sauvegarde.purger_archives) : les 30 sauvegardes de routine les plus
-#   récentes sont gardées ; les filets (avant mise à jour, et avant
+#   (app.sauvegarde.purger_archives) : les 60 sauvegardes de routine les plus
+#   récentes sont gardées (un mois, à deux passages par jour) ; les filets (avant mise à jour, et avant
 #   restauration, posés par l'application) sont supprimés au-delà de 30 jours
 #   (SEC-11). Ce dossier est sensible — les trois bases, dont les noms et
 #   contacts du planning et les numéros de pochette des prêts en cours —, voir
@@ -41,7 +41,7 @@
 #       Une sauvegarde lancée à la main sans 3e argument compte donc comme une
 #       sauvegarde de routine.
 #
-# Planification (tous les jours à 3h) : deploy/ludotex-sauvegarde.timer, posé
+# Planification (tous les jours à 3h et à 15h) : deploy/ludotex-sauvegarde.timer, posé
 # par deploy/install.sh. PAS de cron : voir ludotex-sauvegarde.service pour la
 # raison. Ce script écrit sur la sortie standard ; ne jamais la rediriger vers
 # /var/log/, où l'utilisateur du service ne peut pas créer de fichier

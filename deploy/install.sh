@@ -22,7 +22,7 @@
 #      bénévole (validité 1 semaine).
 #   6. Installe le service systemd et la configuration nginx.
 #   7. Obtient le certificat HTTPS Let's Encrypt.
-#   8. Propose la sauvegarde quotidienne automatique.
+#   8. Propose la sauvegarde automatique (3h et 15h).
 #   9. Affiche le lien d'activation bénévole et les prochaines étapes.
 #
 # Détail de chaque étape manuelle équivalente : docs/deploiement.md.
@@ -203,8 +203,31 @@ echo
 echo "--- Emplacements sur le serveur ---"
 demander "Chemin d'installation de l'application" "$INSTALL_DIR_DEFAUT"
 INSTALL_DIR="$REPONSE"
-demander "Chemin de stockage des bases SQLite" "$DATA_DIR_DEFAUT"
-DATA_DIR="$REPONSE"
+
+# Un .env déjà présent : on demande MAINTENANT s'il faut l'écraser, parce que
+# la réponse décide de la question suivante. Conservé, c'est LUI qui dit où
+# sont les bases (DATABASE_PATH) : le chemin est lu après l'installation de
+# Python (étape 5), exactement comme update.sh le lit, et n'est pas redemandé.
+# Le demander ici permettait d'y répondre autre chose que le .env : le dossier
+# 0700 des sauvegardes, les bases de formation et le message final seraient
+# alors partis sur un chemin qui n'est pas celui des bases.
+ENV_FILE="$INSTALL_DIR/.env"
+GENERER_ENV=1
+if [[ -f "$ENV_FILE" ]]; then
+    read -r -p ".env existe déjà à $ENV_FILE. L'écraser ? [o/N] : " ECRASER
+    if [[ "${ECRASER,,}" != o* ]]; then
+        GENERER_ENV=0
+    fi
+fi
+
+if [[ "$GENERER_ENV" -eq 1 ]]; then
+    demander "Chemin de stockage des bases SQLite" "$DATA_DIR_DEFAUT"
+    DATA_DIR="$REPONSE"
+    LIBELLE_DATA_DIR="$DATA_DIR"
+else
+    DATA_DIR=""   # lu dans le .env conservé, à l'étape 5
+    LIBELLE_DATA_DIR="celui du .env conservé (DATABASE_PATH)"
+fi
 
 echo
 echo "Récapitulatif :"
@@ -213,7 +236,7 @@ echo "  E-mail (Let's Encrypt): $EMAIL"
 echo "  Association          : $NOM_ASSOCIATION"
 echo "  Dépôt                 : $DEPOT_URL"
 echo "  Installation          : $INSTALL_DIR"
-echo "  Bases SQLite          : $DATA_DIR"
+echo "  Bases SQLite          : $LIBELLE_DATA_DIR"
 echo
 read -r -p "Continuer avec ces valeurs ? [O/n] : " CONFIRME
 if [[ "${CONFIRME,,}" == n* ]]; then
@@ -257,14 +280,9 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 # ============================================================================
 etape "Génération du fichier .env"
 
-ENV_FILE="$INSTALL_DIR/.env"
-GENERER_ENV=1
-if [[ -f "$ENV_FILE" ]]; then
-    read -r -p ".env existe déjà à $ENV_FILE. L'écraser ? [o/N] : " ECRASER
-    if [[ "${ECRASER,,}" != o* ]]; then
-        GENERER_ENV=0
-        info ".env conservé tel quel."
-    fi
+# Écraser ou non : décidé à l'étape 2 (GENERER_ENV).
+if [[ "$GENERER_ENV" -eq 0 ]]; then
+    info ".env conservé tel quel."
 fi
 
 if [[ "$GENERER_ENV" -eq 1 ]]; then
@@ -330,6 +348,19 @@ fi
 info "Installation des dépendances (requirements.txt)..."
 sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade pip
 sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt"
+
+# .env conservé : le dossier des bases est celui que l'application y lit,
+# par la même fonction qu'update.sh (app.db.get_database_path), résolu en
+# chemin absolu depuis le dossier d'installation — jamais une seconde lecture
+# du fichier en bash, qui pourrait l'interpréter autrement que l'application.
+if [[ "$GENERER_ENV" -eq 0 ]]; then
+    DATA_DIR="$(cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/python" -c \
+        'from app.db import get_database_path; print(get_database_path().parent.resolve())')" || DATA_DIR=""
+    if [[ -z "$DATA_DIR" ]]; then
+        erreur_fatale "Impossible de lire le dossier des bases dans $ENV_FILE (DATABASE_PATH). Le vérifier, ou relancer en acceptant de l'écraser."
+    fi
+    info "Dossier des bases, lu dans le .env conservé : $DATA_DIR"
+fi
 
 info "Initialisation de la base de prêt (app.db)..."
 (cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/python" -m app.db)
@@ -497,7 +528,7 @@ retirer_ancienne_tache_cron() {
     info "Ancienne tâche cron de sauvegarde retirée de la crontab de $SERVICE_USER (remplacée par le minuteur)."
 }
 
-read -r -p "Configurer la sauvegarde quotidienne automatique (3h du matin) ? [O/n] : " CONFIG_SAUVEGARDE
+read -r -p "Configurer la sauvegarde automatique (3h et 15h, chaque jour) ? [O/n] : " CONFIG_SAUVEGARDE
 if [[ "${CONFIG_SAUVEGARDE,,}" != n* ]]; then
     for UNITE in ludotex-sauvegarde.service ludotex-sauvegarde.timer; do
         cp "$INSTALL_DIR/deploy/$UNITE" "/etc/systemd/system/$UNITE"
@@ -509,7 +540,7 @@ if [[ "${CONFIG_SAUVEGARDE,,}" != n* ]]; then
     # s'arrête là et l'ancienne tâche reste en place.
     retirer_ancienne_tache_cron
     if systemctl is-active --quiet ludotex-sauvegarde.timer; then
-        info "Sauvegarde quotidienne programmée (3h) vers $SAUVEGARDES_DIR."
+        info "Sauvegarde programmée à 3h et à 15h vers $SAUVEGARDES_DIR."
         info "Prochain passage : systemctl list-timers ludotex-sauvegarde.timer"
     else
         avert "Le minuteur de sauvegarde ne semble pas actif. Voir : systemctl status ludotex-sauvegarde.timer"
@@ -552,51 +583,29 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
     chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR_FORMATION/sauvegardes"
     chmod 700 "$DATA_DIR_FORMATION/sauvegardes"
 
-    # Appelle un module Python sur l'instance de FORMATION, sans jamais passer
-    # par le .env de production (variables injectées directement, chacune un
-    # argument bash correctement quoté -> aucun souci avec les valeurs
-    # contenant des espaces, ex. NOM_ASSOCIATION).
-    # ADMIN_PASSWORD n'y figure plus (SEC-17) : aucun des modules appelés ici
-    # ne la lisait — le hash n'était posé qu'à la première visite de /admin.
-    # Le mot de passe est désormais posé explicitement, ci-dessous.
-    run_python_formation() {
-        sudo -u "$SERVICE_USER" env \
-            MODE_FORMATION=1 \
-            DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db" \
-            TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db" \
-            PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db" \
-            JOURNAL_PATH="$DATA_DIR_FORMATION/journal.log" \
-            BASE_URL="https://$DOMAINE_FORMATION" \
-            NOM_ASSOCIATION="$NOM_ASSOCIATION" \
-            APP_ENV=production \
-            "$INSTALL_DIR/.venv/bin/python" "$@"
-    }
-
-    info "Initialisation des bases de formation..."
-    (cd "$INSTALL_DIR" && run_python_formation -m app.db)
-    (cd "$INSTALL_DIR" && run_python_formation -m app.tournoi.db)
-    (cd "$INSTALL_DIR" && run_python_formation -m app.planning.db)
-
-    info "Peuplement des données de démonstration (jeux fictifs, prêts, tournoi)..."
-    (cd "$INSTALL_DIR" && run_python_formation -m app.formation)
-
-    # Même mot de passe que la production. La réinitialisation des données de
-    # formation ne vide pas `parametres` : il survit (test_porte_administration).
-    info "Mot de passe administrateur (base de formation)..."
-    (cd "$INSTALL_DIR" && poser_mot_de_passe_admin run_python_formation)
-
-    # Fichier lu par systemd (EnvironmentFile) : valeurs prises littéralement
-    # ligne par ligne (pas d'interprétation shell, pas de souci de quoting ici).
+    # Fichier d'environnement de l'instance : lu par systemd (EnvironmentFile)
+    # ET par l'application, qui en fait son SEUL fichier (LUDOTEX_ENV_FILE,
+    # voir deploy/ludotex-formation.service et app/environnement.py) : le .env
+    # de production n'est jamais relu derrière lui. Il doit donc porter TOUTES
+    # les clés attendues par .env.example ; le contrôle de report le vérifie à
+    # chaque mise à jour, et tests/test_environnement.py le vérifie sur ce
+    # modèle. Écrit AVANT les initialisations ci-dessous, qui le lisent.
     ENV_FORMATION="/etc/ludotex-formation.env"
     # Valeurs entre guillemets : valable pour systemd (EnvironmentFile,
-    # cf. systemd.exec(5)) ET pour un `source` bash manuel de dépannage —
-    # important pour NOM_ASSOCIATION, qui contient des espaces.
+    # cf. systemd.exec(5)), pour python-dotenv ET pour un `source` bash manuel
+    # de dépannage — important pour NOM_ASSOCIATION, qui contient des espaces.
     cat > "$ENV_FORMATION" <<EOF
 # Fichier généré par deploy/install.sh le $(date -Iseconds)
-# Variables de l'INSTANCE DE FORMATION uniquement (lues par systemd via
-# EnvironmentFile, voir deploy/ludotex-formation.service). PRET_TOKEN est
-# volontairement absent : accès ouvert, plus simple pour la formation (aucune
-# donnée réelle n'est en jeu sur cette instance).
+# Variables de l'INSTANCE DE FORMATION, et d'elle seule : ni la production ni
+# son .env n'y ajoutent quoi que ce soit (voir deploy/ludotex-formation.service).
+# Une clé ajoutée à .env.example doit être reportée ici aussi.
+
+# Accès bénévole OUVERT : aucun jeton exigé, plus simple pour la formation
+# (aucune donnée réelle n'est en jeu). La ligne est présente et VIDE à dessein :
+# vide = pas de jeton. Pour fermer ce site, y mettre une valeur, ou réinitialiser
+# le jeton depuis son écran d'administration.
+PRET_TOKEN=
+RATE_LIMIT_PER_MINUTE=60
 MODE_FORMATION=1
 DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db"
 TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db"
@@ -619,6 +628,29 @@ EOF
     chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FORMATION"
     chmod 600 "$ENV_FORMATION"
     info "$ENV_FORMATION généré."
+
+    # Appelle un module Python sur l'instance de FORMATION, avec le fichier
+    # ci-dessus pour seul environnement : exactement ce que verra le service.
+    # `sudo` repart d'un environnement vierge, rien de la session courante ne
+    # s'y ajoute. Aucun mot de passe ici (SEC-17) : il est posé plus bas, sur
+    # l'entrée standard.
+    run_python_formation() {
+        sudo -u "$SERVICE_USER" env LUDOTEX_ENV_FILE="$ENV_FORMATION" \
+            "$INSTALL_DIR/.venv/bin/python" "$@"
+    }
+
+    info "Initialisation des bases de formation..."
+    (cd "$INSTALL_DIR" && run_python_formation -m app.db)
+    (cd "$INSTALL_DIR" && run_python_formation -m app.tournoi.db)
+    (cd "$INSTALL_DIR" && run_python_formation -m app.planning.db)
+
+    info "Peuplement des données de démonstration (jeux fictifs, prêts, tournoi)..."
+    (cd "$INSTALL_DIR" && run_python_formation -m app.formation)
+
+    # Même mot de passe que la production. La réinitialisation des données de
+    # formation ne vide pas `parametres` : il survit (test_porte_administration).
+    info "Mot de passe administrateur (base de formation)..."
+    (cd "$INSTALL_DIR" && poser_mot_de_passe_admin run_python_formation)
 
     info "Service systemd ludotex-formation..."
     cp "$INSTALL_DIR/deploy/ludotex-formation.service" /etc/systemd/system/ludotex-formation.service
@@ -699,9 +731,9 @@ echo
 if [[ -n "$FORMATION_URL_FINALE" ]]; then
     echo "Site de formation    : $FORMATION_URL_FINALE  (accès ouvert, données fictives)"
     echo "  - Réinitialiser ses données : bouton dans son tableau de bord admin,"
-    echo "    ou : cd $INSTALL_DIR && sudo -u $SERVICE_USER bash -c 'set -o allexport; source /etc/ludotex-formation.env; set +o allexport; exec .venv/bin/python -m app.formation'"
+    echo "    ou : cd $INSTALL_DIR && sudo -u $SERVICE_USER env LUDOTEX_ENV_FILE=/etc/ludotex-formation.env .venv/bin/python -m app.formation"
     echo "  - QR d'entraînement (optionnel) :"
-    echo "      cd $INSTALL_DIR && sudo -u $SERVICE_USER .venv/bin/python -m scripts.generate_qr --base-url $FORMATION_URL_FINALE --planche"
+    echo "      cd $INSTALL_DIR && sudo -u $SERVICE_USER env LUDOTEX_ENV_FILE=/etc/ludotex-formation.env .venv/bin/python -m scripts.generate_qr --base-url $FORMATION_URL_FINALE --planche"
     echo
 fi
 echo "Détails et dépannage : docs/deploiement.md"

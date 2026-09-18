@@ -49,12 +49,9 @@ DEFAUT_LIMITE = 50
 
 def chemin_journal() -> Path:
     """Chemin du fichier, lu dans l'environnement (comme le reste de l'app)."""
-    try:
-        from dotenv import load_dotenv
+    from app.environnement import charger_env
 
-        load_dotenv()
-    except ImportError:  # pragma: no cover - python-dotenv toujours présent en pratique
-        pass
+    charger_env()
     return Path(os.getenv("JOURNAL_PATH", "data/journal.log"))
 
 

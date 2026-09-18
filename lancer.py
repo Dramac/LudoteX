@@ -301,8 +301,9 @@ def demarrer_uvicorn(cle: str = "uvicorn", port: int = PORT_APP,
 
     L'interpréteur vient de `python_a_utiliser()`, JAMAIS de `sys.executable` :
     voir `relancer_dans_le_venv` pour ce que cette hypothèse-là a coûté.
-    `cwd=BASE_DIR` assure que `load_dotenv()` (dans app/db.py) retrouve le
-    `.env` à la racine.
+    Le `.env` de la racine est lu quel que soit le dossier courant
+    (`app/environnement.py`) ; `cwd=BASE_DIR` reste nécessaire pour les
+    chemins RELATIFS qu'il contient (`data/…`).
 
     La sortie d'erreur va dans un FICHIER (`JOURNAUX_UVICORN`) et non dans
     `subprocess.DEVNULL` : c'est la seule trace disponible quand uvicorn

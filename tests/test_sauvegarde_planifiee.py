@@ -164,15 +164,49 @@ def test_le_service_n_a_pas_de_section_install():
     assert "Install" not in _directives(UNITE_SERVICE)
 
 
-def test_le_minuteur_tourne_chaque_nuit_a_3h_et_rattrape_un_passage_manque():
+def _heures_de_passage() -> list[int]:
+    """Les heures du minuteur, lues dans `OnCalendar=*-*-* HH[,HH…]:00:00`."""
+    calendrier = _directives(UNITE_MINUTEUR)["Timer"]["OnCalendar"]
+    trouve = re.fullmatch(r"\*-\*-\* ([0-9]{2}(?:,[0-9]{2})*):00:00", calendrier)
+    assert trouve, f"forme inattendue : {calendrier}"
+    return [int(h) for h in trouve.group(1).split(",")]
+
+
+def test_le_minuteur_tourne_a_3h_et_a_15h_et_rattrape_un_passage_manque():
     minuteur = _directives(UNITE_MINUTEUR)
     # Même nom de base : systemd associe le minuteur au service de ce nom.
     assert UNITE_MINUTEUR.stem == UNITE_SERVICE.stem
     assert "Unit" not in minuteur["Timer"]
-    # 03:xx : la preuve de fonctionnement documentée repose sur cette heure.
-    assert minuteur["Timer"]["OnCalendar"] == "*-*-* 03:00:00"
+    # Deux passages par jour, tous les jours (décision du 2026-09-13) : la
+    # syntaxe « 03,15 » a été vérifiée par systemd-analyze calendar sur la
+    # production, qui la normalise telle quelle.
+    assert minuteur["Timer"]["OnCalendar"] == "*-*-* 03,15:00:00"
+    assert _heures_de_passage() == [3, 15]
     assert minuteur["Timer"]["Persistent"] == "true"
     assert minuteur["Install"]["WantedBy"] == "timers.target"
+
+
+def test_la_rotation_garde_un_mois_au_rythme_du_minuteur():
+    """Un passage de plus par jour, autant d'archives de plus : même profondeur en jours."""
+    from app import sauvegarde
+
+    assert sauvegarde.GARDER_ROUTINES == 30 * len(_heures_de_passage())
+
+
+def test_le_seuil_de_supervision_voit_un_seul_passage_manque():
+    """
+    Le seuil dépasse le plus long écart entre deux passages (plus une heure :
+    un changement d'heure sur un serveur qui ne serait pas en UTC), mais reste
+    sous deux écarts : un seul passage manqué suffit à allumer le voyant.
+    """
+    from datetime import timedelta
+
+    from app import supervision
+
+    heures = _heures_de_passage()
+    ecart = max((heures[(i + 1) % len(heures)] - h) % 24 or 24 for i, h in enumerate(heures))
+    assert ecart == 12
+    assert timedelta(hours=ecart + 1) < supervision.SEUIL_AGE_SAUVEGARDE < timedelta(hours=2 * ecart)
 
 
 def test_install_sh_pose_les_deux_unites_et_active_le_minuteur_immediatement():
@@ -322,9 +356,10 @@ def test_sauvegarde_sh_sans_nature_fait_une_routine_et_purge_chaque_nature(tmp_p
         (destination / nom).write_bytes(b"zip")
         os.utime(destination / nom, (vieux, vieux))
     for i in range(sauvegarde.GARDER_ROUTINES):
-        nom = destination / f"ludotex-backup-202608{i:02d}-030001.zip"
+        nom = destination / f"ludotex-backup-20260801-{i:06d}.zip"
         nom.write_bytes(b"zip")
         os.utime(nom, (vieux - i, vieux - i))
+    plus_ancienne = f"ludotex-backup-20260801-{sauvegarde.GARDER_ROUTINES - 1:06d}.zip"
     (destination / "notes.txt").write_text("à garder")
 
     resultat = _lancer_sauvegarde(installation, tmp_path)
@@ -334,7 +369,7 @@ def test_sauvegarde_sh_sans_nature_fait_une_routine_et_purge_chaque_nature(tmp_p
     assert {a["nature"] for a in restantes} == {sauvegarde.NATURE_ROUTINE}
     assert len(restantes) == sauvegarde.GARDER_ROUTINES
     assert restantes[0]["nom"] == Path(resultat.stdout.split(" : ", 1)[1].strip()).name
-    assert not (destination / "ludotex-backup-20260829-030001.zip").exists()
+    assert not (destination / plus_ancienne).exists()
     assert (destination / "notes.txt").exists()
 
 
@@ -367,3 +402,13 @@ def test_l_unite_de_nuit_ne_passe_pas_de_nature():
     supervision compte comme preuve que la sauvegarde de nuit tourne."""
     unite = (RACINE / "deploy" / "ludotex-sauvegarde.service").read_text(encoding="utf-8")
     assert "ExecStart=/opt/ludotex/deploy/sauvegarde.sh /opt/ludotex\n" in unite
+
+
+def test_l_aide_du_bureau_cite_le_seuil_en_vigueur():
+    """L'aide écrit le seuil en toutes lettres : elle a déjà dit « 26 heures » après coup."""
+    from app import supervision
+
+    heures = int(supervision.SEUIL_AGE_SAUVEGARDE.total_seconds() // 3600)
+    aide = (RACINE / "app" / "templates" / "admin_aide.html").read_text(encoding="utf-8")
+    assert re.search(rf"depuis plus de {heures} heures", aide)
+    assert not re.search(r"depuis plus de (?!" + str(heures) + r"\b)\d+ heures", aide)

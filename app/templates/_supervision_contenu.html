@@ -73,7 +73,7 @@
     Prévenez la personne qui s'occupe du serveur.
   </p>
 {% elif sv.formation %}
-  <p>Instance de formation : ses données sont jetables, la sauvegarde de nuit
+  <p>Instance de formation : ses données sont jetables, la sauvegarde automatique
      ne la concerne pas.</p>
 {% elif sv.ok %}
   <p class="resultat resultat-ok">
@@ -84,13 +84,13 @@
   <p class="resultat resultat-attention">
     <strong>Attention :</strong> la dernière sauvegarde de routine date du
     {{ sv.routine.modifie | dt_local }}, il y a <strong>{{ sv.routine.age }}</strong>.
-    Elle a lieu chaque nuit : au-delà de {{ sv.seuil }}, au moins une nuit a été
-    manquée. Prévenez la personne qui s'occupe du serveur.
+    Elle a lieu deux fois par jour : au-delà de {{ sv.seuil }}, au moins un
+    passage a été manqué. Prévenez la personne qui s'occupe du serveur.
   </p>
 {% else %}
   <p class="resultat resultat-attention">
     <strong>Attention :</strong> aucune sauvegarde de routine dans le dossier des
-    sauvegardes du serveur (<code>{{ sv.dossier }}</code>). La sauvegarde de nuit
+    sauvegardes du serveur (<code>{{ sv.dossier }}</code>). La sauvegarde automatique
     ne tourne pas, ou pas encore : prévenez la personne qui s'occupe du serveur.
   </p>
 {% endif %}
@@ -98,7 +98,7 @@
   <p>
     Dernier filet de sécurité : <strong>{{ sv.filet.libelle }}</strong>, le
     {{ sv.filet.modifie | dt_local }}. Un filet sert à revenir en arrière ; il
-    ne remplace pas la sauvegarde de nuit.
+    ne remplace pas la sauvegarde automatique.
   </p>
 {% endif %}
 <p class="stats-note">Pour télécharger une archive du serveur ou une sauvegarde

@@ -10,9 +10,24 @@ toucher aux vraies données (catalogue, prêts, tournois).
 
 Le site de formation n'est **pas** un mode caché dans l'application de
 production : c'est une **SECONDE INSTANCE** du même code, qui tourne avec sa
-propre configuration (`.env` séparé) et ses propres bases SQLite **jetables**.
-Il n'y a aucun routage dynamique de connexion dans le code — l'isolation vient
-simplement du fait que cette instance ne connaît que ses propres bases.
+propre configuration et ses propres bases SQLite **jetables**. Il n'y a aucun
+routage dynamique de connexion dans le code — l'isolation vient simplement du
+fait que cette instance ne connaît que ses propres bases.
+
+Sa configuration tient dans **un seul fichier**, `/etc/ludotex-formation.env`,
+et dans lui seul. Le service `ludotex-formation` le donne à systemd
+(`EnvironmentFile=`) **et** le désigne à l'application
+(`Environment=LUDOTEX_ENV_FILE=…`, voir `app/environnement.py`) : le `.env` de
+la production, qui vit pourtant dans le même dossier de code, n'est jamais lu.
+Conséquence : une clé absente de ce fichier prend sa valeur par défaut, jamais
+celle de la production. Une clé ajoutée à `.env.example` doit donc y être
+reportée aussi ; le contrôle de report de `deploy/update.sh` le vérifie et
+nomme celles qui manquent.
+
+> Avant cette règle (lot-7-pré-production), l'instance héritait en silence de
+> toute clé du `.env` de production que son fichier ne redéfinissait pas — le
+> jeton bénévole compris, qui fermait le site d'entraînement derrière un jeton
+> que personne n'utilisait pour lui.
 
 Elle est exposée sur un **sous-domaine dédié** (ex.
 `https://formation.jeux.monasso.fr`), jamais un préfixe de chemin (les liens
@@ -43,8 +58,12 @@ L'instance de production, elle, n'est **pas modifiée** : sans la variable
   change pas sur l'autre. Oublié : `scripts/reinitialiser_mot_de_passe.py
   --env /etc/ludotex-formation.env` (voir `docs/deploiement.md`, § 9). La
   réinitialisation des données de formation ne l'efface pas.
-- Selon l'installation, le jeton bénévole peut être différent de la production
-  (voir le fichier d'environnement de l'instance de formation).
+- L'accès bénévole y est **ouvert** : aucun jeton n'est demandé. C'est la
+  ligne `PRET_TOKEN=`, présente et **vide** dans `/etc/ludotex-formation.env`.
+  Pour fermer ce site, y mettre une valeur (puis redémarrer le service), ou
+  réinitialiser le jeton depuis son propre écran d'administration : le jeton
+  en base l'emporte sur le fichier. Le jeton de la production, lui, n'y est
+  jamais valable.
 
 ## Réinitialiser les données de formation
 
@@ -58,9 +77,8 @@ première) :
 
    ```bash
    cd /opt/ludotex   # même code que la production
-   sudo -u pretjeux bash -c \
-     'set -o allexport; source /etc/ludotex-formation.env; set +o allexport; \
-      exec .venv/bin/python -m app.formation'
+   sudo -u pretjeux env LUDOTEX_ENV_FILE=/etc/ludotex-formation.env \
+     .venv/bin/python -m app.formation
    ```
 
 Dans les deux cas, le script (`app/formation.py`) **vide puis repeuple**
@@ -214,9 +232,15 @@ simplement l'URL de base vers le sous-domaine de formation :
 
 ```bash
 cd /opt/ludotex
-sudo -u pretjeux .venv/bin/python -m scripts.generate_qr \
+sudo -u pretjeux env LUDOTEX_ENV_FILE=/etc/ludotex-formation.env \
+    .venv/bin/python -m scripts.generate_qr \
     --base-url https://formation.jeux.monasso.fr --planche --grille 8x2
 ```
+
+`LUDOTEX_ENV_FILE` fait lire au script la base **de formation** : sans elle, il
+lit celle de la production et imprime les boîtes du vrai catalogue avec une
+adresse de formation — des QR qui afficheraient « boîte inconnue » si la
+formation tourne sur des jeux fictifs.
 
 Le PDF généré encode des URL vers l'instance de formation : le scan avec
 `/scanner` fonctionne exactement comme en vrai, sans risque. Les étiquettes

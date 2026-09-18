@@ -6,6 +6,12 @@
 # EnvironmentFile plutôt que par un second `.env` dans le même dossier — les
 # deux services restent totalement indépendants au niveau processus.
 #
+# Et elle ne lit JAMAIS le `.env` de la production : LUDOTEX_ENV_FILE, plus bas,
+# en fait son seul fichier d'environnement (voir app/environnement.py). Sans
+# cette ligne, toute clé du `.env` de production absente de son propre fichier
+# lui était transmise en silence — le jeton bénévole compris, qui fermait le
+# site d'entraînement (PROD-04).
+#
 # Installation : voir l'étape optionnelle « site de formation » de
 # deploy/install.sh (ou la section correspondante de docs/deploiement.md pour
 # l'installation manuelle).
@@ -30,12 +36,23 @@ WorkingDirectory=/opt/ludotex
 # chemins de bases jetables, BASE_URL du sous-domaine formation...). Généré par
 # deploy/install.sh ; voir .env.example pour la liste des clés.
 EnvironmentFile=/etc/ludotex-formation.env
+# Le MÊME fichier, désigné à l'application comme son seul fichier
+# d'environnement : le `.env` de la racine du code (celui de la production)
+# n'est plus lu. Les deux lignes changent ensemble.
+Environment=LUDOTEX_ENV_FILE=/etc/ludotex-formation.env
 
 # Port DIFFÉRENT de la production (8000) pour tourner en parallèle sur le même
 # serveur.
+# --no-access-log (PROD-03) : uvicorn journaliserait sinon chaque requête AVEC
+# sa chaîne de requête, et systemd l'enverrait dans journald — lien
+# d'activation (?jeton=…) et codes personnels du planning (?code=…) compris,
+# lisibles par tout membre du groupe adm, et impossibles à expurger ligne à
+# ligne. nginx journalise déjà chaque requête, secrets retirés et temps de
+# réponse compris : la ligne d'uvicorn n'était qu'une redite qui fuit.
 ExecStart=/opt/ludotex/.venv/bin/uvicorn app.main:app \
     --host 127.0.0.1 --port 8100 \
-    --proxy-headers --forwarded-allow-ips=127.0.0.1
+    --proxy-headers --forwarded-allow-ips=127.0.0.1 \
+    --no-access-log
 
 Restart=on-failure
 RestartSec=3

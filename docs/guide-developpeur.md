@@ -131,3 +131,12 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
 - Horodatages **UTC** en base ; conversion en heure locale à l'affichage si
   besoin.
 - Limiteur de débit **en mémoire** : valable pour un seul worker uvicorn.
+- **Fichier d'environnement : un seul domicile, `app/environnement.py`.**
+  Aucun module n'appelle `load_dotenv()` lui-même
+  (`tests/test_environnement.py` le refuse). Sans `LUDOTEX_ENV_FILE`, c'est le
+  `.env` à la racine du code, quel que soit le dossier courant ; avec, ce
+  fichier-là et lui seul (l'instance de formation). Laissé à python-dotenv, le
+  choix dépendait de la façon de lancer Python — dossier du module pour `-m`,
+  dossier **courant** pour `-c` — et la formation héritait des clés de la
+  production. Un chemin **relatif** dans une valeur reste lu depuis le dossier
+  courant.

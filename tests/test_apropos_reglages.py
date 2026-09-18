@@ -195,18 +195,16 @@ def test_cascade_depot_sans_rien_c_est_le_litteral_de_config(monkeypatch):
     Ni base ni variable d'environnement : l'URL du dépôt d'origine. Ce littéral
     n'a QU'UN domicile, `app/config.py` — `app/services.py` ne le redéfinit pas.
 
-    `load_dotenv` est neutralisé le temps du rechargement : sans cela, le test
+    Le fichier d'environnement est écarté le temps du rechargement
+    (`LUDOTEX_ENV_FILE` vide, voir `app/environnement.py`) : sans cela, le test
     dépendrait du `.env` de la machine qui l'exécute.
     """
     import importlib
 
-    import dotenv
-
     from app import config
 
     monkeypatch.delenv("DEPOT_URL", raising=False)
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
-    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: False)
+    monkeypatch.setenv("LUDOTEX_ENV_FILE", "")  # aucun fichier d'environnement
     try:
         importlib.reload(config)
         assert config.DEPOT_URL == "https://github.com/Dramac/LudoteX"
@@ -224,14 +222,11 @@ def test_une_variable_denv_vide_retombe_sur_le_litteral(monkeypatch):
     """
     import importlib
 
-    import dotenv
-
     from app import config
 
     monkeypatch.setenv("DEPOT_URL", "   ")
     monkeypatch.setenv("NOM_ASSOCIATION", "")
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
-    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: False)
+    monkeypatch.setenv("LUDOTEX_ENV_FILE", "")  # aucun fichier d'environnement
     try:
         importlib.reload(config)
         assert config.DEPOT_URL == "https://github.com/Dramac/LudoteX"

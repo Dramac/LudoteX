@@ -162,19 +162,17 @@ def test_cascade_dernier_repli_ludotex(monkeypatch):
     La valeur est relue depuis `app/config.py` — ce module est le SEUL domicile
     de ce dernier repli, `app/services.py` ne le redéfinit pas.
 
-    `load_dotenv` est neutralisé le temps du rechargement : sans cela, le test
+    Le fichier d'environnement est écarté le temps du rechargement
+    (`LUDOTEX_ENV_FILE` vide, voir `app/environnement.py`) : sans cela, le test
     dépendrait du `.env` de la machine qui l'exécute, où la variable peut très
     bien être posée.
     """
     import importlib
 
-    import dotenv
-
     from app import config
 
     monkeypatch.delenv("NOM_ASSOCIATION", raising=False)
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
-    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: False)
+    monkeypatch.setenv("LUDOTEX_ENV_FILE", "")  # aucun fichier d'environnement
     try:
         importlib.reload(config)
         assert config.NOM_ASSOCIATION == "LudoteX"

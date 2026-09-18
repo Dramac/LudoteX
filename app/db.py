@@ -11,7 +11,8 @@ ne fait que l'exécuter.
 CONFIGURATION
 -------------
 Le chemin du fichier SQLite est lu dans la variable d'environnement
-``DATABASE_PATH`` (chargée depuis `.env` via python-dotenv), avec un repli sur
+``DATABASE_PATH`` (chargée depuis le fichier d'environnement de l'instance, voir
+`app/environnement.py`), avec un repli sur
 ``data/pret-jeux.db`` — dossier volontairement non versionné (cf .gitignore).
 
 USAGE
@@ -35,13 +36,13 @@ import os
 import sqlite3
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from app import models
+from app.environnement import charger_env
 
-# Charge les variables d'environnement depuis un fichier .env à la racine, s'il
-# existe. Sans effet si .env est absent (cas des tests, du sandbox, etc.).
-load_dotenv()
+# Charge le fichier d'environnement de l'instance : le .env de la racine, ou
+# celui que désigne LUDOTEX_ENV_FILE (voir app/environnement.py). Sans effet
+# s'il est absent (cas des tests, du sandbox, etc.).
+charger_env()
 
 # Chemin par défaut si DATABASE_PATH n'est pas défini. Sous data/ (non versionné).
 DEFAULT_DATABASE_PATH = "data/pret-jeux.db"

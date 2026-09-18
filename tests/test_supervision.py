@@ -234,14 +234,25 @@ def test_sauvegarde_dossier_ne_contenant_que_des_filets(bases):
     assert etat["filet"] is not None
 
 
-def test_sauvegarde_seuil_ne_crie_pas_apres_une_nuit_normale(bases):
-    """24 h entre deux passages de nuit, plus une marge : pas d'alerte à 25 h."""
+def test_sauvegarde_seuil_ne_crie_pas_apres_un_passage_normal(bases):
+    """12 h entre deux passages (3h et 15h), plus une marge : pas d'alerte à 13 h."""
     from app import supervision
 
     dossier = bases["pret"].parent / "sauvegardes"
-    _archive(dossier, "ludotex-backup-20260912-030001.zip", heures=25)
+    _archive(dossier, "ludotex-backup-20260912-150001.zip", heures=13)
     assert supervision.etat_sauvegarde()["ok"] is True
-    assert supervision.SEUIL_AGE_SAUVEGARDE > timedelta(hours=25)
+    assert supervision.SEUIL_AGE_SAUVEGARDE > timedelta(hours=13)
+
+
+def test_sauvegarde_un_seul_passage_manque_se_voit(bases):
+    """Le passage de 15h n'a pas eu lieu : à 18h, la dernière date de 3h."""
+    from app import supervision
+
+    dossier = bases["pret"].parent / "sauvegardes"
+    _archive(dossier, "ludotex-backup-20260912-030001.zip", heures=15)
+    etat = supervision.etat_sauvegarde()
+    assert etat["ok"] is False
+    assert etat["routine"]["trop_ancienne"] is True
 
 
 def test_format_taille():

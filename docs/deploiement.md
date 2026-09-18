@@ -102,7 +102,7 @@ Le script s'occupe ensuite, tout seul, de :
 - configurer nginx et obtenir le certificat HTTPS Let's Encrypt (si le DNS est
   déjà propagé — sinon le script l'indique et donne la commande à relancer
   plus tard) ;
-- proposer de programmer la sauvegarde quotidienne automatique.
+- proposer de programmer la sauvegarde automatique (à 3h et à 15h, chaque jour).
 
 À la fin, le script affiche :
 
@@ -176,6 +176,17 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
   site de formation) — un fichier `sites-available` mal recopié ou un
   ancien lien symbolique dans `sites-enabled` peut faire tourner une
   configuration périmée malgré un `git pull` à jour.
+- **Secrets absents de journald** (PROD-03) — l'application ne journalise pas
+  les requêtes (`--no-access-log` dans les deux unités) : nginx le fait déjà,
+  secrets retirés. Après avoir ouvert le lien d'activation, les deux comptes
+  doivent valoir `0` :
+  ```bash
+  journalctl -u ludotex --since "15 min ago" --no-pager | grep -c "jeton="
+  journalctl -u ludotex --since "15 min ago" --no-pager | grep -c "code="
+  ```
+  Un nombre non nul : l'unité installée n'a pas l'option. Comparer
+  `/etc/systemd/system/ludotex.service` à `deploy/ludotex.service` (le
+  contrôle de report de `update.sh` le signale aussi).
 
 ## 6. QR définitifs
 
@@ -199,19 +210,22 @@ la carte.
 
 ## 7. Sauvegarde de la base
 
-Si acceptée pendant l'installation, une sauvegarde quotidienne automatique
-est programmée chaque nuit à 3h (heure du serveur) par un minuteur systemd,
-`ludotex-sauvegarde.timer`.
+Si acceptée pendant l'installation, une sauvegarde automatique est programmée
+**deux fois par jour, à 3h et à 15h** (heure du serveur), tous les jours de
+l'année, par un minuteur systemd, `ludotex-sauvegarde.timer`. Deux passages
+plutôt qu'un : pendant un événement de deux jours, une seule sauvegarde par
+nuit exposait jusqu'à 24 heures de prêts à une panne du serveur.
 
 ### Vérifier qu'elle tourne — le résultat, pas la configuration
 
 > **Ne pas se fier à la présence d'une tâche programmée.** De juillet à
 > septembre 2026, `crontab -l` a affiché chaque jour une tâche de sauvegarde
 > qui échouait chaque nuit sans le moindre message : pas une archive de nuit en
-> sept semaines. Une tâche affichée ne prouve rien ; seule une archive produite
-> la nuit le prouve.
+> sept semaines. Une tâche affichée ne prouve rien ; seule une archive récente
+> le prouve.
 
-**Le matin**, deux commandes à copier telles quelles.
+**Le matin** (et l'après-midi d'un jour d'événement), deux commandes à copier
+telles quelles.
 
 **1. Le dernier passage du minuteur :**
 
@@ -228,8 +242,8 @@ TriggeredBy: ● ludotex-sauvegarde.timer
 ```
 
 « inactive (dead) » est **normal** : la sauvegarde dure quelques secondes, puis
-s'arrête. Ce qui compte : l'heure, ce matin peu après 03:00, et
-`status=0/SUCCESS`.
+s'arrête. Ce qui compte : l'heure, peu après le dernier passage prévu (03:00
+ou 15:00), et `status=0/SUCCESS`.
 Les dernières lignes reprennent ce que le script a écrit, dont
 `Sauvegarde créée : …`.
 
@@ -241,27 +255,30 @@ Les dernières lignes reprennent ce que le script a écrit, dont
 - `Unit ludotex-sauvegarde.service could not be found.` : le minuteur n'est pas
   installé sur ce serveur. Voir `docs/notes-de-deploiement.md`, section de la
   version qui l'introduit.
-- une date antérieure à cette nuit : le minuteur n'a pas tourné. Vérifier
-  `systemctl list-timers ludotex-sauvegarde.timer` : une ligne doit afficher la
-  prochaine exécution, demain à 03:00, et la dernière ; « 0 timers listed. »
-  veut dire que le minuteur n'est pas actif.
+- une date antérieure au dernier passage prévu : le minuteur n'a pas tourné.
+  Vérifier `systemctl list-timers ludotex-sauvegarde.timer` : une ligne doit
+  afficher la prochaine exécution (03:00 ou 15:00) et la dernière ;
+  « 0 timers listed. » veut dire que le minuteur n'est pas actif.
 
-**2. L'archive de la nuit :**
+**2. Une sauvegarde de routine de moins de 14 heures :**
 
 ```bash
-sudo ls -1 /var/lib/ludotex/sauvegardes/ | grep 'backup-[0-9]*-03'
+sudo find /var/lib/ludotex/sauvegardes -name 'ludotex-backup-*.zip' -mmin -840
 ```
 
-*Si tout va bien*, au moins une ligne dont la date est celle du jour, par
-exemple `ludotex-backup-20260913-030001.zip` : `20260913` est la date,
-`030001` l'heure, **03:00:01**.
+*Si tout va bien*, au moins une ligne, par exemple
+`/var/lib/ludotex/sauvegardes/ludotex-backup-20260913-150001.zip` :
+`20260913` est la date, `150001` l'heure, **15:00:01**. `-mmin -840` ne garde
+que les archives modifiées depuis moins de 840 minutes, soit 14 heures : deux
+passages sont espacés de 12 heures, plus deux heures de marge. C'est le même
+critère que le bloc « Sauvegarde » de la supervision.
 
 **Le nom dit la nature de l'archive.** `ludotex-backup-…` est réservé à la
 sauvegarde de routine ; les deux autres archives que reçoit ce dossier portent
 leur propre nom : `avant-mise-a-jour-…` (posée par `update.sh` avant chaque
 mise à jour) et `avant-restauration-…` (posée par l'application avant chaque
 restauration). Un dossier plein d'archives ne prouve donc pas que la sauvegarde
-de nuit tourne ; **une archive `ludotex-backup-…-03xxxx` à la date du jour,
+automatique tourne ; **une archive `ludotex-backup-…` de moins de 14 heures,
 si.**
 
 > Deux exceptions à connaître. Les mises à jour faites **avant** la version qui
@@ -270,20 +287,24 @@ si.**
 > Et une sauvegarde lancée **à la main** sans troisième argument (commande de
 > test plus bas) est une sauvegarde de routine.
 
-*Si ce n'est pas le cas* : aucune ligne, ou aucune à la date du jour, veut dire
-qu'aucune sauvegarde n'a été produite cette nuit — reprendre la commande 1.
-Seule exception : si le serveur était éteint à 3h, la sauvegarde manquée est
-lancée à son redémarrage, et l'archive porte alors l'heure du démarrage.
+*Si ce n'est pas le cas* : aucune ligne veut dire qu'au moins un passage n'a
+rien produit — reprendre la commande 1. Si le serveur était éteint à l'heure
+prévue, la sauvegarde manquée est lancée à son redémarrage, et l'archive porte
+alors l'heure du démarrage : elle compte, son âge suffit.
 
 **Sans accès au serveur**, le bureau lit la même information dans
 `/admin/supervision`, bloc « Sauvegarde » : la date et l'âge de la dernière
 sauvegarde de **routine** (les filets sont affichés à part), en « Attention »
-au-delà de 26 heures (`SEUIL_AGE_SAUVEGARDE`, `app/supervision.py`). Toutes les
+au-delà de 14 heures (`SEUIL_AGE_SAUVEGARDE`, `app/supervision.py`). Toutes les
 archives du dossier se téléchargent depuis `/admin/donnees`, section « Archives
 du serveur ».
 
-> L'heure est celle du serveur, souvent réglé en UTC : 03:00 UTC, c'est 5h du
-> matin à Paris en été, 4h en hiver (`timedatectl` affiche le fuseau).
+> L'heure est celle du serveur, souvent réglé en UTC : 03:00 et 15:00 UTC,
+> c'est 5h et 17h à Paris en été, 4h et 16h en hiver (`timedatectl` affiche le
+> fuseau).
+>
+> La rotation garde les **60** sauvegardes de routine les plus récentes : un
+> mois, à deux par jour.
 
 ### Ce que contient une archive
 
@@ -373,9 +394,17 @@ bloc nginx + certificat HTTPS pour ce sous-domaine, peuplement des données de
 démonstration, et ajout du lien correspondant au tableau de bord admin de la
 production (`FORMATION_URL` dans le `.env` principal).
 
+La configuration de cette instance tient dans **son propre fichier**,
+`/etc/ludotex-formation.env`, et dans lui seul : son service le désigne à
+l'application (`LUDOTEX_ENV_FILE`), et le `.env` de la production n'est jamais
+lu, même s'il vit dans le même dossier de code. L'accès bénévole y est ouvert
+(`PRET_TOKEN=` vide). Détails : `docs/mode-formation.md`, « Principe ».
+
 Pour l'installer après coup (script déjà passé sans cette étape) : relancer
 `sudo ./deploy/install.sh` en conservant le `.env` existant — l'étape « Site
-de formation » est reproposée à chaque exécution.
+de formation » est reproposée à chaque exécution. Le `.env` conservé, le script
+ne redemande pas le chemin des bases : il le lit dans `DATABASE_PATH`, comme
+`update.sh`, et les bases de formation vont à côté.
 
 ## 8. Mises à jour ultérieures
 
@@ -505,8 +534,8 @@ toucher à la production.
      cd /opt/ludotex
      sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py
      ```
-     Pour l'**instance de formation**, dont l'environnement est lu par
-     systemd et non par un `.env` du dossier :
+     Pour l'**instance de formation**, dont le seul fichier d'environnement
+     est `/etc/ludotex-formation.env` (jamais le `.env` du dossier) :
      ```bash
      cd /opt/ludotex
      sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py --env /etc/ludotex-formation.env
@@ -583,7 +612,8 @@ toucher à la production.
 - **Référent technique** : prévoir une personne pour les mises à jour de
   sécurité du système (`sudo apt update && sudo apt upgrade`) et la
   surveillance des sauvegardes : de temps en temps, et chaque matin d'un
-  événement, la vérification du § 7 (une archive `03xxxx` à la date du jour).
+  événement, la vérification du § 7 (une sauvegarde de routine de moins de
+  14 heures).
 
 ---
 
@@ -721,13 +751,13 @@ sudo chmod 700 /var/lib/ludotex/sauvegardes
 chmod +x /opt/ludotex/deploy/sauvegarde.sh
 sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes
 
-# sauvegarde quotidienne à 3h : minuteur systemd (PAS de cron, voir le
+# sauvegarde à 3h et à 15h : minuteur systemd (PAS de cron, voir le
 # commentaire de deploy/ludotex-sauvegarde.service)
 sudo cp /opt/ludotex/deploy/ludotex-sauvegarde.service /opt/ludotex/deploy/ludotex-sauvegarde.timer /etc/systemd/system/
 # adapter /opt/ludotex dans les deux fichiers si l'installation est ailleurs
 sudo systemctl daemon-reload
 sudo systemctl enable --now ludotex-sauvegarde.timer
-systemctl list-timers ludotex-sauvegarde.timer   # une ligne, prochaine exécution à 03:00
+systemctl list-timers ludotex-sauvegarde.timer   # une ligne, prochaine exécution à 03:00 ou 15:00
 ```
 
 Le lendemain matin, vérifier le résultat comme indiqué au § 7. Le dossier de

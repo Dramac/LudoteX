@@ -1,17 +1,30 @@
-# Déclenche ludotex-sauvegarde.service chaque nuit à 3h (heure du serveur).
+# Déclenche ludotex-sauvegarde.service deux fois par jour, à 3h et à 15h
+# (heure du serveur, UTC en production), tous les jours de l'année.
 #
 # Voir ludotex-sauvegarde.service pour la raison d'être et l'installation.
 #
+# POURQUOI DEUX PASSAGES : pendant un événement de 48 heures, une seule
+# sauvegarde par nuit exposait jusqu'à 24 heures de prêts à la perte du
+# serveur ; une consigne « pensez à faire une sauvegarde » reposait sur la
+# mémoire de quelqu'un en plein rush. Permanents plutôt que réservés aux jours
+# d'événement : rien à activer ni à oublier, pour un coût de quelques
+# centaines de kilo-octets par archive. La rotation en garde deux fois plus
+# (app/sauvegarde.py, GARDER_ROUTINES), soit la même profondeur en jours.
+#
+# `03,15:00:00` : une liste de valeurs dans le champ des heures
+# (systemd.time(7), « CALENDAR EVENTS »), vérifiée avec systemd-analyze
+# calendar sur la production (systemd 255).
+#
 # Persistent=true : systemd note sur le disque l'heure du dernier passage. Si le
-# serveur était arrêté à 3h, la sauvegarde manquée est lancée dès le démarrage
-# suivant (systemd.timer(5) ; sans effet sur autre chose qu'un OnCalendar=).
-# Une archive rattrapée ainsi porte l'heure du démarrage, pas 03:xx.
+# serveur était arrêté à l'heure prévue, la sauvegarde manquée est lancée dès le
+# démarrage suivant (systemd.timer(5) ; sans effet sur autre chose qu'un
+# OnCalendar=). Une archive rattrapée ainsi porte l'heure du démarrage.
 
 [Unit]
-Description=LudoteX — sauvegarde quotidienne à 3h
+Description=LudoteX — sauvegarde à 3h et à 15h
 
 [Timer]
-OnCalendar=*-*-* 03:00:00
+OnCalendar=*-*-* 03,15:00:00
 Persistent=true
 
 [Install]

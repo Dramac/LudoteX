@@ -135,6 +135,10 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   logo et la couleur de thème sont des **données éditoriales** en base
   (`parametres`, écrans `/admin/identite` et `/admin/evenement`), pas des
   constantes. Ce qui engage l'infrastructure ou la sécurité reste dans `.env`.
+- **Un seul fichier d'environnement par instance**, chargé par
+  `app/environnement.py` et nulle part ailleurs : le `.env` de la racine du
+  code, ou celui que désigne `LUDOTEX_ENV_FILE`. L'instance de formation pose
+  cette variable dans son unité et ne lit jamais le `.env` de la production.
 - **Réutiliser plutôt que dupliquer** : un composant, une constante ou une règle
   métier a un seul domicile (le dessin d'étiquette dans `app/etiquettes.py`,
   partagé avec `scripts/generate_qr.py` ; le menu bénévole dans un fragment
@@ -190,7 +194,7 @@ livré, par module :
 - **Mode formation** — seconde instance du même code, catalogue importable
   depuis un CSV pour scanner de vraies boîtes sans rien inscrire pour de bon.
 - **Exploitation** — `deploy/` (install.sh, update.sh, systemd, nginx,
-  sauvegarde de nuit par minuteur systemd, jamais par cron), contrôle de report en fin d'`update.sh`
+  sauvegarde à 3h et à 15h par minuteur systemd, jamais par cron), contrôle de report en fin d'`update.sh`
   (`scripts/controle_report.py`, lecture seule) et lanceur local sans ligne de
   commande (`lancer.py`, `lancer.command`, `lancer.bat`).
 

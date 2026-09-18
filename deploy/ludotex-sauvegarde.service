@@ -1,4 +1,4 @@
-# Sauvegarde quotidienne des trois bases — lancée par ludotex-sauvegarde.timer.
+# Sauvegarde des trois bases, à 3h et à 15h — lancée par ludotex-sauvegarde.timer.
 #
 # POURQUOI UN MINUTEUR SYSTEMD, ET PLUS UNE LIGNE DE CRON : la tâche cron
 # d'origine redirigeait sa sortie vers /var/log/, où l'utilisateur du service
@@ -26,7 +26,7 @@
 # là où la supervision la cherche.
 
 [Unit]
-Description=LudoteX — sauvegarde quotidienne des trois bases
+Description=LudoteX — sauvegarde des trois bases (3h et 15h)
 # Pas de dépendance à ludotex.service : la copie passe par SQLite, pas par
 # l'application, et doit tourner même si celle-ci est arrêtée.
 
@@ -36,7 +36,9 @@ Type=oneshot
 User=pretjeux
 Group=pretjeux
 
-# Racine du dépôt cloné sur le serveur (à adapter) ; le .env est lu depuis ce dossier.
+# Racine du dépôt cloné sur le serveur (à adapter). Le .env est lu à la racine
+# du code quel que soit ce dossier (app/environnement.py) ; celui-ci sert aux
+# chemins relatifs qu'il pourrait contenir.
 WorkingDirectory=/opt/ludotex
 ExecStart=/opt/ludotex/deploy/sauvegarde.sh /opt/ludotex
 

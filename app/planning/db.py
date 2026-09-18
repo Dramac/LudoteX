@@ -40,13 +40,12 @@ import os
 import sqlite3
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from app.db import TIMEOUT_ECRITURE_S
+from app.environnement import charger_env
 from app.planning import models
 
-# Charge .env à la racine s'il existe (sans effet en test/sandbox).
-load_dotenv()
+# Fichier d'environnement de l'instance (voir app/environnement.py).
+charger_env()
 
 # Chemin par défaut si PLANNING_DATABASE_PATH n'est pas défini.
 DEFAULT_DATABASE_PATH = "data/planning.db"

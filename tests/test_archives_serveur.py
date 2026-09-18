@@ -7,7 +7,7 @@ téléchargement depuis l'administration sans traversée de chemin (EXP-06).
 import os
 import time
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 
 import pytest
@@ -161,7 +161,7 @@ def test_aucune_nature_n_echappe_a_la_purge(tmp_path):
     dossier = tmp_path / "sauvegardes"
     for nature in sauvegarde.PREFIXES_ARCHIVE:
         for i in range(sauvegarde.GARDER_ROUTINES + 1):
-            nom = sauvegarde.nom_archive(nature, datetime(2025, 1, 1, 0, 0, i))
+            nom = sauvegarde.nom_archive(nature, datetime(2025, 1, 1) + timedelta(minutes=i))
             _archive(dossier, nom, jours=400 + i)
 
     sauvegarde.purger_archives(dossier)
@@ -178,9 +178,12 @@ def test_les_anciens_filets_de_mise_a_jour_tournent_avec_la_routine(tmp_path):
     from app import sauvegarde
 
     dossier = tmp_path / "sauvegardes"
-    _archive(dossier, "ludotex-backup-20260912-201919.zip", jours=40)  # ancien filet
+    # Ancien filet, plus vieux que toutes les routines qui suivent.
+    _archive(dossier, "ludotex-backup-20260912-201919.zip", jours=sauvegarde.GARDER_ROUTINES)
     for i in range(sauvegarde.GARDER_ROUTINES):
-        _archive(dossier, f"ludotex-backup-202609{i:02d}-030001.zip", jours=i)
+        # Deux passages par jour (3h et 15h), du plus récent au plus ancien.
+        passage = datetime(2026, 9, 13, 3, 0, 1) - timedelta(hours=12 * i)
+        _archive(dossier, sauvegarde.nom_archive(sauvegarde.NATURE_ROUTINE, passage), jours=i / 2)
 
     assert sauvegarde.purger_archives(dossier) == ["ludotex-backup-20260912-201919.zip"]
 

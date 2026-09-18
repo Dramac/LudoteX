@@ -65,13 +65,14 @@ _FICHIER_VERSION = _RACINE / "VERSION"
 # Seuils — un seul domicile chacun
 # ---------------------------------------------------------------------------
 # Âge au-delà duquel la dernière sauvegarde de ROUTINE est signalée.
-# La routine passe chaque nuit à 3h, événement ou pas : d'une archive à la
-# suivante, il y a 24 h. 26 h laissent deux heures de marge — une nuit de
-# changement d'heure sur un serveur qui n'est pas en UTC (25 h), la durée de
-# l'archive elle-même —, sans jamais alerter pour rien, et une nuit manquée se
-# voit dès 5h (heure du serveur) le lendemain matin, avant l'ouverture.
-# Si les passages deviennent plus fréquents, c'est cette valeur à resserrer.
-SEUIL_AGE_SAUVEGARDE = timedelta(hours=26)
+# La routine passe à 3h et à 15h, événement ou pas : d'une archive à la
+# suivante, il y a 12 h. 14 h laissent deux heures de marge — un changement
+# d'heure sur un serveur qui n'est pas en UTC (13 h), la durée de l'archive
+# elle-même —, sans jamais alerter pour rien. Un passage manqué se voit ainsi
+# deux heures après (17h ou 5h, heure du serveur), au lieu d'attendre la nuit
+# suivante : pendant un événement, c'est le jour même.
+# Si le rythme des passages change, c'est cette valeur à ajuster.
+SEUIL_AGE_SAUVEGARDE = timedelta(hours=14)
 
 # Pourcentage d'espace libre sous lequel le disque est signalé. Sous 10 %, un
 # petit VPS n'a plus beaucoup de marge pour une nuit d'archives et le journal.
@@ -255,7 +256,7 @@ def etat_sauvegarde(maintenant: datetime | None = None) -> dict:
     """
     Dernière sauvegarde de ROUTINE et son âge, et dernier filet, séparément.
 
-    La routine seule prouve que la sauvegarde de nuit tourne : un filet (avant
+    La routine seule prouve que la sauvegarde automatique tourne : un filet (avant
     mise à jour, avant restauration) sert à revenir en arrière, pas à cette
     preuve. Il est affiché à part, sans pastille verte. La nature d'une archive
     se lit dans son nom (`app.sauvegarde`, « LES ARCHIVES DU SERVEUR »).

@@ -55,7 +55,7 @@ LES ARCHIVES DU SERVEUR : UNE NATURE, LUE DANS LE NOM
 Le dossier des sauvegardes (`dossier_sauvegardes`) reçoit trois sortes
 d'archives, au même format, que seul leur NOM distingue :
 
-- `ludotex-backup-*`     : la sauvegarde de ROUTINE (minuteur de nuit) ;
+- `ludotex-backup-*`     : la sauvegarde de ROUTINE (minuteur, 3h et 15h) ;
 - `avant-mise-a-jour-*`  : le filet posé par `deploy/update.sh` ;
 - `avant-restauration-*` : le filet posé par `sauvegarde_de_securite`.
 
@@ -133,9 +133,11 @@ MOTIF_ARCHIVE = re.compile(
     "(" + "|".join(re.escape(p) for p in PREFIXES_ARCHIVE.values()) + r")-[0-9][0-9-]*\.zip"
 )
 
-# Rotation de la routine : les 30 plus récentes sont gardées. Au rythme d'une
-# par nuit, c'est un mois d'historique.
-GARDER_ROUTINES = 30
+# Rotation de la routine : les 60 plus récentes sont gardées. Au rythme de deux
+# par jour (minuteur à 3h et à 15h, deploy/ludotex-sauvegarde.timer), c'est un
+# mois d'historique, la même profondeur qu'à 30 quand il n'y avait qu'un
+# passage par nuit.
+GARDER_ROUTINES = 60
 
 # Fin de vie des deux filets (SEC-11, audit du 24/07/2026) : 30 jours laissent
 # largement le temps de s'apercevoir d'une mise à jour ou d'une restauration

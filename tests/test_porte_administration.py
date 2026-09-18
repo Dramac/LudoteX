@@ -9,6 +9,7 @@ Constats de l'audit du 2026-09-12 : DOC-01, SEC-13, SEC-16, SEC-17, SEC-03.
 from __future__ import annotations
 
 import io
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -177,11 +178,17 @@ def test_script_vise_l_instance_du_fichier_env(tmp_path, bases, monkeypatch, cap
     # `--env` écrit dans os.environ (override) : seule DATABASE_PATH, que la
     # fixture `bases` a posée par monkeypatch, donc restaurée après le test.
     env.write_text(f'DATABASE_PATH="{formation}"\n', encoding="utf-8")
+    # `--env` désigne aussi le fichier à `app` (lot-7-pré-production) : restauré
+    # après le test par monkeypatch.
+    monkeypatch.delenv("LUDOTEX_ENV_FILE", raising=False)
 
     assert _script(monkeypatch, ["--env", str(env), "--stdin"], "mot-de-passe-formation") == script.OK
     assert str(formation) in capsys.readouterr().out
     assert _hash(formation) is not None
     assert _hash(bases / "test.db") is None
+    # Et c'est le SEUL fichier de l'instance : le .env de production n'est pas
+    # relu derrière lui.
+    assert os.environ["LUDOTEX_ENV_FILE"] == str(env.resolve())
 
 
 def test_script_fichier_env_introuvable(tmp_path, monkeypatch):
