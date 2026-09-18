@@ -82,6 +82,10 @@ configuré → **mode ouvert** (dev) avec avertissement au démarrage. Le reste
   `python -m scripts.import_csv <fichier.csv>`.
 - `generate_qr.py` : génère les étiquettes QR (PNG + planche PDF).
   `python -m scripts.generate_qr --planche`.
+- `reinitialiser_mot_de_passe.py` : remplace le mot de passe admin en base
+  (mot de passe oublié ; aussi appelé par `install.sh`). Mot de passe lu sans
+  écho, jamais en argument ; refuse une base absente plutôt que d'en créer une
+  vide ; `--env` vise une autre instance. Procédure : `docs/deploiement.md` § 9.
 
 ## 8. Lancer et tester en local
 

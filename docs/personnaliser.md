@@ -65,7 +65,7 @@ site — voire le rendre inaccessible — sans rien pour rattraper le coup.
 |---|---|---|
 | `BASE_URL` | l'adresse publique du site | **Elle est encodée dans les QR codes déjà imprimés.** La changer rend muettes toutes les étiquettes collées sur les boîtes. C'est le réglage le plus définitif de l'installation : choisissez le domaine avant d'imprimer. |
 | `PRET_TOKEN` | jeton d'écriture des bénévoles | c'est un secret ; il se renouvelle depuis `/admin`, jamais à la main |
-| `ADMIN_PASSWORD` | amorçage du mot de passe admin | haché au premier démarrage, puis changé depuis `/admin` |
+| `ADMIN_PASSWORD` | amorçage du mot de passe admin, **en local seulement** (facultative) | haché au premier démarrage, puis changé depuis `/admin` ; jamais relue ensuite. Un serveur installé par `install.sh` ne l'a pas : le mot de passe est posé en base. Oubli : `scripts/reinitialiser_mot_de_passe.py` |
 | `DATABASE_PATH`, `TOURNOI_DATABASE_PATH`, `PLANNING_DATABASE_PATH` | emplacement des trois bases | déplacer une base depuis un formulaire web, c'est perdre ses données |
 | `JOURNAL_PATH`, `JOURNAL_CONSOLE` | journal d'activité | même raison |
 | `RATE_LIMIT_PER_MINUTE`, `APP_ENV` | limitation de débit, environnement | réglages de sécurité et d'exploitation |

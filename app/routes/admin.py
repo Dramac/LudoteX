@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from app import (admin_auth, auth, carnet, exports, formation, journal, logo,
                  sauvegarde, services, supervision)
-from app.auth import trop_de_tentatives  # limite de débit par IP (partagée)
+from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
 from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
@@ -92,8 +92,22 @@ def accueil(request: Request):
         configure = admin_auth.admin_configure(conn)
     finally:
         conn.close()
+    return _rendre_login(request, configure, erreur=False)
+
+
+def _rendre_login(request: Request, configure: bool, erreur, attente: int = 0,
+                  status_code: int = 200):
+    """
+    Rend l'écran de connexion. `mdp_exemple` permet de dire POURQUOI
+    l'administration n'est pas configurée quand `ADMIN_PASSWORD` a été laissée
+    à sa valeur d'exemple (`SEC-16`), plutôt que « aucun mot de passe ».
+    """
     return templates.TemplateResponse(
-        request, "admin_login.html", {"configure": configure, "erreur": False}
+        request, "admin_login.html",
+        {"configure": configure, "erreur": erreur, "attente": attente,
+         "mdp_exemple": admin_auth.mdp_exemple_dans_env(),
+         "longueur_min": admin_auth.LONGUEUR_MIN_MDP},
+        status_code=status_code,
     )
 
 
@@ -101,8 +115,12 @@ def accueil(request: Request):
 def login(request: Request, mot_de_passe: str = Form("")):
     """Vérifie le mot de passe (avec limite de débit) et ouvre une session."""
     ip = request.client.host if request.client else "inconnu"
-    limite = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
-    if trop_de_tentatives(ip, limite):
+    # Compteur PROPRE à la connexion admin (`SEC-03`) : ni les activations de
+    # /acces ne consomment le quota du bureau, ni l'inverse. Le seuil de /acces
+    # (RATE_LIMIT_PER_MINUTE) ne s'applique plus ici.
+    cle = admin_auth.cle_debit_connexion(ip)
+    if trop_de_tentatives(cle, admin_auth.LIMITE_CONNEXION,
+                          admin_auth.FENETRE_CONNEXION_S):
         # Journalisé au même titre qu'un mot de passe faux : c'est le motif
         # qui distingue les deux, pas la présence de la ligne. Une rafale de
         # « trop_de_tentatives » est justement le signal qu'on vient chercher.
@@ -110,10 +128,10 @@ def login(request: Request, mot_de_passe: str = Form("")):
             request, "admin", "connexion_echouee",
             ok=False, detail="trop_de_tentatives",
         )
-        return templates.TemplateResponse(
-            request, "admin_login.html",
-            {"configure": True, "erreur": "trop"}, status_code=429,
-        )
+        attente = secondes_avant_essai(cle, admin_auth.LIMITE_CONNEXION,
+                                       admin_auth.FENETRE_CONNEXION_S)
+        return _rendre_login(request, True, erreur="trop", attente=attente,
+                             status_code=429)
 
     conn = get_connection()
     try:
@@ -131,10 +149,7 @@ def login(request: Request, mot_de_passe: str = Form("")):
             request, "admin", "connexion_echouee",
             ok=False, detail="mot_de_passe",
         )
-        return templates.TemplateResponse(
-            request, "admin_login.html",
-            {"configure": configure, "erreur": True}, status_code=403,
-        )
+        return _rendre_login(request, configure, erreur=True, status_code=403)
 
     # Identifiant d'appareil (docs/conception-journal.md §4) : second des deux
     # seuls endroits où le cookie est posé, et SEULEMENT s'il est absent — un
@@ -835,7 +850,28 @@ def motdepasse_formulaire(request: Request):
     """Formulaire de changement de mot de passe."""
     if (garde := _garde(request)):
         return garde
-    return templates.TemplateResponse(request, "admin_motdepasse.html", {"message": None})
+    return _rendre_motdepasse(request, None)
+
+
+# Un message par cause de refus (`SEC-13`) : l'ancien message fusionnait « ancien
+# incorrect » et « nouveau invalide », et laissait le bureau deviner lequel.
+# Les clés sont aussi les `detail` du journal.
+_MESSAGES_MOTDEPASSE = {
+    "ancien_incorrect": "Le mot de passe actuel est incorrect. Rien n'a été modifié.",
+    "trop_court": ("Le nouveau mot de passe est trop court "
+                   f"({admin_auth.LONGUEUR_MIN_MDP} caractères minimum). "
+                   "Rien n'a été modifié."),
+    "exemple": ("Ce mot de passe est celui de l'exemple publié avec le logiciel : "
+                "choisissez-en un autre. Rien n'a été modifié."),
+    "confirmation": "La confirmation ne correspond pas au nouveau mot de passe.",
+}
+
+
+def _rendre_motdepasse(request: Request, message):
+    return templates.TemplateResponse(
+        request, "admin_motdepasse.html",
+        {"message": message, "longueur_min": admin_auth.LONGUEUR_MIN_MDP},
+    )
 
 
 @router.post("/motdepasse")
@@ -849,17 +885,15 @@ def motdepasse_changer(
     if (garde := _garde(request)):
         return garde
     if nouveau != confirmation:
-        message = ("erreur", "La confirmation ne correspond pas au nouveau mot de passe.")
         detail = "confirmation"
     else:
         conn = get_connection()
         try:
-            ok = admin_auth.changer_mot_de_passe(conn, ancien, nouveau)
+            detail = admin_auth.changer_mot_de_passe(conn, ancien, nouveau)
         finally:
             conn.close()
-        message = (("succes", "Mot de passe modifié.") if ok else
-                   ("erreur", "Ancien mot de passe incorrect ou nouveau invalide."))
-        detail = None if ok else "ancien_incorrect"
+    message = (("succes", "Mot de passe modifié.") if detail is None else
+               ("erreur", _MESSAGES_MOTDEPASSE[detail]))
     # Aucun `objet` : il n'y a rien à dire de plus que « le mot de passe a
     # changé ». Ni l'ancien, ni le nouveau, ni leur empreinte n'ont à figurer
     # ici (§8) — seul le fait, et son horodatage, sont l'information.
@@ -867,7 +901,7 @@ def motdepasse_changer(
         request, "admin", "motdepasse_change",
         ok=(detail is None), detail=detail,
     )
-    return templates.TemplateResponse(request, "admin_motdepasse.html", {"message": message})
+    return _rendre_motdepasse(request, message)
 
 
 # ---------------------------------------------------------------------------

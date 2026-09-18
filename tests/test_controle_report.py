@@ -248,10 +248,12 @@ def test_une_cle_presente_mais_vide_compte_comme_presente():
 def test_le_vrai_env_example_n_exige_pas_les_cles_facultatives():
     exemple = (_RACINE / ".env.example").read_text(encoding="utf-8")
     attendues = cr.cles_attendues(exemple)
-    assert {"PRET_TOKEN", "ADMIN_PASSWORD", "DATABASE_PATH", "BASE_URL"} <= attendues
+    assert {"PRET_TOKEN", "DATABASE_PATH", "BASE_URL"} <= attendues
     # Documentées « vide ou absente », ou propres à l'instance de formation :
     # les exiger ferait crier le contrôle sur toute production normale.
-    assert not attendues & {"NOM_ASSOCIATION", "DEPOT_URL", "MODE_FORMATION", "FORMATION_URL", "FORMATION_CATALOGUE_CSV"}
+    # ADMIN_PASSWORD : retirée des serveurs par le lot-6-pré-production (SEC-17).
+    assert not attendues & {"NOM_ASSOCIATION", "DEPOT_URL", "MODE_FORMATION", "FORMATION_URL",
+                            "FORMATION_CATALOGUE_CSV", "ADMIN_PASSWORD"}
 
 
 class ServeurFactice(cr.Serveur):

@@ -6,14 +6,35 @@
   <h1>Administration</h1>
 
   {% if not configure %}
-    <p class="resultat resultat-attention">
-      Aucun mot de passe administrateur n'est défini. Renseignez
-      <code>ADMIN_PASSWORD</code> dans le fichier <code>.env</code>, redémarrez
-      l'application, puis connectez-vous (vous pourrez ensuite le changer ici).
-    </p>
+    <div class="resultat resultat-attention">
+      {% if mdp_exemple %}
+        <p>
+          L'administration n'est pas encore ouverte : le mot de passe prévu est
+          resté celui de l'exemple publié avec le logiciel, qui est refusé.
+        </p>
+      {% else %}
+        <p>Aucun mot de passe administrateur n'est défini.</p>
+      {% endif %}
+      <p>
+        La personne qui s'occupe du serveur le définit avec la commande de
+        réinitialisation du mot de passe, décrite dans le guide de déploiement
+        (« Mot de passe admin oublié »). Aucun redémarrage n'est nécessaire :
+        rechargez ensuite cette page.
+      </p>
+      <p>
+        Sur un poste de test, vous pouvez aussi renseigner
+        <code>ADMIN_PASSWORD</code> dans le fichier <code>.env</code>
+        ({{ longueur_min }} caractères minimum conseillés), puis redémarrer
+        l'application.
+      </p>
+    </div>
   {% else %}
     {% if erreur == "trop" %}
-      <p class="resultat resultat-attention">Trop de tentatives. Réessayez dans une minute.</p>
+      <p class="resultat resultat-attention" role="alert">
+        Trop de tentatives depuis cette connexion. Réessayez dans
+        {{ attente }} seconde{{ "s" if attente > 1 }} : chaque essai d'ici là
+        repousse ce délai.
+      </p>
     {% elif erreur %}
       <p class="resultat resultat-attention">Mot de passe incorrect.</p>
     {% endif %}

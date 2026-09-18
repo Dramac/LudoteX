@@ -9,10 +9,21 @@ Différences avec app/auth.py (jeton bénévole) :
 
 AMORÇAGE (premier mot de passe)
 -------------------------------
-Si aucun hash n'existe encore en base, on initialise à partir de la variable
-d'environnement `ADMIN_PASSWORD` (lue une seule fois, puis hachée et stockée).
-Ensuite, le mot de passe se change dans l'application. Si ni hash ni
-`ADMIN_PASSWORD` ne sont définis, l'admin est « non configuré » (login refusé).
+Sur un serveur, `deploy/install.sh` pose le hash lui-même, par
+`scripts/reinitialiser_mot_de_passe.py`, et n'écrit plus le mot de passe dans
+aucun fichier (lot-6-pré-production, `SEC-17`).
+
+En local, la variable d'environnement `ADMIN_PASSWORD` reste un amorçage
+possible : si aucun hash n'existe encore en base, elle est lue une fois, hachée
+et stockée. Sa valeur d'exemple (`MDP_EXEMPLE`, celle de `.env.example`) est
+REFUSÉE, comme `auth._PLACEHOLDER` pour le jeton : recopiée telle quelle, elle
+deviendrait un mot de passe publié sur GitHub (`SEC-16`). Si ni hash ni
+`ADMIN_PASSWORD` valable ne sont définis, l'admin est « non configuré » (login
+refusé, et l'écran de connexion dit quoi faire).
+
+`ADMIN_PASSWORD` n'est JAMAIS relue une fois le hash posé : la modifier ne
+change pas le mot de passe. Le seul recours à un oubli est le script
+ci-dessus (`DOC-01`).
 
 SÉCURITÉ
 --------
@@ -20,7 +31,9 @@ SÉCURITÉ
   sel aléatoire et nombre d'itérations élevé. Comparaison en temps constant.
 - Sessions en mémoire du process (suffisant pour un seul worker uvicorn ; avec
   plusieurs workers, prévoir un store partagé). Cookie HttpOnly + SameSite.
-- Limitation de débit du login réutilisée depuis app/auth.trop_de_tentatives.
+- Limitation de débit du login : `app/auth.trop_de_tentatives`, mais sur un
+  compteur et un seuil PROPRES (`LIMITE_CONNEXION`, `cle_debit_connexion`),
+  distincts de ceux de `/acces` (`SEC-03`).
 """
 
 from __future__ import annotations
@@ -41,6 +54,59 @@ DUREE_SESSION = 8 * 60 * 60
 # Paramètres du hachage pbkdf2.
 _ALGO = "pbkdf2_sha256"
 _ITERATIONS = 200_000
+
+# Longueur minimale d'un mot de passe admin (`SEC-13`). SEUL domicile de la
+# valeur côté Python : `changer_mot_de_passe` et
+# `scripts/reinitialiser_mot_de_passe.py` la lisent ici. `deploy/install.sh`
+# en porte une copie en bash (`-lt 8`), qu'un test compare à celle-ci.
+LONGUEUR_MIN_MDP = 8
+
+# Valeur d'exemple d'`ADMIN_PASSWORD` dans `.env.example` : jamais un mot de
+# passe (`SEC-16`). Un test relit `.env.example` et vérifie que c'est bien
+# CETTE valeur qui y figure.
+MDP_EXEMPLE = "remplacer_au_premier_demarrage"
+
+# Limitation de débit de POST /admin/login (`SEC-03`).
+#
+# Compteur SÉPARÉ de celui de /acces : les deux partageaient un dictionnaire
+# indexé par la seule adresse IP. Dans une salle où bénévoles et bureau
+# sortent par la même adresse publique, la vague d'activations du matin
+# consommait le quota de connexion du bureau. La clé préfixée
+# (`cle_debit_connexion`) sépare les deux sans toucher au seuil de /acces.
+#
+# 10 essais par minute : assez pour un bureau qui se trompe de touche sur un
+# téléphone, à plusieurs derrière la même adresse ; six fois moins que
+# l'ancien seuil partagé. Une constante et non une variable d'environnement :
+# ce seuil n'a pas à être réglé par instance, et une clé active de plus dans
+# `.env.example` serait réclamée à chaque serveur par le contrôle de report.
+#
+# Le compteur vit EN MÉMOIRE et repart à zéro à chaque redémarrage du service :
+# c'est un frein, pas un verrouillage durable.
+LIMITE_CONNEXION = 10
+FENETRE_CONNEXION_S = 60
+
+
+def cle_debit_connexion(ip: str) -> str:
+    """Clé du compteur de débit de la connexion admin pour une adresse IP."""
+    return f"admin-login|{ip}"
+
+
+def motif_refus_mdp(mot_de_passe: str | None) -> str | None:
+    """
+    Dit pourquoi un NOUVEAU mot de passe est refusé, ou None s'il est accepté.
+
+    Règle unique, appliquée par `changer_mot_de_passe` (écran) et par
+    `scripts/reinitialiser_mot_de_passe.py` (serveur).
+
+    Returns:
+        "trop_court" (moins de `LONGUEUR_MIN_MDP` caractères, espaces de bord
+        non comptés), "exemple" (la valeur de `.env.example`), ou None.
+    """
+    if len((mot_de_passe or "").strip()) < LONGUEUR_MIN_MDP:
+        return "trop_court"
+    if mot_de_passe.strip() == MDP_EXEMPLE:
+        return "exemple"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -99,11 +165,18 @@ def assurer_admin_hash(conn: sqlite3.Connection) -> str | None:
     if h:
         return h
     env = (os.getenv("ADMIN_PASSWORD") or "").strip()
-    if env:
+    # La valeur d'exemple n'amorce jamais rien (`SEC-16`) : l'administration
+    # reste « non configurée », et l'écran de connexion le dit.
+    if env and env != MDP_EXEMPLE:
         h = hacher_mdp(env)
         set_admin_hash(conn, h)
         return h
     return None
+
+
+def mdp_exemple_dans_env() -> bool:
+    """True si `ADMIN_PASSWORD` vaut la valeur d'exemple (pour le dire à l'écran)."""
+    return (os.getenv("ADMIN_PASSWORD") or "").strip() == MDP_EXEMPLE
 
 
 def admin_configure(conn: sqlite3.Connection) -> bool:
@@ -117,19 +190,26 @@ def verifier_identifiants(conn: sqlite3.Connection, mot_de_passe: str) -> bool:
     return h is not None and verifier_mdp(mot_de_passe, h)
 
 
-def changer_mot_de_passe(conn: sqlite3.Connection, ancien: str, nouveau: str) -> bool:
+def changer_mot_de_passe(conn: sqlite3.Connection, ancien: str,
+                         nouveau: str) -> str | None:
     """
-    Change le mot de passe admin si l'ancien est correct et le nouveau non vide.
+    Change le mot de passe admin si l'ancien est correct et le nouveau acceptable.
+
+    L'ancien est vérifié AVANT la règle du nouveau : qui ne connaît pas le mot
+    de passe en vigueur n'apprend rien de plus.
 
     Returns:
-        True si le changement a eu lieu, False sinon.
+        None si le changement a eu lieu ; sinon le motif du refus :
+        "ancien_incorrect", ou celui de `motif_refus_mdp` ("trop_court",
+        "exemple"). Un motif par cause, pour que l'écran dise laquelle.
     """
-    if not nouveau or not nouveau.strip():
-        return False
     if not verifier_identifiants(conn, ancien):
-        return False
+        return "ancien_incorrect"
+    motif = motif_refus_mdp(nouveau)
+    if motif:
+        return motif
     set_admin_hash(conn, hacher_mdp(nouveau))
-    return True
+    return None
 
 
 # ---------------------------------------------------------------------------

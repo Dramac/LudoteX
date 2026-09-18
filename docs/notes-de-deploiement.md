@@ -114,6 +114,61 @@ Les archives `avant-mise-a-jour-…` déjà posées restent restaurables, mais
 l'ancien `sauvegarde.sh` ne les voit plus : elles ne seraient alors plus
 purgées, à supprimer à la main au-delà de 30 jours.
 
+### Mot de passe admin : retirer la copie en clair des fichiers d'environnement
+
+**Facultatif** : l'application fonctionne à l'identique avec ou sans la ligne,
+et le contrôle de report ne la réclame plus. Motif : `install.sh` écrivait le
+mot de passe admin initial en clair dans `/opt/ludotex/.env` et
+`/etc/ludotex-formation.env`. Il n'y sert plus à rien — le mot de passe vit
+haché en base, et `ADMIN_PASSWORD` n'est plus jamais relue une fois ce hash
+posé — mais il y reste lisible, périmé s'il a été changé depuis l'écran.
+Cette version n'écrit plus cette ligne ; sur un serveur existant, elle est à
+retirer à la main.
+
+Chemins par défaut ci-dessous : les adapter si l'installation est ailleurs.
+Faire la formation d'abord, la production ensuite. **Ne jamais afficher la
+valeur de la ligne** (pas de `cat`, pas de `grep` sans `-c`).
+
+1. Vérifier, **en lecture seule**, que chaque base porte déjà le mot de passe
+   haché :
+   ```bash
+   sudo -u pretjeux sqlite3 "file:/var/lib/ludotex-formation/pret-jeux.db?mode=ro" "SELECT count(*) FROM parametres WHERE cle='admin_hash';"
+   sudo -u pretjeux sqlite3 "file:/var/lib/ludotex/pret-jeux.db?mode=ro" "SELECT count(*) FROM parametres WHERE cle='admin_hash';"
+   ```
+   *À voir :* `1` pour chacune. **`0` : s'arrêter là pour cette instance.**
+   Le hash n'est posé qu'à la première visite de `/admin` : ouvrir une fois
+   l'écran de connexion de cette instance, puis relancer la commande.
+2. Se connecter à `/admin` sur chacun des deux sites, avec le mot de passe
+   que l'on connaît. **Échec : ne pas relire la ligne** pour le retrouver ;
+   remplacer le mot de passe avec `scripts/reinitialiser_mot_de_passe.py`
+   (`docs/deploiement.md` § 9), puis reprendre ici.
+3. Retirer la ligne des deux fichiers, puis vérifier :
+   ```bash
+   sudo sed -i '/^ADMIN_PASSWORD=/d' /etc/ludotex-formation.env
+   sudo sed -i '/^ADMIN_PASSWORD=/d' /opt/ludotex/.env
+   sudo grep -c '^ADMIN_PASSWORD=' /etc/ludotex-formation.env /opt/ludotex/.env
+   sudo stat -c '%a %U:%G %n' /etc/ludotex-formation.env /opt/ludotex/.env
+   ```
+   *À voir :* `…:0` pour les deux fichiers, puis `600 pretjeux:pretjeux` pour
+   les deux (`sed -i` garde droits et propriétaire). `grep -c` compte la ligne
+   sans l'afficher : si elle n'existait déjà plus, il affichait `0` avant le
+   `sed`, sans conséquence.
+4. Aucun redémarrage nécessaire : le service en marche garde l'ancienne valeur
+   en mémoire, sans s'en servir. Pour le prouver tout de suite sur la
+   formation :
+   ```bash
+   sudo systemctl restart ludotex-formation
+   ```
+   puis se reconnecter à `/admin` du site de formation. *À voir :* la
+   connexion réussit. La production le constatera à son prochain redémarrage
+   (mise à jour, ou redémarrage automatique du système).
+
+Retour en arrière : sans objet tant que l'étape 1 a répondu `1` — la ligne
+n'était plus lue. Si une base perdait un jour son hash (restauration d'une
+archive très ancienne), l'administration afficherait « Aucun mot de passe
+administrateur n'est défini » : le poser avec
+`scripts/reinitialiser_mot_de_passe.py`, jamais en remettant la ligne.
+
 ---
 
 ## 1.14.0 — 2026-09-13

@@ -490,12 +490,44 @@ toucher à la production.
   `sudo certbot --nginx -d jeux.monasso.fr -m contact@monasso.fr`
   (le renouvellement est normalement automatique, `certbot` programme sa
   propre tâche).
-- **Mot de passe admin oublié** : pas de récupération automatique par
-  e-mail (aucune donnée personnelle stockée) — il faut réinitialiser le hash
-  en base ou redéfinir `ADMIN_PASSWORD` dans `.env` puis relancer
-  `sudo ./deploy/install.sh` en choisissant de conserver le `.env` existant
-  après y avoir édité la ligne à la main, ou demander de l'aide au référent
-  technique.
+- **Mot de passe admin oublié** : pas de récupération par e-mail (aucune
+  donnée personnelle stockée). Le mot de passe vit **haché en base** ;
+  `ADMIN_PASSWORD` n'est lue qu'une fois, quand la base n'en a encore aucun :
+  la modifier dans `.env`, ou relancer `install.sh`, ne change **rien**. Le
+  recours est un script, qui remplace le hash en base.
+
+  1. **Sauvegarder d'abord** (« Données & sauvegarde » si quelqu'un a encore
+     accès à l'administration, sinon
+     `sudo -u pretjeux /opt/ludotex/deploy/sauvegarde.sh /opt/ludotex /var/lib/ludotex/sauvegardes`,
+     voir § 7).
+  2. Lancer le script **depuis le dossier d'installation** :
+     ```bash
+     cd /opt/ludotex
+     sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py
+     ```
+     Pour l'**instance de formation**, dont l'environnement est lu par
+     systemd et non par un `.env` du dossier :
+     ```bash
+     cd /opt/ludotex
+     sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py --env /etc/ludotex-formation.env
+     ```
+  3. Le script affiche la **base qu'il va modifier** (`Base visée : …`) :
+     vérifier que c'est la bonne (`/var/lib/ludotex/pret-jeux.db` pour la
+     production) avant de répondre `o`. Il lit ensuite le nouveau mot de
+     passe **au clavier, sans écho**, deux fois ; 8 caractères minimum.
+  4. `Mot de passe admin remplacé.` : **aucun redémarrage** nécessaire, le
+     nouveau mot de passe est accepté dès la connexion suivante, l'ancien
+     refusé. Les sessions déjà ouvertes restent ouvertes jusqu'à leur
+     échéance (8 h).
+
+  Si le script répond `Cette base n'existe pas`, il n'a **rien créé** : le
+  chemin affiché est faux (mauvais dossier courant, mauvais fichier
+  `--env`). Il ne fabrique jamais de base vide à côté de la vraie.
+- **« Trop de tentatives » sur la connexion admin** : 10 essais par minute et
+  par adresse, sur un compteur **distinct** de celui des activations
+  bénévoles (`RATE_LIMIT_PER_MINUTE`, qui ne s'applique pas à `/admin`).
+  L'écran indique le délai. Le compteur est en mémoire : un redémarrage du
+  service le remet à zéro — c'est un frein, pas un verrouillage.
 - **Jeton bénévole expiré** : se reconnecter à `/admin` (le mot de passe
   admin reste valide) → « Accès bénévole » → **Prolonger sans changer le
   lien**. Les téléphones déjà activés reprennent sans rouvrir le lien. Ne
@@ -602,10 +634,13 @@ sudo -u pretjeux nano .env
 À renseigner (voir `.env.example` pour la liste complète et à jour) :
 `PRET_TOKEN` (générer avec
 `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`),
-`ADMIN_PASSWORD`, `BASE_URL` (l'URL **définitive**, ex.
+`BASE_URL` (l'URL **définitive**, ex.
 `https://pret.example.fr`), `NOM_ASSOCIATION`, `DATABASE_PATH`,
 `TOURNOI_DATABASE_PATH`, `PLANNING_DATABASE_PATH`, `RATE_LIMIT_PER_MINUTE`,
 `APP_ENV=production`.
+
+**Pas d'`ADMIN_PASSWORD`** : le mot de passe administrateur se pose en base,
+une fois les bases initialisées (étape E), et n'est écrit dans aucun fichier.
 
 ### E. Initialiser les bases
 
@@ -614,6 +649,14 @@ cd /opt/ludotex
 sudo -u pretjeux .venv/bin/python -m app.db
 sudo -u pretjeux .venv/bin/python -m app.tournoi.db
 sudo -u pretjeux .venv/bin/python -m app.planning.db
+```
+
+Poser le mot de passe administrateur (lu au clavier, sans écho, 8 caractères
+minimum — voir § 9, « Mot de passe admin oublié », c'est le même script) :
+
+```bash
+cd /opt/ludotex
+sudo -u pretjeux .venv/bin/python scripts/reinitialiser_mot_de_passe.py
 ```
 
 Puis générer le jeton bénévole définitif (expiration 1 semaine) :

@@ -15,15 +15,22 @@
   <form method="post" action="/admin/motdepasse" class="recherche-form">
     <div class="champ">
       <label for="ancien">Mot de passe actuel</label>
-      <input type="password" id="ancien" name="ancien">
+      <input type="password" id="ancien" name="ancien"
+             autocomplete="current-password" required>
     </div>
     <div class="champ">
       <label for="nouveau">Nouveau mot de passe</label>
-      <input type="password" id="nouveau" name="nouveau">
+      {# minlength : le refus arrive avant l'envoi. Le serveur vérifie quand
+         même (admin_auth.motif_refus_mdp) — jamais l'un à la place de l'autre. #}
+      <input type="password" id="nouveau" name="nouveau"
+             autocomplete="new-password" required minlength="{{ longueur_min }}"
+             aria-describedby="nouveau-aide">
+      <small id="nouveau-aide" class="stats-note">Au moins {{ longueur_min }} caractères.</small>
     </div>
     <div class="champ">
       <label for="confirmation">Confirmer le nouveau mot de passe</label>
-      <input type="password" id="confirmation" name="confirmation">
+      <input type="password" id="confirmation" name="confirmation"
+             autocomplete="new-password" required minlength="{{ longueur_min }}">
     </div>
     <div><button type="submit" class="bouton-filtrer">Modifier</button></div>
   </form>

@@ -37,9 +37,14 @@ L'instance de production, elle, n'est **pas modifiée** : sans la variable
   formation a été installé en même temps).
 - Sinon, l'URL du sous-domaine dédié (ex. `https://formation.jeux.monasso.fr`),
   à partager directement aux bénévoles en formation.
-- Le mot de passe admin et, selon l'installation, le jeton bénévole peuvent
-  être différents de la production — voir ce qui a été choisi lors de
-  l'installation (ou `.env` de l'instance de formation).
+- Le mot de passe admin est, au départ, celui choisi à l'installation pour la
+  production : `deploy/install.sh` le pose dans les deux bases, sans l'écrire
+  dans aucun fichier. Changé ensuite depuis l'écran d'une instance, il ne
+  change pas sur l'autre. Oublié : `scripts/reinitialiser_mot_de_passe.py
+  --env /etc/ludotex-formation.env` (voir `docs/deploiement.md`, § 9). La
+  réinitialisation des données de formation ne l'efface pas.
+- Selon l'installation, le jeton bénévole peut être différent de la production
+  (voir le fichier d'environnement de l'instance de formation).
 
 ## Réinitialiser les données de formation
 

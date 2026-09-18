@@ -688,10 +688,13 @@ Phase 5 — terrain (…… personnes)
   écrire si le besoin se confirme — l'enjeu, une chaise en trop, ne le
   justifiait pas jusqu'ici.
 - La **limitation de débit par IP** (`RATE_LIMIT_PER_MINUTE`) ne s'applique
-  qu'à la page d'activation et à la connexion admin, pas aux actions de prêt.
-  Tous les bénévoles étant derrière la même IP publique dans la salle, cela
-  aurait pu poser problème ; ce n'est pas le cas. Rien à tester, mais bon à
-  savoir.
+  qu'à la page d'activation, pas aux actions de prêt. Tous les bénévoles étant
+  derrière la même IP publique dans la salle, cela aurait pu poser problème ;
+  ce n'est pas le cas. La connexion admin a son **propre compteur**
+  (`admin_auth.LIMITE_CONNEXION`) : jusqu'au lot-6-pré-production elle
+  partageait celui de `/acces`, et la vague d'activations du matin pouvait
+  épuiser le quota du bureau derrière la même adresse. Rien à tester, mais bon
+  à savoir.
 - Le scanner caméra (`getUserMedia`, jsQR) ne peut être évalué qu'en phase 5,
   sur de vrais téléphones. Depuis le lot agora-3, `/scanner?debug=1` affiche
   sur place la définition fournie par la caméra, celle réellement décodée, le

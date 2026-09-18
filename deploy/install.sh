@@ -17,8 +17,9 @@
 #      l'association, mot de passe admin, chemins d'installation).
 #   3. Place le code à l'emplacement choisi, génère le `.env`.
 #   4. Crée l'environnement virtuel Python + installe requirements.txt.
-#   5. Initialise les trois bases SQLite (prêt, tournois, planning) et génère
-#      le jeton bénévole (validité 1 semaine).
+#   5. Initialise les trois bases SQLite (prêt, tournois, planning), pose le
+#      mot de passe admin (haché, en base seulement) et génère le jeton
+#      bénévole (validité 1 semaine).
 #   6. Installe le service systemd et la configuration nginx.
 #   7. Obtient le certificat HTTPS Let's Encrypt.
 #   8. Propose la sauvegarde quotidienne automatique.
@@ -182,6 +183,9 @@ NOM_ASSOCIATION="$REPONSE"
 echo
 echo "--- Mot de passe administrateur ---"
 echo "    (donne accès à /admin : création de fiches, jeton bénévole, exports...)"
+# Il n'est écrit dans AUCUN fichier : il est haché en base à l'étape 5 (SEC-17).
+# Le seuil 8 est une COPIE de admin_auth.LONGUEUR_MIN_MDP, verrouillée par
+# tests/test_porte_administration.py : les changer ensemble.
 while true; do
     read -r -s -p "Mot de passe administrateur : " ADMIN_PASSWORD; echo
     if [[ ${#ADMIN_PASSWORD} -lt 8 ]]; then
@@ -283,7 +287,9 @@ if [[ "$GENERER_ENV" -eq 1 ]]; then
 PRET_TOKEN=$JETON_TEMPORAIRE
 
 # --- Mot de passe administrateur -------------------------------------
-ADMIN_PASSWORD=$ADMIN_PASSWORD
+# Volontairement absent : il est haché en base à l'installation, et ne vit
+# nulle part en clair. Oublié : scripts/reinitialiser_mot_de_passe.py (voir
+# docs/deploiement.md, « Mot de passe admin oublié »).
 
 # --- Bases de données -------------------------------------------------
 DATABASE_PATH=$DATA_DIR/pret-jeux.db
@@ -333,6 +339,23 @@ info "Initialisation de la base des tournois (app.tournoi.db)..."
 
 info "Initialisation de la base du planning (app.planning.db)..."
 (cd "$INSTALL_DIR" && sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/python" -m app.planning.db)
+
+# Mot de passe admin : haché directement en base, jamais écrit dans .env
+# (SEC-17). Passé sur l'entrée standard — ni en argument, ni en variable
+# d'environnement, qui s'afficheraient dans la liste des processus.
+# `--si-absent` : une base qui a déjà un mot de passe le GARDE, comme avant ce
+# changement (ADMIN_PASSWORD n'était lue que sans hash en base). Pour changer
+# un mot de passe existant, c'est le script seul, sans cette option.
+poser_mot_de_passe_admin() {
+    # $@ : la commande python de l'instance (production ou formation).
+    if ! "$@" "$INSTALL_DIR/scripts/reinitialiser_mot_de_passe.py" --stdin --si-absent \
+            <<< "$ADMIN_PASSWORD"; then
+        avert "Mot de passe admin NON posé. L'écran /admin le signalera ; le poser avec :"
+        avert "  cd $INSTALL_DIR && sudo -u $SERVICE_USER .venv/bin/python scripts/reinitialiser_mot_de_passe.py"
+    fi
+}
+info "Mot de passe administrateur (base de prêt)..."
+(cd "$INSTALL_DIR" && poser_mot_de_passe_admin sudo -u "$SERVICE_USER" "$INSTALL_DIR/.venv/bin/python")
 
 if [[ "$GENERER_ENV" -eq 1 ]]; then
     info "Génération du jeton bénévole définitif (expiration : 1 semaine)..."
@@ -533,10 +556,12 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
     # par le .env de production (variables injectées directement, chacune un
     # argument bash correctement quoté -> aucun souci avec les valeurs
     # contenant des espaces, ex. NOM_ASSOCIATION).
+    # ADMIN_PASSWORD n'y figure plus (SEC-17) : aucun des modules appelés ici
+    # ne la lisait — le hash n'était posé qu'à la première visite de /admin.
+    # Le mot de passe est désormais posé explicitement, ci-dessous.
     run_python_formation() {
         sudo -u "$SERVICE_USER" env \
             MODE_FORMATION=1 \
-            ADMIN_PASSWORD="$ADMIN_PASSWORD" \
             DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db" \
             TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db" \
             PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db" \
@@ -555,6 +580,11 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
     info "Peuplement des données de démonstration (jeux fictifs, prêts, tournoi)..."
     (cd "$INSTALL_DIR" && run_python_formation -m app.formation)
 
+    # Même mot de passe que la production. La réinitialisation des données de
+    # formation ne vide pas `parametres` : il survit (test_porte_administration).
+    info "Mot de passe administrateur (base de formation)..."
+    (cd "$INSTALL_DIR" && poser_mot_de_passe_admin run_python_formation)
+
     # Fichier lu par systemd (EnvironmentFile) : valeurs prises littéralement
     # ligne par ligne (pas d'interprétation shell, pas de souci de quoting ici).
     ENV_FORMATION="/etc/ludotex-formation.env"
@@ -568,7 +598,6 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
 # volontairement absent : accès ouvert, plus simple pour la formation (aucune
 # donnée réelle n'est en jeu sur cette instance).
 MODE_FORMATION=1
-ADMIN_PASSWORD="$ADMIN_PASSWORD"
 DATABASE_PATH="$DATA_DIR_FORMATION/pret-jeux.db"
 TOURNOI_DATABASE_PATH="$DATA_DIR_FORMATION/tournoi.db"
 PLANNING_DATABASE_PATH="$DATA_DIR_FORMATION/planning.db"
@@ -653,7 +682,8 @@ echo "#  Installation terminée                                   #"
 echo "############################################################"
 echo
 echo "Site                 : https://$DOMAINE"
-echo "Espace admin         : https://$DOMAINE/admin  (mot de passe défini ci-dessus)"
+echo "Espace admin         : https://$DOMAINE/admin  (mot de passe défini ci-dessus,"
+echo "                       ou celui déjà en place si la base en avait un)"
 echo "Lien d'activation bénévole (à partager aux bénévoles) :"
 echo "  https://$DOMAINE/acces?jeton=$JETON"
 echo "  (valable 1 semaine ; renouvelable depuis /admin/jeton)"

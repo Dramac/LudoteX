@@ -142,10 +142,13 @@ def test_connexion_echouee_journalisee_avec_ok_false(client, _journal_isole):
     assert not _actions(_journal_isole, "connexion_reussie")
 
 
-def test_connexion_bloquee_par_la_limite_de_debit_journalisee(client, _journal_isole, monkeypatch):
-    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "1")
-    client.post("/admin/login", data={"mot_de_passe": "pas-le-bon"})
-    client.post("/admin/login", data={"mot_de_passe": "pas-le-bon"})
+def test_connexion_bloquee_par_la_limite_de_debit_journalisee(client, _journal_isole):
+    # Seuil PROPRE à la connexion admin (lot-6-pré-production, SEC-03) :
+    # RATE_LIMIT_PER_MINUTE, celui de /acces, ne s'applique plus ici.
+    from app import admin_auth
+
+    for _ in range(admin_auth.LIMITE_CONNEXION + 1):
+        client.post("/admin/login", data={"mot_de_passe": "pas-le-bon"})
     motifs = [l["detail"] for l in _actions(_journal_isole, "connexion_echouee")]
     assert "trop_de_tentatives" in motifs
 

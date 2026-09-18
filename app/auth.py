@@ -42,6 +42,7 @@ on garde la fermeture). Trois choses rendent cette fermeture moins brutale :
 
 from __future__ import annotations
 
+import math
 import os
 import secrets
 import sqlite3
@@ -97,6 +98,7 @@ ETAT_RAFRAICHIR_COOKIE = "rafraichir_cookie_jeton"
 # Nom du cookie déposé sur l'appareil bénévole après activation.
 COOKIE_NAME = "jeton_pret"
 # Valeur d'exemple du .env.example : à considérer comme « non configuré ».
+# Verrouillée contre `.env.example` par tests/test_porte_administration.py.
 _PLACEHOLDER = "remplacer_par_un_jeton_aleatoire_long"
 
 
@@ -324,7 +326,9 @@ def exiger_jeton(request: Request) -> None:
 # ---------------------------------------------------------------------------
 # Limitation de débit par IP (fenêtre glissante, en mémoire)
 # ---------------------------------------------------------------------------
-# Dictionnaire { adresse_ip : [horodatages des tentatives récentes] }.
+# Dictionnaire { clé : [horodatages des tentatives récentes] }. La clé est
+# l'adresse IP pour /acces, et `admin_auth.cle_debit_connexion(ip)` pour la
+# connexion admin : deux compteurs distincts dans le même dictionnaire.
 # Stocké en mémoire du process : suffisant pour un seul worker uvicorn à la
 # charge attendue. Avec plusieurs workers, prévoir un store partagé (Redis…).
 _tentatives: dict[str, list[float]] = {}
@@ -356,8 +360,9 @@ def _balayer(maintenant: float) -> None:
     commande et par `lancer.py`, où une boucle asyncio n'aurait aucun sens.
 
     L'HORIZON DE PURGE EST LA PLUS GRANDE FENÊTRE VUE, jamais celle de l'appel
-    courant : `fenetre` est un paramètre, et le lot D du plan d'action prévoit
-    justement une limite dédiée au login admin, potentiellement plus longue.
+    courant : `fenetre` est un paramètre, et la connexion admin a son propre
+    compteur (clé `admin_auth.cle_debit_connexion`, lot-6-pré-production),
+    dont la fenêtre pourrait un jour s'allonger.
     Purger sur une fenêtre trop courte effacerait le compteur d'une adresse
     encore surveillée par un autre appelant — elle repartirait avec un quota
     neuf. Autrement dit : ce serait un AFFAIBLISSEMENT silencieux de la
@@ -404,3 +409,30 @@ def trop_de_tentatives(ip: str, limite: int, fenetre: int = 60) -> bool:
     recent.append(maintenant)
     _tentatives[ip] = recent
     return len(recent) > limite
+
+
+def secondes_avant_essai(cle: str, limite: int, fenetre: int = 60) -> int:
+    """
+    Combien de secondes attendre avant qu'un essai de plus passe sous `limite`.
+
+    Lecture seule : n'enregistre rien. À appeler juste après un
+    `trop_de_tentatives` qui a répondu True, pour que le message dise un délai
+    au lieu d'un « plus tard » (règle « ne jamais bloquer sans dire quoi
+    faire »).
+
+    Exact si personne ne réessaie d'ici là : chaque essai refusé est lui aussi
+    compté (c'est ce qui freine un robot), donc il repousse le délai.
+
+    Returns:
+        0 si un essai passerait déjà, sinon un entier d'au moins 1.
+    """
+    maintenant = time.time()
+    recent = sorted(t for t in _tentatives.get(cle, []) if maintenant - t < fenetre)
+    # Un essai de plus passe quand il reste au plus `limite - 1` tentatives
+    # dans la fenêtre : il faut donc que la plus récente des tentatives en
+    # trop soit sortie.
+    en_trop = len(recent) - (limite - 1)
+    if en_trop <= 0:
+        return 0
+    reste = recent[en_trop - 1] + fenetre - maintenant
+    return max(1, math.ceil(reste))

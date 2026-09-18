@@ -286,9 +286,20 @@
   <h3 id="probleme-motdepasse">« J'ai oublié le mot de passe administrateur »</h3>
   <p>Il n'y a <strong>aucune récupération depuis l'application</strong>, et pas
      d'envoi par e-mail : l'application ne conserve aucune adresse. Seule la
-     personne qui s'occupe du serveur peut le redéfinir.</p>
+     personne qui s'occupe du serveur peut le redéfinir : elle dispose pour
+     cela d'une commande dédiée, décrite dans le guide de déploiement à la
+     rubrique « Mot de passe admin oublié ». Elle y choisit le nouveau mot de
+     passe (au moins 8 caractères) et vous le transmet.</p>
+  <p>Aucun redémarrage du site n'est nécessaire : dès que c'est fait, vous
+     vous connectez avec le nouveau mot de passe. L'ancien ne fonctionne plus.</p>
   <p>L'accès bénévole, lui, n'est pas concerné : les téléphones déjà activés
-     continuent de fonctionner normalement.</p>
+     continuent de fonctionner normalement. Mais sans administration, vous ne
+     pouvez plus le <strong>prolonger</strong> : si son échéance approche,
+     prévenez la personne qui s'occupe du serveur sans attendre.</p>
+  <p>Si l'écran de connexion affiche « Trop de tentatives », attendez le délai
+     qu'il indique <strong>sans réessayer entre-temps</strong> : chaque essai
+     repousse ce délai. Ce blocage ne concerne que la connexion à
+     l'administration, jamais les bénévoles.</p>
 
   <h3 id="probleme-journal">« Je veux comprendre ce qui s'est passé »</h3>
   <p>Le <a class="lien" href="/admin/journal">journal d'activité</a> retrace
