@@ -45,12 +45,12 @@ NB_MOUVEMENTS = 8
 # `db._migrer_titre_live_vers_nom_evenement` ; elle n'a plus aucun lecteur.
 
 # Annonce libre affichée en bandeau sur l'écran de salle (idée 5.2). Une seule
-# annonce à la fois, pas d'historique. `CLE_ANNONCE_EXPIRE` est optionnelle :
-# horodatage UTC ISO au-delà duquel l'annonce s'auto-masque (calculé à la
-# volée, jamais purgé en base — voir `annonce_active`). Sans date, l'annonce
-# reste affichée indéfiniment jusqu'à effacement manuel en admin.
-CLE_ANNONCE = "live_annonce"
-CLE_ANNONCE_EXPIRE = "live_annonce_expire"
+# annonce à la fois, pas d'historique, et toujours une échéance. Les clés et
+# les règles (durée obligatoire, effacement) vivent dans `app.services`,
+# section « Annonce de l'écran de salle » ; elles sont reprises ici pour les
+# lecteurs historiques de ce module.
+CLE_ANNONCE = services.CLE_ANNONCE
+CLE_ANNONCE_EXPIRE = services.CLE_ANNONCE_EXPIRE
 
 # Alerte tournoi « rapportez les exemplaires » (docs/conception-alerte-tournoi.md).
 # Calcul à la lecture, aucune écriture en base : exactement le patron de
@@ -159,21 +159,20 @@ def panneaux_actifs(conn) -> dict[str, bool]:
 def annonce_active(conn) -> str | None:
     """
     Annonce actuellement affichable sur /live, ou None si aucune n'est
-    configurée OU si sa durée d'affichage est dépassée. Ne modifie jamais la
-    base (l'auto-masquage est un simple calcul de lecture) : le texte reste
-    tel quel en admin tant que personne ne le change, pour qu'une annonce
-    expirée reste rappelable/modifiable sans avoir à la retaper.
+    enregistrée, si sa durée d'affichage est dépassée, ou si elle n'a pas
+    d'échéance lisible (voir `services.annonce_affichable`).
+
+    LECTURE SEULE, et ça doit le rester : /live/data l'appelle en boucle et la
+    supervision à chaque visite du tableau de bord. Le texte d'une annonce
+    expirée n'est plus « rappelable » : il est effacé aux moments d'écriture
+    énumérés dans `services.purger_annonce_expiree`, jamais ici.
     """
     annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
     if not annonce:
         return None
-    expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
-    if expire_iso:
-        try:
-            if datetime.now(timezone.utc) > datetime.fromisoformat(expire_iso):
-                return None
-        except ValueError:
-            pass  # valeur corrompue : jamais bloquant, on affiche plutôt que planter
+    if not services.annonce_affichable(
+            services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)):
+        return None
     return annonce
 
 

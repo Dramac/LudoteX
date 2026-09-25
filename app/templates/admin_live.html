@@ -98,36 +98,46 @@
     <div class="champ">
       <label for="annonce">Annonce affichée en bandeau sur /live</label>
       <textarea id="annonce" name="annonce" maxlength="200" rows="2"
+                aria-describedby="annonce-consigne"
                 placeholder="Ex. : Tombola à 15 h, stand accueil.">{{ annonce or '' }}</textarea>
-      <p class="stats-note">200 caractères maximum. Laissez vide pour ne rien
-        afficher.</p>
+      {# Patron exact de la consigne du signalement (« Décrivez la boîte,
+         jamais une personne. ») : cet écran est PUBLIC, et l'appel nominatif
+         est l'usage le plus naturel d'une annonce urgente. La consigne dit
+         quoi écrire à la place, parce qu'on la lit dans l'urgence. #}
+      <p class="stats-note" id="annonce-consigne">Décrivez une situation, jamais
+        une personne&nbsp;: «&nbsp;Un enfant attend ses parents à
+        l'accueil&nbsp;», sans son nom. 200 caractères maximum. Laissez vide
+        pour ne rien afficher.</p>
     </div>
 
     <div class="champ">
       <label for="annonce_duree">Durée d'affichage (minutes)</label>
       <input type="number" id="annonce_duree" name="annonce_duree" min="1"
-             value="{{ annonce_duree or '' }}" placeholder="illimitée">
-      <p class="stats-note">Optionnel. Passé ce délai, le bandeau disparaît
-        tout seul de l'écran de salle. Laissez vide pour un affichage sans
-        limite de durée (à effacer alors manuellement).</p>
+             max="{{ annonce_duree_max }}"
+             aria-describedby="annonce-duree-note"
+             value="{{ annonce_duree }}">
+      <p class="stats-note" id="annonce-duree-note">Obligatoire, 12 heures au
+        plus. Passé ce délai, l'annonce disparaît de l'écran de salle et son
+        texte est effacé : il faudra la retaper pour la reposer.</p>
       <p class="duree-rapide">
         <button type="button" class="bouton-filtrer" data-min="15">15 min</button>
         <button type="button" class="bouton-filtrer" data-min="30">30 min</button>
         <button type="button" class="bouton-filtrer" data-min="60">1 h</button>
-        <button type="button" class="bouton-filtrer" data-min="">illimitée</button>
+        <button type="button" class="bouton-filtrer" data-min="240">4 h</button>
+        <button type="button" class="bouton-filtrer" data-min="{{ annonce_duree_max }}">12 h</button>
       </p>
     </div>
 
     {% if annonce %}
       <p class="stats-note">
-        {% if annonce_expiree %}
-          Cette annonce est <strong>expirée</strong> — elle ne s'affiche plus
-          en salle. Ré-enregistrez-la pour la réafficher.
-        {% elif annonce_expire_iso %}
-          Affichée en salle jusqu'à {{ annonce_expire_iso | heure_local }}.
-        {% else %}
-          Affichée en salle sans limite de durée.
-        {% endif %}
+        Affichée en salle jusqu'à {{ annonce_expire_iso | heure_local }}.
+      </p>
+    {% elif annonce_expiree %}
+      <p class="stats-note">
+        L'annonce précédente {% if annonce_expiree_iso %}a expiré à
+        {{ annonce_expiree_iso | heure_local }}{% else %}n'avait pas de durée
+        d'affichage{% endif %} : elle n'est plus affichée en salle et son texte
+        sera effacé. Pour la reposer, retapez-la.
       </p>
     {% endif %}
 

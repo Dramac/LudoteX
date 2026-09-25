@@ -415,6 +415,31 @@ def _seed_categories_signalement(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _purger_annonce_ecran_salle(conn: sqlite3.Connection) -> None:
+    """
+    Efface l'annonce de l'écran de salle si elle n'est plus affichable :
+    expirée, ou enregistrée SANS ÉCHÉANCE avant que la durée devienne
+    obligatoire (constat RGPD-01).
+
+    POURQUOI AU DÉMARRAGE. Une annonce « illimitée » posée avant la mise à jour
+    ne peut pas deviner son âge : elle peut dater de la veille comme d'un test
+    oublié il y a des semaines. Elle n'est plus affichée depuis cette version
+    (`services.annonce_affichable`), et elle est effacée ici, à la première
+    ouverture de la base par le nouveau code — le redémarrage qui suit
+    `update.sh`. La reconduire pour une durée par défaut la ferait revenir à
+    l'écran après la mise à jour, ce qui est l'inverse du but.
+
+    Le texte n'est JAMAIS écrit dans les journaux du serveur, seulement le fait.
+    """
+    from app import services  # différé : les règles de l'annonce y vivent
+
+
+    if services.purger_annonce_expiree(conn):
+        logging.getLogger("uvicorn.error").info(
+            "Annonce d'écran de salle expirée ou sans durée d'affichage : "
+            "texte effacé.")
+
+
 def init_db(conn: sqlite3.Connection | None = None) -> None:
     """
     Crée les tables/index manquants et applique les migrations de colonnes.
@@ -447,6 +472,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         # Réglage devenu obsolète : le titre de /live se règle désormais dans
         # « Gestion de l'événement » (une seule saisie au lieu de deux).
         _migrer_titre_live_vers_nom_evenement(conn)
+        _purger_annonce_ecran_salle(conn)
         _seed_emplacements_rangement(conn)
         _seed_categories_signalement(conn)
     finally:

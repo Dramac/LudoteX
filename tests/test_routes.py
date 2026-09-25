@@ -1035,7 +1035,8 @@ def test_confirmations_reformulees_m9(client, monkeypatch):
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
     dashboard = client.get("/admin").text
     assert ("Clôturer tous les prêts et sorties en cours ? Tout redeviendra "
-            "disponible, sans rien perdre de l\\'historique.") in dashboard
+            "disponible, sans rien perdre de l\\'historique, et l\\'annonce de "
+            "l\\'écran de salle sera effacée.") in dashboard
     # L'ancienne formulation technique (parenthèse) a bien disparu.
     assert "(L\\'historique et les statistiques sont conservés.)" not in dashboard
 
@@ -1681,11 +1682,13 @@ def test_admin_ecran_salle_annonce_configurable(client, monkeypatch):
     # Rien au départ : pas de bouton d'effacement.
     assert "Effacer l'annonce" not in client.get("/admin/ecran-salle").text
 
-    # Enregistrement sans durée -> affichage illimité, répercuté sur /live.
+    # Enregistrement sans durée -> jamais illimité (RGPD-01) : la durée par
+    # défaut s'applique, et le message le dit. Répercuté sur /live.
     r = client.post("/admin/ecran-salle",
                      data={"titre": "", "annonce": "Tombola à 15 h", "annonce_duree": ""})
     assert "Effacer l'annonce" in r.text
-    assert "sans limite de durée" in r.text
+    assert "Aucune durée indiquée : affichage limité à 30 minutes." in r.text
+    assert "sans limite de durée" not in r.text
     assert client.get("/live/data").json()["annonce"] == "Tombola à 15 h"
 
     # Champ vidé puis enregistré efface (même route, même résultat que le
@@ -1720,9 +1723,10 @@ def test_admin_ecran_salle_annonce_longueur_bornee(client, monkeypatch):
 
 
 def test_admin_ecran_salle_duree_auto_masquage(client, monkeypatch):
-    # Coeur de la fonctionnalité : une durée dépassée masque l'annonce sur
-    # /live sans jamais l'effacer de la base (reste éditable/rappelable en
-    # admin, cf. décision "pas d'expiration automatique qui purge").
+    # Une durée dépassée masque l'annonce sur /live. Depuis RGPD-01, elle n'est
+    # plus « rappelable » : l'écran d'administration ne repropose pas son
+    # texte, dit qu'elle a expiré, et n'offre plus de bouton d'effacement
+    # (il n'y a plus rien d'affiché à effacer).
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
     client.post("/admin/ecran-salle",
@@ -1741,30 +1745,12 @@ def test_admin_ecran_salle_duree_auto_masquage(client, monkeypatch):
         conn.close()
 
     assert "annonce" not in client.get("/live/data").json()
-    # Toujours configurée en admin (pas purgée) : le champ reste rempli, et
-    # le bouton d'effacement reste disponible pour nettoyer si besoin.
     r = client.get("/admin/ecran-salle")
-    assert "Encore un peu de temps" in r.text
-    assert "Effacer l'annonce" in r.text
-    # Point D : la note dit clairement que l'annonce est expirée, plutôt que
-    # d'afficher une heure passée prêtant à confusion.
-    assert "expirée" in r.text
+    assert "Encore un peu de temps" not in r.text
+    assert "Effacer l'annonce" not in r.text
+    assert "a expiré à" in r.text
+    assert "Pour la reposer, retapez-la." in r.text
     assert "Affichée en salle jusqu'à" not in r.text
-
-
-def test_admin_ecran_salle_duree_invalide_ou_negative(client, monkeypatch):
-    # Jamais bloquant : une durée non numérique ou négative retombe sur un
-    # affichage illimité plutôt que de produire une erreur.
-    monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
-    client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    r = client.post("/admin/ecran-salle",
-                     data={"titre": "", "annonce": "Texte", "annonce_duree": "abc"})
-    assert "sans limite de durée" in r.text
-    assert client.get("/live/data").json()["annonce"] == "Texte"
-
-    r2 = client.post("/admin/ecran-salle",
-                      data={"titre": "", "annonce": "Texte", "annonce_duree": "-5"})
-    assert "sans limite de durée" in r2.text
 
 
 def test_admin_supervision_rappel_annonce(client, monkeypatch):

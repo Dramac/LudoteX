@@ -87,6 +87,7 @@ from pathlib import Path
 from types import ModuleType
 
 from app import db as pret_db
+from app import services
 from app.planning import db as planning_db
 from app.tournoi import db as tournoi_db
 from app.version import APP_VERSION
@@ -167,11 +168,45 @@ def _copie_a_chaud(source: Path, destination: Path) -> None:
         source_conn.close()
 
 
+def _retirer_annonce(copie: Path) -> None:
+    """
+    Retire de la COPIE de la base de prêt l'annonce de l'écran de salle, puis
+    la compacte (`VACUUM`).
+
+    POURQUOI. L'annonce est un texte libre servi au public, éphémère par
+    construction (voir `services`, « Annonce de l'écran de salle »). Une
+    archive de routine, elle, est gardée un mois : une annonce copiée dedans y
+    survivrait trente jours à son effacement. Elle n'a d'ailleurs aucune
+    valeur à la restauration — une annonce d'il y a trois jours n'a rien à
+    refaire à l'écran. Elle est donc absente de TOUTE archive : routine,
+    filets et téléchargement manuel passent tous par ici.
+
+    Le `VACUUM` n'est pas décoratif : `backup()` recopie aussi les pages
+    LIBRES de la base, où le texte d'une annonce effacée plus tôt peut encore
+    se lire octet par octet. La reconstruction ne garde que les pages utiles.
+    La base vivante, elle, n'est jamais touchée ici.
+    """
+    conn = sqlite3.connect(copie)
+    try:
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'parametres'"
+        ).fetchone():
+            conn.execute(
+                "DELETE FROM parametres WHERE cle IN (?, ?)",
+                (services.CLE_ANNONCE, services.CLE_ANNONCE_EXPIRE),
+            )
+            conn.commit()
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
+
+
 def creer_zip_sauvegarde() -> bytes:
     """
     Crée une sauvegarde complète des 3 bases (+ `INFO.txt`) et renvoie le
     contenu de l'archive zip (bytes), prêt à être servi en téléchargement ou
-    écrit sur disque.
+    écrit sur disque. L'annonce de l'écran de salle n'y figure jamais (voir
+    `_retirer_annonce`).
     """
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -182,6 +217,8 @@ def creer_zip_sauvegarde() -> bytes:
                 copie = tmp_path / nom_archive
                 if source.exists():
                     _copie_a_chaud(source, copie)
+                    if module is pret_db:
+                        _retirer_annonce(copie)
                 else:
                     # Base jamais initialisée (cas improbable : app.main l'init
                     # toujours au démarrage) : on écrit un fichier SQLite vide
@@ -341,9 +378,38 @@ def ecrire_archive(nature: str, dossier: Path, maintenant: datetime | None = Non
             f"(attendu : {', '.join(PREFIXES_ARCHIVE)})"
         )
     dossier.mkdir(parents=True, exist_ok=True)
+    _purger_annonce_expiree()
     chemin = dossier / nom_archive(nature, maintenant or datetime.now())
     chemin.write_bytes(creer_zip_sauvegarde())
     return chemin
+
+
+def _purger_annonce_expiree() -> None:
+    """
+    Efface de la base VIVANTE une annonce d'écran de salle expirée, à chaque
+    passage de `deploy/sauvegarde.sh` (3 h et 15 h, et avant une mise à jour).
+
+    C'est ce qui BORNE DANS LE TEMPS la survie d'un texte expiré : les autres
+    moments d'effacement (formulaire, clôture, redémarrage) dépendent d'un
+    geste humain, celui-ci non. Sur une instance sauvegardée par le minuteur
+    (la production), un texte expiré ne reste donc jamais plus de douze
+    heures en base. Une écriture dans une tâche planifiée, pas sur un
+    chemin de lecture : `annonce_active` et `/live/data` restent en lecture
+    seule.
+
+    Ne fait JAMAIS échouer la sauvegarde : une base verrouillée ou absente
+    laisse le ménage au passage suivant — l'archive, elle, compte davantage.
+    """
+    if not pret_db.get_database_path().exists():
+        return
+    try:
+        conn = pret_db.get_connection()
+        try:
+            services.purger_annonce_expiree(conn)
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        pass
 
 
 def purger_archives(dossier: Path, maintenant: float | None = None) -> list[str]:

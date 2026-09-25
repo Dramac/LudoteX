@@ -17,7 +17,7 @@ Toutes les routes (sauf la connexion) commencent par vérifier la session via
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -1672,33 +1672,18 @@ def _minutes_restantes(expire_iso: str | None) -> int | None:
     """
     Minutes restantes avant l'expiration d'une annonce (arrondi supérieur), ou
     None si aucune expiration n'est réglée ou qu'elle est déjà dépassée. Sert
-    uniquement à préremplir le champ « durée » lors du réaffichage du
-    formulaire, pour qu'enregistrer sans y toucher reconduise approximativement
-    la même échéance plutôt que de repasser en affichage illimité.
+    à préremplir le champ « durée » lors du réaffichage du formulaire, pour
+    qu'enregistrer sans y toucher reconduise approximativement la même
+    échéance.
     """
     if not expire_iso:
         return None
     try:
         reste = datetime.fromisoformat(expire_iso) - datetime.now(timezone.utc)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
     minutes = -(-int(reste.total_seconds()) // 60)  # arrondi supérieur
     return minutes if minutes > 0 else None
-
-
-def _annonce_expiree(annonce: str | None, expire_iso: str | None) -> bool:
-    """
-    Vrai quand une annonce est enregistrée mais que sa durée d'affichage est
-    dépassée (point D) : le texte reste dans le formulaire (rappelable), mais
-    la note affichée doit le dire clairement plutôt que montrer une heure
-    passée, prêtant à confusion.
-    """
-    if not annonce or not expire_iso:
-        return False
-    try:
-        return datetime.fromisoformat(expire_iso) < datetime.now(timezone.utc)
-    except ValueError:
-        return False
 
 
 def _reglages_alerte(conn) -> dict:
@@ -1738,9 +1723,8 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
     """
     from app.modules import lire_etat_module
     from app.routes.live import (
-        CLE_ANNONCE, CLE_ANNONCE_EXPIRE, JETONS_ALERTE, MESSAGE_ALERTE_PROPOSE,
-        alerte_tournoi_detaillee, annonce_active, panneaux_actifs,
-        reglages_panneaux, titre_ecran,
+        JETONS_ALERTE, MESSAGE_ALERTE_PROPOSE, alerte_tournoi_detaillee,
+        annonce_active, panneaux_actifs, reglages_panneaux, titre_ecran,
     )
 
     conn = get_connection()
@@ -1748,17 +1732,20 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
         # Le titre ne se règle plus ici (il vaut le nom de l'événement) : on ne
         # l'affiche qu'à titre indicatif, avec un lien pour aller le changer.
         titre = titre_ecran(conn)
-        annonce = services.lire_parametre(conn, CLE_ANNONCE, None)
-        annonce_expire_iso = services.lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
+        # Le formulaire ne repropose QUE l'annonce encore affichée : une annonce
+        # expirée n'est plus « rappelable » (son texte est effacé, voir
+        # `services.purger_annonce_expiree`). Ce GET n'efface rien lui-même :
+        # il se contente de dire qu'elle a expiré, et à quelle heure.
+        texte_en_base = services.lire_parametre(conn, services.CLE_ANNONCE, None)
+        annonce_expire_iso = services.lire_parametre(
+            conn, services.CLE_ANNONCE_EXPIRE, None)
         # Réglages tels que saisis (le formulaire réaffiche le choix du
         # bureau), et panneaux réellement affichés (pour signaler qu'un module
         # désactivé prend le dessus).
         panneaux = reglages_panneaux(conn)
         panneaux_reels = panneaux_actifs(conn)
         # Aperçu (point C) : ce qui est RÉELLEMENT affiché en salle en ce
-        # moment, donc calculé avec la même fonction que /live (respecte
-        # l'expiration), pas le paramètre brut ci-dessus (qui reste rempli
-        # même après expiration, pour rester rappelable).
+        # moment, donc calculé avec la même fonction que /live.
         annonce_affichee = annonce_active(conn)
         alerte = _reglages_alerte(conn)
         # Même chose pour l'alerte tournoi, précédence de module comprise : un
@@ -1780,10 +1767,17 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
     return templates.TemplateResponse(
         request, "admin_live.html",
         {"titre": titre,
-         "annonce": annonce, "annonce_duree": _minutes_restantes(annonce_expire_iso),
-         "annonce_expire_iso": annonce_expire_iso if annonce else None,
+         "annonce": annonce_affichee,
+         "annonce_duree": ((_minutes_restantes(annonce_expire_iso) if annonce_affichee
+                            else None) or services.DUREE_ANNONCE_DEFAUT_MIN),
+         "annonce_duree_max": services.DUREE_ANNONCE_MAX_MIN,
+         "annonce_expire_iso": annonce_expire_iso if annonce_affichee else None,
          "annonce_affichee": annonce_affichee,
-         "annonce_expiree": _annonce_expiree(annonce, annonce_expire_iso),
+         # Un texte encore en base mais plus affiché : la page le dit, sans
+         # le montrer (il va être effacé).
+         "annonce_expiree": bool(texte_en_base) and not annonce_affichee,
+         "annonce_expiree_iso": (annonce_expire_iso
+                                 if texte_en_base and not annonce_affichee else None),
          "panneaux": panneaux, "panneaux_reels": panneaux_reels,
          "alerte": alerte,
          "alerte_affichee": detail_alerte[0] if detail_alerte else None,
@@ -1817,12 +1811,13 @@ def ecran_salle_enregistrer(
 ):
     """
     Enregistre l'annonce et les panneaux de l'écran de salle.
-    - Annonce vide (champ vidé, ou bouton « Effacer l'annonce ») => aucun
-      bandeau sur /live.
-    - Durée (minutes) optionnelle : vide/0/invalide => affichage illimité,
-      comme avant. Une durée valide fixe une échéance (now + N min), au-delà
-      de laquelle l'annonce s'auto-masque (voir `live.annonce_active`) sans
-      jamais être effacée de force ici.
+    - Annonce vide (champ vidé, ou bouton « Effacer l'annonce ») => l'annonce
+      est EFFACÉE de la base, pas seulement masquée — y compris un texte
+      expiré qui y traînait encore.
+    - Durée OBLIGATOIRE, bornée (`services.duree_annonce`) : une saisie vide,
+      nulle, négative, illisible ou trop longue n'est jamais refusée (geste
+      d'urgence) mais corrigée, et le message le dit. Plus aucune annonce
+      n'est enregistrée sans échéance.
 
     Le TITRE ne se règle plus ici : il vaut le nom de l'événement (voir
     `live.titre_ecran`). Cette page ne l'affiche qu'à titre indicatif.
@@ -1832,23 +1827,9 @@ def ecran_salle_enregistrer(
     """
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import CLE_ANNONCE, CLE_ANNONCE_EXPIRE, CLES_PANNEAUX
+    from app.routes.live import CLES_PANNEAUX, annonce_active
 
-    saisie_annonce = " ".join(annonce.split())[:200]
-
-    duree_min = None
-    if saisie_annonce:
-        try:
-            duree_min = int(annonce_duree)
-        except (TypeError, ValueError):
-            duree_min = None
-        if duree_min is not None and duree_min <= 0:
-            duree_min = None
-
-    expire_iso = (
-        (datetime.now(timezone.utc) + timedelta(minutes=duree_min)).isoformat(timespec="seconds")
-        if duree_min else None
-    )
+    saisie_annonce = " ".join(annonce.split())[:services.LONGUEUR_ANNONCE]
 
     # Cases à cocher : une case décochée n'est pas transmise par le navigateur,
     # d'où la lecture par présence. Les deux formulaires qui atteignent CETTE
@@ -1862,43 +1843,53 @@ def ecran_salle_enregistrer(
         "mouvements": bool(panneau_mouvements),
     }
 
+    duree_min, correction = (services.duree_annonce(annonce_duree)
+                             if saisie_annonce else (None, None))
     conn = get_connection()
     try:
         # Lu AVANT écriture : sert uniquement à savoir s'il y avait une annonce
-        # à effacer. Enregistrer les panneaux seuls, sans annonce ni avant ni
-        # après, ne doit rien écrire au journal — sinon chaque passage sur cette
-        # page produirait une ligne « annonce effacée » qui n'a jamais eu lieu.
-        annonce_precedente = services.lire_parametre(conn, CLE_ANNONCE, None)
-        services.ecrire_parametre(conn, CLE_ANNONCE, saisie_annonce or None)
-        services.ecrire_parametre(conn, CLE_ANNONCE_EXPIRE, expire_iso)
+        # AFFICHÉE à effacer. Enregistrer les panneaux seuls ne doit rien écrire
+        # au journal — sinon chaque passage sur cette page produirait une ligne
+        # « annonce effacée » qui n'a jamais eu lieu. Un texte déjà expiré est
+        # effacé lui aussi, mais en silence : personne ne l'a retiré de l'écran.
+        annonce_precedente = annonce_active(conn)
+        if saisie_annonce:
+            expire_iso = services.poser_annonce(conn, saisie_annonce, duree_min)
+        else:
+            services.effacer_annonce(conn)
         for nom, cle in CLES_PANNEAUX.items():
             services.ecrire_parametre(conn, cle, "1" if choix_panneaux[nom] else "0")
     finally:
         conn.close()
 
-    # L'annonce est une SAISIE LIBRE : c'est le seul `objet` du lot dont le
-    # texte n'est pas fabriqué par l'application. Il est déjà borné à 200
-    # caractères en amont (`saisie_annonce`), et `journaliser` le tronque à
-    # 120 — la troncature du journal joue donc réellement ici, ce qui est le
-    # comportement voulu (une ligne de journal reste une ligne).
+    # L'annonce est une SAISIE LIBRE, servie au public : son texte ne part
+    # JAMAIS au journal, ni entier, ni tronqué, ni à la pose, ni à
+    # l'effacement (constat RGPD-01 ; même règle que le détail d'un
+    # signalement). Le journal dit qu'une annonce a été posée, pour combien de
+    # temps, ou retirée — ce qu'on cherche après coup, sans rien de ce
+    # qu'elle disait. Verrouillé par tests/test_journal_interdits.py.
     if saisie_annonce:
-        journal.journaliser(request, "live", "annonce_posee", objet=saisie_annonce)
+        journal.journaliser(request, "live", "annonce_posee", objet=f"{duree_min} min")
     elif annonce_precedente:
-        journal.journaliser(request, "live", "annonce_effacee", objet=annonce_precedente)
+        journal.journaliser(request, "live", "annonce_effacee")
 
     if saisie_annonce:
-        partie_annonce = (f"Annonce enregistrée, affichée en salle pendant {duree_min} min."
-                           if expire_iso else
-                           "Annonce enregistrée, affichée en salle sans limite de durée.")
+        heure_fin = services.format_local(expire_iso).split(" ")[-1]
+        partie_annonce = f"Annonce enregistrée, affichée en salle jusqu'à {heure_fin}."
+        if correction:
+            partie_annonce = f"{partie_annonce} {correction}"
     else:
         partie_annonce = "Annonce effacée."
     # Tout éteindre est un choix légitime (écran d'annonces seules), donc on
-    # avertit sans bloquer — comme partout dans le projet.
+    # avertit sans bloquer — comme partout dans le projet. Une durée corrigée
+    # s'annonce aussi en « attention » : le bureau doit la voir.
     if not any(choix_panneaux.values()):
         message = ("attention",
                    f"{partie_annonce} Attention : aucun panneau "
                    "n'est affiché — l'écran de salle ne montrera plus que le "
                    "titre, l'horloge et l'annonce.")
+    elif correction:
+        message = ("attention", partie_annonce)
     else:
         message = ("succes", partie_annonce)
 
@@ -2053,7 +2044,8 @@ def cloturer_prets(request: Request):
     # disparaissent ici plutôt que d'attendre indéfiniment un trafic suffisant
     # pour les faire tourner d'elles-mêmes.
     journal.purger_rotations_anciennes()
-    message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau disponible.")
+    message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau "
+                         "disponible, et l'annonce de l'écran de salle est effacée.")
     return _rendre_dashboard(request, message)
 
 

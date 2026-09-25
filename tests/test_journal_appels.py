@@ -366,15 +366,21 @@ def _poster_ecran_salle(client, **champs):
 
 
 def test_annonce_posee_puis_effacee(client, _journal_isole):
+    """
+    L'annonce est une saisie libre servie au public (RGPD-01) : le journal dit
+    qu'elle a été posée, pour combien de temps, puis retirée — JAMAIS ce
+    qu'elle disait, ni à la pose, ni à l'effacement.
+    """
     _connexion(client)
 
-    _poster_ecran_salle(client, annonce="Tombola à 15 h")
+    _poster_ecran_salle(client, annonce="Tombola à 15 h", annonce_duree="45")
     posee = _derniere(_journal_isole, "annonce_posee")
-    assert posee["module"] == "live" and posee["objet"] == "Tombola à 15 h"
+    assert posee["module"] == "live" and posee["objet"] == "45 min"
 
     _poster_ecran_salle(client, annonce="")
     effacee = _derniere(_journal_isole, "annonce_effacee")
-    assert effacee["module"] == "live" and effacee["objet"] == "Tombola à 15 h"
+    assert effacee["module"] == "live" and "objet" not in effacee
+    assert "Tombola" not in _journal_isole.read_text(encoding="utf-8")
 
 
 def test_titre_seul_sans_annonce_n_ecrit_rien(client, _journal_isole):
@@ -386,16 +392,24 @@ def test_titre_seul_sans_annonce_n_ecrit_rien(client, _journal_isole):
     assert _actions(_journal_isole, "annonce_posee") == []
 
 
-def test_annonce_longue_tronquee_a_120_caracteres(client, _journal_isole):
+def test_annonce_expiree_effacee_en_silence(client, _journal_isole):
     """
-    L'annonce est la SEULE saisie libre du lot : elle est bornée à 200
-    caractères par le formulaire, la troncature du journal (120) joue donc
-    réellement ici — une ligne de journal doit rester une ligne.
+    Un texte expiré effacé par un enregistrement des panneaux n'est pas une
+    « annonce effacée » : personne ne l'a retirée de l'écran, elle n'y était
+    plus. Aucune ligne.
     """
+    from app import db as pret_db, services
+
     _connexion(client)
-    _poster_ecran_salle(client, annonce="A" * 200)
-    posee = _derniere(_journal_isole, "annonce_posee")
-    assert len(posee["objet"]) == 120
+    conn = pret_db.get_connection()
+    try:
+        services.ecrire_parametre(conn, services.CLE_ANNONCE, "Tombola à 15 h")
+        services.ecrire_parametre(conn, services.CLE_ANNONCE_EXPIRE,
+                                  "2020-01-01T00:00:00+00:00")
+    finally:
+        conn.close()
+    _poster_ecran_salle(client, annonce="")
+    assert _actions(_journal_isole, "annonce_effacee") == []
 
 
 # ===========================================================================

@@ -58,6 +58,10 @@ EDITION = "Edition de test 2026"
 # la boîte, jamais une personne » est affichée sous le champ.
 TEXTE_LIBRE = "TexteInterditCasseParMadameHortense en pull rouge"
 TEXTE_LIBRE_REFUSE = "TexteInterditRefuseParLaTanteAgathe"
+# L'annonce de l'écran de salle (constat RGPD-01) : l'autre saisie libre, et la
+# seule SERVIE AU PUBLIC. Écrite comme l'appel qu'elle sert le plus souvent à
+# lancer — un nom (fictif et introuvable par hasard) et un lieu.
+TEXTE_ANNONCE = "AnnonceInterditeLePetitBarnabus attend au bar"
 
 
 @pytest.fixture
@@ -233,6 +237,14 @@ def scenario(client, bases, _journal_isole):
     # Refermer le signalement : la seconde ligne du carnet de maintenance, et
     # celle qui relit en base un enregistrement contenant le texte libre.
     client.post(f"/admin/signalements/{id_signalement}/traiter")
+    # Annonce de l'écran de salle : posée PUIS effacée — les deux lignes
+    # portaient autrefois le texte entier (RGPD-01).
+    panneaux = {"panneau_chiffres": "1", "panneau_tournois": "1",
+                "panneau_programme": "1", "panneau_mouvements": "1"}
+    client.post("/admin/ecran-salle",
+                data={"annonce": TEXTE_ANNONCE, "annonce_duree": "20", **panneaux})
+    client.post("/admin/ecran-salle",
+                data={"annonce": "", "annonce_duree": "", **panneaux})
     client.post(f"/planning/admin/{ev}/purger")
 
     from app import sauvegarde
@@ -264,6 +276,7 @@ def test_le_scenario_produit_des_lignes(scenario):
         "connexion_reussie", "planning_purge", "sauvegarde_restauree",
         "pret", "retour", "tournoi_lance", "transfert",
         "signalement_cree", "signalement_traite",
+        "annonce_posee", "annonce_effacee",
     } <= actions
 
 
@@ -296,6 +309,7 @@ def test_aucun_secret_ni_identite_dans_le_journal(scenario):
         "code de modification du planning": secrets["code_planning"],
         "détail libre d'un signalement": TEXTE_LIBRE,
         "détail libre d'un signalement refusé": TEXTE_LIBRE_REFUSE,
+        "texte d'une annonce d'écran de salle": TEXTE_ANNONCE,
     }
     for quoi, valeur in interdits.items():
         assert valeur not in texte, f"{quoi} trouvé dans le journal : {valeur!r}"
@@ -363,6 +377,70 @@ def test_le_carnet_de_maintenance_dit_le_jeu_et_la_categorie_jamais_le_texte(sce
     # (pas seulement celles du carnet : une fuite pourrait passer ailleurs).
     for fragment in ("Hortense", "Agathe", "pull rouge", "TexteInterdit"):
         assert fragment not in texte, f"fragment de texte libre trouvé : {fragment!r}"
+
+
+def test_l_annonce_dit_sa_duree_jamais_son_texte(scenario):
+    """
+    RGPD-01 : la pose porte la durée, l'effacement rien ; et aucun fragment
+    du texte, dans aucune ligne — une troncature laisserait passer un début
+    de phrase, donc un prénom, que la recherche de la chaîne entière
+    manquerait.
+    """
+    texte, _ = scenario
+    posee = [l for l in _lignes(texte) if l["action"] == "annonce_posee"]
+    effacee = [l for l in _lignes(texte) if l["action"] == "annonce_effacee"]
+    assert posee and posee[-1]["objet"] == "20 min"
+    assert effacee and "objet" not in effacee[-1]
+    for fragment in ("Barnabus", "AnnonceInterdite", "attend au bar"):
+        assert fragment not in texte, f"fragment d'annonce trouvé : {fragment!r}"
+
+
+def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
+    """
+    GARDE-FOU DE CLASSE, pour les routes à venir : le scénario ci-dessus ne
+    connaît que la route d'aujourd'hui. Toute fonction de `app/` qui ÉCRIT
+    l'annonce (`poser_annonce`, `effacer_annonce`, ou une clé `CLE_ANNONCE`)
+    ne doit passer au journal — ni en `objet`, ni en `ref`, ni en `detail` —
+    aucune expression qui mentionne une variable d'annonce.
+
+    Lecture statique (AST) plutôt qu'appel : elle attrape aussi une branche
+    que personne n'aurait pensé à exercer.
+    """
+    import ast
+    from pathlib import Path
+
+    racine = Path(__file__).resolve().parent.parent / "app"
+    ecritures = {"poser_annonce", "effacer_annonce", "CLE_ANNONCE"}
+    fonctions_vues = []
+    for fichier in racine.rglob("*.py"):
+        arbre = ast.parse(fichier.read_text(encoding="utf-8"))
+        for fonction in ast.walk(arbre):
+            if not isinstance(fonction, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            noms = {n.attr if isinstance(n, ast.Attribute) else n.id
+                    for n in ast.walk(fonction)
+                    if isinstance(n, (ast.Attribute, ast.Name))}
+            if not (noms & ecritures) or "journaliser" not in noms:
+                continue
+            fonctions_vues.append(f"{fichier.name}:{fonction.name}")
+            for appel in ast.walk(fonction):
+                if not (isinstance(appel, ast.Call)
+                        and getattr(appel.func, "attr", getattr(appel.func, "id", None))
+                        == "journaliser"):
+                    continue
+                for mot in appel.keywords:
+                    if mot.arg not in ("objet", "ref", "detail"):
+                        continue
+                    suspects = [n.id for n in ast.walk(mot.value)
+                                if isinstance(n, ast.Name) and "annonce" in n.id.lower()]
+                    assert not suspects, (
+                        f"{fichier.name}:{fonction.name} journalise {suspects} "
+                        f"en `{mot.arg}` — le texte d'une annonce ne va jamais "
+                        f"au journal (RGPD-01)."
+                    )
+    # Non-vacuité : la route d'aujourd'hui doit être vue, sinon ce test ne
+    # garde plus rien.
+    assert "admin.py:ecran_salle_enregistrer" in fonctions_vues
 
 
 def test_aucune_adresse_ip_ni_query_string_brute(scenario):

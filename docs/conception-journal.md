@@ -71,7 +71,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Module activé / désactivé | `POST /admin/fonctionnalites` |
 | Contexte ou visibilité de rangement changés | `POST /admin/rangement/contexte`, `.../visibilite` |
 | Affectation d'emplacement en lot | `POST /admin/rangement/ranger/appliquer` |
-| Annonce de l'écran de salle posée / effacée | `POST /admin/ecran-salle` |
+| Annonce de l'écran de salle posée (avec sa durée, **jamais son texte**) / effacée | `POST /admin/ecran-salle` |
 | Date de l'événement changée | `POST /admin/evenement` |
 | Purge RGPD d'une édition du planning | `POST /planning/admin/{ev}/purger` |
 | Réinitialisation des données de formation | `POST /admin/formation/reinitialiser` |
@@ -127,7 +127,7 @@ ligne dans une valeur.
 ```json
 {"t":"2026-08-04T12:37:02+02:00","qui":"benevole","appareil":"3F1A9C","module":"pret","action":"retour","objet":"7 Wonders Duel","ref":"7-wonders-duel","ok":true}
 {"t":"2026-08-04T13:43:11+02:00","qui":"admin","appareil":"B72E04","module":"tournois","action":"tournoi_cree","objet":"Chaussette","ref":"12","ok":true}
-{"t":"2026-08-05T20:31:50+02:00","qui":"admin","appareil":"B72E04","module":"live","action":"annonce_posee","objet":"Tombola à 15 h","ok":true}
+{"t":"2026-08-05T20:31:50+02:00","qui":"admin","appareil":"B72E04","module":"live","action":"annonce_posee","objet":"30 min","ok":true}
 {"t":"2026-08-03T12:21:07+02:00","qui":"visiteur","module":"tournois","action":"inscription","ref":"7","objet":"Tournoi de Catan","ok":true}
 ```
 
@@ -165,8 +165,10 @@ valeur passée à `journaliser()` appartient à la liste.
 
 ### 3.3 L'assainissement est obligatoire, pas défensif
 
-`objet` peut contenir du texte libre saisi en admin — le texte d'une annonce d'écran
-de salle, le nom d'un tournoi. Avant écriture : retours à la ligne remplacés par des
+`objet` peut contenir du texte libre saisi en admin — le nom d'un tournoi, par
+exemple. Le texte d'une annonce d'écran de salle, lui, n'y entre plus : c'est une
+saisie libre servie au public, dont l'usage naturel est un appel nominatif (constat
+RGPD-01, audit de pré-production) ; seule sa durée est journalisée. Avant écriture : retours à la ligne remplacés par des
 espaces, troncature à 120 caractères. `json.dumps` gère le reste (guillemets,
 caractères de contrôle, unicode) — c'est précisément la raison pour laquelle JSON a
 été préféré au format à séparateurs.
@@ -269,8 +271,8 @@ l'activation (8 caractères de `sha256(jeton)` — **jamais le jeton lui-même**
 Un appareil est actif si son échéance n'est pas passée **et** que son empreinte
 correspond au jeton courant. Après une rotation, tous les anciens basculent seuls en
 « périmé — jeton renouvelé », **sans aucune écriture** : le calcul se fait à la
-lecture. Même principe que l'expiration de l'annonce d'écran de salle, où rien n'est
-jamais purgé en base.
+lecture. Même principe que l'affichage de l'annonce d'écran de salle, masquée à la
+lecture dès son échéance (son texte, lui, est effacé à part : c'est un texte libre).
 
 **Administration.** Les sessions admin vivent dans un dictionnaire **en mémoire du
 process** (`admin_auth._sessions`) : un redémarrage du service les ferme toutes, et

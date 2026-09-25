@@ -310,7 +310,9 @@ def test_cohabitation_le_json_porte_les_deux(client, tmp_path, monkeypatch):
 
     conn = pret_db.get_connection()
     app_services.ecrire_parametre(conn, live.CLE_ALERTE_MESSAGE, "Rapportez {jeu} !")
-    app_services.ecrire_parametre(conn, live.CLE_ANNONCE, "Tombola à 15 h")
+    # Une annonce a toujours une échéance (RGPD-01) : sans elle, elle n'est
+    # plus affichée.
+    app_services.poser_annonce(conn, "Tombola à 15 h", 30)
     conn.close()
     _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Catan")
 

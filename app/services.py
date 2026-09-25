@@ -1383,6 +1383,11 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
     requête (voir `_effacer_pochette` pour le pourquoi) : à la fin d'un
     événement, plus aucun numéro ne subsiste en base.
 
+    L'ANNONCE DE L'ÉCRAN DE SALLE est effacée dans la même transaction : c'est
+    un texte libre servi au public (voir « Annonce de l'écran de salle »), et
+    la fin de l'événement est le moment où plus rien ne doit en rester. Les
+    panneaux de l'écran, eux, sont des réglages durables : ils ne bougent pas.
+
     C'est aussi le moment naturel pour purger les vieilles lignes du REGISTRE
     DES APPAREILS (docs/conception-journal.md §8.1) : ce registre est
     persistant ET sauvegardé, donc il ne se vide jamais de lui-même,
@@ -1402,6 +1407,7 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
         )
         nb = cur.rowcount
         conn.execute("UPDATE pochettes SET occupe = 0")
+        effacer_annonce(conn)
         purger_appareils_anciens(conn)
     return nb
 
@@ -1917,6 +1923,162 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
         (cle, valeur),
     )
     conn.commit()
+
+
+# ===========================================================================
+# Annonce de l'écran de salle — texte libre, donc éphémère par construction
+# ===========================================================================
+# L'annonce est le seul texte de l'application de prêt tapé par le bureau et
+# SERVI AU PUBLIC sans authentification (/live, /live/data). Son usage le plus
+# naturel est un appel nominatif (« le petit … attend ses parents ») : c'est
+# une porte d'entrée à donnée personnelle, et elle est refermée par quatre
+# gestes (constat RGPD-01 de l'audit de pré-production) :
+#
+# 1. une DURÉE D'AFFICHAGE OBLIGATOIRE et bornée (`duree_annonce`) : plus
+#    aucune annonce n'est affichée sans échéance, et une annonce sans échéance
+#    ou à l'échéance illisible n'est jamais affichée (`annonce_affichable`) ;
+# 2. une consigne sous le champ (gabarit `admin_live.html`) ;
+# 3. le texte n'est JAMAIS journalisé (routes/admin.py, `ecran_salle_enregistrer`) ;
+# 4. le texte est EFFACÉ, pas seulement masqué : une annonce expirée n'est plus
+#    « rappelable » (ce confort gardait le texte en base, donc dans chaque
+#    sauvegarde deux fois par jour). Voir `purger_annonce_expiree` pour les
+#    moments où l'effacement a lieu, et `sauvegarde.creer_zip_sauvegarde` pour
+#    les archives, qui ne contiennent jamais l'annonce.
+#
+# Les clés et les règles vivent ICI, pas dans `routes/live.py` : la clôture de
+# fin d'événement, la réinitialisation de la formation, les migrations et la
+# sauvegarde en ont besoin, et aucun d'eux ne doit importer une route.
+CLE_ANNONCE = "live_annonce"
+CLE_ANNONCE_EXPIRE = "live_annonce_expire"
+LONGUEUR_ANNONCE = 200
+# 30 minutes par défaut : l'usage type est un appel urgent, réglé en quelques
+# minutes. Si le bureau oublie d'effacer, la phrase disparaît d'elle-même
+# avant la fin du créneau suivant ; allonger est un geste (un bouton), oublier
+# ne l'est pas.
+DUREE_ANNONCE_DEFAUT_MIN = 30
+# 12 heures au plus : une annonce légitime peut tenir une journée entière
+# d'ouverture (« Tombola à 15 h », affichée dès le matin), jamais la nuit et le
+# lendemain. Au-delà, c'est une erreur d'unité ou un « pour toujours » déguisé.
+DUREE_ANNONCE_MAX_MIN = 720
+
+
+def duree_annonce(saisie: str | None) -> tuple[int, str | None]:
+    """
+    Durée d'affichage RETENUE pour une saisie du formulaire, et la phrase qui
+    le dit quand la saisie a été corrigée (None si elle est prise telle quelle).
+
+    Ne refuse JAMAIS : une annonce est un geste d'urgence, la réafficher pour
+    une durée mal tapée ferait perdre la minute qui compte. Mais ne tombe
+    jamais non plus sur « sans limite » en silence, comme avant ce lot :
+    - vide, nulle, négative ou illisible → la durée par défaut, et on le dit ;
+    - au-delà du maximum → le maximum, et on le dit.
+    """
+    texte = (saisie or "").strip()
+    if not texte:
+        return DUREE_ANNONCE_DEFAUT_MIN, (
+            f"Aucune durée indiquée : affichage limité à "
+            f"{DUREE_ANNONCE_DEFAUT_MIN} minutes.")
+    try:
+        minutes = int(texte)
+    except ValueError:
+        return DUREE_ANNONCE_DEFAUT_MIN, (
+            f"Durée « {texte[:20]} » illisible : affichage limité à "
+            f"{DUREE_ANNONCE_DEFAUT_MIN} minutes.")
+    if minutes <= 0:
+        return DUREE_ANNONCE_DEFAUT_MIN, (
+            f"Une annonce a toujours une durée : affichage limité à "
+            f"{DUREE_ANNONCE_DEFAUT_MIN} minutes.")
+    if minutes > DUREE_ANNONCE_MAX_MIN:
+        return DUREE_ANNONCE_MAX_MIN, (
+            f"Durée ramenée à {DUREE_ANNONCE_MAX_MIN // 60} heures, le maximum "
+            f"pour une annonce.")
+    return minutes, None
+
+
+def annonce_affichable(expire_iso: str | None,
+                       instant: datetime | None = None) -> bool:
+    """
+    Vrai si une annonce d'échéance `expire_iso` peut encore être affichée.
+
+    Faux sans échéance (annonce enregistrée avant que la durée devienne
+    obligatoire) ou pour une échéance illisible : dans le doute, on MASQUE.
+    C'est l'inverse de la règle d'avant ce lot (« on affiche plutôt que
+    planter ») : les deux ne plantent pas, mais seul le masquage ne publie pas
+    indéfiniment un texte libre. Lecture seule.
+    """
+    if not expire_iso:
+        return False
+    try:
+        echeance = datetime.fromisoformat(expire_iso)
+    except (TypeError, ValueError):
+        return False
+    if echeance.tzinfo is None:
+        echeance = echeance.replace(tzinfo=timezone.utc)
+    return (instant or datetime.now(timezone.utc)) <= echeance
+
+
+def poser_annonce(conn: sqlite3.Connection, texte: str, minutes: int) -> str:
+    """
+    Enregistre l'annonce `texte` pour `minutes` minutes ; renvoie l'échéance
+    (UTC ISO). `minutes` vient de `duree_annonce` : aucune annonce n'est
+    jamais écrite sans échéance.
+    """
+    expire_iso = (datetime.now(timezone.utc)
+                  + timedelta(minutes=minutes)).isoformat(timespec="seconds")
+    with transaction(conn):
+        for cle, valeur in ((CLE_ANNONCE, texte), (CLE_ANNONCE_EXPIRE, expire_iso)):
+            conn.execute(
+                "INSERT INTO parametres (cle, valeur) VALUES (?, ?) "
+                "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+                (cle, valeur),
+            )
+    return expire_iso
+
+
+def effacer_annonce(conn: sqlite3.Connection) -> None:
+    """
+    Supprime l'annonce ET son échéance. Se greffe sur une transaction en cours
+    (clôture de fin d'événement) ; sinon ouvre et committe la sienne.
+
+    `secure_delete` fait écraser par des zéros l'emplacement libéré dans le
+    fichier de la base : sans lui, le texte supprimé resterait lisible octet
+    par octet dans les pages libres, jusqu'à ce qu'elles soient réutilisées.
+    """
+    conn.execute("PRAGMA secure_delete = ON")
+    with transaction(conn):
+        conn.execute(
+            "DELETE FROM parametres WHERE cle IN (?, ?)",
+            (CLE_ANNONCE, CLE_ANNONCE_EXPIRE),
+        )
+
+
+def purger_annonce_expiree(conn: sqlite3.Connection) -> bool:
+    """
+    Efface l'annonce si elle n'est plus affichable (expirée, sans échéance ou
+    à l'échéance illisible) ; renvoie True si un texte a été effacé.
+
+    Jamais appelée sur un chemin de LECTURE (`/live`, `/live/data`, la
+    supervision lisent par `annonce_affichable`, sans écrire). Elle l'est aux
+    moments où l'on écrit de toute façon :
+    - au démarrage de l'application (`db.init_db`), donc à chaque mise à jour —
+      c'est ce qui efface les annonces illimitées d'avant ce lot ;
+    - à chaque passage de la sauvegarde (`sauvegarde.ecrire_archive`, 3 h et
+      15 h) : sur une instance que le minuteur sauvegarde, un texte expiré ne
+      survit donc jamais plus de 12 heures en base. L'instance de formation
+      n'a pas de minuteur : chez elle, c'est le redémarrage de chaque
+      `update.sh` et sa réinitialisation qui font le ménage ;
+    - l'enregistrement du formulaire de l'écran de salle, la clôture de fin
+      d'événement et la réinitialisation de la formation effacent l'annonce
+      par leurs propres moyens.
+    """
+    texte = lire_parametre(conn, CLE_ANNONCE, None)
+    echeance = lire_parametre(conn, CLE_ANNONCE_EXPIRE, None)
+    if texte is None and echeance is None:
+        return False
+    if texte is not None and annonce_affichable(echeance):
+        return False
+    effacer_annonce(conn)
+    return texte is not None
 
 
 # ===========================================================================
@@ -3359,7 +3521,7 @@ def _appareil_actif(ligne: dict, generation_courante: str | None,
     en bénévole).
 
     AUCUNE ÉCRITURE : tout se calcule à la lecture, comme l'expiration de
-    l'annonce d'écran de salle (routes/live.py::annonce_active). Rien n'est
+    l'affichage de l'annonce d'écran de salle (`annonce_affichable`). Rien n'est
     jamais purgé ici — la purge a lieu à la clôture de fin d'événement, et
     seulement au-delà d'un an.
     """

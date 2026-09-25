@@ -69,14 +69,19 @@ ACTIONS = {
     "rangement_contexte_modifie",
     "rangement_visibilite_modifiee",
     "rangement_lot_applique",
+    # Annonce libre de l'écran de salle : `objet` porte la DURÉE à la pose,
+    # rien à l'effacement — jamais le texte, servi au public et susceptible de
+    # nommer quelqu'un (RGPD-01, verrouillé par tests/test_journal_interdits.py).
     "annonce_posee",
     "annonce_effacee",
     # Alerte « rapportez les exemplaires » avant un tournoi
     # (docs/conception-alerte-tournoi.md, D11) : seul l'ENREGISTREMENT du
     # modèle de message est journalisé — son affichage en salle est un calcul
     # de lecture, pas un événement, et les deux délais sont des entiers sans
-    # texte à relire. Deux actions plutôt qu'une, patron exact de l'annonce
-    # libre ci-dessus : « éteinte » doit dire quel message a été retiré.
+    # texte à relire. Deux actions plutôt qu'une, comme l'annonce libre
+    # ci-dessus ; mais ici « éteinte » dit quel message a été retiré, car ce
+    # modèle ne nomme personne — l'annonce, elle, ne journalise jamais son
+    # texte (RGPD-01).
     "alerte_posee",
     "alerte_effacee",
     "evenement_date_modifiee",

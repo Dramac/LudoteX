@@ -419,6 +419,12 @@ def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dic
     services.ecrire_parametre(
         conn, "evenement_date", datetime.now(FUSEAU_LOCAL).date().isoformat()
     )
+    # L'annonce de l'écran de salle, elle, est effacée : la réinitialisation
+    # est la « clôture » du site de formation, et une annonce tapée en mise en
+    # situation y restait en ligne indéfiniment (constat RGPD-01). Seules ses
+    # deux clés partent — le reste de `parametres` (mot de passe admin,
+    # identité, jeton) est conservé.
+    services.effacer_annonce(conn)
 
     return {
         "jeux": len(ids_exemplaires),
