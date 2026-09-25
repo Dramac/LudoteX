@@ -24,12 +24,14 @@ jamais ouvrir de terminal.
 
 ## Ce qui le distingue
 
-- **Aucune donnée personnelle.** L'anti-vol repose sur un **numéro de
-  pochette** : la pièce d'identité de l'emprunteur est glissée dans une pochette
-  numérotée, et seul ce numéro relie un prêt à une personne. L'application ne
-  stocke ni nom, ni téléphone, ni e-mail — y compris pour les inscriptions aux
-  tournois. Il n'y a donc pas de registre de traitement à tenir, pas de durée de
-  conservation à justifier, et rien à effacer sur demande.
+- **Aucune donnée personnelle dans le modèle de données du prêt.** L'anti-vol
+  repose sur un **numéro de pochette** : la pièce d'identité de l'emprunteur
+  est glissée dans une pochette numérotée, et seul ce numéro relie un prêt à
+  une personne — il est effacé au retour. Le prêt n'a aucune colonne pour un
+  nom, un téléphone ou un e-mail. En dehors des textes que le bureau choisit de
+  publier (présentation, programme…), trois champs libres pourraient en
+  recevoir un ; une consigne sous chacun demande de ne nommer personne. Le détail,
+  module par module, est plus bas : [Ce que l'application garde](#ce-que-lapplication-garde).
 - **Rien à installer pour les bénévoles.** Pas d'application mobile : un lien,
   ouvert dans le navigateur du téléphone, ajouté à l'écran d'accueil en un tap.
 - **Des pages construites par le serveur**, sans framework JavaScript. Un vieux
@@ -63,6 +65,39 @@ jamais ouvrir de terminal.
   sauvegarde et restauration, jeton bénévole, journal d'activité, identité de
   l'association, mode formation pour s'entraîner sans toucher aux vraies
   données.
+
+## Ce que l'application garde
+
+Une description, pas un avis juridique : ce qu'elle implique pour vos propres
+obligations (registre, information des personnes, durées de conservation)
+relève de **votre** appréciation. La
+[page RGPD du wiki](https://github.com/Dramac/LudoteX/wiki/Rgpd) détaille
+chaque point : qui écrit, qui lit, combien de temps, ce qui efface.
+
+- **Prêt** — les boîtes, et pour chaque prêt l'heure de sortie, l'heure de
+  retour et le numéro de pochette, effacé au retour et à la clôture de fin
+  d'événement. Trois champs libres : le **détail d'un signalement** (lisible
+  des bénévoles et du bureau, conservé sans limite), le **libellé d'un
+  appareil** (lisible du bureau) et l'**annonce de l'écran de salle**
+  (publique, 12 heures au plus, puis effacée).
+- **Tournois** — un **pseudo** par inscription, et les pseudos des membres
+  d'une équipe, affichés sur la page publique du tournoi et gardés jusqu'à sa
+  suppression. Aucun e-mail. Un pseudo peut être un vrai nom : c'est le choix
+  de qui s'inscrit.
+- **Planning des bénévoles** — **nom ou pseudo, contact, disponibilités,
+  préférences, affectations**, dans une base séparée. Ce sont des données
+  personnelles. Une fois le planning publié, les noms des bénévoles affectés
+  sont visibles sur sa page. Elles restent jusqu'à ce que le bureau purge
+  l'édition.
+- **Journal d'activité** — les actions (prêt, réglage, connexion…), sans
+  numéro de pochette, pseudo, nom de bénévole ni secret ; un identifiant
+  d'appareil tiré au hasard les distingue.
+- **Sauvegardes** — les trois bases, planning compris, deux fois par jour ;
+  chaque archive du serveur disparaît en une trentaine de jours. Une copie
+  téléchargée par le bureau n'est touchée par aucune rotation.
+- **Serveur web** — nginx garde, dans son propre journal, l'adresse IP et
+  l'adresse demandée (recherche du catalogue comprise), une quinzaine de jours
+  avec la rotation par défaut de Debian et d'Ubuntu.
 
 ## Ce qu'il faut pour l'exploiter
 
@@ -205,8 +240,9 @@ LudoteX/
   renouvelé à chaque édition.
 - L'espace d'administration est protégé par un **mot de passe distinct** du
   jeton bénévole.
-- **Zéro donnée personnelle** dans l'application : propriété centrale à
-  préserver, y compris dans les contributions.
+- **Aucune donnée personnelle dans le modèle de données du prêt** : propriété
+  centrale à préserver, y compris dans les contributions. Un nouveau champ de
+  texte libre est une nouvelle porte : voir [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contribuer
 

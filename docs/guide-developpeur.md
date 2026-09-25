@@ -9,8 +9,11 @@ l'état d'avancement vit dans `CLAUDE.md`.
 
 Application web de prêt de jeux de société pour un événement associatif. Les
 bénévoles scannent un QR par boîte pour enregistrer prêts et retours ; le public
-consulte un catalogue. Anti-vol par **numéro d'emplacement** (pièce d'identité
-déposée), donc **zéro donnée personnelle**.
+consulte un catalogue. Anti-vol par **numéro de pochette** (pièce d'identité
+déposée), donc **aucune donnée personnelle dans le modèle de données du prêt**.
+Les champs de texte libre qui peuvent malgré tout en recevoir une sont
+recensés dans `CLAUDE.md` (« Règles métier ») : en ajouter un, c'est ouvrir
+une porte.
 
 Stack : **Python + FastAPI**, **SQLite**, templates **Jinja2**, un peu de **JS**
 pour le scanner caméra. Servi par **uvicorn**.

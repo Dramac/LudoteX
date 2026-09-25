@@ -67,6 +67,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Connexion admin (réussie **et** échouée) | `POST /admin/login` |
 | Import CSV du catalogue | `POST /admin/donnees/import` |
 | Restauration d'une sauvegarde | `POST /admin/sauvegarde/import` |
+| Sauvegarde téléchargée (nature, et nom pour une archive du serveur ; jamais le contenu ni un chemin) | `GET /admin/sauvegarde/export`, `GET /admin/sauvegarde/archives/{nom}` |
 | Clôture des prêts de fin d'événement | `POST /admin/cloturer-prets` |
 | Module activé / désactivé | `POST /admin/fonctionnalites` |
 | Contexte ou visibilité de rangement changés | `POST /admin/rangement/contexte`, `.../visibilite` |
@@ -115,7 +116,10 @@ travail du module d'audience s'il se fait un jour.
 Deux exceptions à discuter (arbitrage §10) : l'affichage d'un écran de prêt
 `GET /pret/{id}` (un scan sans action derrière est une information : le bénévole a
 regardé puis renoncé) et `GET /admin/sauvegarde/export` (savoir qu'une sauvegarde a
-été téléchargée, et quand).
+été téléchargée, et quand). *Tranché pour la seconde (lot 9 de la série
+pré-production)* : une archive contient les noms et contacts des bénévoles, et
+savoir qu'elle est sortie est la seule trace possible — l'action
+`sauvegarde_telechargee` couvre ce lien et celui des archives du serveur (§2.1).
 
 ---
 

@@ -26,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from app import admin_auth, auth, logo, modules, services
+from app.sauvegarde import DUREE_VIE_ARCHIVES_JOURS
 from app.config import FORMATION_URL, MODE_FORMATION
 from app.version import APP_VERSION
 
@@ -160,6 +161,12 @@ templates.env.filters["dt_input"] = _dt_input
 # les pages (à côté de la licence). Constante importée d'`app/version.py`, le
 # porteur canonique du numéro — jamais recopié en dur dans un gabarit.
 templates.env.globals["app_version"] = APP_VERSION
+
+# Combien de jours une donnée effacée survit dans les archives du serveur.
+# Cité par les écrans qui promettent une suppression (collecte et purge du
+# planning, aides) : lu à sa source, `app/sauvegarde.py`, pour qu'aucune de
+# ces phrases ne périme en silence au prochain changement de rétention.
+templates.env.globals["duree_archives_jours"] = DUREE_VIE_ARCHIVES_JOURS
 
 def asset_v(chemin_relatif: str) -> int:
     """

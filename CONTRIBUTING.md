@@ -27,9 +27,9 @@ quelques lignes, à condition qu'elles portent les bonnes informations :
 
 Deux précautions qui comptent ici :
 
-- **Aucune donnée personnelle dans un ticket.** L'application n'en stocke pas ;
-  une capture d'écran ne doit pas en introduire. Masquez ce qui traîne à
-  l'écran.
+- **Aucune donnée personnelle dans un ticket.** Une capture d'écran ne doit
+  pas en introduire — un nom de bénévole du planning, un pseudo de tournoi, un
+  numéro de pochette. Masquez ce qui traîne à l'écran.
 - **Aucun secret** : jeton bénévole, mot de passe d'administration, contenu du
   `.env`. Un jeton collé dans un ticket public est un jeton à renouveler
   immédiatement.
@@ -54,7 +54,9 @@ Une proposition retenue devient une pull request qui :
   chargée depuis un CDN**, français dans l'interface comme dans le code ;
 - **ne fait entrer aucune donnée personnelle**. Si une évolution en suppose
   une, dites-le explicitement dans l'issue : c'est un choix de conception, pas
-  un détail d'implémentation ;
+  un détail d'implémentation. **Un nouveau champ de texte libre compte** :
+  quelqu'un finira par y taper un nom, et il rejoint la liste des portes
+  d'entrée de la [page RGPD du wiki](https://github.com/Dramac/LudoteX/wiki/Rgpd) ;
 - **met à jour la documentation** quand un écran, un libellé, une URL publique
   ou un comportement visible change.
 

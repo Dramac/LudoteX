@@ -183,7 +183,14 @@ def purger_evenement(conn: sqlite3.Connection, id_evenement: int) -> None:
     """
     Supprime un événement et TOUTES ses données (cascade FK) : trame, bénévoles,
     souhaits et affectations. Sert à la purge RGPD après l'événement (§4).
+
+    `secure_delete` fait écraser par des zéros l'emplacement libéré dans le
+    fichier : sans lui, noms et contacts resteraient lisibles octet par octet
+    dans les pages libres de la base, jusqu'à ce qu'elles soient réutilisées.
+    Les archives produites AVANT la purge, elles, gardent tout jusqu'à leur
+    fin de vie (`sauvegarde.DUREE_VIE_ARCHIVES_JOURS`).
     """
+    conn.execute("PRAGMA secure_delete = ON")
     conn.execute("DELETE FROM evenements WHERE id_evenement = ?", (id_evenement,))
     conn.commit()
 
@@ -616,7 +623,11 @@ def prefs_du_benevole(conn: sqlite3.Connection, id_benevole: int) -> dict[int, s
 
 
 def supprimer_benevole(conn: sqlite3.Connection, id_benevole: int) -> None:
-    """Supprime un bénévole et toutes ses données (dispos, prefs, affectations)."""
+    """
+    Supprime un bénévole et toutes ses données (dispos, prefs, affectations),
+    sous `secure_delete` pour la même raison que `purger_evenement`.
+    """
+    conn.execute("PRAGMA secure_delete = ON")
     conn.execute("DELETE FROM benevoles WHERE id_benevole = ?", (id_benevole,))
     conn.commit()
 

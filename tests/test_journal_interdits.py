@@ -12,9 +12,9 @@ valeurs volontairement DISTINCTIVES — un pseudo, un nom d'équipe, un nom de
 bénévole, un jeton et un mot de passe qu'on ne risque pas de croiser par
 hasard. Le fichier produit est ensuite passé au crible.
 
-⚠️ LE DÉTAIL LIBRE D'UN SIGNALEMENT est le seul endroit de l'application de
-prêt par lequel une donnée personnelle peut entrer
-(docs/conception-signalements.md §3) : rien n'empêche un bénévole d'y écrire
+⚠️ LE DÉTAIL LIBRE D'UN SIGNALEMENT est une porte d'entrée à donnée
+personnelle (docs/conception-signalements.md §3 ; liste complète dans
+CLAUDE.md, « Règles métier ») : rien n'empêche un bénévole d'y écrire
 « cassé par le gamin en pull rouge de la table 3 ». C'est la raison d'être de
 `TEXTE_LIBRE` ci-dessous, injecté DEUX fois — sur un envoi accepté et sur un
 envoi refusé, la branche de refus réaffichant la saisie et journalisant elle
@@ -179,8 +179,8 @@ def scenario(client, bases, _journal_isole):
     client.post("/pret/001/transfert/002")
 
     # --- Carnet de maintenance : un signalement avec du TEXTE LIBRE --------
-    # Le seul champ de l'application de prêt par lequel une donnée
-    # personnelle peut entrer (docs/conception-signalements.md §3). Deux
+    # Une porte d'entrée à donnée personnelle
+    # (docs/conception-signalements.md §3). Deux
     # envois : un REFUSÉ (aucune catégorie choisie — la branche qui réaffiche
     # la saisie et journalise le motif), puis un accepté.
     conn = db.get_connection()

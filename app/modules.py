@@ -76,7 +76,7 @@ MODULES: dict[str, dict] = {
     # supplémentaires, propres à ce module :
     #
     # - `jamais_public` : cette liste nomme des boîtes abîmées et porte le
-    #   seul champ de saisie libre de l'application de prêt
+    #   détail libre des signalements, une porte d'entrée à donnée personnelle
     #   (docs/conception-signalements.md §3 et §7). L'état "tous" ne lui est
     #   donc PAS proposé — l'écran d'administration masque la case, et
     #   `ecrire_etat_module` refuse la valeur même postée à la main. Sans ça

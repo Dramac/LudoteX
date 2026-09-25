@@ -140,10 +140,29 @@ MOTIF_ARCHIVE = re.compile(
 # passage par nuit.
 GARDER_ROUTINES = 60
 
+# Passages de la routine par jour : les heures de `OnCalendar=` du minuteur
+# (verrouillé par tests/test_sauvegarde_planifiee.py). Ne sert qu'à dire en
+# jours la profondeur de la rotation.
+PASSAGES_ROUTINE_PAR_JOUR = 2
+
 # Fin de vie des deux filets (SEC-11, audit du 24/07/2026) : 30 jours laissent
 # largement le temps de s'apercevoir d'une mise à jour ou d'une restauration
 # malheureuse, sans garder indéfiniment les données qu'elles contiennent.
 GARDER_JOURS_FILETS = 30
+
+# Combien de temps une donnée effacée de la base survit dans les archives du
+# serveur : la plus longue des deux fins de vie. C'est CE nombre que citent les
+# écrans qui promettent une suppression (collecte et purge du planning) : ils
+# le lisent ici pour ne pas périmer en silence au prochain changement de
+# rétention. Il suppose que le minuteur tourne — c'est lui qui purge — et ne
+# dit rien des copies téléchargées, qu'aucune rotation n'atteint.
+DUREE_VIE_ARCHIVES_JOURS = max(
+    GARDER_ROUTINES // PASSAGES_ROUTINE_PAR_JOUR, GARDER_JOURS_FILETS
+)
+
+# Nature affichée (et journalisée) pour le téléchargement direct, distinct des
+# archives déposées par le serveur (`LIBELLES_NATURE`).
+LIBELLE_EXPORT = "Sauvegarde complète"
 
 
 class ZipInvalide(Exception):
@@ -170,8 +189,7 @@ def _copie_a_chaud(source: Path, destination: Path) -> None:
 
 def _retirer_annonce(copie: Path) -> None:
     """
-    Retire de la COPIE de la base de prêt l'annonce de l'écran de salle, puis
-    la compacte (`VACUUM`).
+    Retire de la COPIE de la base de prêt l'annonce de l'écran de salle.
 
     POURQUOI. L'annonce est un texte libre servi au public, éphémère par
     construction (voir `services`, « Annonce de l'écran de salle »). Une
@@ -179,12 +197,8 @@ def _retirer_annonce(copie: Path) -> None:
     survivrait trente jours à son effacement. Elle n'a d'ailleurs aucune
     valeur à la restauration — une annonce d'il y a trois jours n'a rien à
     refaire à l'écran. Elle est donc absente de TOUTE archive : routine,
-    filets et téléchargement manuel passent tous par ici.
-
-    Le `VACUUM` n'est pas décoratif : `backup()` recopie aussi les pages
-    LIBRES de la base, où le texte d'une annonce effacée plus tôt peut encore
-    se lire octet par octet. La reconstruction ne garde que les pages utiles.
-    La base vivante, elle, n'est jamais touchée ici.
+    filets et téléchargement manuel passent tous par ici. Le `VACUUM` qui suit
+    (`_compacter`) fait disparaître les octets de la ligne supprimée.
     """
     conn = sqlite3.connect(copie)
     try:
@@ -196,6 +210,24 @@ def _retirer_annonce(copie: Path) -> None:
                 (services.CLE_ANNONCE, services.CLE_ANNONCE_EXPIRE),
             )
             conn.commit()
+    finally:
+        conn.close()
+
+
+def _compacter(copie: Path) -> None:
+    """
+    Reconstruit la COPIE d'une base (`VACUUM`) avant de l'archiver — les trois
+    bases, pas seulement celle du prêt.
+
+    Pas décoratif : `backup()` recopie aussi les pages LIBRES, où une ligne
+    supprimée plus tôt se lit encore octet par octet. Sans cette étape, les
+    noms d'une édition du planning purgée, ou le pseudo d'une inscription
+    retirée, repartiraient dans chaque archive suivante, sans fin de vie. La
+    reconstruction ne garde que les pages utiles. La base vivante n'est
+    jamais touchée ici.
+    """
+    conn = sqlite3.connect(copie)
+    try:
         conn.execute("VACUUM")
     finally:
         conn.close()
@@ -206,7 +238,8 @@ def creer_zip_sauvegarde() -> bytes:
     Crée une sauvegarde complète des 3 bases (+ `INFO.txt`) et renvoie le
     contenu de l'archive zip (bytes), prêt à être servi en téléchargement ou
     écrit sur disque. L'annonce de l'écran de salle n'y figure jamais (voir
-    `_retirer_annonce`).
+    `_retirer_annonce`), ni rien de ce qui a été supprimé avant la copie (voir
+    `_compacter`).
     """
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -219,6 +252,7 @@ def creer_zip_sauvegarde() -> bytes:
                     _copie_a_chaud(source, copie)
                     if module is pret_db:
                         _retirer_annonce(copie)
+                    _compacter(copie)
                 else:
                     # Base jamais initialisée (cas improbable : app.main l'init
                     # toujours au démarrage) : on écrit un fichier SQLite vide

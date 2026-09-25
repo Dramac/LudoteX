@@ -3458,8 +3458,8 @@ def renommer_appareil(conn: sqlite3.Connection, appareil: str, libelle: str) -> 
     Pose (ou efface) le libellé libre d'un appareil.
 
     Le libellé désigne un POSTE (« comptoir 2 », « accueil »), jamais une
-    personne — c'est le seul endroit du dispositif où une donnée personnelle
-    pourrait entrer, la consigne est donc affichée sous le champ lui-même
+    personne — c'est une porte d'entrée à donnée personnelle (liste dans
+    CLAUDE.md, « Règles métier »), la consigne est donc affichée sous le champ lui-même
     (docs/conception-journal.md, arbitrage 7). L'application ne déduit jamais
     rien de cette valeur : elle l'affiche, et c'est tout.
 
@@ -3881,8 +3881,8 @@ def get_signalement(conn: sqlite3.Connection, id_signalement: int) -> dict | Non
     bien une annonce).
 
     `texte` n'est délibérément PAS ramené : aucun appelant n'en a besoin, et
-    c'est le seul champ de l'application de prêt par lequel une donnée
-    personnelle peut entrer (docs/conception-signalements.md §3).
+    c'est une porte d'entrée à donnée personnelle
+    (docs/conception-signalements.md §3).
     """
     row = conn.execute(
         """

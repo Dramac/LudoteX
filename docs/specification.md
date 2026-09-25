@@ -23,7 +23,7 @@ Ce système est fiable mais centralisé : un seul point d'écriture et de recher
 
 Ces principes guident toutes les décisions du document.
 
-1. **Zéro donnée personnelle.** L'emprunteur n'est jamais identifié nominativement. Le seul lien prêt ↔ personne est un **numéro de pochette** physique où est glissée la PI. Le système reste donc hors du champ du RGPD.
+1. **Aucune donnée personnelle dans le modèle de données du prêt.** L'emprunteur n'est jamais identifié nominativement. Le seul lien prêt ↔ personne est un **numéro de pochette** physique où est glissée la PI. Les champs de texte libre qui pourraient malgré tout recevoir un nom sont recensés dans `wiki/Rgpd.md`.
 2. **Ne jamais bloquer le bénévole en pic.** Toute incohérence est signalée et accompagnée d'une action de rattrapage en un tap, jamais d'une erreur bloquante.
 3. **Simplicité maximale de l'interface de prêt.** Le bénévole confirme une action pré-sélectionnée ; on ne lui demande un choix explicite que dans les cas réellement ambigus.
 4. **Séparer la lecture de l'écriture.** La consultation est publique ; les actions de prêt/retour sont réservées aux bénévoles.
@@ -194,9 +194,9 @@ Mécanisme retenu :
 
 ## 9. RGPD
 
-### 9.1 Application de prêt — zéro donnée personnelle
+### 9.1 Application de prêt — aucune donnée personnelle dans le modèle de données
 
-Par conception, l'application de prêt **ne stocke aucune donnée personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa pièce d'identité reste physiquement au comptoir et lui est rendue au retour du jeu. Cette partie est donc hors du champ d'application du RGPD, et cette propriété doit être préservée dans les évolutions futures (voir §11).
+Par conception, le modèle de données de l'application de prêt **ne prévoit aucune donnée personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa pièce d'identité reste physiquement au comptoir et lui est rendue au retour du jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un appareil, annonce de l'écran de salle) pourraient recevoir un nom : ils portent une consigne, et leur liste, avec ce que chacun garde, vit dans `wiki/Rgpd.md`. Cette propriété doit être préservée dans les évolutions futures (voir §11). Ce qu'elle implique pour les obligations d'une association relève de son appréciation ; ce document ne tranche pas.
 
 ### 9.2 Site et newsletter — traitement de données personnelles
 

@@ -3,6 +3,15 @@
 {% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
+{# UNE phrase, deux emplois : le téléchargement direct et les archives du
+   serveur sortent le même contenu (app.sauvegarde.creer_zip_sauvegarde). La
+   dire une seule fois empêche les deux mentions de diverger. #}
+{% set mention_donnees_personnelles %}
+  <p class="stats-note">
+    Chaque archive contient les <strong>3 bases</strong>, planning bénévole
+    compris : les noms et contacts des bénévoles y figurent.
+  </p>
+{% endset %}
 <div class="admin-cols">
 <section class="carte">
   <h1>Données &amp; sauvegarde</h1>
@@ -74,6 +83,7 @@
     jeux, tournois, planning bénévole) dans une seule archive — copie complète
     et cohérente, l'application n'étant pas interrompue pendant l'export.
   </p>
+  {{ mention_donnees_personnelles }}
   <p class="stats-export">
     <a class="lien" href="/admin/sauvegarde/export">⬇️ Télécharger la sauvegarde complète (.zip)</a>
   </p>
@@ -112,10 +122,7 @@
     à l'une d'elles, téléchargez-la, puis choisissez le fichier dans
     « Sauvegarde complète — restaurer », ci-dessus.
   </p>
-  <p class="stats-note">
-    Chaque archive contient les <strong>3 bases</strong>, planning bénévole
-    compris : les noms et contacts des bénévoles y figurent.
-  </p>
+  {{ mention_donnees_personnelles }}
   {% if archives is none %}
     <p class="resultat resultat-attention">
       <strong>Attention :</strong> le dossier des sauvegardes n'a pas pu être

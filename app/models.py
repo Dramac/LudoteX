@@ -134,9 +134,10 @@ CREATE TABLE IF NOT EXISTS exemplaires (
 # déjà saisi (référence, pas libellé recopié — renommer une catégorie se
 # répercute donc sur tout l'historique).
 #
-# `texte` est le SEUL endroit de l'application de prêt par lequel une donnée
-# personnelle peut entrer (champ libre, facultatif) — voir §3 de la note de
-# conception : jamais public, jamais dans le journal d'activité.
+# `texte` est une PORTE D'ENTRÉE à donnée personnelle (champ libre,
+# facultatif) — une parmi d'autres, dont la liste tient dans CLAUDE.md
+# (« Règles métier ») et wiki/Rgpd.md ; §3 de la note de conception : jamais
+# public, jamais dans le journal d'activité.
 #
 # État déduit, pas stocké : ouvert = `traite_le IS NULL`, même principe que
 # l'état d'un exemplaire (prêt avec `date_retour IS NULL`).
@@ -247,9 +248,11 @@ CREATE TABLE IF NOT EXISTS parametres (
 # tiré au hasard (secrets.token_hex(3)) et n'est rattaché à rien. Il dit « c'est
 # le même téléphone », jamais « c'est le téléphone de Marie » — c'est ce qui
 # permet à la brique de prêt de conserver sa propriété « zéro donnée
-# personnelle » (§8.1). Le seul endroit où une donnée personnelle pourrait
-# entrer est `libelle`, saisi à la main en administration : la consigne
-# « désigner un POSTE, jamais une personne » est affichée sous le champ.
+# personnelle » (§8.1). Dans cette table, la seule colonne où une donnée
+# personnelle pourrait entrer est `libelle`, saisi à la main en
+# administration — une des portes recensées dans CLAUDE.md (« Règles
+# métier ») : la consigne « désigner un POSTE, jamais une personne » est
+# affichée sous le champ.
 #
 # ÉCRITURE : une seule fois par activation, aux deux endroits qui posent le
 # cookie (/acces et POST /admin/login). AUCUN UPDATE sur le chemin des

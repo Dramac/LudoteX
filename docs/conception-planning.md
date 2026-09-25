@@ -86,8 +86,8 @@ demandent plutôt des personnes expérimentées. Ces deux points sont notés com
 
 ## 4. Données personnelles / RGPD
 
-**Rupture explicite avec la brique de prêt** (dont la fierté est « zéro donnée
-personnelle ») : un planning nominatif stocke forcément des **noms**, des
+**Rupture explicite avec la brique de prêt** (dont le modèle de données ne
+prévoit aucune donnée personnelle) : un planning nominatif stocke forcément des **noms**, des
 **disponibilités** et un **contact** pour recontacter. Ce n'est pas bloquant —
 le bureau le fait déjà dans Excel — mais cela doit être décidé en conscience.
 
@@ -102,6 +102,27 @@ Approche minimale retenue :
 - **Courte note d'information** sur le formulaire de collecte (qui voit les
   données, combien de temps, comment se faire retirer).
 - Ne pas mélanger avec la base de prêt : aucune jointure, aucun export croisé.
+
+**Ce que le code tient réellement** (vérifié le 2026-09-25, lot 9 de la série
+pré-production) :
+
+- la purge est un **geste du bureau** (`POST /planning/admin/{ev}/purger`,
+  `services.purger_evenement`), jamais un automatisme ; elle efface sous
+  `PRAGMA secure_delete`, pour que les noms ne restent pas lisibles dans les
+  pages libres du fichier ;
+- elle **ne touche pas les archives déjà produites** : toutes contiennent
+  `planning.db` (`app/sauvegarde.py`). Celles du serveur sortent en
+  `sauvegarde.DUREE_VIE_ARCHIVES_JOURS` jours, à condition que le minuteur
+  tourne ; une copie téléchargée par le bureau n'est atteinte par aucune
+  rotation. Chaque archive est compactée (`VACUUM`) avant d'être écrite : une
+  édition purgée n'entre plus dans les suivantes ;
+- une fois le planning **publié**, les noms des bénévoles affectés s'affichent
+  sur `/planning`, ouvert à tous tant que le module est réglé sur *tous*, son
+  état par défaut (`SEC-10`, arbitrage en attente) — et non aux seuls
+  porteurs du jeton, comme le dit le §3 ;
+- la note d'information du formulaire de collecte dit qui efface, quand, et
+  combien de temps les sauvegardes du serveur gardent une trace ; elle ne dit
+  pas encore « comment se faire retirer » avant la purge.
 
 > Point à trancher (§11) : conserve-t-on le contact, ou bien on se contente du
 > nom et l'admin gère les relances par ses propres moyens ?

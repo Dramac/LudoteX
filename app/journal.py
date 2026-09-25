@@ -64,6 +64,14 @@ ACTIONS = {
     "connexion_echouee",
     "import_csv",
     "sauvegarde_restauree",
+    # Une archive sortie du serveur : le téléchargement direct de la
+    # sauvegarde complète ET celui d'une archive du serveur. Une archive
+    # contient la base du planning, donc les noms et contacts des bénévoles :
+    # savoir qu'elle est sortie, et quand, est la seule trace possible une fois
+    # le fichier parti. `objet` porte la nature (« Sauvegarde complète »,
+    # « Sauvegarde de routine »…), `ref` le nom de l'archive du serveur —
+    # jamais un chemin, jamais le contenu.
+    "sauvegarde_telechargee",
     "cloture_prets",
     "module_modifie",
     "rangement_contexte_modifie",

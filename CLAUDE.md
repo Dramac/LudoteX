@@ -32,8 +32,8 @@ Application web de **prêt de jeux de société** pour l'événement annuel d'un
 association (~700 jeux). Les bénévoles scannent un QR par exemplaire avec leur
 smartphone pour enregistrer prêts et retours sur une base partagée, en
 remplacement de la feuille papier (goulet d'étranglement). Anti-vol par
-**numéro de pochette** où l'on dépose la pièce d'identité → **zéro donnée
-personnelle** dans l'application de prêt, hors champ RGPD.
+**numéro de pochette** où l'on dépose la pièce d'identité → **aucune donnée
+personnelle dans le modèle de données** de l'application de prêt.
 
 Ce dépôt = **la brique logicielle uniquement**. Le site vitrine + newsletter
 (WordPress, hébergement mutualisé) est une brique séparée, hors dépôt.
@@ -78,11 +78,20 @@ worker). Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
   côté appareil, + limitation de débit par IP. Pas de comptes individuels.
   Rotation du jeton par l'admin, avec date d'expiration prolongeable sans
   changer le lien.
-- **Zéro donnée personnelle** dans l'application de prêt — propriété à
-  préserver. Toute proposition qui ferait entrer une donnée personnelle doit
-  être **signalée comme telle avant d'être écrite**. Deux exceptions assumées et
-  cloisonnées : le module planning (base séparée, finalité unique) et le champ
-  libre des signalements du carnet de maintenance.
+- **Aucune donnée personnelle dans le modèle de données** de l'application de
+  prêt — propriété à préserver. Toute proposition qui ferait entrer une donnée
+  personnelle doit être **signalée comme telle avant d'être écrite**. **Un
+  champ de texte libre est une porte** : quelqu'un finira par y taper un nom.
+  Portes ouvertes, chacune avec sa consigne sous le champ : détail d'un
+  signalement (jamais public, jamais journalisé, jamais purgé), libellé
+  d'appareil (bureau), annonce de l'écran de salle (publique, 12 h au plus,
+  jamais journalisée ni archivée). Données personnelles assumées : le planning
+  (base séparée, finalité unique, purge par le bureau) et le pseudo de
+  tournoi. Les textes que le bureau publie (identité, programme, tournois)
+  et les noms d'objets ne sont pas des portes. Liste complète, avec qui lit
+  et ce qui efface : `wiki/Rgpd.md`. Une suppression promise se vérifie sur
+  les **octets** de la base et de l'archive (`secure_delete`, `VACUUM`), pas
+  par un `SELECT`.
 
 ## Les trois bases — invariant
 

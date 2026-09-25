@@ -11,7 +11,8 @@ une URL ouverte aux bénévoles.
 CE QUE CET ÉCRAN NE PORTE PAS (docs/conception-signalements.md §7)
 -----------------------------------------------------------------
 - les **exports** Excel et PDF : cette liste nomme des boîtes abîmées et porte
-  le seul champ de saisie libre de l'application de prêt. En faire un fichier
+  le détail libre des signalements, une porte d'entrée à donnée personnelle
+  (CLAUDE.md, « Règles métier »). En faire un fichier
   qui circule est une décision du bureau — les exports restent derrière le mot
   de passe ;
 - la gestion des **catégories** (`/admin/categories-signalement`).

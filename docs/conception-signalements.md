@@ -2,8 +2,10 @@
 
 **Statut :** décisions actées avec Simon le 2026-08-10, avant tout
 développement. Ce document fige le périmètre, les arbitrages et le point dur du
-chantier : le champ de texte libre est **le seul endroit de l'application de
-prêt par lequel une donnée personnelle peut entrer**.
+chantier : le champ de texte libre est **une porte par laquelle une donnée
+personnelle peut entrer dans la base de prêt**. Ce n'est pas la seule : la
+liste complète, et ce que chacune garde, tient dans `wiki/Rgpd.md` (résumé
+pour le développeur dans `CLAUDE.md`, « Règles métier »).
 
 Ce chantier réunit deux fiches de `docs/idees-evolutions.md` que la seconde
 elle-même dit indissociables : **2.2 « Signalement d'état au retour »** (le
@@ -88,13 +90,20 @@ un bénévole recruté le matin même. Le terme retenu est **signalement** — c
 qu'emploient déjà les deux fiches d'évolution — et le bouton dit « ⚠️ Signaler
 un problème », qui décrit le geste plutôt que l'objet.
 
-## 3. Le point dur — la seule porte d'entrée d'une donnée personnelle
+## 3. Le point dur — une porte d'entrée à donnée personnelle
 
-L'application de prêt est conçue **sans aucune donnée personnelle**, et c'est
-une propriété qu'on préserve, pas un état de fait qu'on constate. Le champ de
-détail libre est la première occasion, depuis l'origine du projet, qu'un
-bénévole a d'écrire une phrase de son choix dans la base de prêt. Rien
-n'empêche techniquement « cassé par le gamin en pull rouge de la table 3 ».
+Le modèle de données de l'application de prêt ne prévoit **aucune donnée
+personnelle**, et c'est une propriété qu'on préserve, pas un état de fait
+qu'on constate. Le champ de détail libre est la première occasion, depuis
+l'origine du projet, qu'un **bénévole** a d'écrire une phrase de son choix
+dans la base de prêt. Rien n'empêche techniquement « cassé par le gamin en
+pull rouge de la table 3 ».
+
+*Rectification (2026-09-25).* Cette note disait « la seule porte ». Elle ne
+l'était pas : le libellé d'un appareil, saisi par le bureau, en est une autre,
+et l'annonce de l'écran de salle une troisième, publique celle-là. La liste
+tenue à jour, avec ce que chaque porte garde et ce qui l'efface, vit dans
+`wiki/Rgpd.md` ; elle n'est pas recopiée ici.
 
 Trois protections, et aucune n'est facultative :
 
@@ -368,7 +377,8 @@ puce de filtre ne renvoie pas le bénévole vers l'écran du mot de passe.
 ### Ce que le carnet bénévole ne porte pas
 
 - **Les exports.** Le §7 le dit déjà : cette liste nomme des boîtes abîmées et
-  porte le seul champ de saisie libre de l'application. Les bénévoles la
+  porte le détail libre des signalements, une porte d'entrée à donnée
+  personnelle. Les bénévoles la
   *voient* déjà (le bandeau de la fiche affiche le texte libre), mais en faire
   un fichier qui circule est une décision du bureau. Les exports restent
   derrière le mot de passe — même raisonnement que la fiche D5 sur le numéro
@@ -442,9 +452,11 @@ Corrigé au passage : la **date de traitement** ne vivait que dans un attribut
   des appareils et les rotations du journal. Elle ne touche pas aux
   signalements — un carnet de maintenance sans mémoire ne sert à rien.
 - **Le catalogue public et la fiche publique** : inchangés, au pixel près.
-- **Le RGPD** : la propriété « zéro donnée personnelle » est **maintenue**, et
-  c'est tout l'objet du §3. Ce n'est pas une rupture assumée comme l'a été le
-  module planning.
+- **Le RGPD** : le modèle de données du prêt reste sans donnée personnelle, et
+  le détail libre est tenu par les trois protections du §3. Ce n'est pas une
+  rupture assumée comme l'a été le module planning — mais c'est une porte, et
+  rien ne l'efface (aucune purge des signalements, `RGPD-03`, arbitrage en
+  attente).
 
 ## 10. Journal d'activité
 

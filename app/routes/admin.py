@@ -673,6 +673,9 @@ def sauvegarde_export(request: Request):
         return garde
     contenu = sauvegarde.creer_zip_sauvegarde()
     nom = sauvegarde.nom_fichier_zip()
+    journal.journaliser(
+        request, "admin", "sauvegarde_telechargee", objet=sauvegarde.LIBELLE_EXPORT,
+    )
     return Response(
         content=contenu, media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{nom}"'},
@@ -703,6 +706,14 @@ def sauvegarde_archive(request: Request, nom: str):
                        "choisissez-en une dans la liste à jour ci-dessous."),
             status_code=404,
         )
+    # Le NOM seul (motif vérifié par `archive_telechargeable`), jamais le chemin
+    # du dossier des sauvegardes. Un refus ne journalise rien : aucune archive
+    # n'est sortie.
+    journal.journaliser(
+        request, "admin", "sauvegarde_telechargee",
+        objet=sauvegarde.LIBELLES_NATURE[sauvegarde.nature_archive(chemin.name)],
+        ref=chemin.name,
+    )
     return FileResponse(chemin, media_type="application/zip", filename=chemin.name)
 
 
@@ -994,8 +1005,8 @@ def jeton_appareil_libelle(request: Request, appareil: str, libelle: str = Form(
     docs/conception-journal.md.
 
     C'est ce qui transforme `3F1A9C` en information exploitable, sans que
-    l'application ne déduise jamais rien elle-même. C'est aussi le SEUL endroit
-    du dispositif où une donnée personnelle pourrait entrer : la consigne
+    l'application ne déduise jamais rien elle-même. C'est aussi une porte
+    d'entrée à donnée personnelle (liste dans CLAUDE.md, « Règles métier ») : la consigne
     « désigner un poste, jamais une personne » est affichée sous les champs,
     pas seulement dans le wiki.
 

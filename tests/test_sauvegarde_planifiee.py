@@ -193,6 +193,22 @@ def test_la_rotation_garde_un_mois_au_rythme_du_minuteur():
     assert sauvegarde.GARDER_ROUTINES == 30 * len(_heures_de_passage())
 
 
+def test_la_duree_de_vie_citee_aux_benevoles_suit_le_minuteur():
+    """
+    `DUREE_VIE_ARCHIVES_JOURS` est la durée que la collecte et la purge du
+    planning promettent. Elle se déduit du nombre de passages : un minuteur
+    qui passe à trois fois par jour sans retoucher la constante ferait mentir
+    ces écrans en silence.
+    """
+    from app import sauvegarde
+
+    assert sauvegarde.PASSAGES_ROUTINE_PAR_JOUR == len(_heures_de_passage())
+    assert sauvegarde.DUREE_VIE_ARCHIVES_JOURS == max(
+        sauvegarde.GARDER_ROUTINES // len(_heures_de_passage()),
+        sauvegarde.GARDER_JOURS_FILETS,
+    )
+
+
 def test_le_seuil_de_supervision_voit_un_seul_passage_manque():
     """
     Le seuil dépasse le plus long écart entre deux passages (plus une heure :

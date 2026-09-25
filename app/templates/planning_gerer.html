@@ -239,6 +239,13 @@
 
 <section class="carte">
   <h2>Fin d'événement</h2>
+  <p class="stats-note">
+    La purge efface de l'application les noms, contacts, disponibilités et
+    affectations de cet événement. Elle ne touche pas les archives déjà
+    produites&nbsp;: celles du serveur disparaissent d'elles-mêmes en
+    {{ duree_archives_jours }}&nbsp;jours environ&nbsp;; une sauvegarde que vous
+    avez téléchargée reste à supprimer vous-même.
+  </p>
   <form method="post" action="/planning/admin/{{ ev.id_evenement }}/purger"
         onsubmit="return confirm('Purger définitivement cet événement et toutes ses données ? Cette action est irréversible.');">
     <button class="bouton bouton-secondaire">🗑️ Purger cet événement</button>

@@ -20,10 +20,18 @@
     <p class="resultat resultat-attention">
       La collecte est fermée pour cet événement.</p>
   {% else %}
+  {# Chaque phrase se retrouve dans le code : la purge est un geste du bureau
+     (bouton « Purger cet événement »), pas un automatisme ; les archives du
+     serveur sortent en `sauvegarde.DUREE_VIE_ARCHIVES_JOURS` jours ; une copie
+     téléchargée n'est atteinte par aucune rotation. #}
   <p class="stats-note">
-    Vos données (nom, contact, disponibilités) servent uniquement à organiser
-    cet événement et sont supprimées ensuite. Vous recevrez un code pour revenir
-    modifier votre réponse.
+    Vos réponses (nom, contact, disponibilités) servent uniquement à organiser
+    cet événement. Le bureau les efface une fois l'événement passé&nbsp;; les
+    sauvegardes du serveur les gardent encore {{ duree_archives_jours }}&nbsp;jours
+    environ.
+  </p>
+  <p class="stats-note">
+    Vous recevrez un code pour revenir modifier votre réponse.
   </p>
 
   <form method="post" action="/planning/collecte/{{ ev.id_evenement }}">

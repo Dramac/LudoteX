@@ -165,8 +165,8 @@ def _journaliser_signalement(request: Request, info: dict, categorie_nom: str | 
     Une ligne pour un signalement du carnet de maintenance
     (docs/conception-signalements.md §10).
 
-    ⚠️ JAMAIS LE TEXTE LIBRE. C'est le seul endroit de l'application de prêt
-    par lequel une donnée personnelle peut entrer (§3 de la note) : la ligne
+    ⚠️ JAMAIS LE TEXTE LIBRE. C'est une porte d'entrée à donnée personnelle
+    (§3 de la note ; liste complète dans CLAUDE.md, « Règles métier ») : la ligne
     porte le nom du jeu et le libellé de la catégorie, rien d'autre. Le
     garde-fou `tests/test_journal_interdits.py` le vérifie sur un texte
     volontairement distinctif.
