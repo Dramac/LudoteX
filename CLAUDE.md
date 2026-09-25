@@ -145,9 +145,9 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   unique ; les helpers de dates dans `app/services.py`). Les rares duplications
   assumées sont justifiées en commentaire.
 
-## État de l'application — au 2026-09-10
+## État de l'application
 
-**Dernière version au dépôt : 1.14.0** (voir `VERSION` et `CHANGELOG.md`,
+**Dernière version au dépôt : 1.15.0** (voir `VERSION` et `CHANGELOG.md`,
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
 du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira

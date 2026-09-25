@@ -82,9 +82,18 @@ est installée.
 
 ---
 
-## À paraître
+## 1.15.0 — 2026-09-25
 
-### Unités systemd, fichier de la formation, sauvegarde à 3h et à 15h
+Quatre sections, deux échéances. **Le jour même du déploiement** : la
+première ci-dessous, et en particulier la copie du minuteur — sans elle, le
+nouveau seuil de supervision (14 h) fait passer le bloc « Sauvegarde » en
+« Attention » chaque après-midi, faute du passage de 15h qui n'existe pas
+encore sur le serveur : le voyant dit vrai, mais le bureau verra de l'orange
+sans comprendre. **Plus tard, si vous le souhaitez** : la purge de journald
+et le retrait du mot de passe en clair, toutes deux facultatives et
+différables — la purge, elle, uniquement hors événement.
+
+### Unités systemd, fichier de la formation, sauvegarde à 3h et à 15h — à faire le jour même du déploiement
 
 Trois changements, **un seul passage** : ils touchent tous aux fichiers que
 systemd lit, et `update.sh` n'en copie aucun.
@@ -227,7 +236,7 @@ deux sites redémarrent (quelques secondes).
   archives de routine au-delà sont supprimées à la sauvegarde suivante. Les
   télécharger avant, si on y tient.
 
-### Purger les journaux de journald — hors événement, après la section précédente
+### Purger les journaux de journald — à faire plus tard, si vous le souhaitez, hors événement et après la section précédente
 
 **Facultatif, et seulement une fois les étapes 3 à 5 ci-dessus faites** (sinon
 de nouvelles lignes arrivent aussitôt). Le jeton bénévole a été réinitialisé le
@@ -293,7 +302,7 @@ Les archives `avant-mise-a-jour-…` déjà posées restent restaurables, mais
 l'ancien `sauvegarde.sh` ne les voit plus : elles ne seraient alors plus
 purgées, à supprimer à la main au-delà de 30 jours.
 
-### Mot de passe admin : retirer la copie en clair des fichiers d'environnement
+### Mot de passe admin : retirer la copie en clair des fichiers d'environnement — à faire plus tard, si vous le souhaitez
 
 **Facultatif** : l'application fonctionne à l'identique avec ou sans la ligne,
 et le contrôle de report ne la réclame plus. Motif : `install.sh` écrivait le

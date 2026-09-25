@@ -6,6 +6,17 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.15.0 — 2026-09-25
+
+- **La supervision ne se contente plus de trouver un fichier : elle vérifie que les bases sont saines, que la sauvegarde de la nuit a bien eu lieu, que le journal est à jour et qu'il reste de la place sur le disque.**
+- **Les archives que le serveur garde — sauvegardes de nuit, copies faites avant une mise à jour ou une restauration — se téléchargent désormais depuis Données & sauvegarde.**
+- **Quand l'accès bénévole arrive à sa date de fin, le bureau en est prévenu trois jours à l'avance et peut le prolonger sans changer le lien** : les téléphones déjà activés continuent sans rien refaire.
+- **Une bénévole dont l'accès a expiré lit désormais que son lien n'est pas en cause et qu'il faut prévenir le bureau**, au lieu d'un message de « lien invalide ».
+- **Un mot de passe administrateur oublié se remplace désormais par une commande dédiée**, sans redémarrer le site ; la personne qui gère le serveur la trouvera dans la documentation de déploiement.
+- **Le mot de passe administrateur doit compter au moins 8 caractères**, et l'écran de changement dit clairement si c'est l'ancien mot de passe ou le nouveau qui pose problème.
+- **La connexion à l'administration a désormais son propre compteur de tentatives** : les activations des bénévoles ne peuvent plus l'empêcher, et l'écran indique combien de temps attendre en cas d'erreur répétée.
+- **Le serveur peut désormais faire deux sauvegardes par jour au lieu d'une, et en garder un mois.** Un geste est nécessaire sur un serveur déjà en service pour l'activer ; la personne qui s'occupe du serveur le trouvera dans la documentation de déploiement.
+
 ## 1.14.0 — 2026-09-13
 
 - **La sauvegarde automatique de chaque nuit fonctionne désormais pour de bon.** Sur toute installation de LudoteX faite jusqu'ici, la tâche censée sauvegarder les trois bases chaque nuit échouait avant même de créer une archive, sans qu'aucun message ne le signale — un défaut resté invisible depuis l'installation. Il est corrigé dans cette version, qui explique aussi comment vérifier, chaque matin, qu'une sauvegarde a bien eu lieu. **Un geste est nécessaire sur un serveur déjà en service** pour que la sauvegarde se mette à fonctionner ; la personne qui s'occupe du serveur le trouvera dans la documentation de déploiement.
