@@ -157,6 +157,21 @@ mise en œuvre quand elle coule de source.
   manifeste + service worker + file d'actions, à chiffrer en conséquence.
   La valeur assurantielle, elle, est inchangée — c'est toujours le seul vrai
   point de défaillance du dispositif.
+- **Écartée — la file d'écritures hors ligne ne doit pas être construite**
+  (audit pré-production, constat `UX-04`, tranché au lot-10-pré-production).
+  Le numéro de pochette est attribué **par le serveur** comme « le plus petit
+  numéro libre » : hors ligne, aucun téléphone ne peut le connaître, deux
+  téléphones déconnectés attribueraient le même, et la resynchronisation
+  trancherait **après** que deux pièces d'identité sont déjà dans des
+  pochettes. « Attribuer à la resynchro » (note ci-dessus) ne résout rien : la
+  pièce d'identité, elle, est rangée au moment du geste. Ce serait casser
+  l'invariant central pour un défaut de sévérité moyenne, dont le pire cas est
+  déjà rattrapé (un prêt enregistré dont la réponse s'est perdue ressort
+  « déjà sorti, pochette n°N » au scan suivant). La continuité retenue est une
+  **procédure papier** (wiki, « Si le site ne répond plus »), plus la page que
+  nginx sert quand l'application est arrêtée (`app/static/indisponible.html`).
+  Un manifeste seul (icône, écran d'accueil) resterait possible ; une file
+  d'actions, non.
 
 ### 2.2 Signalement d'état au retour
 - **Valeur** : « il manque un dé », « boîte déchirée » — aujourd'hui cette info

@@ -130,7 +130,10 @@ Dire non tout de suite fait gagner du temps à tout le monde.
 - **Il n'y a pas de multi-association** : une instance = une association. Deux
   associations, ce sont deux installations.
 - **Il n'y a pas de mode hors ligne** : les téléphones doivent atteindre le
-  serveur. Un wifi lent suffit, une absence de réseau non.
+  serveur. Un wifi lent suffit, une absence de réseau non. Pendant une
+  coupure, les bénévoles continuent sur une feuille, recopiée ensuite dans
+  l'application ; ce choix est délibéré, le numéro de pochette ne pouvant être
+  attribué que par le serveur.
 
 ## Démarrer
 

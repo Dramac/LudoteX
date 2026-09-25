@@ -7,8 +7,10 @@
 #   sudo ./deploy/install.sh
 #
 # Le script est pensé pour être relançable sans casser une installation
-# existante : il redemande confirmation avant d'écraser un .env déjà présent,
-# et les autres étapes (paquets, service, nginx, certbot) sont idempotentes.
+# existante : il redemande confirmation avant d'écraser un .env déjà présent
+# (celui de la production comme /etc/ludotex-formation.env, conservés par
+# défaut), et les autres étapes (paquets, service, nginx, certbot) sont
+# idempotentes.
 #
 # Ce qu'il fait, dans l'ordre :
 #   1. Vérifie/installe les paquets système nécessaires (Python 3.11+, nginx,
@@ -440,6 +442,24 @@ sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex
 sed -i "s/pret\.example\.fr/${DOMAINE}/g" /etc/nginx/sites-available/ludotex
 
 ln -sf /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/ludotex
+
+# Attrape-tout (PROD-07) : ferme toute visite qui ne désigne pas l'un des
+# sites, à la place du site `default` de Debian — les deux se déclarent
+# `default_server` sur le port 80, ils ne peuvent pas coexister. Aucune valeur
+# à substituer. Voir le commentaire de deploy/nginx-attrape-tout.conf.
+cp "$INSTALL_DIR/deploy/nginx-attrape-tout.conf" /etc/nginx/sites-available/attrape-tout
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/attrape-tout
+
+# Journal d'accès propre au site (PROD-08), créé avec les droits que logrotate
+# lui donnera ; nginx, qui tourne en root, le créerait sinon lisible par tous
+# jusqu'à la première rotation. Jamais recréé s'il existe : `install` le
+# viderait.
+creer_journal_nginx() {
+    [[ -e "$1" ]] || install -o www-data -g adm -m 640 /dev/null "$1"
+}
+creer_journal_nginx /var/log/nginx/ludotex-access.log
+
 nginx -t
 systemctl reload nginx
 info "nginx configuré pour $DOMAINE."
@@ -566,9 +586,55 @@ echo "bénévoles sans risque de toucher aux vraies données. Voir docs/mode-for
 read -r -p "Installer aussi le site de formation ? [o/N] : " INSTALLER_FORMATION
 
 if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
-    demander "Sous-domaine du site de formation" "formation.$DOMAINE"
-    DOMAINE_FORMATION="$REPONSE"
+    ENV_FORMATION="/etc/ludotex-formation.env"
+
+    # Appelle un module Python sur l'instance de FORMATION, avec son fichier
+    # d'environnement pour seul environnement : exactement ce que verra le
+    # service. `sudo` repart d'un environnement vierge, rien de la session
+    # courante ne s'y ajoute. Aucun mot de passe ici (SEC-17) : il est posé
+    # plus bas, sur l'entrée standard.
+    run_python_formation() {
+        sudo -u "$SERVICE_USER" env LUDOTEX_ENV_FILE="$ENV_FORMATION" \
+            "$INSTALL_DIR/.venv/bin/python" "$@"
+    }
+
+    # Un fichier de formation déjà présent est CONSERVÉ, sauf demande expresse
+    # — comme le .env de la production (étape 2). Le réécrire perdait toute
+    # ligne ajoutée à la main depuis l'installation, en particulier
+    # FORMATION_CATALOGUE_CSV décommentée : la formation repartait sur ses
+    # jeux fictifs, et les QR imprimés y affichaient « Exemplaire inconnu ».
+    # Conservé, c'est LUI qui dit où sont les bases et quelle est l'adresse du
+    # site : lus par l'application elle-même, jamais relus en bash.
+    GENERER_ENV_FORMATION=1
+    DOMAINE_FORMATION_DEFAUT="formation.$DOMAINE"
     DATA_DIR_FORMATION="${DATA_DIR}-formation"
+    if [[ -f "$ENV_FORMATION" ]]; then
+        read -r -p "$ENV_FORMATION existe déjà. L'écraser ? [o/N] : " ECRASER_FORMATION
+        if [[ "${ECRASER_FORMATION,,}" != o* ]]; then
+            GENERER_ENV_FORMATION=0
+            DATA_DIR_FORMATION="$(cd "$INSTALL_DIR" && run_python_formation -c \
+                'from app.db import get_database_path; print(get_database_path().parent.resolve())')" || DATA_DIR_FORMATION=""
+            if [[ -z "$DATA_DIR_FORMATION" ]]; then
+                erreur_fatale "Impossible de lire le dossier des bases dans $ENV_FORMATION (DATABASE_PATH). Le vérifier, ou relancer en acceptant de l'écraser."
+            fi
+            ADRESSE_CONSERVEE="$(cd "$INSTALL_DIR" && run_python_formation -c \
+                'import os; from app.environnement import charger_env; charger_env(); print(os.getenv("BASE_URL", ""))')" || ADRESSE_CONSERVEE=""
+            # L'adresse du fichier conservé devient la réponse proposée.
+            ADRESSE_CONSERVEE="${ADRESSE_CONSERVEE#https://}"
+            ADRESSE_CONSERVEE="${ADRESSE_CONSERVEE#http://}"
+            ADRESSE_CONSERVEE="${ADRESSE_CONSERVEE%%/*}"
+            if [[ -n "$ADRESSE_CONSERVEE" ]]; then
+                DOMAINE_FORMATION_DEFAUT="$ADRESSE_CONSERVEE"
+            fi
+        fi
+    fi
+
+    demander "Sous-domaine du site de formation" "$DOMAINE_FORMATION_DEFAUT"
+    DOMAINE_FORMATION="$REPONSE"
+    if [[ "$GENERER_ENV_FORMATION" -eq 0 && "$DOMAINE_FORMATION" != "$DOMAINE_FORMATION_DEFAUT" ]]; then
+        avert "BASE_URL de $ENV_FORMATION désigne encore « $DOMAINE_FORMATION_DEFAUT » : le fichier est conservé tel quel."
+        avert "Y reporter https://$DOMAINE_FORMATION à la main, puis : systemctl restart ludotex-formation"
+    fi
 
     info "Bases jetables : $DATA_DIR_FORMATION"
     mkdir -p "$DATA_DIR_FORMATION"
@@ -590,10 +656,10 @@ if [[ "${INSTALLER_FORMATION,,}" == o* ]]; then
     # les clés attendues par .env.example ; le contrôle de report le vérifie à
     # chaque mise à jour, et tests/test_environnement.py le vérifie sur ce
     # modèle. Écrit AVANT les initialisations ci-dessous, qui le lisent.
-    ENV_FORMATION="/etc/ludotex-formation.env"
     # Valeurs entre guillemets : valable pour systemd (EnvironmentFile,
     # cf. systemd.exec(5)), pour python-dotenv ET pour un `source` bash manuel
     # de dépannage — important pour NOM_ASSOCIATION, qui contient des espaces.
+    if [[ "$GENERER_ENV_FORMATION" -eq 1 ]]; then
     cat > "$ENV_FORMATION" <<EOF
 # Fichier généré par deploy/install.sh le $(date -Iseconds)
 # Variables de l'INSTANCE DE FORMATION, et d'elle seule : ni la production ni
@@ -625,19 +691,13 @@ APP_ENV=production
 # les identifiants du vrai catalogue. Voir docs/mode-formation.md.
 # FORMATION_CATALOGUE_CSV="$DATA_DIR_FORMATION/catalogue.csv"
 EOF
+        info "$ENV_FORMATION généré."
+    else
+        info "$ENV_FORMATION conservé tel quel (bases : $DATA_DIR_FORMATION)."
+    fi
+    # Droits remis d'aplomb dans les deux cas : le contrôle de report attend 600.
     chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FORMATION"
     chmod 600 "$ENV_FORMATION"
-    info "$ENV_FORMATION généré."
-
-    # Appelle un module Python sur l'instance de FORMATION, avec le fichier
-    # ci-dessus pour seul environnement : exactement ce que verra le service.
-    # `sudo` repart d'un environnement vierge, rien de la session courante ne
-    # s'y ajoute. Aucun mot de passe ici (SEC-17) : il est posé plus bas, sur
-    # l'entrée standard.
-    run_python_formation() {
-        sudo -u "$SERVICE_USER" env LUDOTEX_ENV_FILE="$ENV_FORMATION" \
-            "$INSTALL_DIR/.venv/bin/python" "$@"
-    }
 
     info "Initialisation des bases de formation..."
     (cd "$INSTALL_DIR" && run_python_formation -m app.db)
@@ -669,6 +729,7 @@ EOF
     sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex-formation
     sed -i "s/formation\.pret\.example\.fr/${DOMAINE_FORMATION}/g" /etc/nginx/sites-available/ludotex-formation
     ln -sf /etc/nginx/sites-available/ludotex-formation /etc/nginx/sites-enabled/ludotex-formation
+    creer_journal_nginx /var/log/nginx/ludotex-formation-access.log
     nginx -t
     systemctl reload nginx
 

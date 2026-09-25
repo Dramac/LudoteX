@@ -166,11 +166,13 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
   réellement). En cas de souci, voir « En cas de problème » plus bas.
 - **Secrets absents des logs nginx** (SEC-02) — après avoir ouvert le lien
   d'activation bénévole (`?jeton=...`), vérifier qu'il n'apparaît PAS en
-  clair dans `access.log` :
+  clair dans le journal d'accès du site (un fichier par site, voir « Journaux
+  d'accès nginx » au § 8) :
   ```bash
-  sudo grep "jeton=" /var/log/nginx/access.log   # ne doit rien renvoyer
-  sudo grep "code="  /var/log/nginx/access.log   # idem, une fois le planning testé
+  sudo grep "jeton=" /var/log/nginx/ludotex-access.log   # ne doit rien renvoyer
+  sudo grep "code="  /var/log/nginx/ludotex-access.log   # idem, une fois le planning testé
   ```
+  (site de formation : `/var/log/nginx/ludotex-formation-access.log`).
   Si une ligne ressort quand même, vérifier que `sudo nginx -T` affiche bien
   les deux `map`/`log_format` `ludotex_*` (ou `ludotexformation_*` sur le
   site de formation) — un fichier `sites-available` mal recopié ou un
@@ -406,6 +408,15 @@ de formation » est reproposée à chaque exécution. Le `.env` conservé, le sc
 ne redemande pas le chemin des bases : il le lit dans `DATABASE_PATH`, comme
 `update.sh`, et les bases de formation vont à côté.
 
+Relancé sur un serveur qui a **déjà** un site de formation, le script
+**conserve** `/etc/ludotex-formation.env` par défaut (il demande s'il faut
+l'écraser, réponse par défaut : non) : une ligne ajoutée à la main, comme
+`FORMATION_CATALOGUE_CSV` décommentée (`docs/mode-formation.md`), n'est plus
+perdue. Conservé, le fichier dit lui-même où sont les bases de formation et
+quelle est l'adresse du site : le script les y relit et propose cette adresse
+à la question du sous-domaine. Une réponse différente est signalée — le fichier
+n'est pas modifié, `BASE_URL` est alors à corriger à la main.
+
 ## 8. Mises à jour ultérieures
 
 Quand du nouveau code a été **poussé sur GitHub** (nouvelle fonctionnalité,
@@ -467,6 +478,21 @@ puis on laisse `certbot --nginx` réinstaller ses propres lignes SSL par-dessus,
 sans réémettre le certificat. C'est reproductible, et ça ne laisse rien
 diverger.
 
+Trois fichiers, trois noms installés — le contrôle de report associe
+`deploy/nginx-<nom>.conf` à `/etc/nginx/sites-available/<nom>` :
+
+| Fichier du dépôt | Installé sous | Valeurs à substituer |
+|---|---|---|
+| `deploy/nginx-ludotex.conf` | `ludotex` | domaine `pret.example.fr`, chemin `/opt/ludotex` |
+| `deploy/nginx-ludotex-formation.conf` | `ludotex-formation` | domaine `formation.pret.example.fr`, chemin `/opt/ludotex` |
+| `deploy/nginx-attrape-tout.conf` | `attrape-tout` | aucune |
+
+**Le chemin d'installation est le même pour les deux sites** : la formation
+tourne sur le code de la production. Ne jamais remplacer `ludotex` par
+`ludotex-formation` dans un chemin : `/opt/ludotex-formation` n'existe pas.
+
+**Production :**
+
 ```bash
 # 1. sauvegarder l'existant, HORS /etc/nginx, avant tout
 sudo mkdir -p /root/sauvegarde-nginx
@@ -479,6 +505,7 @@ sudo cp /opt/ludotex/deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludote
 sudo sed -i 's#/opt/ludotex#<chemin d installation>#g' /etc/nginx/sites-available/ludotex
 sudo sed -i 's/pret\.example\.fr/<domaine réel>/g'     /etc/nginx/sites-available/ludotex
 sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex   # ne doit RIEN afficher
+sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex   # une ligne : <domaine réel>, exactement
 
 # 3. tester — SANS recharger (voir l'avertissement ci-dessous)
 sudo nginx -t
@@ -491,14 +518,61 @@ sudo certbot --nginx -d <domaine réel> --redirect
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+**Formation** — les mêmes étapes, écrites en entier parce que les deux
+substitutions ne sont pas celles de la production. Le fichier de la formation
+porte `formation.pret.example.fr` : lui appliquer le `sed` de la production
+(`pret\.example\.fr`) produirait `formation.<domaine de formation>`, un nom
+qui ne désigne rien, et le `grep 'example\.fr'` ne le verrait pas. C'est le
+`grep server_name` qui le voit.
+
+```bash
+# 1. sauvegarder l'existant
+sudo mkdir -p /root/sauvegarde-nginx
+sudo cp -a /etc/nginx/sites-available/ludotex-formation \
+           /root/sauvegarde-nginx/ludotex-formation.$(date +%Y%m%d-%H%M%S)
+
+# 2. installer — motif `formation\.pret\.example\.fr`, comme deploy/install.sh
+sudo cp /opt/ludotex/deploy/nginx-ludotex-formation.conf /etc/nginx/sites-available/ludotex-formation
+sudo sed -i 's#/opt/ludotex#<chemin d installation>#g'                  /etc/nginx/sites-available/ludotex-formation
+sudo sed -i 's/formation\.pret\.example\.fr/<domaine de formation>/g'  /etc/nginx/sites-available/ludotex-formation
+sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex-formation   # ne doit RIEN afficher
+sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex-formation   # une ligne : <domaine de formation>, exactement
+
+# 3. tester — SANS recharger
+sudo nginx -t
+
+# 4. certbot — répondre 1
+sudo certbot --nginx -d <domaine de formation> --redirect
+
+# 5. confirmer
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Le `<chemin d installation>` est le même dans les deux blocs (`/opt/ludotex`
+par défaut : le `sed` ne change alors rien, il reste sans danger). Le
+`<domaine de formation>` est l'adresse du site de formation, en entier, telle
+qu'elle s'affiche dans le navigateur, sans `https://`.
+
+**Attrape-tout** — pas de domaine, pas de chemin, pas de certbot : il ne porte
+aucune ligne SSL, et le recharger ne retire rien aux deux autres sites.
+
+```bash
+sudo cp -a /etc/nginx/sites-available/attrape-tout \
+           /root/sauvegarde-nginx/attrape-tout.$(date +%Y%m%d-%H%M%S)
+sudo cp /opt/ludotex/deploy/nginx-attrape-tout.conf /etc/nginx/sites-available/attrape-tout
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Sa **première** installation — qui désactive aussi le site `default` de
+Debian — est un geste à part, décrit dans `docs/notes-de-deploiement.md`
+(version qui l'introduit).
+
 > **Ne pas recharger nginx entre les étapes 2 et 4.** Le fichier du dépôt
-> écoute en `80` et ne porte aucun bloc 443 (certbot les ajoute). Si
-> `sites-enabled/default` n'a pas de `listen 443 default_server` — c'est le
-> cas par défaut sur Debian/Ubuntu, la ligne y est commentée — le bloc 443 de
-> ce site sert de serveur HTTPS par défaut, et le recharger sans ses lignes
-> SSL fait tomber les visiteurs HTTPS sur **un autre site et son certificat**
-> (celui de l'instance de formation, le cas échéant) : avertissement de
-> sécurité du navigateur, puis mauvais site.
+> écoute en `80` et ne porte aucun bloc 443 (certbot les ajoute). Le recharger
+> sans ses lignes SSL fait perdre au site son HTTPS : avec l'attrape-tout en
+> place, les visiteurs HTTPS voient une **connexion refusée** ; sans lui, ils
+> tombent sur **un autre site et son certificat** (celui de l'instance de
+> formation, le cas échéant) — avertissement de sécurité, puis mauvais site.
 > `nginx -t` ne fait que lire le fichier, il n'applique rien : entre les
 > étapes 2 et 4 la configuration en service reste l'ancienne, intacte. Comme
 > certbot recharge lui-même une fois les lignes 443 réécrites, l'opération se
@@ -508,6 +582,24 @@ Sur une installation qui porte aussi le site de formation, faire les deux
 fichiers **l'un après l'autre, la formation d'abord** : geste identique sur un
 site dont l'indisponibilité ne coûte rien, ce qui valide la manœuvre avant de
 toucher à la production.
+
+### Journaux d'accès nginx
+
+Chaque site écrit dans **son propre fichier** :
+`/var/log/nginx/ludotex-access.log` pour la production,
+`/var/log/nginx/ludotex-formation-access.log` pour la formation. Le
+`logrotate` de Debian les tourne chaque jour et en garde 14, comme tout
+fichier `/var/log/nginx/*.log`. `/var/log/nginx/access.log` ne reçoit plus
+que les redirections HTTP → HTTPS ; l'attrape-tout ne journalise rien. Les
+jetons d'activation et codes personnels n'y figurent jamais (SEC-02(a)) ;
+les adresses IP des visiteurs, si : droits `640`, groupe `adm`.
+
+### Quand l'application est arrêtée
+
+nginx sert alors lui-même la page `app/static/indisponible.html`, avec le code
+`502` : elle dit aux bénévoles de continuer sur papier (procédure complète dans
+le wiki, « Si le site ne répond plus »). La page fait partie du code : une
+mise à jour ordinaire la met à jour, sans geste nginx.
 
 ## 9. En cas de problème
 
@@ -725,7 +817,16 @@ sudo cp deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludotex
 sudo sed -i 's#/opt/ludotex#VOTRE_CHEMIN_INSTALL#g' /etc/nginx/sites-available/ludotex
 sudo sed -i 's/pret\.example\.fr/VOTRE_SOUS_DOMAINE/g' /etc/nginx/sites-available/ludotex
 sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex   # ne doit RIEN afficher
+sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex   # une ligne : VOTRE_SOUS_DOMAINE
 sudo ln -s /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/
+# attrape-tout : remplace le site `default` de Debian (deux `default_server`
+# sur le port 80 feraient échouer `nginx -t`) ; aucune valeur à substituer
+sudo cp deploy/nginx-attrape-tout.conf /etc/nginx/sites-available/attrape-tout
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo ln -s /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/
+# journal d'accès du site, créé avec les droits que logrotate lui donnera
+# (sans le `[ -e … ] ||`, `install` viderait un journal déjà présent)
+[ -e /var/log/nginx/ludotex-access.log ] || sudo install -o www-data -g adm -m 640 /dev/null /var/log/nginx/ludotex-access.log
 sudo nginx -t && sudo systemctl reload nginx
 ```
 

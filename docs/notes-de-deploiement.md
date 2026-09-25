@@ -82,6 +82,197 @@ est installée.
 
 ---
 
+## À paraître
+
+### nginx : attrape-tout, un journal par site, une page quand l'application est arrêtée, un frein devant `/admin` — à faire plus tard, si vous le souhaitez, hors événement
+
+Les trois fichiers nginx changent, et un troisième apparaît :
+
+- **`deploy/nginx-attrape-tout.conf`** (nouveau) remplace le site `default` de
+  Debian : une visite qui ne désigne ni le site ni la formation — l'adresse IP
+  nue, un nom inconnu, en pratique des robots — n'obtient **aucune réponse**.
+  Sans certificat : la poignée de main HTTPS est refusée
+  (`ssl_reject_handshake`).
+- **Un journal d'accès par site** : `/var/log/nginx/ludotex-access.log` et
+  `/var/log/nginx/ludotex-formation-access.log`. Format inchangé, jetons et
+  codes toujours retirés. `/var/log/nginx/access.log` ne reçoit plus que les
+  redirections HTTP → HTTPS ; ses archives gardent l'historique d'avant, les
+  deux sites mêlés, pendant 14 jours.
+- **Une page quand l'application est arrêtée** : nginx sert
+  `app/static/indisponible.html` (code `502`) au lieu de sa page d'erreur
+  brute. Elle dit aux bénévoles de continuer sur papier.
+- **Un frein devant `/admin`** : 2 requêtes par seconde et par visiteur,
+  rafale de 40 sans attente. Aucun effet sur le prêt, le scanner ni `/acces`.
+
+**Facultatif au sens de `docs/versioning.md`** : sans ces gestes, les deux
+sites fonctionnent exactement comme avant ; le contrôle de report signale les
+trois fichiers. **Hors événement uniquement** : une erreur dans un fichier
+nginx, rechargée, fait tomber les deux sites. Rien de ce qui suit ne recharge
+nginx sans que `sudo nginx -t` ait répondu `test is successful`.
+
+`update.sh` n'est **pas** modifié par cette version : aucun décalage d'une mise
+à jour. `install.sh` l'est (il installe l'attrape-tout, crée les journaux, et
+**conserve** désormais `/etc/ludotex-formation.env` s'il existe au lieu de le
+réécrire), mais il ne tourne pas pendant une mise à jour : rien à faire pour
+lui.
+
+**Prérequis** : `sudo ./deploy/update.sh` de cette version déjà passé, pour que
+`/opt/ludotex/deploy/` porte les nouveaux fichiers et `app/static/` la page :
+```bash
+ls /opt/ludotex/deploy/nginx-attrape-tout.conf /opt/ludotex/app/static/indisponible.html
+```
+*À voir :* les deux chemins, sans « No such file ».
+
+Chemins par défaut ci-dessous (`/opt/ludotex`) ; `<domaine>` et
+`<domaine de formation>` sont les adresses des deux sites, sans `https://`.
+
+1. **Sauvegarder `/etc/nginx` en entier**, hors de `/etc/nginx` :
+   ```bash
+   sudo mkdir -p /root/sauvegarde-nginx
+   sudo tar -C /etc -czf /root/sauvegarde-nginx/etc-nginx.$(date +%Y%m%d-%H%M%S).tar.gz nginx
+   sudo ls -l /root/sauvegarde-nginx/
+   ```
+   *À voir :* une archive `etc-nginx.<horodatage>.tar.gz` datée du jour. Ne
+   pas continuer sans elle.
+
+2. **Constater l'état d'avant** — l'adresse IP nue répond :
+   ```bash
+   IP=$(hostname -I | awk '{print $1}'); echo "$IP"
+   curl -s  -o /dev/null -w 'http  IP : %{http_code}\n' "http://$IP/"
+   curl -sk -o /dev/null -w 'https IP : %{http_code}\n' "https://$IP/"
+   ```
+   *À voir :* `200` et `200` (page « Welcome to nginx! », puis l'application).
+
+3. **Créer les deux journaux** avec les droits que `logrotate` leur donnera
+   (sinon nginx, qui tourne en root, les crée lisibles par tous jusqu'à la
+   première rotation) :
+   ```bash
+   for f in /var/log/nginx/ludotex-access.log /var/log/nginx/ludotex-formation-access.log; do
+       [ -e "$f" ] || sudo install -o www-data -g adm -m 640 /dev/null "$f"
+   done
+   ls -l /var/log/nginx/ludotex*-access.log
+   ```
+   *À voir :* deux fichiers vides, `-rw-r----- www-data adm`.
+
+4. **Formation d'abord** : `docs/deploiement.md`, « Mettre à jour la
+   configuration nginx », bloc **Formation**, étapes 1 à 5 — avec le
+   `grep -n server_name` de l'étape 2, qui doit montrer
+   `<domaine de formation>` exactement. Puis constater :
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine de formation>/catalogue
+   curl -sI https://<domaine de formation>/ | grep -ciE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+   sudo tail -1 /var/log/nginx/ludotex-formation-access.log
+   ```
+   *À voir :* `200` ; `5` ; une ligne qui se termine par `rt=… uct=…`.
+
+   **La page d'indisponibilité, éprouvée sur la formation seule** (quelques
+   secondes, personne n'est gêné) :
+   ```bash
+   sudo systemctl stop ludotex-formation
+   curl -s -D - -o /tmp/indispo.html https://<domaine de formation>/scanner | grep -iE '^HTTP|cache-control|content-security'
+   grep -o '<title>.*</title>' /tmp/indispo.html; rm -f /tmp/indispo.html
+   sudo systemctl start ludotex-formation
+   systemctl is-active ludotex-formation
+   ```
+   *À voir :* `HTTP/1.1 502`, la ligne `Content-Security-Policy`, **aucune**
+   ligne `Cache-Control` ; puis `<title>Site momentanément
+   indisponible</title>` ; puis `active`.
+
+   **Le frein devant `/admin`**, sur la formation :
+   ```bash
+   for i in $(seq 50); do curl -s -o /dev/null -w '%{http_code}\n' https://<domaine de formation>/admin; done | sort | uniq -c
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine de formation>/catalogue
+   ```
+   *À voir :* une quarantaine de `200`, puis des `429` ; et `200` sur le
+   catalogue, que le frein ne touche pas.
+
+5. **Production ensuite** : même section, bloc **Production**, étapes 1 à 5,
+   `grep -n server_name` → `<domaine>` exactement. Puis :
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine>/catalogue
+   curl -sI https://<domaine>/ | grep -ciE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+   sudo tail -1 /var/log/nginx/ludotex-access.log
+   ```
+   *À voir :* `200` ; `5` ; une ligne `rt=… uct=…`. Ne **pas** arrêter la
+   production pour voir la page : la formation l'a déjà montrée, c'est le même
+   fichier.
+
+6. **L'attrape-tout, en dernier** — copier, activer, **désactiver `default`**,
+   tester, et recharger **seulement si le test est vert** :
+   ```bash
+   sudo cp /opt/ludotex/deploy/nginx-attrape-tout.conf /etc/nginx/sites-available/attrape-tout
+   sudo rm /etc/nginx/sites-enabled/default
+   sudo ln -s /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/attrape-tout
+   sudo nginx -t
+   ```
+   *À voir :* `syntax is ok` puis `test is successful`. **Alors seulement** :
+   ```bash
+   sudo systemctl reload nginx
+   ```
+   Si `nginx -t` signale une erreur, **ne pas recharger** : rien n'a changé
+   pour les visiteurs. Remettre les deux liens comme avant, puis revérifier :
+   ```bash
+   sudo rm /etc/nginx/sites-enabled/attrape-tout
+   sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+   sudo nginx -t
+   ```
+   Deux messages possibles, et leur cause : `a duplicate default server` →
+   `default` est encore activé ; `duplicate listen options` → une ligne
+   `listen [::]:443` porte `ipv6only=on` ailleurs que dans le bloc de la
+   production (le fichier du dépôt n'en porte pas).
+
+7. **Constater** — l'adresse IP nue ne répond plus, les deux sites si :
+   ```bash
+   IP=$(hostname -I | awk '{print $1}')
+   curl -sk -o /dev/null "https://$IP/"; echo "https IP : sortie $?"
+   curl -s  -o /dev/null "http://$IP/";  echo "http  IP : sortie $?"
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine>/
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine de formation>/
+   curl -s -o /dev/null -w '%{http_code}\n' http://<domaine>/
+   ```
+   *À voir :* `sortie 35` (connexion HTTPS refusée), `sortie 52` (connexion
+   fermée sans réponse), `200`, `200`, `301`. Les deux `200` sont obtenus
+   **sans** `-k` : le certificat est valide. Dans un navigateur, les deux
+   sites s'ouvrent avec le cadenas.
+
+   **Ce qui change pour les robots** : ils n'obtiennent plus rien, et ne sont
+   plus écrits nulle part. Environ 40 % des lignes du journal d'accès
+   venaient d'eux ; c'est le but.
+
+8. **Relancer le contrôle de report** :
+   ```bash
+   sudo -u pretjeux /opt/ludotex/.venv/bin/python /opt/ludotex/scripts/controle_report.py
+   ```
+   *À voir :* « Configuration nginx » conforme, 3 fichiers comparés.
+
+9. **Le lendemain** : les deux journaux ont tourné comme les autres.
+   ```bash
+   ls -l /var/log/nginx/ludotex*-access.log*
+   ```
+   *À voir :* un `.1` pour chacun, `www-data adm`.
+
+**Retour en arrière**, par partie :
+
+- *Un seul site* : la sauvegarde horodatée prise à son étape 1
+  (`docs/deploiement.md` § 9, « Une page semble cassée après une mise à jour
+  de nginx »).
+- *L'attrape-tout* : remettre `default`, retirer l'attrape-tout, tester, puis
+  recharger :
+  ```bash
+  sudo rm /etc/nginx/sites-enabled/attrape-tout
+  sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+  sudo nginx -t && sudo systemctl reload nginx
+  ```
+- *Tout* : l'archive de l'étape 1. Retirer d'abord le lien que l'archive ne
+  connaît pas, puis la déployer par-dessus :
+  ```bash
+  sudo rm -f /etc/nginx/sites-enabled/attrape-tout
+  sudo tar -C /etc -xzf /root/sauvegarde-nginx/etc-nginx.<horodatage>.tar.gz
+  sudo nginx -t && sudo systemctl reload nginx
+  ```
+  Les certificats vivent dans `/etc/letsencrypt`, que ces gestes ne touchent
+  pas. Les deux nouveaux journaux peuvent rester : plus rien n'y écrit.
+
 ## 1.15.0 — 2026-09-25
 
 Quatre sections, deux échéances. **Le jour même du déploiement** : la

@@ -134,6 +134,14 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
 - Horodatages **UTC** en base ; conversion en heure locale à l'affichage si
   besoin.
 - Limiteur de débit **en mémoire** : valable pour un seul worker uvicorn.
+- **Pas de file d'écritures hors ligne** (service worker qui garderait prêts et
+  retours pour les rejouer plus tard) : le numéro de pochette est attribué par
+  le serveur, deux téléphones déconnectés attribueraient le même. La
+  continuité d'une coupure se fait sur papier (wiki, « Si le site ne répond
+  plus ») ; quand seule l'application est arrêtée, nginx sert
+  `app/static/indisponible.html` (`error_page` des deux fichiers
+  `deploy/nginx-ludotex*.conf`). Motif détaillé : `docs/idees-evolutions.md`
+  § 2.1.
 - **Fichier d'environnement : un seul domicile, `app/environnement.py`.**
   Aucun module n'appelle `load_dotenv()` lui-même
   (`tests/test_environnement.py` le refuse). Sans `LUDOTEX_ENV_FILE`, c'est le

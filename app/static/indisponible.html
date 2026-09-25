@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!--
+  Page servie par nginx LUI-MÊME quand l'application ne répond pas (EXP-05,
+  lot-10-pré-production) : voir `error_page` dans deploy/nginx-ludotex.conf.
+  L'application est arrêtée à ce moment-là, donc cette page ne peut rien lui
+  demander : ni le nom de l'événement, ni la couleur d'identité, ni la feuille
+  de style (un `style.css` sans `?v=` resterait un an en cache). D'où un style
+  minimal ici même, SANS AUCUNE COULEUR : `color-scheme` laisse le navigateur
+  choisir les siennes, en clair comme en sombre. Aucune mention de
+  l'association, aucune ressource externe, aucun script.
+  Le fond de la consigne vit dans le wiki, « Si le site ne répond plus » :
+  les deux se corrigent ensemble.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Site momentanément indisponible</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+  h1 { font-size: 1.5rem; line-height: 1.25; }
+  h2 { font-size: 1.15rem; margin-top: 1.5rem; }
+  li { margin-bottom: .4rem; }
+  .cadre { border: 2px solid currentColor; border-radius: .5rem; padding: .25rem 1rem; }
+  a { font-weight: bold; }
+  a:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Le site de prêt ne répond pas pour le moment</h1>
+
+  <p>Votre téléphone et le réseau fonctionnent&nbsp;: c'est l'application qui est
+  arrêtée ou qui redémarre. <strong>Prévenez le bureau.</strong></p>
+
+  <p>Si vous étiez en train de prêter ou de rendre un jeu, ce geste n'a
+  peut-être pas été enregistré. Ne réessayez pas en boucle&nbsp;:
+  <strong>continuez sur papier</strong>.</p>
+
+  <div class="cadre">
+    <h2>Pendant la coupure, sur une feuille</h2>
+    <ul>
+      <li><strong>Prêt</strong>&nbsp;: glissez la pièce d'identité dans la pochette
+      vide qui porte le plus petit numéro. Notez le <strong>code de la
+      boîte</strong> (le grand nombre sous le QR), le <strong>numéro de
+      pochette</strong> et «&nbsp;prêt&nbsp;».</li>
+      <li><strong>Retour</strong>&nbsp;: rendez la pièce d'identité. Notez le code
+      de la boîte, le numéro de pochette et «&nbsp;retour&nbsp;».</li>
+    </ul>
+  </div>
+
+  <h2>Quand le site revient</h2>
+  <p>Avant tout nouveau prêt, reprenez la feuille <strong>dans l'ordre</strong>&nbsp;:
+  pour chaque ligne, ouvrez la boîte (scan ou code tapé) et refaites le geste.
+  <strong>Le numéro de pochette affiché par l'application fait foi</strong>&nbsp;:
+  s'il diffère de celui de la feuille, déplacez la pièce d'identité dans la
+  pochette affichée.</p>
+
+  <p><a href="/scanner">Revenir au scanner</a>&nbsp;— la page s'ouvrira dès que
+  l'application répondra de nouveau.</p>
+</main>
+</body>
+</html>

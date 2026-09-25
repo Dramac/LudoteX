@@ -174,10 +174,32 @@ def test_nginx_le_chemin_d_installation_est_substitue_comme_le_fait_install_sh()
 def test_nginx_les_fichiers_du_depot_passent_la_normalisation_sans_rien_perdre():
     # Garde-fou sur les vrais fichiers : la normalisation ne doit pas vider un
     # bloc entier (un fichier réduit à rien comparerait toujours « conforme »).
+    # L'attrape-tout (lot-10-pré-production) ne transmet rien à l'application :
+    # sa directive essentielle est la fermeture de la connexion.
     for fichier in sorted((_RACINE / "deploy").glob("nginx-*.conf")):
         lignes = cr.normaliser_nginx(fichier.read_text(encoding="utf-8"))
-        assert any(l.startswith("proxy_pass ") for l in lignes), fichier.name
+        essentielle = "return 444;" if fichier.name == "nginx-attrape-tout.conf" else "proxy_pass "
+        assert any(l.startswith(essentielle) for l in lignes), fichier.name
         assert "server_name <domaine>;" in lignes, fichier.name
+
+
+def test_nginx_l_attrape_tout_est_attendu_sous_le_nom_qu_installe_install_sh(tmp_path):
+    # Le contrôle associe deploy/nginx-<nom>.conf à sites-available/<nom> par
+    # motif, sans liste à tenir : l'attrape-tout est couvert sans modifier le
+    # script. Absent du serveur, il est signalé ; présent mais non activé aussi.
+    install_sh = (_RACINE / "deploy/install.sh").read_text(encoding="utf-8")
+    assert "/etc/nginx/sites-available/attrape-tout" in install_sh
+    assert "/etc/nginx/sites-enabled/attrape-tout" in install_sh
+
+    serveur = _serveur_aligne(tmp_path, crontab="")
+    serveur.chemin("/etc/nginx/sites-enabled/attrape-tout").unlink()
+    assert cr.controler_nginx(_RACINE, serveur, "/opt/ludotex").ecarts == [
+        "/etc/nginx/sites-enabled/attrape-tout : absent, le site n'est pas activé."
+    ]
+    serveur.chemin("/etc/nginx/sites-available/attrape-tout").unlink()
+    assert cr.controler_nginx(_RACINE, serveur, "/opt/ludotex").ecarts == [
+        "/etc/nginx/sites-available/attrape-tout : absent du serveur (présent dans deploy/)."
+    ]
 
 
 # ===========================================================================
