@@ -12,7 +12,9 @@ Différence avec les écrans bénévole : ceux-ci utilisent le JETON (cookie via
 authentifié, on REDIRIGE vers la page de connexion /admin (et non une 403).
 
 Toutes les routes (sauf la connexion) commencent par vérifier la session via
-`_garde(request)`.
+`_garde(request)`. Les trois routes qui reçoivent un FICHIER sont en plus
+déclarées par `_envoi_admin`, qui pose la même garde AVANT la lecture du corps
+(voir `RouteEnvoiAdmin`).
 """
 
 import json
@@ -24,9 +26,10 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.routing import APIRoute
 
-from app import (admin_auth, auth, carnet, exports, formation, journal, logo,
-                 sauvegarde, services, supervision)
+from app import (admin_auth, auth, carnet, envois, exports, formation, journal,
+                 logo, sauvegarde, services, supervision)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -46,6 +49,54 @@ def _garde(request: Request):
     if not admin_auth.admin_connecte(request):
         return RedirectResponse("/admin", status_code=303)
     return None
+
+
+class RouteEnvoiAdmin(APIRoute):
+    """
+    Route d'ENVOI DE FICHIER : la garde passe AVANT que le corps soit lu (SEC-14).
+
+    POURQUOI UNE CLASSE DE ROUTE, ET PAS UNE DÉPENDANCE. FastAPI analyse le
+    corps d'un formulaire multipart (`await request.form()`) AVANT de résoudre
+    la moindre dépendance, `Depends` en tête de signature compris — lu dans
+    `fastapi/routing.py::get_request_handler` (0.115.6) et démontré par test :
+    la piste d'un `Depends(exiger_admin)` laissait passer 2 Mo analysés et mis
+    sur disque avant le refus. La garde doit donc envelopper le gestionnaire
+    de FastAPI lui-même, ce que fait `get_route_handler` ci-dessous : sans
+    session, le corps n'est jamais tiré du serveur.
+
+    Le refus est la redirection `303` vers `/admin` de `_garde`, inchangée :
+    délibérée, bien meilleure qu'un 403 pour un bureau non technicien.
+
+    Réservée aux trois routes qui reçoivent un fichier (`_envoi_admin`) ; les
+    autres gardent `_garde` en tête de fonction. LIMITE CONNUE, non traitée
+    ici : n'importe quelle route POST qui déclare un `Form(...)` analyse, elle
+    aussi, un envoi multipart qu'on lui adresserait sans session — fichier
+    compris, même non attendu (constaté sur `/admin/evenement` et
+    `/admin/login`). nginx borne chaque envoi à 20 Mo et freine `/admin/`.
+
+    Ce que ça ne change pas : nginx met le corps en tampon avant de le
+    transmettre (`client_max_body_size` 20m, `limit_req` sur `/admin/`).
+    Ce que ça épargne, c'est l'unique worker de l'application.
+    """
+
+    def get_route_handler(self):
+        traiter = super().get_route_handler()
+
+        async def garder_puis_traiter(request: Request):
+            if (garde := _garde(request)):
+                return garde
+            return await traiter(request)
+
+        return garder_puis_traiter
+
+
+def _envoi_admin(chemin: str):
+    """`@router.post(chemin)`, mais avec la garde avant lecture de `RouteEnvoiAdmin`."""
+    def declarer(fonction):
+        router.add_api_route(chemin, fonction, methods=["POST"],
+                             route_class_override=RouteEnvoiAdmin)
+        return fonction
+    return declarer
 
 
 def _base_url(request: Request) -> str:
@@ -557,13 +608,19 @@ def donnees(request: Request):
     return _page_donnees(request)
 
 
-@router.post("/donnees/import")
+@_envoi_admin("/donnees/import")
 def donnees_import(request: Request, fichier: UploadFile = File(...)):
     """
     Importe un catalogue CSV téléversé (mêmes règles que scripts/import_csv :
     tolérant aux colonnes, idempotent en UPSERT). Réaffiche la page avec un
     compte rendu ; jamais d'erreur brute.
+
+    Borné deux fois, avant toute écriture en base : en octets
+    (`import_csv.TAILLE_MAX_CATALOGUE`) à la lecture, en lignes
+    (`import_csv.MAX_LIGNES_CATALOGUE`) pendant l'analyse.
     """
+    # Déjà gardée AVANT la lecture du corps (`RouteEnvoiAdmin`) ; celle-ci ne
+    # coûte rien et tient si la route perdait un jour sa classe.
     if (garde := _garde(request)):
         return garde
 
@@ -572,7 +629,14 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
 
     from scripts import import_csv
 
-    contenu = fichier.file.read()
+    try:
+        contenu = envois.lire_borne(fichier.file, import_csv.TAILLE_MAX_CATALOGUE)
+    except envois.EnvoiTropLourd as refus:
+        journal.journaliser(
+            request, "admin", "import_csv",
+            objet=fichier.filename or None, ok=False, detail="fichier_trop_lourd",
+        )
+        return _page_donnees(request, ("erreur", refus.message))
     if not contenu:
         journal.journaliser(
             request, "admin", "import_csv",
@@ -584,8 +648,10 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         tmp.write(contenu)
         chemin = Path(tmp.name)
     manques = None
+    refus_detail = None
     try:
-        res = import_csv.importer(chemin)
+        res = import_csv.importer(chemin,
+                                  max_lignes=import_csv.MAX_LIGNES_CATALOGUE)
         texte = (f"Import réussi : {res['exemplaires']} exemplaire(s) / "
                  f"{res['titres']} titre(s).")
         if res["ignores"]:
@@ -605,6 +671,9 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
             conn.close()
     except SystemExit as exc:            # colonnes clés absentes
         message = ("erreur", str(exc))
+    except import_csv.CatalogueTropLong as exc:  # refusé avant toute écriture
+        message = ("erreur", str(exc))
+        refus_detail = "catalogue_trop_long"
     except Exception as exc:             # tout autre souci de lecture
         message = ("erreur", f"Import impossible : {exc}")
     finally:
@@ -621,7 +690,7 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         request, "admin", "import_csv",
         objet=fichier.filename or None,
         ok=(message[0] == "succes"),
-        detail=None if message[0] == "succes" else message[1],
+        detail=None if message[0] == "succes" else (refus_detail or message[1]),
     )
     return _page_donnees(request, message, manques=manques)
 
@@ -717,7 +786,7 @@ def sauvegarde_archive(request: Request, nom: str):
     return FileResponse(chemin, media_type="application/zip", filename=chemin.name)
 
 
-@router.post("/sauvegarde/import")
+@_envoi_admin("/sauvegarde/import")
 def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
     """
     Restaure les 3 bases depuis un zip de sauvegarde téléversé.
@@ -726,14 +795,26 @@ def sauvegarde_import(request: Request, fichier: UploadFile = File(...)):
     modification ; un filet de sécurité de l'état actuel est conservé
     automatiquement (voir `app.sauvegarde.sauvegarde_de_securite`). Jamais
     d'erreur brute : toujours réaffiché avec un message clair.
+
+    Bornée à la lecture (`sauvegarde.TAILLE_MAX_ARCHIVE`), puis sur la taille
+    décompressée à la validation (`sauvegarde.TAILLE_MAX_BASES_DECOMPRESSEES`).
     """
+    # Déjà gardée AVANT la lecture du corps (`RouteEnvoiAdmin`) ; celle-ci ne
+    # coûte rien et tient si la route perdait un jour sa classe.
     if (garde := _garde(request)):
         return garde
 
     import tempfile
     from pathlib import Path
 
-    contenu = fichier.file.read()
+    try:
+        contenu = envois.lire_borne(fichier.file, sauvegarde.TAILLE_MAX_ARCHIVE)
+    except envois.EnvoiTropLourd as refus:
+        journal.journaliser(
+            request, "admin", "sauvegarde_restauree",
+            objet=fichier.filename or None, ok=False, detail="fichier_trop_lourd",
+        )
+        return _page_donnees(request, ("erreur", refus.message), status_code=400)
     if not contenu:
         journal.journaliser(
             request, "admin", "sauvegarde_restauree",
@@ -1308,7 +1389,7 @@ def identite_formulaire(request: Request):
     return _page_identite(request, saisies, None)
 
 
-@router.post("/identite")
+@_envoi_admin("/identite")
 def identite_enregistrer(
     request: Request,
     nom_association: str = Form(""),
@@ -1363,6 +1444,8 @@ def identite_enregistrer(
     ensuite arbitrer entre « retirer » et « déposer » cochés en même temps.
     Deux gestes distincts, deux actions distinctes.
     """
+    # Déjà gardée AVANT la lecture du corps (`RouteEnvoiAdmin`) ; celle-ci ne
+    # coûte rien et tient si la route perdait un jour sa classe.
     if (garde := _garde(request)):
         return garde
 

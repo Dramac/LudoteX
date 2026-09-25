@@ -349,10 +349,15 @@ ls -lh /var/lib/ludotex/sauvegardes/ludotex-backup-*.zip | tail -1
 
 > **Taille max d'un envoi (ROB-03)** : `client_max_body_size` vaut `20m`
 > dans `deploy/nginx-ludotex.conf` (relevé depuis `5m` le 24/07/2026, qui ne
-> laissait aucune marge pour la restauration d'un zip des 3 bases). Si la
-> mesure ci-dessus dépasse durablement 15 Mo, remonter cette valeur (et la
-> tenir cohérente avec le futur plafond applicatif de `routes/admin.py`,
-> encore à venir).
+> laissait aucune marge pour la restauration d'un zip des 3 bases).
+> L'application borne elle-même chaque envoi, **en dessous** de cette valeur :
+> 15 Mo pour une archive (et 200 Mo une fois ses bases décompressées), 8 Mo
+> et 20 000 lignes pour un catalogue, 2 Mo pour un logo. Un fichier trop gros
+> reçoit donc la page de l'écran, avec un message, plutôt que l'erreur brute
+> de nginx. Si la mesure ci-dessus approche durablement 15 Mo, remonter
+> **ensemble** `client_max_body_size` (dans les deux fichiers nginx) et
+> `TAILLE_MAX_ARCHIVE` (`app/sauvegarde.py`) ; `tests/test_envois_bornes.py`
+> vérifie leur ordre.
 
 ### Ce que les archives ne contiennent pas : `.env`
 

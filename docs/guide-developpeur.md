@@ -134,6 +134,16 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
 - Horodatages **UTC** en base ; conversion en heure locale à l'affichage si
   besoin.
 - Limiteur de débit **en mémoire** : valable pour un seul worker uvicorn.
+- **Un `Depends` ne passe pas avant le corps d'un formulaire.** FastAPI lit
+  et analyse un envoi multipart (`UploadFile = File(...)`) **avant** de
+  résoudre la moindre dépendance : une garde en `Depends` ou en tête de
+  fonction arrive après que le fichier a été reçu et mis sur disque. Une
+  route d'administration qui reçoit un fichier se déclare donc par
+  `_envoi_admin` (`app/routes/admin.py`), dont la classe de route
+  `RouteEnvoiAdmin` garde avant la lecture. Elle lit ensuite le fichier par
+  `app.envois.lire_borne`, avec la borne de son usage, jamais par
+  `fichier.file.read()` sans borne. `tests/test_envois_bornes.py` en est le
+  modèle.
 - **Pas de file d'écritures hors ligne** (service worker qui garderait prêts et
   retours pour les rejouer plus tard) : le numéro de pochette est attribué par
   le serveur, deux téléphones déconnectés attribueraient le même. La

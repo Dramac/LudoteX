@@ -76,6 +76,8 @@ from typing import BinaryIO
 
 from PIL import Image, UnidentifiedImageError
 
+from app import envois
+
 # Dossier des fichiers VERSIONNÉS (identité LudoteX), servi en repli.
 DOSSIER_VERSIONNE = Path(__file__).resolve().parent / "static" / "img"
 
@@ -225,32 +227,24 @@ def chemin_logo_etiquettes() -> Path | None:
 # ---------------------------------------------------------------------------
 def lire_borne(flux: BinaryIO) -> bytes:
     """
-    Lit le fichier reçu, en refusant AVANT de tout charger ce qui dépasse la
-    borne.
+    Lit le logo reçu, borné à `TAILLE_MAX_OCTETS` ; lève `LogoRefuse` au-delà.
 
-    On lit `TAILLE_MAX_OCTETS + 1` octets : s'il en revient autant, c'est qu'il
-    en restait, et le fichier est refusé sans que le reste soit jamais lu ni
-    décodé. Un octet de plus que la borne, donc, et pas un fichier entier.
-
-    À NE PAS RECOPIER DES DEUX AUTRES ENVOIS DE L'ADMINISTRATION : `/admin/
-    donnees/import` et `/admin/sauvegarde/import` font `fichier.file.read()`
-    sans borne. Les deux sont derrière le mot de passe administrateur, ce qui
-    limite la portée, mais ce n'est pas un modèle à suivre.
-
-    Précision pour ne rien promettre de faux : le corps de la requête a déjà
-    été reçu par le serveur (Starlette le met de côté, sur disque au-delà d'un
-    seuil) avant que cette fonction soit appelée. La borne protège la MÉMOIRE
-    du processus et le coût de décodage, pas la bande passante.
+    La lecture elle-même est celle des trois envois de l'administration
+    (`app.envois.lire_borne`, qui dit aussi ce qu'une borne protège et ce
+    qu'elle ne protège pas). Seul le refus reste propre au logo : un logo
+    légitime peut vraiment être trop lourd — une photo brute, un export sans
+    compression —, d'où un message qui propose de le réduire plutôt que de
+    vérifier qu'il s'agit du bon fichier.
     """
-    contenu = flux.read(TAILLE_MAX_OCTETS + 1)
-    if len(contenu) > TAILLE_MAX_OCTETS:
+    try:
+        return envois.lire_borne(flux, TAILLE_MAX_OCTETS)
+    except envois.EnvoiTropLourd:
         raise LogoRefuse(
             "logo_trop_lourd",
             f"Ce fichier est trop lourd (limite : "
             f"{TAILLE_MAX_OCTETS // (1024 * 1024)} Mo). Réduisez son poids ou "
             f"exportez-le dans une taille plus modeste, puis réessayez.",
-        )
-    return contenu
+        ) from None
 
 
 def _ressemble_a_du_svg(contenu: bytes) -> bool:

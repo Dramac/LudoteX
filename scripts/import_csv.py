@@ -43,6 +43,36 @@ from app.db import get_connection, init_db  # noqa: E402
 from app.services import obtenir_ou_creer_emplacement_rangement, slug_titre  # noqa: E402
 
 # ---------------------------------------------------------------------------
+# Bornes de l'import depuis l'administration (lot-11-pré-production)
+# ---------------------------------------------------------------------------
+# Le catalogue réel compte ~700 lignes pour ~179 Ko (septembre 2026, ~254
+# octets par ligne). Les deux bornes laissent un facteur de l'ordre de trente,
+# pour un catalogue qui grossit. Ce qu'elles arrêtent n'est pas un catalogue
+# légitime trop gros, c'est le MAUVAIS fichier choisi dans le sélecteur.
+#
+# En lignes (ROB-06) : l'analyse d'un CSV est du Python pur, dans l'unique
+# worker ; mesuré par l'audit, 400 000 lignes y retardaient un prêt concurrent
+# de 7,9 s. 20 000 lignes s'importent en ~0,3 s (mesuré sur une copie locale).
+MAX_LIGNES_CATALOGUE = 20_000
+# En octets (ROB-03(a)) : 20 000 lignes à la densité réelle font ~5 Mo ; 8 Mo
+# laissent de la place à des descriptifs plus longs. Reste sous
+# `client_max_body_size` (20m) de nginx — vérifié par tests/test_envois_bornes.py.
+TAILLE_MAX_CATALOGUE = 8 * 1024 * 1024
+
+
+class CatalogueTropLong(Exception):
+    """Le CSV dépasse `max_lignes` lignes de données. RIEN n'a été écrit."""
+
+    def __init__(self, max_lignes: int):
+        self.max_lignes = max_lignes
+        super().__init__(
+            f"Ce fichier compte plus de {max_lignes:,} lignes".replace(",", "\u202f")
+            + " : il ne ressemble pas à un catalogue. Vérifiez qu'il s'agit du "
+              "bon export, puis réessayez."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Correspondance colonnes CSV -> champs du modèle
 # ---------------------------------------------------------------------------
 # Insensible à la casse et aux espaces. On liste plusieurs intitulés possibles
@@ -183,7 +213,9 @@ def _ou_none(valeur: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Lecture du CSV
 # ---------------------------------------------------------------------------
-def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
+def lire_csv(
+    chemin: Path, max_lignes: int | None = None,
+) -> tuple[list[dict], dict[str, str | None]]:
     """
     Lit le CSV et détecte automatiquement le séparateur.
 
@@ -193,6 +225,11 @@ def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
 
     Args:
         chemin: chemin du fichier CSV.
+        max_lignes: plafond de lignes de données (en-tête exclu). Compté
+            PENDANT la lecture, qui s'arrête à la première ligne de trop et
+            lève `CatalogueTropLong` : un fichier démesuré n'est ni lu en
+            entier ni analysé deux fois. None (ligne de commande) : aucun
+            plafond.
 
     Returns:
         (lignes, index_colonnes) où `lignes` est une liste de dicts (une par
@@ -208,7 +245,11 @@ def lire_csv(chemin: Path) -> tuple[list[dict], dict[str, str | None]]:
         except csv.Error:
             sep = ";"  # repli : la liste de l'asso utilise « ; »
         lecteur = csv.DictReader(fh, delimiter=sep)
-        lignes = list(lecteur)
+        lignes = []
+        for ligne in lecteur:
+            if max_lignes is not None and len(lignes) >= max_lignes:
+                raise CatalogueTropLong(max_lignes)
+            lignes.append(ligne)
         entetes = lecteur.fieldnames or []
     index = construire_index_colonnes(entetes)
     return lignes, index
@@ -305,7 +346,8 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
 # ---------------------------------------------------------------------------
 # Écriture en base
 # ---------------------------------------------------------------------------
-def importer(chemin: Path, dry_run: bool = False) -> dict:
+def importer(chemin: Path, dry_run: bool = False,
+             max_lignes: int | None = None) -> dict:
     """
     Importe (ou simule) le catalogue en base.
 
@@ -329,13 +371,17 @@ def importer(chemin: Path, dry_run: bool = False) -> dict:
         chemin: chemin du CSV.
         dry_run: si True, ne touche pas la base (analyse + rapport seulement) —
             aucun emplacement n'est donc créé non plus.
+        max_lignes: plafond de lignes (voir `lire_csv`), vérifié AVANT toute
+            écriture en base. L'administration passe `MAX_LIGNES_CATALOGUE` ;
+            la ligne de commande n'en passe pas — elle tourne dans son propre
+            processus, sans prêt concurrent à retarder.
 
     Returns:
         dict de synthèse (compteurs, regroupements multi-exemplaires, lignes
         ignorées, données titres pour le rapport, et la liste des noms
         d'emplacements locaux créés à la volée).
     """
-    lignes, index = lire_csv(chemin)
+    lignes, index = lire_csv(chemin, max_lignes=max_lignes)
     exemplaires, titres, groupes, ignores = construire_donnees(lignes, index)
     emplacements_locaux_crees: list[str] = []
 

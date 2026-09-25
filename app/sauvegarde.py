@@ -103,6 +103,27 @@ _MODULES: dict[str, ModuleType] = {
 NOMS_BASES: tuple[str, ...] = tuple(_MODULES)
 NOM_INFO = "INFO.txt"
 
+# BORNES D'UNE ARCHIVE REÇUE À LA RESTAURATION (lot-11-pré-production).
+#
+# 15 Mo envoyés au plus. La plus grosse archive de production pèse ~108 Ko
+# (septembre 2026) : la borne laisse un facteur supérieur à cent, pour un
+# catalogue qui grossit, des éditions qui s'accumulent et un planning qui
+# servira. Elle doit rester SOUS `client_max_body_size` (20m) des deux
+# fichiers `deploy/nginx-*.conf`, avec de la marge pour l'enveloppe multipart :
+# ainsi, un fichier trop gros reçoit NOTRE page, avec un message qui dit quoi
+# faire, et non la page d'erreur brute de nginx. Si une archive réelle
+# approche un jour cette borne, remonter les deux valeurs ensemble ; un test
+# (tests/test_envois_bornes.py) lit nginx et vérifie l'ordre.
+TAILLE_MAX_ARCHIVE = 15 * 1024 * 1024
+
+# 200 Mo décompressés au plus, les trois bases ensemble — contrôlé AVANT toute
+# extraction (`valider_zip_sauvegarde`). Une archive peut être petite en octets
+# et énorme une fois décompressée (« bombe ») : la borne sur la taille reçue ne
+# la voit pas. Les bases réelles se compressent d'un facteur ~3 (mesuré sur une
+# copie locale) : 15 Mo d'archive légitime donnent de l'ordre de 50 Mo, la
+# borne en laisse quatre fois plus.
+TAILLE_MAX_BASES_DECOMPRESSEES = 200 * 1024 * 1024
+
 # ---------------------------------------------------------------------------
 # Archives du dossier des sauvegardes (voir « LES ARCHIVES DU SERVEUR »)
 # ---------------------------------------------------------------------------
@@ -285,13 +306,24 @@ def _integrite_ok(chemin: Path) -> bool:
         conn.close()
 
 
+def _extraire(zf: zipfile.ZipFile, nom: str, destination: Path) -> None:
+    """
+    Extrait un membre de l'archive vers `destination`, par blocs : une base
+    n'est jamais chargée en entier en mémoire (`zf.read` le ferait).
+    """
+    with zf.open(nom) as source, open(destination, "wb") as cible:
+        shutil.copyfileobj(source, cible)
+
+
 def valider_zip_sauvegarde(chemin_zip: Path) -> None:
     """
     Vérifie qu'un zip de sauvegarde est exploitable ; lève `ZipInvalide` sinon.
 
     Contrôles, dans l'ordre : le fichier est bien une archive zip lisible,
-    elle contient les 3 bases attendues (`NOMS_BASES`), et chacune est un
-    fichier SQLite valide (`PRAGMA integrity_check`). Ne modifie rien.
+    elle contient les 3 bases attendues (`NOMS_BASES`), leur taille une fois
+    décompressées reste sous `TAILLE_MAX_BASES_DECOMPRESSEES` (vérifié AVANT
+    d'extraire), et chacune est un fichier SQLite valide (`PRAGMA
+    integrity_check`). Ne modifie rien.
     """
     try:
         zf = zipfile.ZipFile(chemin_zip)
@@ -305,12 +337,24 @@ def valider_zip_sauvegarde(chemin_zip: Path) -> None:
             raise ZipInvalide(
                 "Archive incomplète : fichier(s) manquant(s) : " + ", ".join(manquants)
             )
+        # Taille DÉCOMPRESSÉE, lue dans l'annuaire de l'archive AVANT d'extraire
+        # quoi que ce soit. Ce chiffre est déclaré par l'archive elle-même, mais
+        # il ne peut pas mentir à la baisse : `zipfile` arrête la décompression
+        # à la taille déclarée, et un contenu plus long échoue au contrôle CRC
+        # (`BadZipFile`, traduit plus bas en « archive corrompue »).
+        decompresse = sum(zf.getinfo(nom).file_size for nom in NOMS_BASES)
+        if decompresse > TAILLE_MAX_BASES_DECOMPRESSEES:
+            raise ZipInvalide(
+                "Archive refusée : une fois décompressées, ses bases dépasseraient "
+                f"{TAILLE_MAX_BASES_DECOMPRESSEES // (1024 * 1024)} Mo. "
+                "Vérifiez qu'il s'agit bien d'une sauvegarde LudoteX."
+            )
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             for nom in NOMS_BASES:
                 extrait = tmp_path / nom
                 try:
-                    extrait.write_bytes(zf.read(nom))
+                    _extraire(zf, nom, extrait)
                 except zipfile.BadZipFile as exc:
                     raise ZipInvalide(f"Archive corrompue (« {nom} » illisible).") from exc
                 if not _integrite_ok(extrait):
@@ -539,7 +583,7 @@ def restaurer_zip_sauvegarde(chemin_zip: Path) -> None:
         tmp_path = Path(tmp)
         for nom, module in _MODULES.items():
             extrait = tmp_path / nom
-            extrait.write_bytes(zf.read(nom))
+            _extraire(zf, nom, extrait)
             _remplacer_fichier(module.get_database_path(), extrait)
 
     _migrer_bases_restaurees()
