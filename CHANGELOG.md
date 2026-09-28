@@ -6,6 +6,17 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.16.0 — 2026-09-28
+
+- **L'annonce de l'écran de salle a désormais toujours une fin : 30 minutes proposées, 12 heures au plus.** La durée « illimitée » n'existe plus. Une durée oubliée ou mal tapée ne bloque jamais l'annonce : elle prend alors 30 minutes, et le message le dit.
+- **Une annonce terminée est effacée, et non plus seulement masquée : il n'est plus possible de la rappeler, il faut la retaper.** La clôture de fin d'événement et la réinitialisation du site de formation l'effacent aussi. Une annonce posée avant cette version, sans durée, ne s'affiche plus et est effacée à la mise à jour.
+- **Une consigne sous le champ rappelle que l'écran de salle est public : une annonce décrit une situation, jamais une personne.** Son texte n'est plus recopié dans le journal d'activité, et les sauvegardes faites à partir de cette version n'en gardent rien ; celles d'avant en sortent d'elles-mêmes au bout d'environ un mois.
+- **La purge d'une édition du planning efface vraiment les noms et les contacts des bénévoles.** Ils restaient jusqu'ici lisibles dans les fichiers et repartaient dans chaque nouvelle sauvegarde. Les sauvegardes faites après une purge n'en gardent plus aucune trace ; celles d'avant, que le serveur conserve environ un mois, en gardent encore.
+- **Le questionnaire du planning, l'écran de purge et les aides disent maintenant qui efface les réponses, quand, et combien de temps les sauvegardes du serveur les gardent encore.** Il n'existe toujours pas de bouton pour retirer un seul bénévole : seule la purge de l'édition entière efface.
+- **Chaque téléchargement d'une sauvegarde — directe ou archive du serveur — apparaît désormais dans le journal d'activité**, et l'écran rappelle que la sauvegarde complète contient les noms et contacts des bénévoles.
+- **Les envois de fichiers de l'administration sont vérifiés avant d'être lus, et bornés.** Un fichier trop volumineux, un catalogue de plus de 20 000 lignes ou une archive de sauvegarde démesurée une fois décompressée sont refusés avec un message qui dit quoi vérifier, sans rien modifier.
+- **Quand l'application est arrêtée, une page dit aux bénévoles de prévenir le bureau et de continuer sur papier**, au lieu d'un message d'erreur brut. La procédure papier, avec la façon de tout rattraper au retour du site, est décrite dans le guide : « Si le site ne répond plus ». **Sur un serveur déjà en service, cette page demande un geste, que l'on peut différer** ; la personne qui s'occupe du serveur le trouvera dans la documentation de déploiement.
+
 ## 1.15.0 — 2026-09-25
 
 - **La supervision ne se contente plus de trouver un fichier : elle vérifie que les bases sont saines, que la sauvegarde de la nuit a bien eu lieu, que le journal est à jour et qu'il reste de la place sur le disque.**

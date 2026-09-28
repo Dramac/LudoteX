@@ -82,9 +82,29 @@ est installée.
 
 ---
 
-## À paraître
+## 1.16.0 — 2026-09-28
 
 ### nginx : attrape-tout, un journal par site, une page quand l'application est arrêtée, un frein devant `/admin` — à faire plus tard, si vous le souhaitez, hors événement
+
+**Ces gestes sont facultatifs** (au sens de `docs/versioning.md`) : sans eux,
+les deux sites fonctionnent exactement comme avant ; le contrôle de report
+signale simplement les trois fichiers nginx (les deux sites et
+l'attrape-tout). **À faire hors événement uniquement** : une erreur dans un
+fichier nginx, rechargée, fait tomber les deux sites. Rien de ce qui suit ne
+recharge nginx sans que `sudo nginx -t` ait répondu `test is successful`.
+
+**Si `sudo nginx -t` répond autre chose, à n'importe quelle étape** : s'arrêter
+là. Ne pas recharger nginx, ne pas lancer `certbot`, ne pas passer à l'étape
+suivante. `nginx -t` ne fait que lire : nginx continue de servir la
+dernière configuration qu'il a chargée sans erreur, les deux sites répondent
+toujours — il n'y a pas d'urgence, et rien à réparer dans la précipitation. Remettre le fichier qu'on venait de
+copier tel qu'il était, avec la sauvegarde prise à l'étape 1 de son bloc (site
+de formation ou production : `docs/deploiement.md` § 9, « Une page semble
+cassée après une mise à jour de nginx »), ou, pour l'attrape-tout, avec le
+retour en arrière de l'étape 6, puis relancer `sudo nginx -t` : il doit
+répondre `test is successful` avant que l'on décide de reprendre ou d'y
+renoncer. En cas de doute, l'archive de `/etc/nginx` de l'étape 1 ci-dessous
+remet tout comme avant (« Retour en arrière », dernière puce).
 
 Les trois fichiers nginx changent, et un troisième apparaît :
 
@@ -103,12 +123,6 @@ Les trois fichiers nginx changent, et un troisième apparaît :
   brute. Elle dit aux bénévoles de continuer sur papier.
 - **Un frein devant `/admin`** : 2 requêtes par seconde et par visiteur,
   rafale de 40 sans attente. Aucun effet sur le prêt, le scanner ni `/acces`.
-
-**Facultatif au sens de `docs/versioning.md`** : sans ces gestes, les deux
-sites fonctionnent exactement comme avant ; le contrôle de report signale les
-trois fichiers. **Hors événement uniquement** : une erreur dans un fichier
-nginx, rechargée, fait tomber les deux sites. Rien de ce qui suit ne recharge
-nginx sans que `sudo nginx -t` ait répondu `test is successful`.
 
 `update.sh` n'est **pas** modifié par cette version : aucun décalage d'une mise
 à jour. `install.sh` l'est (il installe l'attrape-tout, crée les journaux, et
