@@ -41,6 +41,9 @@ from app.db import get_connection, init_db  # noqa: E402
 # rangement sert à résoudre/créer tolérament l'« Emplacement local » du CSV
 # (docs/conception-rangement.md §4.b, étape 7) sans dupliquer sa logique.
 from app.services import obtenir_ou_creer_emplacement_rangement, slug_titre  # noqa: E402
+# L'export du catalogue neutralise les formules par une apostrophe (SEC-06) :
+# l'import la retire, avec la fonction inverse, au même domicile.
+from app.exports import retirer_neutralisation_csv  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Bornes de l'import depuis l'administration (lot-11-pré-production)
@@ -249,7 +252,10 @@ def lire_csv(
         for ligne in lecteur:
             if max_lignes is not None and len(lignes) >= max_lignes:
                 raise CatalogueTropLong(max_lignes)
-            lignes.append(ligne)
+            # Une ligne trop longue range son surplus sous la clé None, en
+            # liste : on ne touche qu'aux chaînes.
+            lignes.append({cle: retirer_neutralisation_csv(val)
+                           for cle, val in ligne.items()})
         entetes = lecteur.fieldnames or []
     index = construire_index_colonnes(entetes)
     return lignes, index

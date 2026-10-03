@@ -119,7 +119,17 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   WHERE paramétrée) + le formulaire de `catalogue.html` + la normalisation dans
   `routes/catalogue.py`.
 - **Protéger une nouvelle route bénévole** : ajouter
-  `_=Depends(exiger_jeton)` à la signature.
+  `_=Depends(exiger_jeton)` à la signature. Une route d'administration
+  commence par `if (garde := _garde(request)): return garde`.
+  `tests/test_gardes_routes.py` parcourt toutes les routes et exige une garde
+  sur toute méthode d'écriture et sous `/admin`, `/pret`, `/scanner`,
+  `/maintenance`, `/planning/admin`. `garde_module` n'en est **pas** une (il
+  règle la visibilité). Une route qui doit rester ouverte s'ajoute à
+  `EXCEPTIONS`, **avec sa raison**.
+- **Écrire une cellule de tableur** : passer par `exports.ecrire_cellule`
+  (Excel) ou `exports.neutraliser_csv` (CSV), jamais `ws.cell(value=…)` sur
+  une donnée saisie : une valeur commençant par `=`, `+`, `-`, `@`, une
+  tabulation ou un retour chariot deviendrait une formule (SEC-06).
 - **Paramètre de chemin numérique** : le déclarer avec son convertisseur,
   `/{id_x:int}`, et pas seulement par l'annotation `int`. Sans convertisseur,
   une valeur non entière est routée puis refusée en 422 ; avec, elle ne

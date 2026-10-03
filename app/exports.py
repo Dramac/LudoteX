@@ -42,6 +42,62 @@ def _libelle_metrique(metrique: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Neutralisation des formules (SEC-06) — SEUL domicile
+# ---------------------------------------------------------------------------
+# Un tableur interprète comme une formule une cellule qui commence par l'un de
+# ces caractères. Le danger n'est pas théorique : le détail d'un signalement
+# est tapé au comptoir, le nom d'un bénévole dans le questionnaire public du
+# planning — ce ne sont plus des données que l'admin a fournies lui-même.
+#
+# La neutralisation se fait À L'ÉCRITURE, et différemment selon le format :
+# - Excel (.xlsx) : la cellule est TYPÉE texte, et marquée « préfixe
+#   apostrophe » (`quotePrefix`) pour qu'Excel ne la réinterprète pas si on la
+#   retape. La valeur stockée reste exacte : aucune apostrophe n'apparaît.
+#   C'est le seul format où c'est possible.
+# - CSV : un CSV n'a pas de type, la seule défense est l'apostrophe en tête
+#   (recommandation OWASP). L'import du catalogue la retire
+#   (`scripts/import_csv.py::lire_csv`, via `retirer_neutralisation_csv`) :
+#   l'aller-retour export → import du bureau rend la valeur d'origine.
+DEBUTS_FORMULE = ("=", "+", "-", "@", "\t", "\r")
+
+
+def neutraliser_csv(valeur):
+    """Valeur d'une case CSV, précédée d'une apostrophe si elle ouvrirait une formule."""
+    if isinstance(valeur, str) and valeur.startswith(DEBUTS_FORMULE):
+        return "'" + valeur
+    return valeur
+
+
+def retirer_neutralisation_csv(valeur: str) -> str:
+    """
+    Inverse exact de `neutraliser_csv`, pour l'import.
+
+    N'ôte l'apostrophe QUE devant un début de formule : une valeur qui commence
+    légitimement par une apostrophe suivie d'autre chose est rendue intacte.
+    """
+    if (isinstance(valeur, str) and valeur.startswith("'")
+            and valeur[1:].startswith(DEBUTS_FORMULE)):
+        return valeur[1:]
+    return valeur
+
+
+def ecrire_cellule(ws, ligne: int, colonne: int, valeur):
+    """
+    Écrit `valeur` dans une feuille openpyxl sans jamais produire de formule.
+
+    openpyxl prend toute chaîne commençant par « = » pour une formule : on
+    force donc le type texte de TOUTE chaîne. Renvoie la cellule (pour la mise
+    en forme par l'appelant). Les nombres restent des nombres.
+    """
+    cellule = ws.cell(row=ligne, column=colonne, value=valeur)
+    if isinstance(valeur, str):
+        cellule.data_type = "s"
+        if valeur.startswith(DEBUTS_FORMULE):
+            cellule.quotePrefix = True
+    return cellule
+
+
+# ---------------------------------------------------------------------------
 # Tableaux simples — CSV et Excel (catalogue, carnet de maintenance…)
 # ---------------------------------------------------------------------------
 def catalogue_csv(entetes: list[str], lignes: list[dict]) -> bytes:
@@ -50,6 +106,7 @@ def catalogue_csv(entetes: list[str], lignes: list[dict]) -> bytes:
 
     Le BOM (`utf-8-sig`) fait qu'Excel ouvre correctement les accents ; le « ; »
     correspond au format des exports de l'association et est reconnu par l'import.
+    Chaque valeur passe par `neutraliser_csv` (SEC-06).
     """
     import csv
     import io
@@ -58,7 +115,8 @@ def catalogue_csv(entetes: list[str], lignes: list[dict]) -> bytes:
     writer = csv.DictWriter(buf, fieldnames=entetes, delimiter=";",
                             extrasaction="ignore")
     writer.writeheader()
-    writer.writerows(lignes)
+    writer.writerows({cle: neutraliser_csv(val) for cle, val in ligne.items()}
+                     for ligne in lignes)
     return buf.getvalue().encode("utf-8-sig")
 
 
@@ -87,7 +145,7 @@ def tableau_xlsx(entetes: list[str], lignes: list[dict],
         cell.font = Font(bold=True)
     for i, ligne in enumerate(lignes, start=2):
         for col, entete in enumerate(entetes, start=1):
-            ws.cell(row=i, column=col, value=ligne.get(entete, ""))
+            ecrire_cellule(ws, i, col, ligne.get(entete, ""))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -149,7 +207,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
             cell.font = gras
         ligne += 1
         for jeu in jeux:
-            wp.cell(row=ligne, column=1, value=jeu["nom"])
+            ecrire_cellule(wp, ligne, 1, jeu["nom"])
             wp.cell(row=ligne, column=2, value=jeu["nb_prets"])
             wp.cell(row=ligne, column=3, value=jeu["nb_exemplaires"])
             wp.cell(row=ligne, column=4, value=round(jeu["par_exemplaire"], 2))
@@ -163,8 +221,9 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
         c = wd.cell(row=1, column=1 + col, value=entete)
         c.font = gras
     for i, p in enumerate(data["prets"], start=2):
-        wd.cell(row=i, column=1, value=p["nom"])
-        wd.cell(row=i, column=2, value=p["id_exemplaire"])
+        # Nom et code viennent du catalogue importé : texte forcé (SEC-06).
+        ecrire_cellule(wd, i, 1, p["nom"])
+        ecrire_cellule(wd, i, 2, p["id_exemplaire"])
         wd.cell(row=i, column=3, value=p["sortie_locale"])
         wd.cell(row=i, column=4, value=p["retour_local"] or "en cours")
         wd.cell(row=i, column=5, value=p["duree_txt"])

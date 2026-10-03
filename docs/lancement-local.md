@@ -126,10 +126,14 @@ formation (ou supprimer les fichiers `data/formation-*.db`).
 2. Démarre `uvicorn` en arrière-plan (port 8000, local uniquement).
 3. Démarre `cloudflared tunnel --url http://localhost:8000`, qui expose
    l'application sur une URL publique `https://xxxx.trycloudflare.com`.
-4. Génère une page HTML temporaire (QR + URL + statut + bouton d'arrêt) et
-   l'ouvre dans le navigateur par défaut.
-5. Démarre un petit serveur de contrôle local (port 8001) qui permet à cette
-   page d'afficher le statut en temps réel et de tout arrêter proprement.
+4. Démarre un petit serveur de contrôle local (port 8001), qui sert la page
+   du lanceur (QR + URL + statut + bouton d'arrêt), son statut en temps réel
+   et l'arrêt propre.
+5. Ouvre `http://127.0.0.1:8001/` dans le navigateur par défaut. La page est
+   servie par le serveur de contrôle lui-même, et non plus ouverte comme un
+   fichier : elle n'a donc besoin d'aucune autorisation « cross-origin », et
+   aucune autre page du navigateur ne peut lire l'URL du tunnel ni arrêter
+   LudoteX.
 
 ## Limites à connaître
 

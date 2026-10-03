@@ -1,5 +1,12 @@
 # --- Application web ---
 fastapi==0.115.6
+# Dépendance de FastAPI, épinglée À PART (SEC-14, recommandation 4) : fastapi
+# l'accepte dans une fourchette (>=0.40,<0.42), donc la version servie restait
+# invisible au dépôt. Or la garde lue avant le corps des envois de fichiers
+# (admin.py::RouteEnvoiAdmin, lot 11) repose sur l'ordre dans lequel cette
+# version analyse une requête. Monter fastapi oblige désormais à relire cette
+# ligne.
+starlette==0.41.3
 uvicorn[standard]==0.34.0
 
 # Moteur de templates pour les pages servies (fiche jeu, écran prêt/retour, catalogue)

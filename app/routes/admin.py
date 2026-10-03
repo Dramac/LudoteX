@@ -2197,6 +2197,22 @@ def formation_reinitialiser(request: Request):
     return _rendre_dashboard(request, message)
 
 
+# Message affiché quand une réinitialisation est refusée (mêmes motifs que la
+# prolongation, levés par la même règle `auth._verifier_echeance`). Les deux
+# phrases disent que RIEN n'a changé : c'est la question que se pose le
+# bureau devant un refus, l'ancien lien marche-t-il encore ?
+_REFUS_REINITIALISATION = {
+    "date_absente": ("Cette date de fin de validité est illisible : choisissez-la "
+                     "dans le calendrier, ou laissez le champ vide pour "
+                     "{jours} jours. Le jeton n'a pas changé."),
+    "date_passee": ("Cette date est déjà passée : le nouveau lien ne marcherait "
+                    "pas. Choisissez une date à venir, ou laissez le champ vide "
+                    "pour {jours} jours. Le jeton n'a pas changé."),
+}
+_REFUS_REINITIALISATION = {motif: texte.format(jours=auth.DUREE_DEFAUT_JOURS)
+                           for motif, texte in _REFUS_REINITIALISATION.items()}
+
+
 @router.post("/jeton/reinitialiser")
 def jeton_reinitialiser(request: Request, expire: str = Form("")):
     """
@@ -2204,13 +2220,25 @@ def jeton_reinitialiser(request: Request, expire: str = Form("")):
 
     `expire` (datetime-local, heure locale) fixe la fin de validité ; vide → la
     durée par défaut (1 semaine) est appliquée par `auth.reinitialiser_jeton`.
+    Illisible ou passée → écran réaffiché avec un message, RIEN n'est écrit :
+    même règle que la prolongation.
     """
     if (garde := _garde(request)):
         return garde
-    expire_utc = services.local_vers_utc_iso(expire.strip() or None)
+    saisie = expire.strip()
+    expire_utc = services.local_vers_utc_iso(saisie or None)
+    if saisie and expire_utc is None:
+        # Saisie présente mais illisible : `local_vers_utc_iso` répond None
+        # comme pour un champ vide, et c'est ainsi qu'elle retombait sur la
+        # durée par défaut. Seul le champ VIDE vaut « défaut ».
+        return _page_jeton(request, ("erreur", _REFUS_REINITIALISATION["date_absente"]))
     conn = get_connection()
     try:
-        auth.reinitialiser_jeton(conn, expire_utc)
+        try:
+            auth.reinitialiser_jeton(conn, expire_utc)
+        except ValueError as refus:
+            return _page_jeton(request, ("erreur", _REFUS_REINITIALISATION.get(
+                str(refus), _REFUS_REINITIALISATION["date_absente"])))
         # L'ÉCHÉANCE seulement — jamais le jeton lui-même, ni son empreinte
         # (§8). C'est pourtant l'information utile : après coup, « tous les
         # téléphones se sont déconnectés » s'explique par cette ligne et par

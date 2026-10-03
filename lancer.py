@@ -19,12 +19,12 @@ CE QUE FAIT CE SCRIPT, DANS L'ORDRE
 3. Démarre `cloudflared tunnel --url http://localhost:8000` en sous-processus,
    lit sa sortie ligne par ligne pour en extraire l'URL publique
    (*.trycloudflare.com).
-4. Génère une page HTML temporaire : QR de l'URL, URL en grand, statut
+4. Prépare la page du lanceur : QR de l'URL, URL en grand, statut
    (application / tunnel), bouton rouge « Arrêter LudoteX ».
-5. Démarre un petit serveur HTTP de contrôle (port 8001, `/status` + `/stop`)
-   qui permet à cette page d'afficher le statut en temps réel et de tout
-   arrêter en un clic.
-6. Ouvre la page dans le navigateur par défaut.
+5. Démarre un petit serveur HTTP de contrôle (port 8001 : la page sur `/`,
+   `/status` et `/stop`) qui permet à cette page d'afficher le statut en
+   temps réel et de tout arrêter en un clic.
+6. Ouvre http://127.0.0.1:8001/ dans le navigateur par défaut.
 7. Reste en attente (Ctrl+C ou bouton « Arrêter ») puis ferme proprement les
    sous-processus.
 
@@ -119,6 +119,9 @@ processus: dict[str, subprocess.Popen | None] = {
     "uvicorn": None, "cloudflared": None, "uvicorn_formation": None,
 }
 serveur_controle: dict[str, ThreadingHTTPServer | None] = {"instance": None}
+# Page du lanceur, servie par le serveur de contrôle sur « / » (voir
+# `Controleur`). None tant que le tunnel n'a pas fourni son URL.
+page_lanceur: dict[str, str | None] = {"html": None}
 
 
 # =====================================================================
@@ -423,30 +426,80 @@ def _lire_sortie_cloudflared() -> None:
 # =====================================================================
 
 class Controleur(BaseHTTPRequestHandler):
-    """Micro-API locale : GET /status (JSON d'état) et GET /stop (arrêt propre)."""
+    """
+    Micro-serveur local : GET / (la page du lanceur), GET /status (JSON
+    d'état) et POST /stop (arrêt propre).
 
-    def _repondre_json(self, data: dict, code: int = 200) -> None:
-        corps = json.dumps(data).encode("utf-8")
+    SEC-07. La page était un fichier ouvert en file:// ; pour qu'elle puisse
+    lire /status, le serveur répondait `Access-Control-Allow-Origin: *` — ce
+    qui rendait l'URL publique du tunnel lisible par N'IMPORTE QUELLE page
+    ouverte dans le navigateur du poste. La page est désormais servie ICI :
+    même origine, plus d'en-tête CORS du tout. Deux verrous de plus, parce
+    qu'un site tiers peut toujours ENVOYER une requête vers 127.0.0.1 :
+    - `Host` doit nommer ce poste (`_hote_local`) : une page dont le nom de
+      domaine se résout soudain en 127.0.0.1 (« DNS rebinding ») serait sinon
+      de la même origine qu'elle et lirait /status ;
+    - /stop n'accepte que POST, et seulement si `Origin` est la page du
+      lanceur : une simple image <img src=".../stop"> posée sur un site
+      quelconque ne peut plus couper LudoteX en pleine journée.
+    """
+
+    def _origines_locales(self) -> set[str]:
+        port = self.server.server_address[1]
+        return {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+    def _hote_local(self) -> bool:
+        return (self.headers.get("Host") or "") in self._origines_locales()
+
+    def _repondre(self, corps: bytes, type_contenu: str, code: int = 200) -> None:
         self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", type_contenu)
         self.send_header("Content-Length", str(len(corps)))
-        # Autorise l'appel depuis la page HTML ouverte en file:// (origine "null").
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(corps)
 
+    def _repondre_json(self, data: dict, code: int = 200) -> None:
+        self._repondre(json.dumps(data).encode("utf-8"),
+                       "application/json; charset=utf-8", code)
+
+    def _refuser(self, code: int) -> None:
+        self.send_response(code)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802 (nom imposé par BaseHTTPRequestHandler)
-        if self.path.startswith("/status"):
+        if not self._hote_local():
+            self._refuser(403)
+            return
+        chemin = self.path.split("?", 1)[0]
+        if chemin == "/":
+            html_page = page_lanceur["html"]
+            if html_page is None:
+                self._refuser(404)
+            else:
+                self._repondre(html_page.encode("utf-8"), "text/html; charset=utf-8")
+        elif chemin == "/status":
             with _verrou:
                 self._repondre_json(dict(etat))
-        elif self.path.startswith("/stop"):
-            self._repondre_json({"arret": True})
-            # L'arrêt se fait dans un thread à part : répondre d'abord,
-            # sans quoi le serveur se couperait avant d'avoir envoyé la réponse.
-            threading.Thread(target=arreter_tout, daemon=True).start()
+        elif chemin == "/stop":
+            self._refuser(405)   # GET n'arrête plus rien (voir la docstring)
         else:
-            self.send_response(404)
-            self.end_headers()
+            self._refuser(404)
+
+    def do_POST(self) -> None:  # noqa: N802
+        origine = self.headers.get("Origin") or ""
+        origines = {f"http://{o}" for o in self._origines_locales()}
+        if not self._hote_local() or origine not in origines:
+            self._refuser(403)
+            return
+        if self.path.split("?", 1)[0] != "/stop":
+            self._refuser(404)
+            return
+        self._repondre_json({"arret": True})
+        # L'arrêt se fait dans un thread à part : répondre d'abord,
+        # sans quoi le serveur se couperait avant d'avoir envoyé la réponse.
+        threading.Thread(target=arreter_tout, daemon=True).start()
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002
         pass  # Silence le journal par défaut (verbeux) sur la console.
@@ -538,7 +591,9 @@ _PAGE_LANCEUR = """<!DOCTYPE html>
     <p class="msg" id="message"></p>
   </div>
 <script>
-  const CONTROLE = "http://127.0.0.1:__PORT_CONTROLE__";
+  // Même origine que la page (servie par le serveur de contrôle) : aucun
+  // en-tête CORS n'est nécessaire, donc aucun n'est envoyé.
+  const CONTROLE = "";
 
   async function maj() {
     try {
@@ -557,7 +612,7 @@ _PAGE_LANCEUR = """<!DOCTYPE html>
 
   function arreterLudoteX() {
     if (!confirm("Arrêter LudoteX ? Les bénévoles n'auront plus accès à l'application.")) return;
-    fetch(CONTROLE + "/stop", { cache: "no-store" }).finally(() => {
+    fetch(CONTROLE + "/stop", { method: "POST", cache: "no-store" }).finally(() => {
       document.getElementById("message").textContent = "LudoteX est arrêté. Vous pouvez fermer cette page.";
     });
   }
@@ -626,7 +681,8 @@ def ecrire_temp_html(html: str, prefixe: str) -> Path:
     return Path(f.name)
 
 
-def ecrire_page_lanceur(url: str) -> Path:
+def construire_page_lanceur(url: str) -> str:
+    """HTML de la page du lanceur, servi par `Controleur` sur « / »."""
     qr_b64 = generer_qr_base64(url)
     with _verrou:
         s = dict(etat)
@@ -639,16 +695,14 @@ def ecrire_page_lanceur(url: str) -> Path:
         )
     else:
         bloc_formation = ""
-    html = (
+    return (
         _PAGE_LANCEUR
         .replace("__QR_B64__", qr_b64)
         .replace("__URL__", url)
-        .replace("__PORT_CONTROLE__", str(PORT_CONTROLE))
         .replace("__CLASSE_UVICORN__", "ok" if s["uvicorn_ok"] else "ko")
         .replace("__CLASSE_TUNNEL__", "ok" if s["cloudflared_ok"] else "ko")
         .replace("__BLOC_FORMATION__", bloc_formation)
     )
-    return ecrire_temp_html(html, prefixe="lancer-ludotex-")
 
 
 def _afficher_erreur(problemes: list[str], detail: str = "") -> None:
@@ -804,8 +858,8 @@ def main(formation: bool = False) -> None:
 
     print("URL publique :", url)
 
-    chemin_page = ecrire_page_lanceur(url)
-    webbrowser.open(chemin_page.as_uri())
+    page_lanceur["html"] = construire_page_lanceur(url)
+    webbrowser.open(f"http://{HOTE}:{PORT_CONTROLE}/")
     with _verrou:
         url_formation = etat.get("url_formation")
     if url_formation:

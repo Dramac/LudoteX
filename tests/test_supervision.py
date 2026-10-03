@@ -311,7 +311,7 @@ def test_etat_jeton_non_defini(bases):
         conn.close()
 
 
-def test_etat_jeton_valide_et_expire(bases):
+def test_etat_jeton_valide_et_expire(bases, monkeypatch):
     from app import auth, supervision
     from app.db import get_connection
 
@@ -324,8 +324,10 @@ def test_etat_jeton_valide_et_expire(bases):
         assert etat["expire"] is False
         assert etat["expire_iso"] == futur
 
-        passe = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(timespec="seconds")
-        auth.reinitialiser_jeton(conn, passe)
+        # Échéance dépassée par l'HORLOGE (une réinitialisation refuse une date
+        # passée depuis le lot 14) : deux jours plus tard, le jeton est expiré.
+        monkeypatch.setattr(auth, "_maintenant",
+                            lambda: datetime.now(timezone.utc) + timedelta(days=2))
         etat2 = supervision.etat_jeton(conn)
         assert etat2["defini"] is True
         assert etat2["expire"] is True

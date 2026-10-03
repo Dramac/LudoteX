@@ -134,8 +134,21 @@ def horloge(monkeypatch):
 
 
 def _poser_jeton(conn, expire_iso):
-    """Installe le jeton et son échéance, comme une réinitialisation."""
-    auth.reinitialiser_jeton(conn, expire_iso)
+    """
+    Installe le jeton et son échéance, comme une réinitialisation.
+
+    La réinitialisation refuse désormais une échéance passée (lot 14) : un
+    jeton EXPIRÉ se fabrique donc par l'horloge — posé une seconde avant son
+    échéance, puis l'heure reprend son cours —, jamais en contournant le refus.
+    """
+    echeance = datetime.fromisoformat(expire_iso)
+    horloge_courante = auth._maintenant
+    if echeance <= horloge_courante():
+        auth._maintenant = lambda: echeance - timedelta(seconds=1)
+    try:
+        auth.reinitialiser_jeton(conn, expire_iso)
+    finally:
+        auth._maintenant = horloge_courante
     conn.execute("UPDATE parametres SET valeur = ? WHERE cle = 'pret_token'", (JETON,))
     conn.commit()
 

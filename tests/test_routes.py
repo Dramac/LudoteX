@@ -1366,10 +1366,17 @@ def test_admin_jeton_reinitialisation(client, monkeypatch):
 
 
 def test_jeton_expire_ferme_acces(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app import auth
+
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    # Réinitialisation avec une date de fin déjà passée -> jeton expiré.
-    client.post("/admin/jeton/reinitialiser", data={"expire": "2000-01-01T00:00"})
+    # Réinitialisation sans date (7 jours), puis l'horloge passe l'échéance —
+    # une date déjà passée est refusée depuis le lot 14, on ne la saisit plus.
+    client.post("/admin/jeton/reinitialiser", data={"expire": ""})
+    monkeypatch.setattr(auth, "_maintenant", lambda: datetime.now(timezone.utc)
+                        + timedelta(days=auth.DUREE_DEFAUT_JOURS + 1))
     # On déconnecte l'admin (sinon la session admin ouvrirait l'accès) : côté
     # bénévole, le jeton expiré ferme bien l'accès.
     client.get("/admin/logout")

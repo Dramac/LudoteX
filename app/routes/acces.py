@@ -29,7 +29,6 @@ qui consulte le catalogue ne reçoit rien.
 """
 
 import os
-import secrets
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
@@ -104,7 +103,7 @@ def acces(request: Request, jeton: str = ""):
         expire_iso = auth.expiration_jeton(conn)
         expire = auth.jeton_expire(conn)
 
-        if attendu and not expire and secrets.compare_digest(jeton, attendu):
+        if attendu and not expire and auth.jetons_egaux(jeton, attendu):
             # 303 force le navigateur à faire un GET sur /scanner après l'activation.
             reponse = RedirectResponse("/scanner", status_code=303)
 

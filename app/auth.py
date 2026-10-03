@@ -20,8 +20,8 @@ PRODUCTION, définir impérativement `PRET_TOKEN`.
 
 SÉCURITÉ
 --------
-- Comparaison en TEMPS CONSTANT (`secrets.compare_digest`) pour ne pas fuiter
-  d'information par le temps de réponse.
+- Comparaison en TEMPS CONSTANT (`jetons_egaux`, sur `secrets.compare_digest`)
+  pour ne pas fuiter d'information par le temps de réponse.
 - Limitation de débit par IP sur l'activation (voir `trop_de_tentatives`), comme
   garde-fou « ceinture et bretelles » contre la force brute.
 - Rotation : réinitialiser le jeton (ou changer `PRET_TOKEN`) invalide tous
@@ -128,6 +128,20 @@ def jeton_actuel(conn: sqlite3.Connection) -> str | None:
     return None
 
 
+def jetons_egaux(presente: str, attendu: str) -> bool:
+    """
+    Le jeton présenté est-il le jeton attendu ? Comparaison en TEMPS CONSTANT.
+
+    SEUL domicile de cette comparaison (trois appelants : `acces_valide`,
+    `jeton_expire_reconnu`, `routes/acces.py`). `secrets.compare_digest` LÈVE
+    `TypeError` sur deux `str` dont l'une n'est pas ASCII : `/acces?jeton=é`,
+    ou un cookie non ASCII, donnaient une page 500 au lieu de « lien
+    invalide ». Comparer les octets UTF-8 garde le temps constant et répond
+    simplement « non ».
+    """
+    return secrets.compare_digest(presente.encode("utf-8"), attendu.encode("utf-8"))
+
+
 def expiration_jeton(conn: sqlite3.Connection) -> str | None:
     """Date d'expiration du jeton (UTC ISO) stockée en base, ou None (pas d'expiration)."""
     row = conn.execute(
@@ -173,6 +187,21 @@ def echeance_proche(expire_iso: str | None) -> bool:
     return maintenant <= echeance <= maintenant + SEUIL_EXPIRE_BIENTOT
 
 
+def _verifier_echeance(expire_iso: str | None) -> None:
+    """
+    Refuse une échéance absente, illisible ou déjà passée. SEUL domicile de la
+    règle, partagé par la prolongation et la réinitialisation.
+
+    Raises:
+        ValueError: "date_absente" (vide ou illisible), "date_passee".
+    """
+    echeance = _date(expire_iso)
+    if echeance is None:
+        raise ValueError("date_absente")
+    if echeance <= _maintenant():
+        raise ValueError("date_passee")
+
+
 def prolonger_jeton(conn: sqlite3.Connection, expire_iso: str | None) -> None:
     """
     Repousse l'échéance du jeton SANS toucher au jeton : le lien reste valable.
@@ -190,11 +219,7 @@ def prolonger_jeton(conn: sqlite3.Connection, expire_iso: str | None) -> None:
     """
     if jeton_actuel(conn) is None:
         raise ValueError("sans_jeton")
-    echeance = _date(expire_iso)
-    if echeance is None:
-        raise ValueError("date_absente")
-    if echeance <= _maintenant():
-        raise ValueError("date_passee")
+    _verifier_echeance(expire_iso)
     conn.execute(
         "INSERT INTO parametres (cle, valeur) VALUES ('pret_token_expire', ?) "
         "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
@@ -217,7 +242,7 @@ def jeton_expire_reconnu(conn: sqlite3.Connection, presente: str | None) -> bool
     attendu = jeton_actuel(conn)
     if attendu is None or not presente or not jeton_expire(conn):
         return False
-    return secrets.compare_digest(presente, attendu)
+    return jetons_egaux(presente, attendu)
 
 
 def reinitialiser_jeton(conn: sqlite3.Connection,
@@ -228,18 +253,29 @@ def reinitialiser_jeton(conn: sqlite3.Connection,
     Effet : invalide immédiatement tous les anciens cookies (le jeton change).
     Si `expire_iso` est None, on applique la durée par défaut (DUREE_DEFAUT_JOURS).
 
+    Une échéance FOURNIE suit la règle de la prolongation (`_verifier_echeance`) :
+    passée, elle fermait l'accès à l'instant même ; illisible, elle retombait
+    autrefois en silence sur la durée par défaut — piège réellement tombé le
+    2026-09-13. Le refus a lieu AVANT toute écriture : l'ancien jeton reste
+    en vigueur.
+
     Args:
         conn: connexion SQLite ouverte.
-        expire_iso: date de fin de validité (UTC ISO), ou None → défaut
-            `DUREE_DEFAUT_JOURS`.
+        expire_iso: date de fin de validité (UTC ISO), ou None / vide →
+            défaut `DUREE_DEFAUT_JOURS`.
 
     Returns:
         Le nouveau jeton (à diffuser via le lien d'activation).
+
+    Raises:
+        ValueError: "date_absente" (chaîne illisible), "date_passee".
     """
-    nouveau = secrets.token_urlsafe(32)
     if not expire_iso:
-        expire_iso = (datetime.now(timezone.utc)
+        expire_iso = (_maintenant()
                       + timedelta(days=DUREE_DEFAUT_JOURS)).isoformat(timespec="seconds")
+    else:
+        _verifier_echeance(expire_iso)
+    nouveau = secrets.token_urlsafe(32)
     for cle, valeur in (("pret_token", nouveau), ("pret_token_expire", expire_iso)):
         conn.execute(
             "INSERT INTO parametres (cle, valeur) VALUES (?, ?) "
@@ -278,7 +314,7 @@ def acces_valide(request: Request) -> bool:
     if expire:
         return False  # jeton expiré → fermé
     presente = request.cookies.get(COOKIE_NAME, "")
-    valide = bool(presente) and secrets.compare_digest(presente, attendu)
+    valide = bool(presente) and jetons_egaux(presente, attendu)
     if valide:
         # Demande au middleware de reposer le cookie (voir DUREE_COOKIE_JETON).
         # Seulement ici : un cookie refusé n'est jamais prolongé. `state` est

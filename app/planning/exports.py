@@ -25,6 +25,10 @@ from io import BytesIO
 # de prêt (voir CLAUDE.md, section « Ouverture publique de LudoteX »).
 from app.services import (COULEUR_ASSOCIATION_DEFAUT, couleur_texte_sur,
                           format_local, nuances_theme)
+# Neutralisation des formules (SEC-06) : calcul pur, même remarque. Les noms
+# viennent du questionnaire PUBLIC — c'est l'export où le risque est le plus
+# direct.
+from app.exports import ecrire_cellule
 
 
 def _heure(iso_utc: str | None) -> str:
@@ -70,7 +74,7 @@ def construire_xlsx(grille: dict, nom_evenement: str) -> bytes:
         # En-tête de colonnes : Horaire + un poste par colonne.
         ws.cell(row=2, column=1, value="Horaire").font = gras
         for j, p in enumerate(postes, start=2):
-            c = ws.cell(row=2, column=j, value=p["nom"])
+            c = ecrire_cellule(ws, 2, j, p["nom"])
             c.font = gras
             c.alignment = centre
 
@@ -81,7 +85,7 @@ def construire_xlsx(grille: dict, nom_evenement: str) -> bytes:
                 if case["nb_requis"] <= 0:
                     cell.fill = grise            # case « grisée » (pas de besoin)
                 else:
-                    cell.value = _noms(case["affectations"])
+                    ecrire_cellule(ws, i, j, _noms(case["affectations"]))
                     cell.alignment = haut
 
         ws.column_dimensions["A"].width = 14
@@ -100,9 +104,9 @@ def construire_xlsx(grille: dict, nom_evenement: str) -> bytes:
         wt.cell(row=2, column=3, value="Bénévoles").font = gras
         for i, t in enumerate(taches, start=3):
             c = t["creneau"]
-            wt.cell(row=i, column=1, value=c.get("libelle") or "Tâche")
+            ecrire_cellule(wt, i, 1, c.get("libelle") or "Tâche")
             wt.cell(row=i, column=2, value=f"{c['libelle_jour']} {_plage(c)}")
-            wt.cell(row=i, column=3, value=", ".join(a["nom"] for a in t["affectations"]))
+            ecrire_cellule(wt, i, 3, ", ".join(a["nom"] for a in t["affectations"]))
         for col, larg in (("A", 22), ("B", 22), ("C", 50)):
             wt.column_dimensions[col].width = larg
 

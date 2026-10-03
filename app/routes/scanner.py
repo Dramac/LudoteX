@@ -26,6 +26,8 @@ admin) : texte libre en contexte "evenement", id d'emplacement en contexte
 Ces surfaces sont protégées par le jeton bénévole, comme /pret.
 """
 
+import re
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
@@ -52,15 +54,30 @@ def _etat_rangement(conn, request: Request) -> dict:
     return services.etat_rangement(conn, request)
 
 
+# Forme AUTORISÉE d'un chemin de retour (SEC-15) : « / » seul, ou « / » suivi
+# d'une lettre ou d'un chiffre, sans espace, caractère de contrôle ni barre
+# oblique inverse nulle part. On décrit ce qui est permis plutôt que ce qui est
+# interdit, comme les deux autres gardes du projet (`admin.py::
+# _retour_emplacement`, `planning/routes.py::_retour`) — qui, elles, peuvent
+# se contenter d'un préfixe fixe parce que leur retour reste dans leur module ;
+# ici, on quitte le mode rangement depuis N'IMPORTE QUELLE page.
+_RETOUR_AUTORISE = re.compile(r"/(?:[A-Za-z0-9][^\\\s\x00-\x1f\x7f]*)?")
+
+
 def _retour_interne(chemin: str) -> bool:
     """
     Le chemin de retour est-il une URL INTERNE sûre ?
 
-    Refuse tout ce qui pourrait sortir du site : un chemin qui ne commence pas
-    par « / », et la forme « //hote » que les navigateurs interprètent comme
-    une URL absolue vers un autre domaine (redirection ouverte).
+    Refuse tout ce qui pourrait sortir du site (redirection ouverte) : un
+    chemin qui ne commence pas par « / », la forme « //hote » qu'un navigateur
+    lit comme une URL absolue vers un autre domaine, et sa variante « /\\hote »,
+    que la spécification URL normalise pareil. La première version n'arrêtait
+    que la première écriture ; d'où la liste blanche `_RETOUR_AUTORISE`. Elle
+    ne dépend pas non plus de l'encodage que Starlette applique aujourd'hui à
+    l'en-tête Location (qui transforme « \\ » en « %5C ») : c'est un
+    comportement de bibliothèque, pas une garantie.
     """
-    return chemin.startswith("/") and not chemin.startswith("//")
+    return _RETOUR_AUTORISE.fullmatch(chemin) is not None
 
 
 def _contexte_scanner(conn, request: Request, etat: dict, **extra) -> dict:
