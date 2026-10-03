@@ -425,8 +425,14 @@ def nouveau_creer(
 
 
 @router.get("/tournoi/{id_tournoi:int}/gerer")
-def gerer(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
-    """Tableau de gestion bénévole : infos, état, participants, actions."""
+def gerer(request: Request, id_tournoi: int, _=Depends(exiger_jeton),
+          refus: str = ""):
+    """
+    Tableau de gestion bénévole : infos, état, participants, actions.
+
+    `refus` : code d'un lancement refusé (voir `MESSAGES_REFUS_LANCEMENT`) ;
+    un code inconnu est ignoré, le texte affiché ne vient jamais de l'URL.
+    """
     conn = get_connection()
     try:
         t = services.get_tournoi(conn, id_tournoi)
@@ -438,7 +444,8 @@ def gerer(request: Request, id_tournoi: int, _=Depends(exiger_jeton)):
         request, "tournoi_gerer.html",
         {"t": t, "participants": participants, "places_restantes": restantes,
          "transitions": services.TRANSITIONS.get(t["etat"], set()) if t else set(),
-         "modes": services.MODES_SCORING},
+         "modes": services.MODES_SCORING,
+         "message_refus": services.MESSAGES_REFUS_LANCEMENT.get(refus)},
         status_code=200 if t else 404,
     )
 
@@ -680,7 +687,9 @@ def lancer_action(request: Request, id_tournoi: int,
         return RedirectResponse(f"/tournoi/{id_tournoi}/rondes", status_code=303)
     if res.get("ok") and mode == "elimination":
         return RedirectResponse(f"/tournoi/{id_tournoi}/arbre", status_code=303)
-    return RedirectResponse(f"/tournoi/{id_tournoi}/gerer", status_code=303)
+    code = services.code_refus_lancement(res.get("raison"), mode)
+    suite = f"?refus={code}" if code else ""
+    return RedirectResponse(f"/tournoi/{id_tournoi}/gerer{suite}", status_code=303)
 
 
 @router.get("/tournoi/{id_tournoi:int}/scores")

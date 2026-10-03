@@ -58,6 +58,10 @@
       </form>
     {% endif %}
 
+    {% if message_refus %}
+      <p class="resultat resultat-attention" role="alert">{{ message_refus }}</p>
+    {% endif %}
+
     {% if "lance" in transitions %}
       <h3>Lancer le tournoi</h3>
       <details class="aide-inline">

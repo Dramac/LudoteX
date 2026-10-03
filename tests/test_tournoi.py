@@ -1226,3 +1226,57 @@ def test_ical_ne_repete_pas_le_jeu(client):
     assert "SUMMARY:Splendor" in ics
     # Le jeu est déjà le titre : pas de « Jeu : Splendor » dans la description.
     assert "Jeu : Splendor" not in ics
+
+
+# ---------------------------------------------------------------------------
+# Lancement refusé : un message sur la page de gestion, jamais une page muette
+# ---------------------------------------------------------------------------
+def _tournoi_inscriptions(client, pseudos):
+    r = client.post("/tournoi/nouveau", data={"jeu": "Refus"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/etat", data={"etat": "inscriptions"})
+    for p in pseudos:
+        client.post(f"/tournoi/{tid}/participant", data={"pseudo": p})
+    return tid
+
+
+def _lancer_et_suivre(client, tid, **data):
+    r = client.post(f"/tournoi/{tid}/lancer", data=data, follow_redirects=True)
+    assert r.status_code == 200
+    return r.text
+
+
+def test_lancer_refuse_pas_assez_affiche_un_message(client):
+    tid = _tournoi_inscriptions(client, ["A"])
+    page = _lancer_et_suivre(client, tid, mode_scoring="ronde_suisse", nb_rondes="3")
+    assert "resultat-attention" in page
+    assert "Une ronde suisse demande au moins 2 participants" in page
+    tid = _tournoi_inscriptions(client, ["A", "B"])
+    page = _lancer_et_suivre(client, tid, mode_scoring="round_robin")
+    assert "Un round robin demande au moins 3 participants" in page
+
+
+def test_lancer_refuse_nb_rondes_affiche_un_message(client):
+    tid = _tournoi_inscriptions(client, ["A", "B"])
+    page = _lancer_et_suivre(client, tid, mode_scoring="ronde_suisse", nb_rondes="")
+    assert "Une ronde suisse demande un nombre de rondes" in page
+
+
+def test_lancer_refuse_etat_affiche_un_message(client):
+    r = client.post("/tournoi/nouveau", data={"jeu": "Brouillon"}, follow_redirects=False)
+    tid = r.headers["location"].split("/")[2]
+    client.post(f"/tournoi/{tid}/participant", data={"pseudo": "A"})
+    page = _lancer_et_suivre(client, tid, mode_scoring="high_score")
+    assert "ne peut pas être lancé dans son état actuel" in page
+
+
+def test_lancer_refuse_sans_participant_affiche_un_message(client):
+    tid = _tournoi_inscriptions(client, [])
+    page = _lancer_et_suivre(client, tid, mode_scoring="high_score")
+    assert "Aucun participant" in page
+
+
+def test_gerer_ignore_un_code_de_refus_inconnu(client):
+    tid = _tournoi_inscriptions(client, ["A"])
+    page = client.get(f"/tournoi/{tid}/gerer?refus=<b>piege</b>").text
+    assert "piege" not in page and "resultat-attention" not in page

@@ -61,6 +61,36 @@ MODES_SCORING = {
     "elimination": "Élimination directe",
 }
 
+# Messages affichés sur la page de gestion quand un lancement est refusé.
+# Clé : la raison de `lancer_tournoi`, suffixée du mode pour « pas_assez »
+# (le seuil dépend du mode). La route ne transmet qu'un code de cette liste
+# fermée : jamais de texte libre dans l'URL.
+MESSAGES_REFUS_LANCEMENT = {
+    "mode_inconnu": "Choisissez un mode de scoring dans la liste, puis pressez "
+                    "Lancer.",
+    "etat": "Ce tournoi ne peut pas être lancé dans son état actuel : il l'est "
+            "peut-être déjà, ou ses inscriptions ne sont pas ouvertes. "
+            "Vérifiez son état en haut de la page.",
+    "sans_participant": "Aucun participant : ajoutez-en au moins un avant de "
+                        "lancer le tournoi.",
+    "pas_assez:ronde_suisse": "Une ronde suisse demande au moins 2 participants : "
+                              "ajoutez-en, ou choisissez un autre mode.",
+    "pas_assez:elimination": "Une élimination directe demande au moins 2 "
+                             "participants : ajoutez-en, ou choisissez un autre "
+                             "mode.",
+    "pas_assez:round_robin": "Un round robin demande au moins 3 participants : "
+                             "ajoutez-en, ou choisissez un autre mode.",
+    "nb_rondes": "Une ronde suisse demande un nombre de rondes d'au moins 1 : "
+                 "renseignez-le, puis pressez Lancer.",
+}
+
+
+def code_refus_lancement(raison: str | None, mode: str) -> str | None:
+    """Code (clé de `MESSAGES_REFUS_LANCEMENT`) d'un refus, ou None s'il n'a pas de message."""
+    code = f"pas_assez:{mode}" if raison == "pas_assez" else raison
+    return code if code in MESSAGES_REFUS_LANCEMENT else None
+
+
 # Points attribués par résultat en ronde suisse (barème type échecs/jeux).
 POINTS_VICTOIRE = 1.0
 POINTS_NUL = 0.5
