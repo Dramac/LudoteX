@@ -29,6 +29,24 @@
     {{ escalade_oubli(id_rendu, escalade, numero) }}
   {% endif %}
 
+  {# Seconde issue de l'escalade : la pochette du prêt oublié n'était pas
+     vide. Aucun transfert n'a été écrit — le prêt oublié reste ouvert, sa
+     pochette reste occupée —, d'où la consigne : la pièce d'identité NE
+     BOUGE PAS. Le visiteur garde sa pochette ; la caméra, dessous, attend un
+     autre jeu (routes/pret.py::transfert_pochette_non_vide). #}
+  {% if pochette_signalee %}
+    <div class="resultat resultat-attention" role="status">
+      <p><strong>Le bureau est prévenu.</strong> Rien n'a été transféré.</p>
+      <p>
+        <strong>Laissez la pièce d'identité dans la pochette{% if pochette_signalee.numero %}
+        n°{{ pochette_signalee.numero }}{% endif %}</strong>, sans y toucher :
+        elle reste enregistrée sur {{ pochette_signalee.nom }}, et « Rendre »
+        sur cette boîte indiquera où la récupérer.
+      </p>
+      <p>Proposez un autre jeu au visiteur : scannez-le ci-dessous.</p>
+    </div>
+  {% endif %}
+
   <p class="scanner-statut" id="statut" aria-live="polite">Démarrage de la caméra…</p>
   <div class="scanner-cadre">
     <video id="video" class="scanner-video" playsinline muted></video>

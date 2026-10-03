@@ -201,7 +201,9 @@ def test_refus_nouvelle_boite_deja_sortie(client, tmp_path):
 # ---------------------------------------------------------------------------
 # Escalade « clôturer le prêt oublié » (série agora, lot 1)
 # ---------------------------------------------------------------------------
-LIBELLE_ESCALADE = "Clôturer le prêt oublié et transférer"
+# Deux issues depuis le lot 13 de la série pré-production (constat UX-02).
+LIBELLE_ESCALADE = "Pochette vide, je continue"
+LIBELLE_PAS_VIDE = "Pochette pas vide — prévenir le bureau"
 
 
 def _pret_en_cours(id_exemplaire):
@@ -460,3 +462,185 @@ def test_le_transfert_est_journalise_sans_numero(client, _journal_isole):
     for champ in ("objet", "ref", "detail"):
         assert ligne.get(champ) != numero
     assert "pochette" not in json.dumps(ligne).lower()
+
+
+# ---------------------------------------------------------------------------
+# Escalade : seconde issue « pochette pas vide » (lot 13 pré-production, UX-02)
+# ---------------------------------------------------------------------------
+def _signalements():
+    from app import db
+    conn = db.get_connection()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT id_exemplaire, id_categorie, texte, traite_le FROM signalements"
+        )]
+    finally:
+        conn.close()
+
+
+def _etat_prets():
+    from app import db
+    conn = db.get_connection()
+    try:
+        prets = [dict(r) for r in conn.execute("SELECT * FROM prets ORDER BY id_pret")]
+        pochettes = [dict(r) for r in conn.execute(
+            "SELECT * FROM pochettes ORDER BY numero_pochette")]
+        return prets, pochettes
+    finally:
+        conn.close()
+
+
+def test_l_escalade_offre_deux_issues_sur_les_deux_ecrans(client):
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    action = 'action="/pret/001/transfert/002/pochette-non-vide"'
+
+    confirmation = client.get("/pret/001/transfert/002")
+    refus = client.post("/pret/001/transfert/002")
+
+    for r in (confirmation, refus):
+        assert LIBELLE_ESCALADE in r.text
+        assert LIBELLE_PAS_VIDE in r.text
+        assert action in r.text
+    # Le bouton n'ouvre AUCUN champ libre : rien à taper, donc rien qui
+    # puisse décrire une personne.
+    assert "<textarea" not in confirmation.text
+
+
+def test_une_sortie_tournoi_oubliee_n_a_qu_une_issue(client):
+    """Sans pochette, rien à vérifier : la seconde issue n'aurait pas de sens."""
+    client.post("/pret/001/preter")
+    client.post("/pret/002/tournoi")
+
+    r = client.get("/pret/001/transfert/002")
+
+    assert "Clôturer la sortie oubliée et transférer" in r.text
+    assert LIBELLE_PAS_VIDE not in r.text
+
+
+def test_pochette_pas_vide_n_ecrit_aucun_transfert_et_previent_le_bureau(client):
+    from app import services
+
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    numero_oubli = _pret_en_cours("002")["numero_pochette"]
+    numero_visiteur = _pret_en_cours("001")["numero_pochette"]
+    avant = _etat_prets()
+
+    r = client.post("/pret/001/transfert/002/pochette-non-vide")
+
+    assert r.status_code == 200
+    # Aucun prêt écrit, clos ou libéré : le prêt oublié reste ouvert, sa
+    # pochette reste occupée — c'est ce qui rend la consigne sûre.
+    assert _etat_prets() == avant
+    # Un signalement, sur la boîte du prêt oublié, rédigé par l'application.
+    assert _signalements() == [{
+        "id_exemplaire": "002", "id_categorie": None,
+        "texte": services.TEXTES_POCHETTE_NON_VIDE[services.GESTE_TRANSFERT],
+        "traite_le": None,
+    }]
+    # L'écran dit quoi faire de la pièce d'identité, et garde la caméra.
+    assert "Le bureau est prévenu" in r.text
+    assert "Laissez la pièce d'identité dans la pochette" in r.text
+    assert f"n°{numero_oubli}" in r.text
+    assert f"Pochette n°{numero_visiteur} conservée" in r.text
+    assert 'data-scan-cible="/pret/001/transfert/"' in r.text
+    # Plus d'escalade affichée : la bénévole vient de dire que la pochette
+    # n'est pas vide.
+    assert LIBELLE_ESCALADE not in r.text
+
+
+def test_le_signalement_ne_porte_que_la_boite(client):
+    """
+    Garde-fou données personnelles : le texte est une constante, sans chiffre
+    — pas même le numéro de pochette, que D5 efface de toute ligne close et
+    qu'un signalement (jamais purgé) ferait revivre.
+    """
+    from app import services
+
+    for texte in services.TEXTES_POCHETTE_NON_VIDE.values():
+        assert not any(c.isdigit() for c in texte)
+        assert len(texte) <= services.LONGUEUR_MAX_TEXTE_SIGNALEMENT
+
+
+def test_pochette_pas_vide_sans_aucune_categorie(client):
+    """
+    Les catégories sont administrables : toutes archivées, voire supprimées,
+    le signalement passe quand même — il n'en vise aucune.
+    """
+    from app import db
+
+    conn = db.get_connection()
+    try:
+        conn.execute("UPDATE categories_signalement SET actif = 0")
+        conn.execute("DELETE FROM categories_signalement WHERE id_categorie % 2 = 0")
+        conn.commit()
+    finally:
+        conn.close()
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+
+    r = client.post("/pret/001/transfert/002/pochette-non-vide")
+
+    assert r.status_code == 200
+    assert len(_signalements()) == 1
+    # Et la fiche de la boîte l'affiche, catégorie absente comprise.
+    fiche = client.get("/pret/002")
+    assert "Pochette pas vide" in fiche.text
+
+
+def test_pochette_pas_vide_sur_une_boite_revenue_entre_temps(client):
+    """
+    La boîte a été rendue entre l'écran et l'appui : celui qui l'a rendue a
+    vidé la pochette. Rien à signaler — on rouvre la confirmation, désormais
+    sans escalade.
+    """
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    client.post("/pret/002/rendre")
+
+    r = client.post("/pret/001/transfert/002/pochette-non-vide",
+                    follow_redirects=False)
+
+    assert r.status_code == 303
+    assert r.headers["location"] == "/pret/001/transfert/002"
+    assert _signalements() == []
+
+
+def test_pochette_pas_vide_exige_le_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-test-secret-32-caracteres")
+    assert client.post("/pret/001/transfert/002/pochette-non-vide").status_code == 403
+    assert _signalements() == []
+
+
+def test_pochette_pas_vide_est_journalisee_comme_un_signalement(client, _journal_isole):
+    import json
+
+    from app import services
+
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    client.post("/pret/001/transfert/002/pochette-non-vide")
+
+    lignes = [json.loads(l) for l in _journal_isole.read_text(encoding="utf-8").splitlines()
+              if '"signalement_cree"' in l]
+    assert len(lignes) == 1
+    assert lignes[0]["objet"] == f"Dixit — {services.LIBELLE_POCHETTE_NON_VIDE}"
+    # Ni transfert ni clôture n'ont eu lieu : le journal ne doit pas le dire.
+    assert '"transfert_avec_cloture"' not in _journal_isole.read_text(encoding="utf-8")
+
+
+def test_apres_la_seconde_issue_la_premiere_reste_possible(client):
+    """
+    Ne jamais bloquer : une fois la pièce récupérée par le bureau, rescanner
+    la boîte rouvre l'escalade, et « Pochette vide, je continue » transfère.
+    """
+    client.post("/pret/001/preter")
+    client.post("/pret/002/preter")
+    client.post("/pret/001/transfert/002/pochette-non-vide")
+
+    assert LIBELLE_ESCALADE in client.get("/pret/001/transfert/002").text
+    r = client.post("/pret/001/transfert/002", data={"clore_oubli": "1"})
+
+    assert r.status_code == 200
+    assert _pret_en_cours("001") is None

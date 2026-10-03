@@ -282,6 +282,19 @@ Ce que ce lot ne change pas : pas de colonne « qui a traité », pas de champ
 « comment », aucun changement de schéma. Le carnet consultable en dehors de la
 fiche est le lot suivant de la série agora — voir §7 bis.
 
+## 6 ter. Le signalement que l'application rédige elle-même (lot 13 pré-production)
+
+Un seul : **« pochette pas vide »**, créé par la seconde issue de l'escalade du
+transfert et du re-prêt (`docs/conception-transfert-pochette.md` §6 ter). Le
+texte est une constante par geste (`services.TEXTES_POCHETTE_NON_VIDE`), sans
+champ libre : il n'ouvre aucune porte à donnée personnelle (§3) et ne porte ni
+description de personne, ni numéro de pochette. Il ne vise **aucune
+catégorie** (`id_categorie` NULL) : une catégorie administrable peut
+disparaître, et ce signalement-là ne doit jamais pouvoir être refusé. Il se lit
+et se referme comme les autres — bandeau de la fiche, carnet bénévole, écran
+d'administration. Journal : action `signalement_cree`, objet « jeu — pièce
+d'identité trouvée ».
+
 ## 7. L'écran d'administration
 
 ⚠️ **Portée élargie par le lot agora-5** : ce qui suit décrit toujours

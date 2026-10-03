@@ -203,6 +203,17 @@ def scenario(client, bases, _journal_isole):
     finally:
         conn.close()
 
+    # --- « Pochette pas vide » (lot 13 pré-production) ----------------------
+    # Le seul signalement que l'application rédige elle-même, et le seul geste
+    # dont le formulaire transporte un numéro de pochette (re-prêt, pour
+    # l'affichage) : ni le mot ni la valeur ne doivent en sortir. Joué APRÈS
+    # la lecture de `id_signalement` ci-dessus, qui prend le plus récent.
+    client.post("/pret/001/preter")
+    client.post("/pret/001/transfert/002/pochette-non-vide")
+    client.post("/pret/002/repreter")
+    client.post("/pret/002/repreter/pochette-non-vide",
+                data={"numero": secrets["pochette_transfert"]})
+
     # --- Public : inscription à un tournoi PAR ÉQUIPES ----------------------
     # Par équipes exprès : c'est le cas qui porte le plus de données
     # personnelles d'un coup (nom d'équipe + membres + code).

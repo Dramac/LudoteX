@@ -1445,6 +1445,96 @@ def test_repret_sur_un_autre_numero_rend_la_consigne_actionnable(client):
     assert "Glissez la pièce d'identité dans la pochette n°1" in r.text
 
 
+# ---------------------------------------------------------------------------
+# Re-prêt : seconde issue « pochette pas vide » (lot 13 pré-production, UX-02)
+# ---------------------------------------------------------------------------
+def _signalements():
+    from app import db
+    conn = db.get_connection()
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT id_exemplaire, id_categorie, texte FROM signalements"
+        )]
+    finally:
+        conn.close()
+
+
+def test_repret_propose_la_seconde_issue_sous_la_verification(client):
+    client.post("/pret/001/preter")
+
+    r = client.post("/pret/001/repreter")
+
+    assert "Vérifiez que la pochette n°1 est bien vide" in r.text
+    assert "Pochette pas vide — prévenir le bureau" in r.text
+    assert 'action="/pret/001/repreter/pochette-non-vide"' in r.text
+
+
+def test_repret_pochette_pas_vide_previent_le_bureau_sans_toucher_au_pret(client):
+    """
+    Le re-prêt est déjà écrit : la seconde issue n'y change rien. Elle crée le
+    signalement rédigé par l'application, et dit quoi faire de la pièce
+    trouvée — la SORTIR de la pochette, puisque celle-ci porte désormais le
+    nouveau prêt.
+    """
+    from app import db, services
+
+    client.post("/pret/001/preter")
+    client.post("/pret/001/repreter")
+    conn = db.get_connection()
+    try:
+        avant = [dict(r) for r in conn.execute("SELECT * FROM prets ORDER BY id_pret")]
+    finally:
+        conn.close()
+
+    r = client.post("/pret/001/repreter/pochette-non-vide", data={"numero": "1"})
+
+    assert r.status_code == 200
+    assert "Le bureau est prévenu" in r.text
+    assert "Sortez la pièce d'identité que vous avez trouvée" in r.text
+    assert "dans la pochette n°1" in r.text
+    assert "Glissez ensuite dans cette pochette" in r.text
+    conn = db.get_connection()
+    try:
+        apres = [dict(r) for r in conn.execute("SELECT * FROM prets ORDER BY id_pret")]
+    finally:
+        conn.close()
+    assert apres == avant
+    assert _signalements() == [{
+        "id_exemplaire": "001", "id_categorie": None,
+        "texte": services.TEXTES_POCHETTE_NON_VIDE[services.GESTE_REPRET],
+    }]
+
+
+def test_repret_pochette_pas_vide_numero_illisible_n_empeche_rien(client):
+    """Le numéro ne sert qu'à l'affichage : forgé, il disparaît de la phrase,
+    et le signalement est quand même créé."""
+    client.post("/pret/001/preter")
+    client.post("/pret/001/repreter")
+
+    r = client.post("/pret/001/repreter/pochette-non-vide", data={"numero": "abc"})
+
+    assert r.status_code == 200
+    assert "Le bureau est prévenu" in r.text
+    assert "pochette n°abc" not in r.text
+    assert len(_signalements()) == 1
+
+
+def test_repret_pochette_pas_vide_exige_le_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-test-secret-32-caracteres")
+    r = client.post("/pret/001/repreter/pochette-non-vide", data={"numero": "1"})
+    assert r.status_code == 403
+    assert _signalements() == []
+
+
+def test_repret_d_une_sortie_tournoi_n_offre_pas_la_seconde_issue(client):
+    """Pas de pochette, donc rien à vérifier : le bouton n'a pas de sens."""
+    client.post("/pret/001/tournoi")
+
+    r = client.post("/pret/001/repreter")
+
+    assert "Pochette pas vide" not in r.text
+
+
 def test_retour_confirme_en_vert(client):
     # M8 : un retour (prêt ou tournoi) est un SUCCÈS, affiché en vert
     # (resultat-ok) comme un prêt -- pas en bleu (resultat-info, réservé aux

@@ -180,16 +180,65 @@ clôturé, mais **aucun numéro n'est libéré** — le numéro 0 est un marqueu
 l'affichage de l'écran et l'appui, le transfert est ordinaire. L'écran reste un
 instantané, seul le POST fait autorité.
 
-**Ce qui n'est PAS fait, et pourquoi.** Aucun motif `oubli` sur les prêts
-clôturés sans scan : leur durée est fausse et pollue les statistiques de durée,
-mais `repreter` porte exactement le même défaut depuis toujours. Corriger d'un
-seul côté rendrait les deux gestes incomparables ; la fiche est ouverte pour
-les deux à la fois (`interne/chantiers.md`, série agora).
+**Le motif `oubli`, posé des deux côtés à la fois** (lot 13 de la série
+pré-production). Le prêt oublié clos par l'escalade, comme l'ancien prêt clos
+par `repreter`, prend `motif = 'oubli'` : leur durée est fausse — elle court
+jusqu'à la découverte de l'oubli. Une seule fonction écrit cette clôture,
+`services._clore_pret_oublie`, appelée par les deux gestes : ils ne peuvent
+plus diverger. Les statistiques comptent ces prêts (ce sont de vrais prêts),
+mais la durée moyenne les ignore, et la liste détaillée comme les exports
+affichent « non scanné » et « inconnue » à la place d'un retour et d'une durée
+inventés. Les sorties tournoi gardent leur motif. Les lignes closes avant ce
+lot gardent `pret` : rien ne permet de les distinguer, aucune migration ne les
+requalifie.
+
+### 6 ter. Seconde issue : « Pochette pas vide — prévenir le bureau »
+
+Lot 13 de la série pré-production, constat UX-02 de l'audit. Le bouton unique
+du §6 bis supposait la pochette vide. Si la bénévole y trouve encore une pièce
+d'identité (visiteur jamais revenu, pochette mal vidée), elle n'avait qu'une
+option : ne pas appuyer — c'est-à-dire retrouver l'impasse que l'escalade
+existe pour lever.
+
+**Deux issues depuis**, sous la même phrase de vérification, et seulement
+quand il y a une pochette à vérifier (pas pour une sortie tournoi) :
+
+- **« Pochette vide, je continue »** — le geste du §6 bis, inchangé ;
+- **« Pochette pas vide — prévenir le bureau »** — `POST
+  /pret/<rendu>/transfert/<nouveau>/pochette-non-vide`, qui **n'écrit aucun
+  transfert** et crée un signalement sur la boîte du prêt oublié.
+
+**Ce que la bénévole fait de la pièce** — le vrai besoin : la **laisser dans sa
+pochette**. C'est sûr précisément parce que rien n'est écrit : le prêt oublié
+reste ouvert, la pochette reste occupée (personne d'autre ne la recevra), et
+« Rendre » sur cette boîte indiquera la pochette à qui viendra chercher la
+pièce — son propriétaire ou le bureau. Le visiteur garde la sienne et l'écran
+de scan, caméra active, attend un autre jeu. Une fois la pochette vidée,
+rescanner la boîte rouvre l'escalade : la première issue reste disponible.
+
+**Le re-prêt porte la même seconde issue**, sous la même phrase, mais avec une
+autre consigne : là, l'ancien prêt est **déjà** clos quand la vérification est
+demandée, la pièce trouvée n'est plus rattachée à rien. Laissée dans le
+casier, elle serait mêlée à celle du nouveau visiteur (même numéro, cas
+fréquent) ou confiée au prochain emprunt. Elle **sort** donc de la pochette,
+pour le bureau. Le bouton ne modifie aucun prêt.
+
+**Le signalement est rédigé par l'application** — un texte constant par geste,
+aucun champ à remplir : rien ne peut y décrire une personne, et la liste des
+« portes » à donnée personnelle (`wiki/Rgpd.md`) ne s'allonge pas. La boîte est
+la ligne elle-même. **Le numéro de pochette n'y figure pas** : un signalement
+n'est jamais purgé, alors que D5 efface ce numéro de toute ligne close ; il n'y
+servirait d'ailleurs à rien (au transfert, « Rendre » l'affiche ; au re-prêt,
+la pièce part au bureau). **Aucune catégorie** n'est visée : elles sont
+administrables, celle qu'on choisirait pourrait être renommée, archivée ou
+supprimée. `id_categorie` est NULL, ce que le schéma prévoit et que chaque
+écran du carnet sait afficher. Le signalement ne peut donc jamais être refusé.
 
 ## 7. Ce que le transfert ne change pas
 
 - **Statistiques** : deux prêts distincts, comptés normalement. La durée du prêt
-  clos est exacte. Aucun filtre à ajouter.
+  clos est exacte. Aucun filtre à ajouter (seul le prêt oublié clos par
+  l'escalade est marqué, §6 bis).
 - **D5** (purge du numéro de pochette sur les lignes closes) : respecté. Le n°7
   disparaît de la ligne close et vit désormais sur la nouvelle.
 - **Un seul jeu par pièce d'identité** : le transfert est 1 pour 1 par

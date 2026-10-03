@@ -31,6 +31,11 @@ from io import BytesIO
 from app.services import (COULEUR_ASSOCIATION_DEFAUT, couleur_texte_sur,
                           nom_association, nuances_theme)
 
+# Prêts clos par un re-prêt ou un transfert sans que leur retour ait été
+# scanné (motif `oubli`, voir app/services.py::MOTIF_OUBLI) : comptés dans les
+# prêts, pas dans la durée moyenne. Même libellé dans les deux exports.
+LIBELLE_OUBLIS = "Retours non scannés (dans les prêts, hors durée moyenne)"
+
 
 def _libelle_metrique(metrique: str) -> str:
     return "par exemplaire" if metrique == "exemplaire" else "par total"
@@ -122,6 +127,7 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
         ("Titres prêtés", g["titres_pretes"]),
         ("Titres au catalogue", g["nb_titres"]),
         ("Durée moyenne de prêt", g.get("duree_moyenne", "—")),
+        (LIBELLE_OUBLIS, g.get("oublis", 0)),
         ("Erreurs de prêt (hors chiffres ci-dessus)", g.get("erreurs", 0)),
     ]
     for i, (lib, val) in enumerate(lignes, start=4):
@@ -250,6 +256,7 @@ def construire_pdf(data: dict, periode_txt: str,
              ["Titres prêtés", str(g["titres_pretes"])],
              ["Titres au catalogue", str(g["nb_titres"])],
              ["Durée moyenne de prêt", g.get("duree_moyenne", "—")],
+             [LIBELLE_OUBLIS, str(g.get("oublis", 0))],
              ["Erreurs de prêt (hors chiffres ci-dessus)",
               str(g.get("erreurs", 0))]],
             [8 * cm, 4 * cm]))

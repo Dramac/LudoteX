@@ -134,7 +134,7 @@ Déclenché par un scan. Le système connaît l'état de l'exemplaire et **pré-
 **Cas — exemplaire SORTI** (ambiguïté possible, choix explicite requis)
 Deux actions présentées, l'action dominante mise en avant :
 - **Rendre** *(action principale)* — « Rendre — libère la pochette n°7 ». Clôt le prêt en cours, libère le numéro.
-- **Le re-prêter** *(action secondaire, cas d'oubli de scan)* — considère le prêt précédent comme rentré (date de retour = maintenant, ancien numéro libéré), puis ouvre un nouveau prêt avec un nouveau numéro de pochette.
+- **Le re-prêter** *(action secondaire, cas d'oubli de scan)* — considère le prêt précédent comme rentré (date de retour = maintenant, ancien numéro libéré, motif `oubli` : voir §7), puis ouvre un nouveau prêt avec un nouveau numéro de pochette. Si la pochette libérée contient encore une pièce d'identité, un bouton prévient le bureau (voir `docs/conception-transfert-pochette.md` §6 ter).
 
 C'est le seul écran où un choix explicite est demandé, et uniquement parce que la réalité physique peut diverger de la base.
 
@@ -167,6 +167,8 @@ Le numéro identifie une **pochette numérotée** (ou un ticket numéroté agraf
 ## 7. Statistiques
 
 Toutes les statistiques s'appuient sur l'historique complet de la table `prets`.
+
+Elles comptent les prêts au public : motif `pret`, et motif `oubli` — un prêt dont le retour n'a pas été scanné, clos plus tard par un re-prêt ou un transfert. Ce dernier est un vrai prêt, mais sa durée est inconnue : il est exclu de la durée moyenne et affiché à part (« retours non scannés »). Les sorties tournoi et les erreurs de prêt (retour en moins d'une minute) sont hors statistiques.
 
 Indicateurs prévus :
 

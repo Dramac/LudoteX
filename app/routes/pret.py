@@ -48,6 +48,9 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
     {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
         rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
     {"type": "signale"}                                    signalement envoyé
+    {"type": "pochette_signalee_repret", "numero": n|None}
+        seconde issue du re-prêt : la pochette vérifiée n'était pas vide, le
+        bureau est prévenu par un signalement (aucun prêt modifié)
     {"type": "signalement_traite",   "categorie": nom|None}  signalement refermé
                                                              depuis la fiche
     {"type": "signalement_traite_echec"}                    rien à refermer
@@ -263,6 +266,13 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
     )
 
 
+def _est_verrou(erreur: sqlite3.OperationalError) -> bool:
+    """Le verrou d'écriture n'a pas été obtenu : rien n'a été écrit (voir
+    `_sans_conflit`). Toute autre `OperationalError` est une vraie panne."""
+    texte = str(erreur).lower()
+    return "lock" in texte or "busy" in texte
+
+
 def _sans_conflit(conn, id_exemplaire: str, ecrire) -> dict:
     """
     Exécute une écriture de prêt en traduisant un conflit d'accès simultané en
@@ -290,7 +300,7 @@ def _sans_conflit(conn, id_exemplaire: str, ecrire) -> dict:
     try:
         return ecrire()
     except sqlite3.OperationalError as erreur:
-        if "lock" not in str(erreur).lower() and "busy" not in str(erreur).lower():
+        if not _est_verrou(erreur):
             raise
         return {"type": "occupe"}
     except sqlite3.IntegrityError:
@@ -436,6 +446,44 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
         conn.close()
     _journaliser_pret(request, "re_pret", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
+
+
+@router.post("/{id_exemplaire}/repreter/pochette-non-vide")
+def repreter_pochette_non_vide(request: Request, id_exemplaire: str,
+                               numero: str = Form(""), _=Depends(exiger_jeton)):
+    """
+    Seconde issue du re-prêt (constat UX-02) : la pochette qu'on vient de dire
+    à vérifier n'est PAS vide. Crée le signalement « pochette pas vide » sur la
+    boîte, et ne touche à aucun prêt — le re-prêt est déjà écrit, et c'est
+    justement pourquoi la consigne diffère de celle du transfert : la pièce
+    trouvée n'est plus rattachée à aucun prêt ouvert, elle doit SORTIR de la
+    pochette pour aller au bureau (voir `pret.html`, résultat
+    `pochette_signalee_repret`).
+
+    `numero` est la pochette vérifiée, renvoyée par le bouton pour que l'écran
+    puisse la nommer. Il ne sert QU'À L'AFFICHAGE — il n'est ni écrit en base
+    ni journalisé — et une valeur non entière l'efface simplement de la
+    phrase, sans jamais refuser le signalement.
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return _rendu(request, id_exemplaire)
+        try:
+            services.signaler_pochette_non_vide(conn, id_exemplaire,
+                                                services.GESTE_REPRET)
+        except sqlite3.OperationalError as erreur:
+            if not _est_verrou(erreur):
+                raise
+            return _rendu(request, id_exemplaire, {"type": "occupe"})
+    finally:
+        conn.close()
+    _journaliser_signalement(request, info, services.LIBELLE_POCHETTE_NON_VIDE)
+    numero = numero.strip()
+    return _rendu(request, id_exemplaire,
+                  {"type": "pochette_signalee_repret",
+                   "numero": int(numero) if numero.isdigit() else None})
 
 
 # ===========================================================================
@@ -742,6 +790,64 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
     )
 
 
+@router.post("/{id_rendu}/transfert/{id_nouveau}/pochette-non-vide")
+def transfert_pochette_non_vide(request: Request, id_rendu: str, id_nouveau: str,
+                                _=Depends(exiger_jeton)):
+    """
+    Seconde issue de l'escalade (constat UX-02) : la pochette du prêt oublié
+    n'est PAS vide. N'écrit AUCUN transfert ; crée le signalement « pochette
+    pas vide » sur la boîte qu'on voulait emporter.
+
+    La consigne qui suit — laisser la pièce d'identité dans sa pochette — tient
+    à ce que rien n'est écrit : le prêt oublié reste OUVERT, donc la pochette
+    reste occupée (personne d'autre ne la recevra) et « Rendre » sur cette
+    boîte l'indiquera à qui viendra chercher la pièce, propriétaire ou bureau.
+    Clôturer ici, ce serait libérer un casier qui contient une pièce
+    d'identité : exactement ce que l'escalade risquait.
+
+    Rien n'est bloqué : on revient sur l'écran de scan, pochette du visiteur
+    inchangée, caméra active pour un autre jeu, et « Annuler » mène toujours
+    au retour classique. Si la boîte a été rendue entre-temps (la pochette a
+    donc été vidée par celui qui l'a rendue), aucun signalement n'est créé et
+    l'écran de confirmation se rouvre, désormais sans escalade.
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_rendu)
+        if info is None:
+            return _rendu(request, id_rendu)
+        nouvelle_info = services.info_exemplaire(conn, id_nouveau)
+        if nouvelle_info is None:
+            return _rendu(request, id_nouveau)
+        try:
+            cree = services.signaler_pochette_non_vide(conn, id_nouveau,
+                                                       services.GESTE_TRANSFERT)
+        except sqlite3.OperationalError as erreur:
+            # Même lecture que `_sans_conflit` : un verrou non obtenu n'a rien
+            # écrit, le bénévole peut réappuyer.
+            if not _est_verrou(erreur):
+                raise
+            return _rendu(request, id_rendu, {"type": "occupe"})
+        if not cree:
+            return RedirectResponse(f"/pret/{id_rendu}/transfert/{id_nouveau}",
+                                    status_code=303)
+        numero, refus = _transfert_ou_refus(conn, id_rendu)
+        oubli = services.pret_en_cours(conn, id_nouveau)
+    finally:
+        conn.close()
+    _journaliser_signalement(request, nouvelle_info,
+                             services.LIBELLE_POCHETTE_NON_VIDE)
+    if refus:
+        return _rendu(request, id_rendu, refus)
+    return templates.TemplateResponse(
+        request, "transfert_scan.html",
+        _contexte_transfert(
+            request, id_rendu, info, numero,
+            pochette_signalee={"nom": nouvelle_info["nom"],
+                               "numero": oubli["numero_pochette"] if oubli else None}),
+    )
+
+
 # ===========================================================================
 # CARNET DE MAINTENANCE (docs/conception-signalements.md)
 # ===========================================================================
@@ -838,7 +944,14 @@ async def signaler_confirmer(request: Request, id_exemplaire: str,
     )
 
 
-@router.post("/{id_exemplaire}/signalements/{id_signalement}/traiter")
+# Convertisseur `:int` dans le CHEMIN, comme la route jumelle du carnet
+# (routes/maintenance.py) : un identifiant non entier ne correspond alors à
+# aucune route et tombe sur la page 404 conviviale. Avec la seule annotation
+# `int`, FastAPI routait PUIS échouait à convertir, et répondait un 422 en
+# JSON nu (constat UX-01). Le gestionnaire de `RequestValidationError` de
+# main.py rattraperait désormais ce cas, mais « adresse inconnue » est la
+# réponse juste : un signalement « abc » n'existe pas.
+@router.post("/{id_exemplaire}/signalements/{id_signalement:int}/traiter")
 def signalement_traiter(request: Request, id_exemplaire: str, id_signalement: int,
                         _=Depends(exiger_jeton)):
     """

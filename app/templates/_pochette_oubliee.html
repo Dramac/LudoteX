@@ -9,7 +9,8 @@
    macros plutôt que trois rédactions parallèles qui divergeront.
 
    Import dans un gabarit :
-       from "_pochette_oubliee.html" import verifier_pochette, escalade_oubli
+       from "_pochette_oubliee.html" import verifier_pochette, escalade_oubli,
+                                            pochette_pas_vide
    Aucun accès au contexte : tout passe par les paramètres. #}
 
 {# La phrase qui compte : le geste physique, et le numéro nommé. Volontairement
@@ -18,9 +19,31 @@
 <strong>Vérifiez que la pochette n°{{ numero }} est bien vide</strong>
 {%- endmacro %}
 
-{# Le bloc d'escalade du transfert : l'avertissement, puis LE bouton (un seul,
-   arbitré avec Simon). Affiché sur l'écran de confirmation AVANT le refus, et
-   sur l'écran de scan APRÈS lui — même texte, même action, même URL.
+{# La seconde issue, commune à l'escalade et au re-prêt (constat UX-02) : la
+   pochette qu'on vient de dire à vérifier n'est PAS vide. Le bouton ne
+   demande rien à taper — le signalement qu'il crée est rédigé par
+   l'application (services.TEXTES_POCHETTE_NON_VIDE), et aucun champ libre ne
+   vient ouvrir une porte à donnée personnelle. `numero` n'est transmis que
+   pour l'affichage de l'écran suivant (re-prêt) ; None au transfert, où la
+   route le relit en base. `sous` dit, sous le libellé, ce que le bouton
+   laisse en l'état — ce n'est pas la même chose aux deux endroits. #}
+{% macro pochette_pas_vide(action, sous, numero=None) -%}
+<form method="post" action="{{ action }}">
+  {% if numero %}<input type="hidden" name="numero" value="{{ numero }}">{% endif %}
+  <button class="bouton bouton-secondaire" type="submit">
+    Pochette pas vide — prévenir le bureau
+    <span class="bouton-sous">{{ sous }}</span>
+  </button>
+</form>
+{%- endmacro %}
+
+{# Le bloc d'escalade du transfert : l'avertissement, puis DEUX issues quand
+   il y a une pochette à vérifier — « Pochette vide, je continue » (clôture
+   du prêt oublié, puis transfert) et « Pochette pas vide — prévenir le
+   bureau » (aucun transfert, un signalement). Une seule pour une sortie
+   tournoi, qui n'a pas de pochette. Affiché sur l'écran de confirmation AVANT
+   le refus, et sur l'écran de scan APRÈS lui — même texte, mêmes actions,
+   mêmes URL.
 
    `escalade` vient de routes/pret.py::_escalade : {id_nouveau, nom, numero}.
    `escalade.numero` vaut 0 pour une sortie tournoi : il n'y a alors aucun
@@ -43,9 +66,13 @@
   <form method="post" action="/pret/{{ id_rendu }}/transfert/{{ escalade.id_nouveau }}">
     <input type="hidden" name="clore_oubli" value="1">
     <button class="bouton bouton-secondaire" type="submit">
-      Clôturer {% if escalade.numero %}le prêt oublié{% else %}la sortie oubliée{% endif %} et transférer
+      {% if escalade.numero %}Pochette vide, je continue{% else %}Clôturer la sortie oubliée et transférer{% endif %}
       <span class="bouton-sous">{{ escalade.nom }} repart avec la pochette n°{{ numero_conserve }}</span>
     </button>
   </form>
+  {% if escalade.numero %}
+    {{ pochette_pas_vide("/pret/" ~ id_rendu ~ "/transfert/" ~ escalade.id_nouveau ~ "/pochette-non-vide",
+                         "rien n'est transféré, la pièce reste en place") }}
+  {% endif %}
 </div>
 {%- endmacro %}

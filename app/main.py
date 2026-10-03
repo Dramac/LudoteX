@@ -34,6 +34,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -142,6 +143,17 @@ _MESSAGES_HTTP = {
         "moment. Repartez d'un des liens ci-dessous, puis refaites le geste "
         "depuis la page.",
     ),
+    # Valeur que FastAPI n'a pas pu convertir (`RequestValidationError`, voir
+    # `gestion_validation`) : un numéro de page « abc » dans une adresse, un
+    # champ numérique vide dans un formulaire envoyé à la main. Aucun bouton
+    # de l'application ne le produit ; un lien tronqué ou retouché, si.
+    422: (
+        "Cette demande contient une valeur inattendue",
+        "Un élément de l'adresse ou du formulaire n'a pas la forme attendue — "
+        "souvent un lien coupé ou recopié à la main. Rien n'a été enregistré. "
+        "Repartez d'un des liens ci-dessous, puis refaites le geste depuis la "
+        "page.",
+    ),
 }
 
 _MESSAGE_HTTP_DEFAUT = (
@@ -203,7 +215,8 @@ async def gestion_http(request, exc: StarletteHTTPException):
       RETOURNENT leur propre gabarit avec `status_code=404` au lieu de lever ;
     - le module désactivé, qui a son propre gestionnaire (`ModuleDesactive`) ;
     - les erreurs de validation de FastAPI (`RequestValidationError`), qui ne
-      sont pas des `HTTPException`.
+      sont pas des `HTTPException` : elles ont leur gestionnaire,
+      `gestion_validation`, juste en dessous.
     """
     if exc.status_code == 403:
         return templates.TemplateResponse(
@@ -217,6 +230,34 @@ async def gestion_http(request, exc: StarletteHTTPException):
     return templates.TemplateResponse(
         request, "probleme.html",
         {"titre": titre, "message": message}, status_code=exc.status_code,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def gestion_validation(request, exc: RequestValidationError):
+    """
+    Erreur de VALIDATION de FastAPI → page générique, plus jamais de JSON nu
+    (constat UX-01 de l'audit pré-production, même famille que ROB-04).
+
+    FastAPI route d'abord, puis convertit les paramètres déclarés : une valeur
+    qui ne se convertit pas (`?page=abc`, champ `int` d'un formulaire vide)
+    lève `RequestValidationError`, qui n'est PAS une `HTTPException` et
+    échappait donc à `gestion_http`. Le constat visait une seule route ;
+    l'inventaire de toutes les routes en a trouvé d'autres, en requête et en
+    formulaire (écrans du bureau : rangement, étiquettes, planning), d'où un
+    gestionnaire plutôt qu'un correctif route par route — un paramètre typé
+    ajouté demain serait couvert sans y penser. Un test parcourt les routes
+    pour que les paramètres de CHEMIN, eux, gardent leur convertisseur
+    (`{x:int}`), qui donne la réponse juste : 404, « adresse inconnue ».
+
+    Le code 422 est conservé, comme `gestion_http` conserve le sien. Le détail
+    de l'erreur n'est ni affiché ni journalisé : il peut recopier la valeur
+    envoyée, et une valeur de formulaire n'a rien à faire dans un journal.
+    """
+    titre, message = _MESSAGES_HTTP[422]
+    return templates.TemplateResponse(
+        request, "probleme.html",
+        {"titre": titre, "message": message}, status_code=422,
     )
 
 

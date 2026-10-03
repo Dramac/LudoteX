@@ -164,13 +164,18 @@ CREATE TABLE IF NOT EXISTS signalements (
 # Un exemplaire est SORTI s'il possède une ligne avec date_retour NULL,
 # DISPONIBLE sinon (état déduit, pas stocké).
 #
-# motif — trois valeurs. 'pret' est la seule que les statistiques comptent ;
-# 'tournoi' marque une sortie pour un tournoi (numéro de pochette 0) ; 'erreur'
-# marque un prêt rendu en moins d'une minute, donc une mauvaise boîte scannée
-# ou un visiteur qui se ravise (services._marquer_erreur_si_immediat). Cette
-# dernière valeur est posée À LA CLÔTURE, jamais à la création : c'est la durée
-# qui la révèle. Aucune migration n'a été nécessaire — la colonne existait déjà
-# et son domaine n'est pas contraint en base.
+# motif — quatre valeurs. 'pret' est un prêt au public ; 'tournoi' marque une
+# sortie pour un tournoi (numéro de pochette 0) ; 'erreur' marque un prêt rendu
+# en moins d'une minute, donc une mauvaise boîte scannée ou un visiteur qui se
+# ravise (services._marquer_erreur_si_immediat) ; 'oubli' un prêt au public
+# jamais scanné en retour, clos plus tard par un re-prêt ou par l'escalade du
+# transfert (services._clore_pret_oublie, seul point d'écriture).
+# Les statistiques comptent 'pret' et 'oubli' (services.MOTIFS_COMPTES), mais
+# la durée moyenne ne lit que 'pret' : la durée d'un 'oubli' court jusqu'à la
+# découverte de l'oubli. 'erreur' et 'oubli' sont posés À LA CLÔTURE, jamais à
+# la création. Aucune migration n'a été nécessaire pour l'un ni pour l'autre —
+# la colonne existait déjà et son domaine n'est pas contraint en base ; les
+# lignes closes avant leur apparition gardent 'pret'.
 #
 # numero_pochette — DÉCISION Simon du 2026-07-18 (révoque le choix initial,
 # qui le conservait après retour comme trace historique) : ce numéro désigne
@@ -204,7 +209,7 @@ CREATE TABLE IF NOT EXISTS prets (
     numero_pochette  INTEGER,                     -- numéro attribué ; NULL = prêt clos (effacé), 0 = sortie tournoi en cours
     date_sortie      TEXT NOT NULL,               -- horodatage ISO 8601 (UTC)
     date_retour      TEXT,                        -- NULL tant que l'exemplaire est sorti
-    motif            TEXT NOT NULL DEFAULT 'pret', -- 'pret' (au public), 'tournoi' (sortie tournoi) ou 'erreur' (retour immédiat, hors statistiques)
+    motif            TEXT NOT NULL DEFAULT 'pret', -- 'pret' (au public), 'tournoi' (sortie tournoi), 'erreur' (retour immédiat, hors statistiques) ou 'oubli' (retour non scanné, durée inconnue)
     FOREIGN KEY (id_exemplaire) REFERENCES exemplaires (id_exemplaire)
 );
 """

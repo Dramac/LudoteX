@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_pochette_oubliee.html" import verifier_pochette %}
+{% from "_pochette_oubliee.html" import verifier_pochette, pochette_pas_vide %}
 {% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
@@ -126,6 +126,35 @@
             Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
           {% else %}
             Glissez la pièce d'identité dans la pochette n°{{ resultat.nouveau }}.
+          {% endif %}
+        </p>
+        {# Seconde issue (constat UX-02), sous la même phrase de vérification
+           que l'escalade du transfert : la pochette vérifiée n'est pas vide.
+           Le re-prêt est DÉJÀ écrit — ce bouton n'y change rien, il prévient
+           le bureau. Absent pour une sortie tournoi (`ancien` vaut 0). #}
+        {% if resultat.ancien %}
+          {{ pochette_pas_vide("/pret/" ~ info.id_exemplaire ~ "/repreter/pochette-non-vide",
+                               "le nouveau prêt reste enregistré", resultat.ancien) }}
+        {% endif %}
+      </section>
+    {% elif resultat.type == "pochette_signalee_repret" %}
+      {# Après la seconde issue du re-prêt. La consigne n'est PAS celle du
+         transfert (« laissez-la ») : ici l'ancien prêt est clos, la pièce
+         trouvée n'est plus rattachée à rien — laissée dans le casier, elle
+         serait mêlée à celle du visiteur, ou confiée au prochain emprunt.
+         Elle sort donc de la pochette, pour le bureau. #}
+      <section class="resultat resultat-attention" role="status">
+        <p><strong>Le bureau est prévenu.</strong></p>
+        <p class="resultat-consigne">
+          <strong>Sortez la pièce d'identité que vous avez trouvée{% if resultat.numero %}
+          dans la pochette n°{{ resultat.numero }}{% endif %}</strong> et
+          remettez-la au bureau.
+          {% if pret_actuel and pret_actuel.numero_pochette %}
+            {% if pret_actuel.numero_pochette == resultat.numero %}
+              Glissez ensuite dans cette pochette la pièce d'identité du visiteur.
+            {% else %}
+              La pièce d'identité du visiteur va dans la pochette n°{{ pret_actuel.numero_pochette }}.
+            {% endif %}
           {% endif %}
         </p>
       </section>

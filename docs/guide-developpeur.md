@@ -120,6 +120,11 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   `routes/catalogue.py`.
 - **Protéger une nouvelle route bénévole** : ajouter
   `_=Depends(exiger_jeton)` à la signature.
+- **Paramètre de chemin numérique** : le déclarer avec son convertisseur,
+  `/{id_x:int}`, et pas seulement par l'annotation `int`. Sans convertisseur,
+  une valeur non entière est routée puis refusée en 422 ; avec, elle ne
+  correspond à aucune route et tombe sur la 404 conviviale.
+  `tests/test_validation_page.py` parcourt toutes les routes et le vérifie.
 - **Module « prêts longue durée »** (comptes, e-mails) : chantier non encore
   spécifié publiquement (cloisonnement + RGPD à traiter comme pour le planning).
 
@@ -134,6 +139,15 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
 - Horodatages **UTC** en base ; conversion en heure locale à l'affichage si
   besoin.
 - Limiteur de débit **en mémoire** : valable pour un seul worker uvicorn.
+- **Une erreur de validation n'est pas une `HTTPException`.** Un paramètre de
+  requête ou de formulaire qui ne se convertit pas (`?page=abc`) lève
+  `RequestValidationError` ; `app/main.py::gestion_validation` la rend en page
+  générique (code 422 conservé), jamais en JSON. Le détail de l'erreur n'est
+  ni affiché ni journalisé : il recopie la valeur envoyée.
+- **Statistiques : `motif IN MOTIFS_COMPTES`, pas `motif = 'pret'`.** Un prêt
+  au public clos sans retour scanné porte le motif `oubli` : il compte dans les
+  totaux, pas dans la durée moyenne (`app/services.py`, `MOTIF_OUBLI`). Une
+  nouvelle requête de statistiques qui filtrerait `= 'pret'` en perdrait.
 - **Un `Depends` ne passe pas avant le corps d'un formulaire.** FastAPI lit
   et analyse un envoi multipart (`UploadFile = File(...)`) **avant** de
   résoudre la moindre dépendance : une garde en `Depends` ou en tête de

@@ -3,7 +3,7 @@
 
 {# Page d'erreur HTTP GÉNÉRIQUE : tout code qui n'a pas de gabarit dédié
    (403 → acces_refuse.html, 404 → introuvable.html, 500 → erreur.html).
-   Le cas réellement atteignable est le 405 — voir _MESSAGES_HTTP dans
+   Les cas atteignables sont le 405 et le 422 — voir _MESSAGES_HTTP dans
    app/main.py, qui fournit `titre` et `message`. #}
 {% block contenu %}
 <section class="carte">

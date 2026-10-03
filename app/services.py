@@ -140,6 +140,19 @@ def pluriel(n: int, singulier: str, pluriel: str) -> str:
 # minute, un retour rapide reste un vrai prêt (un jeu essayé sur place).
 SEUIL_ERREUR_PRET_S = 60
 
+# Un prêt jamais scanné en retour, clos plus tard par un re-prêt ou par
+# l'escalade du transfert, prend `motif = 'oubli'` (voir `_clore_pret_oublie`).
+# Ce n'est PAS une erreur : la boîte est bien sortie chez un visiteur, le prêt
+# compte donc dans les totaux, les palmarès et l'histogramme. Seule sa DURÉE
+# est fausse — elle court jusqu'au moment où quelqu'un s'aperçoit de l'oubli,
+# parfois des heures plus tard —, d'où son exclusion de la durée moyenne et un
+# « durée inconnue » dans la liste détaillée.
+MOTIF_OUBLI = "oubli"
+# Motifs des prêts AU PUBLIC, ceux que les statistiques comptent. `tournoi` et
+# `erreur` n'en font pas partie ; la durée moyenne, elle, ne lit que `pret`.
+MOTIFS_COMPTES = ("pret", MOTIF_OUBLI)
+_SQL_MOTIFS_COMPTES = "IN (" + ", ".join(f"'{m}'" for m in MOTIFS_COMPTES) + ")"
+
 
 def _duree_secondes(sortie_iso: str, retour_iso: str | None) -> float:
     """Durée d'un prêt en secondes (jusqu'à `retour_iso`, ou jusqu'à maintenant)."""
@@ -581,24 +594,28 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
 
     Returns:
-        dict avec total_prets, en_cours, titres_pretes, nb_titres, erreurs.
+        dict avec total_prets, en_cours, titres_pretes, nb_titres,
+        duree_moyenne, erreurs, oublis.
     """
     # Les sorties « tournoi » et les erreurs de prêt (retour immédiat, voir
     # `_marquer_erreur_si_immediat`) sont exclues de toutes les statistiques :
-    # le filtre `motif = 'pret'` ci-dessous s'en charge partout.
+    # le filtre `motif IN MOTIFS_COMPTES` ci-dessous s'en charge partout. Les
+    # prêts dont le retour n'a pas été scanné (`oubli`) y entrent : ce sont de
+    # vrais prêts, seule leur durée est inconnue (voir `MOTIF_OUBLI`).
     f, params = _filtre_periode("date_sortie", debut, fin)
     total_prets = conn.execute(
-        f"SELECT COUNT(*) FROM prets WHERE motif = 'pret'{f}", params
+        f"SELECT COUNT(*) FROM prets WHERE motif {_SQL_MOTIFS_COMPTES}{f}", params
     ).fetchone()[0]
     en_cours = conn.execute(
-        f"SELECT COUNT(*) FROM prets WHERE date_retour IS NULL AND motif = 'pret'{f}",
+        f"SELECT COUNT(*) FROM prets WHERE date_retour IS NULL "
+        f"AND motif {_SQL_MOTIFS_COMPTES}{f}",
         params,
     ).fetchone()[0]
     titres_pretes = conn.execute(
         f"""
         SELECT COUNT(DISTINCT e.reference_titre)
         FROM prets p JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
-        WHERE p.motif = 'pret'{f}
+        WHERE p.motif {_SQL_MOTIFS_COMPTES}{f}
         """,
         params,
     ).fetchone()[0]
@@ -607,7 +624,14 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
     erreurs = conn.execute(
         f"SELECT COUNT(*) FROM prets WHERE motif = 'erreur'{f}", params
     ).fetchone()[0]
-    # Durée moyenne, sur les prêts TERMINÉS uniquement (hors tournoi, période incluse).
+    # Retours non scannés : comptés dans les prêts ci-dessus, mais affichés à
+    # part pour dire pourquoi la durée moyenne les ignore.
+    oublis = conn.execute(
+        f"SELECT COUNT(*) FROM prets WHERE motif = '{MOTIF_OUBLI}'{f}", params
+    ).fetchone()[0]
+    # Durée moyenne, sur les prêts TERMINÉS uniquement (hors tournoi, période
+    # incluse). `motif = 'pret'` et non `MOTIFS_COMPTES` : la durée d'un
+    # `oubli` court jusqu'à la découverte de l'oubli, elle fausserait tout.
     moyenne = conn.execute(
         f"""
         SELECT AVG((julianday(date_retour) - julianday(date_sortie)) * 86400)
@@ -623,6 +647,7 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         "nb_titres": nb_titres,
         "duree_moyenne": format_duree(moyenne) if moyenne is not None else "—",
         "erreurs": erreurs,
+        "oublis": oublis,
     }
 
 
@@ -668,7 +693,7 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
         LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
-                          AND p.motif = 'pret'{f}
+                          AND p.motif {_SQL_MOTIFS_COMPTES}{f}
         GROUP BY t.reference_titre, t.nom
         ORDER BY {cle} {direction}, t.nom COLLATE NOCASE
         LIMIT ?
@@ -697,7 +722,7 @@ def prets_par_heure(conn: sqlite3.Connection, debut: str | None = None,
     """
     f, params = _filtre_periode("date_sortie", debut, fin)
     rows = conn.execute(
-        f"SELECT date_sortie FROM prets WHERE motif = 'pret'{f}",
+        f"SELECT date_sortie FROM prets WHERE motif {_SQL_MOTIFS_COMPTES}{f}",
         params,
     ).fetchall()
 
@@ -720,6 +745,11 @@ def prets_par_heure(conn: sqlite3.Connection, debut: str | None = None,
     return resultat
 
 
+# Libellés de la liste détaillée pour un prêt `oubli` — écran ET exports.
+RETOUR_NON_SCANNE = "non scanné"
+DUREE_INCONNUE = "inconnue"
+
+
 def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
                          fin: str | None = None, limite: int | None = None) -> list[dict]:
     """
@@ -731,20 +761,26 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
         debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
         limite: nombre maximal de lignes (None = toutes — utile pour l'export).
 
+    Un prêt dont le retour n'a pas été scanné (`MOTIF_OUBLI`) figure dans la
+    liste — c'est un vrai prêt —, mais sa date de retour est celle où l'oubli
+    a été découvert : elle est remplacée par « non scanné », et sa durée par
+    « inconnue ». Les exports lisent ces mêmes champs.
+
     Returns:
         Liste de dicts {date_sortie, date_retour, numero_pochette,
-        id_exemplaire, nom, sortie_locale, retour_local}. Les champs *_locale
-        sont préformatés en heure locale pour l'affichage et les exports.
+        id_exemplaire, nom, motif, sortie_locale, retour_local, duree_txt}.
+        Les champs *_locale sont préformatés en heure locale pour l'affichage
+        et les exports.
     """
     f, params = _filtre_periode("p.date_sortie", debut, fin)
     sql = (
         f"""
-        SELECT p.date_sortie, p.date_retour, p.numero_pochette,
+        SELECT p.date_sortie, p.date_retour, p.numero_pochette, p.motif,
                e.id_exemplaire, t.nom
         FROM prets p
         JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
         JOIN titres t ON t.reference_titre = e.reference_titre
-        WHERE p.motif = 'pret'{f}
+        WHERE p.motif {_SQL_MOTIFS_COMPTES}{f}
         ORDER BY p.date_sortie DESC
         """
     )
@@ -755,6 +791,11 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
     for r in conn.execute(sql, params):
         d = dict(r)
         d["sortie_locale"] = format_local(d["date_sortie"])
+        if d["motif"] == MOTIF_OUBLI:
+            d["retour_local"] = RETOUR_NON_SCANNE
+            d["duree_txt"] = DUREE_INCONNUE
+            out.append(d)
+            continue
         d["retour_local"] = format_local(d["date_retour"]) if d["date_retour"] else ""
         secs = _duree_secondes(d["date_sortie"], d["date_retour"])
         # Prêt clos : durée fixe ; prêt en cours : « depuis X ».
@@ -1440,13 +1481,16 @@ def _clore_pret_oublie(conn: sqlite3.Connection, oublie: dict | sqlite3.Row) -> 
     fantôme reste ouvert, la boîte est inempruntable — c'est l'impasse que
     l'escalade du transfert lève (voir `transferer_pochette`).
 
-    LA LIGNE N'EST PAS REQUALIFIÉE. Sa durée est fausse (elle court jusqu'au
-    moment où quelqu'un s'en aperçoit) et pollue les statistiques de durée,
-    mais `repreter` a exactement le même défaut depuis toujours : le corriger
-    ici seulement rendrait les deux gestes incomparables. Un motif dédié est à
-    poser des DEUX côtés à la fois, dans un lot ultérieur (registre
-    `interne/chantiers.md`, série agora). `_marquer_erreur_si_immediat` n'est
-    pas non plus appelée : un prêt oublié n'est pas un prêt d'une minute.
+    DEUX APPELANTS, UNE SEULE CLÔTURE : l'escalade du transfert
+    (`transferer_pochette`) et le re-prêt (`repreter`). C'est ici, et nulle
+    part ailleurs, que la ligne prend `motif = MOTIF_OUBLI` : sa durée est
+    fausse (elle court jusqu'au moment où quelqu'un s'en aperçoit), et un motif
+    posé d'un seul côté rendrait les deux gestes incomparables dans les
+    statistiques (fiche ouverte au lot agora-1, close au lot 13 de la série
+    pré-production). Les sorties tournoi gardent leur motif, déjà hors
+    statistiques et porteur d'une information qu'« oubli » effacerait — même
+    règle que `_marquer_erreur_si_immediat`, qui n'est pas appelée : un prêt
+    oublié n'est pas un prêt d'une minute.
 
     Args:
         conn: connexion SQLite ouverte, déjà en transaction.
@@ -1460,8 +1504,10 @@ def _clore_pret_oublie(conn: sqlite3.Connection, oublie: dict | sqlite3.Row) -> 
     """
     numero = oublie["numero_pochette"]               # lu AVANT effacement (D5)
     conn.execute(
-        "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
-        (maintenant(), oublie["id_pret"]),
+        "UPDATE prets SET date_retour = ?, "
+        "motif = CASE motif WHEN 'pret' THEN ? ELSE motif END "
+        "WHERE id_pret = ?",
+        (maintenant(), MOTIF_OUBLI, oublie["id_pret"]),
     )
     _effacer_pochette(conn, oublie["id_pret"])
     if oublie["motif"] != "pret" or not numero:
@@ -1483,6 +1529,9 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         conn: connexion SQLite ouverte.
         id_exemplaire: identifiant de la boîte.
 
+    L'ancien prêt est clos par `_clore_pret_oublie`, comme celui que lève
+    l'escalade du transfert : il prend donc `motif = MOTIF_OUBLI`.
+
     Returns:
         {"ancien_numero": a, "nouveau_numero": n} dans le cas nominal ; ou
         {"nouveau_numero": n, "etait_disponible": True} si l'exemplaire était en
@@ -1499,16 +1548,12 @@ def repreter(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
             # Incohérence bénigne : rien à clore, on ouvre simplement un prêt.
             return {"nouveau_numero": preter(conn, id_exemplaire),
                     "etait_disponible": True}
-        # Clôture de l'ancien prêt + libération de son numéro...
+        # Clôture de l'ancien prêt — motif `oubli`, numéro effacé et libéré —
+        # par la MÊME fonction que l'escalade du transfert : les deux gestes
+        # ne peuvent plus diverger. Le NOUVEAU prêt ouvert juste après garde
+        # son numéro, évidemment (c'est lui qui est en cours).
         ancien = courant["numero_pochette"]          # lu AVANT effacement
-        conn.execute(
-            "UPDATE prets SET date_retour = ? WHERE id_pret = ?",
-            (maintenant(), courant["id_pret"]),
-        )
-        # ... dont on efface le numéro : il est clos. Le NOUVEAU prêt ouvert
-        # juste après garde le sien, évidemment (c'est lui qui est en cours).
-        _effacer_pochette(conn, courant["id_pret"])
-        liberer_numero(conn, ancien)
+        _clore_pret_oublie(conn, courant)
         # ... puis ouverture d'un nouveau prêt.
         nouveau = preter(conn, id_exemplaire)
     return {"ancien_numero": ancien, "nouveau_numero": nouveau}
@@ -3870,6 +3915,88 @@ def creer_signalement(
     )
     conn.commit()
     return curseur.lastrowid
+
+
+# ---------------------------------------------------------------------------
+# Signalement « pochette pas vide » — le SEUL signalement que l'application
+# rédige elle-même (lot 13 de la série pré-production, constat UX-02).
+#
+# Le cas : un prêt oublié (retour jamais scanné) est sur le point d'être clos
+# par l'escalade du transfert, ou vient de l'être par un re-prêt, et la
+# bénévole trouve ENCORE une pièce d'identité dans la pochette annoncée vide.
+# Elle le dit d'un tap ; le bureau le lit dans le carnet et sur la fiche.
+#
+# AUCUNE DONNÉE PERSONNELLE, PAR CONSTRUCTION. Le texte est une constante
+# choisie par le geste, jamais une saisie : la bénévole ne tape rien, donc
+# rien ne peut décrire la personne. La boîte est la ligne elle-même
+# (`id_exemplaire`). Le NUMÉRO DE POCHETTE n'y est délibérément pas écrit,
+# contrairement à ce que demandait le prompt du lot : un signalement n'est
+# jamais purgé, et la décision D5 efface ce numéro de toute ligne close parce
+# qu'il désigne le casier d'une pièce d'identité. Il n'y servirait d'ailleurs
+# à rien — au transfert, le prêt reste ouvert et « Rendre » l'affiche ; au
+# re-prêt, la pièce quitte la pochette pour le bureau.
+#
+# AUCUNE CATÉGORIE (`id_categorie` NULL). Les catégories sont administrables :
+# celle qu'on viserait peut être renommée, archivée ou supprimée, et un nom
+# recherché en base casserait au premier renommage. NULL est prévu par le
+# schéma, et chaque écran qui liste les signalements sait l'afficher
+# (« Signalement », colonne vide). Le signalement ne dépend donc d'aucun réglage
+# et ne peut jamais être refusé.
+# ---------------------------------------------------------------------------
+GESTE_TRANSFERT = "transfert"
+GESTE_REPRET = "repret"
+TEXTES_POCHETTE_NON_VIDE = {
+    GESTE_TRANSFERT: (
+        "Pochette pas vide : la boîte est revenue sans que son retour soit "
+        "scanné, mais une pièce d'identité est encore dans la pochette de ce "
+        "prêt. Elle y reste : « Rendre » sur cette boîte indique la pochette "
+        "où la récupérer."
+    ),
+    GESTE_REPRET: (
+        "Pochette pas vide : au re-prêt de cette boîte, une pièce d'identité "
+        "était encore dans la pochette de l'ancien prêt. Elle doit être remise "
+        "au bureau."
+    ),
+}
+# Ce que le journal d'activité porte en guise de catégorie (`objet`).
+LIBELLE_POCHETTE_NON_VIDE = "pièce d'identité trouvée"
+
+
+def signaler_pochette_non_vide(conn: sqlite3.Connection, id_exemplaire: str,
+                               geste: str) -> bool:
+    """
+    Enregistre le signalement « pochette pas vide » sur une boîte (voir le
+    bloc ci-dessus). N'écrit RIEN dans `prets` ni dans `pochettes`.
+
+    Au TRANSFERT, le signalement n'a de sens que si la boîte est toujours
+    tenue par un prêt au public : revenue entre-temps (un autre bénévole a
+    fait « Rendre », et donc vidé la pochette) ou sortie tournoi (pas de
+    pochette), il n'y a plus rien à signaler. Contrôle et écriture tiennent
+    dans une seule transaction, patron des écritures de prêt. Au RE-PRÊT,
+    l'ancien prêt est déjà clos : rien à contrôler.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        id_exemplaire: la boîte du prêt oublié (celle qu'on veut emporter au
+            transfert, celle qu'on vient de re-prêter).
+        geste: `GESTE_TRANSFERT` ou `GESTE_REPRET` ; choisit le texte.
+
+    Returns:
+        True si le signalement a été créé.
+    """
+    texte = TEXTES_POCHETTE_NON_VIDE[geste]
+    with transaction(conn):
+        if geste == GESTE_TRANSFERT:
+            courant = pret_en_cours(conn, id_exemplaire)
+            if (courant is None or courant["motif"] != "pret"
+                    or not courant["numero_pochette"]):
+                return False
+        conn.execute(
+            "INSERT INTO signalements (id_exemplaire, id_categorie, texte, cree_le) "
+            "VALUES (?, NULL, ?, ?)",
+            (id_exemplaire, texte, maintenant()),
+        )
+    return True
 
 
 def signalements_ouverts(conn: sqlite3.Connection, id_exemplaire: str) -> list[dict]:

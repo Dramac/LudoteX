@@ -33,6 +33,11 @@
     <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">en cours</span></div>
     <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés</span></div>
     <div class="chiffre"><span class="chiffre-val" {% if g.duree_moyenne == "—" %}title="Aucun prêt terminé sur la période"{% endif %}>{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
+    {# Retours non scannés (motif `oubli`, services.MOTIF_OUBLI) : ce sont
+       de vrais prêts, comptés dans « prêts » et dans les palmarès, mais leur
+       durée court jusqu'à la découverte de l'oubli — la durée moyenne les
+       ignore. La tuile dit pourquoi, plutôt que de laisser l'écart muet. #}
+    <div class="chiffre"><span class="chiffre-val" title="Prêts dont le retour n'a pas été scanné, clôturés plus tard par un re-prêt ou un transfert. Comptés dans les prêts, mais pas dans la durée moyenne : leur durée est inconnue.">{{ g.oublis }}</span><span class="chiffre-lib">{{ pluriel(g.oublis, 'retour non scanné', 'retours non scannés') }}</span></div>
     {# Les erreurs de prêt (jeu rendu en moins d'une minute) sont comptées à
        part et n'entrent dans AUCUN des chiffres ci-dessus. Le « 0 » est
        affiché : sur un tableau de bord chiffré, il informe autant qu'un

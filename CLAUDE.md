@@ -167,8 +167,9 @@ livré, par module :
 - **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
   scanner caméra (jsQR) avec saisie manuelle de secours, prêt / retour /
   re-prêt / **transfert de pochette**, sortie « tournoi » exclue des stats,
-  **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), clôture de
-  fin d'événement.
+  **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), **retours
+  non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue
+  « pochette pas vide » qui prévient le bureau, clôture de fin d'événement.
 - **Statistiques** (`/stats`) — totaux, palmarès, histogramme horaire, durées,
   filtre par période, liste détaillée, jeux actuellement sortis, exports Excel
   et PDF à sections cochables.

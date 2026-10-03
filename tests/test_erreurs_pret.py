@@ -134,15 +134,19 @@ def test_un_transfert_apres_le_seuil_laisse_deux_prets(conn, vieillir_prets):
     assert _motifs(conn) == ["pret", "pret"]
 
 
-def test_repreter_ne_requalifie_pas(conn):
+def test_repreter_ne_requalifie_pas_en_erreur(conn):
     """
-    Contre-test : re-prêter n'est PAS un retour — la boîte reste sortie. La
-    requalifier retirerait des statistiques un prêt bel et bien en cours.
+    Contre-test : re-prêter n'est PAS un retour immédiat — la boîte reste
+    sortie, même re-prêtée dans la minute. L'ancien prêt prend le motif
+    `oubli` (retour non scanné, voir tests/test_motif_oubli.py), jamais
+    `erreur` : il resterait sinon hors des totaux, alors que c'était un vrai
+    prêt.
     """
     services.preter(conn, "001")
     services.repreter(conn, "001")
 
-    assert _motifs(conn) == ["pret", "pret"]
+    assert _motifs(conn) == [services.MOTIF_OUBLI, "pret"]
+    assert services.stats_globales(conn)["total_prets"] == 2
 
 
 def test_la_cloture_de_fin_d_evenement_ne_requalifie_pas(conn):
