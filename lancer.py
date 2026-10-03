@@ -347,8 +347,18 @@ def demarrer_uvicorn(cle: str = "uvicorn", port: int = PORT_APP,
 
 
 def env_formation() -> dict[str, str]:
-    """Variables d'environnement de l'instance de formation (bases jetables)."""
-    env = {"MODE_FORMATION": "1"}
+    """
+    Variables d'environnement de l'instance de formation (bases jetables).
+
+    `LUDOTEX_ENV_FILE` vide : l'instance ne lit AUCUN fichier `.env`
+    (`app/environnement.py`). Sans cela, elle héritait du `.env` de la racine,
+    donc du jeton et du mot de passe administrateur de l'instance normale — le
+    piège que le serveur a déjà corrigé pour la formation en production, ici
+    en petit. Import local : `lancer.py` démarre avant l'environnement virtuel.
+    """
+    from app.environnement import VARIABLE_FICHIER_ENV
+
+    env = {"MODE_FORMATION": "1", VARIABLE_FICHIER_ENV: ""}
     env.update({cle: str(chemin) for cle, chemin in BASES_FORMATION.items()})
     return env
 

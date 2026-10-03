@@ -559,3 +559,26 @@ règles s'y appliquent désormais :
 noir et blanc, y compris le logo (voir `app.etiquettes.charger_logo`) :
 imprimées à plusieurs centaines d'exemplaires, la couleur y coûte de l'encre
 sans rien apporter, et le contraste du QR prime sur la décoration.
+
+## 19. Composants employés mais longtemps absents de l'inventaire
+
+Relevés au lot 15 (pré-production) en comparant les classes des `<a>`, `<button>`
+et `<summary>` des gabarits à ce document : six composants réellement employés,
+sans règle écrite. **Le nombre de composants n'est pas une constante de ce
+projet** : ce document en compte désormais plus de dix, et `CLAUDE.md` ne cite
+plus de chiffre. Avant d'inventer une puce, un lien-action ou un bloc, regarder
+d'abord ici.
+
+| Classe | Rôle | Où | Règle d'emploi |
+| --- | --- | --- | --- |
+| `.chip-filtre` | Puce d'un **filtre actif** : un clic **retire** le filtre. | `catalogue.html`, `_carnet_filtres.html`, `admin_journal.html`, `programme_public.html` | Un `<a>` (jamais un bouton de formulaire) dont l'URL est celle de la page **sans** ce filtre, avec `title="Retirer ce filtre"` et une croix `<span class="croix" aria-hidden="true">✕</span>`. Fond `--primaire-fond`, texte `--primaire-lisible` : elle suit la couleur d'identité. Rangées dans un `.filtres-actifs`. |
+| `.chip` + `.chip-wa`, `.chip-mail`, `.chip-sms`, `.chip-discord` | Puces de **partage** du lien d'activation, une couleur par canal. | `admin_jeton.html` seul | Exception assumée à la règle « aucune couleur en dur » : ce sont des couleurs de **marque** (WhatsApp, Discord…), reconnues d'un coup d'œil, pas de la couleur d'identité. Ne pas les réutiliser pour autre chose que le partage. |
+| `.lien-bouton` | Une **action locale sans envoi** (« Tout cocher », « Tout décocher »), qui s'écrit comme un lien. | `admin_etiquettes.html`, `admin_rangement_ranger.html` | Un `<button type="button">` (il ne soumet rien) rendu comme un `.lien`. À réserver aux gestes qui n'écrivent rien : un geste qui enregistre est un `.bouton-filtrer` ou un `.bouton`. |
+| `.jeu-lien` | Le **lien d'une ligne de liste de jeux** (nom + catégorie). | `catalogue.html`, `accueil.html`, `admin_jeux.html`, `tournoi_liste.html` | Occupe la place disponible (`flex: 1`) à côté d'un `.badge` ; sans soulignement. Le `.jeu-nom` et la `.jeu-categorie` empilent les deux lignes. |
+| `.bouton-haut` | **Retour en haut** flottant, sur les longues listes. | `catalogue.html`, `programme_public.html` | Se pose **avec** `.bouton-filtrer` (`class="bouton-filtrer bouton-haut"`), vers l'ancre `#haut`. Fixé en bas à droite, au-dessus du contenu (`z-index: 20`). Un par page, et seulement quand la liste dépasse l'écran. |
+| `.planning-bloc` (+ `--lance`, `--termine`, `--programme`) | Un **créneau d'agenda** : tournoi ou élément de programme sur la grille du jour. | `accueil.html`, `programme_public.html` | Cliquable quand il mène à une page de détail ; la variante `--programme` n'est **pas** cliquable (pas de page de détail), d'où l'absence de relief au survol. En dessous de 640 px, la grille devient une pile de cartes. |
+
+Restent hors de ce tableau, parce qu'ils ne se réutilisent pas : les classes
+propres à la grille d'ajustement du planning (`pl-x`, `pl-horaire-lien`,
+`pl-case-lien`), le lien d'évitement `.saut-contenu`, le titre `.bandeau-titre`
+et le bouton `.rangement-quitter` du bandeau.

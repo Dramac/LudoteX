@@ -1,9 +1,11 @@
-# Lancement local sans ligne de commande
+# Lancement local sur un poste
 
 Ce mode de lancement sert à tester ou faire fonctionner LudoteX **sur un poste
-de l'association**, sans terminal, en double-cliquant sur un fichier. Il vise
-d'abord Windows, mais fonctionne aussi sous macOS (`lancer.command`) et depuis
-un terminal sur n'importe quel système.
+de l'association**. **Le démarrage de tous les jours se fait en double-cliquant
+sur un fichier, sans terminal** ; en revanche, **l'installation de départ, elle,
+demande un terminal, une seule fois** (une dizaine de commandes à recopier, plus
+bas). Il vise d'abord Windows, mais fonctionne aussi sous macOS
+(`lancer.command`) et depuis un terminal sur n'importe quel système.
 Il ouvre un tunnel HTTPS public (Cloudflare) au-dessus de l'application locale
 — nécessaire pour que le scanner caméra fonctionne depuis un smartphone
 (`getUserMedia` exige un contexte sécurisé HTTPS).
@@ -13,12 +15,56 @@ Pour un déploiement permanent sur un vrai serveur, voir plutôt
 
 ## Prérequis (à faire une fois)
 
-1. **Le projet installé** avec son environnement virtuel `.venv` à la racine
-   (voir la section « Lancer en local » du `CLAUDE.md`/`README.md` :
-   `python -m venv .venv`, `pip install -r requirements.txt`, `.env` renseigné,
-   base initialisée).
+1. **Python 3.11 ou plus récent**, installé sur le poste (python.org, ou le
+   Microsoft Store sous Windows). Le vérifier dans un terminal :
+   `python --version` (ou `py --version` sous Windows).
 
-2. **`cloudflared`** (l'utilitaire de tunnel de Cloudflare), accessible d'une
+2. **Le projet installé**, avec son environnement virtuel `.venv` à la racine.
+   Dans un terminal, depuis le dossier du projet :
+
+   ```
+   python -m venv .venv
+   .venv/bin/pip install -r requirements.txt          # macOS, Linux
+   .venv\Scripts\pip install -r requirements.txt      # Windows
+   ```
+
+   Sans ce dossier `.venv`, aucun des fichiers de lancement ne démarre :
+   `lancer.command` et `lancer.bat` le disent, `lancer.vbs` s'arrête sans
+   rien afficher — c'est la première chose à vérifier si « rien ne se passe ».
+
+3. **Le fichier `.env`**, copié depuis le modèle (`cp .env.example .env`, ou
+   copier-coller sous Windows), puis **deux valeurs à changer**. Recopier le
+   modèle tel quel est une erreur à ne pas faire, parce que le tunnel rend le
+   site **public** :
+
+   - `PRET_TOKEN` : le modèle porte une valeur d'exemple, **que l'application
+     ignore** — le site est alors en « mode ouvert », où n'importe quelle
+     personne qui connaît l'adresse peut enregistrer des prêts. Générer un
+     vrai jeton et le coller à la place :
+     `.venv/bin/python -c "import secrets; print(secrets.token_urlsafe(32))"`
+     (`.venv\Scripts\python` sous Windows).
+   - le **mot de passe administrateur** : la valeur d'exemple `ADMIN_PASSWORD`
+     du modèle est **refusée**, l'administration reste fermée tant qu'elle est
+     là. Ne pas y toucher et poser le mot de passe par le script prévu pour
+     cela (étape 4) — il le lit au clavier, sans l'écrire dans un fichier.
+
+   Les autres lignes du modèle conviennent telles quelles pour un essai
+   (`BASE_URL` ne sert qu'aux QR imprimés, voir « Limites » plus bas).
+
+4. **La base initialisée, puis le mot de passe administrateur** :
+
+   ```
+   .venv/bin/python -m app.db
+   .venv/bin/python scripts/reinitialiser_mot_de_passe.py
+   ```
+
+   (même commande avec `.venv\Scripts\python` sous Windows). Le second script
+   affiche la base qu'il va modifier, demande confirmation, puis lit le mot de
+   passe deux fois, au clavier, sans écho ; il en refuse un de moins de huit
+   caractères. C'est aussi le recours en cas de mot de passe oublié : le
+   relancer suffit.
+
+5. **`cloudflared`** (l'utilitaire de tunnel de Cloudflare), accessible d'une
    des deux façons :
    - installé et présent dans le PATH Windows, ou
    - son exécutable `cloudflared.exe` simplement déposé **à la racine du

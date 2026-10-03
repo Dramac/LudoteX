@@ -106,3 +106,50 @@ def test_post_stop_depuis_la_page_arrete(serveur, hote):
 def test_page_appelle_le_controle_en_meme_origine():
     assert 'const CONTROLE = "";' in lancer._PAGE_LANCEUR
     assert 'method: "POST"' in lancer._PAGE_LANCEUR
+
+
+# --- Formation locale : aucun `.env` hérité (lot 15) -------------------------
+
+def test_formation_locale_ne_lit_aucun_fichier_env(monkeypatch, tmp_path):
+    """
+    L'instance de formation du lanceur désigne « aucun fichier » : elle ne
+    reprend ni le jeton ni le mot de passe du `.env` de l'instance normale.
+    Démontré de bout en bout : un `.env` piégé est posé à la racine d'une
+    copie, et le processus de formation ne doit pas en voir le contenu.
+    """
+    import os
+    import subprocess
+    import sys
+
+    from app import environnement
+
+    env = lancer.env_formation()
+    assert env[environnement.VARIABLE_FICHIER_ENV] == ""
+
+    # Le même mécanisme que celui du serveur : avec la variable vide, un
+    # processus ne charge rien, même si un `.env` existe à la racine du code.
+    piege = tmp_path / ".env"
+    piege.write_text("JETON_SECRET_DE_L_AUTRE_INSTANCE=ne-doit-pas-passer\n",
+                     encoding="utf-8")
+    sonde = (
+        "import os, pathlib\n"
+        "from app import environnement\n"
+        f"environnement.RACINE = pathlib.Path({str(tmp_path)!r})\n"
+        "environnement.charger_env()\n"
+        "print(os.environ.get('JETON_SECRET_DE_L_AUTRE_INSTANCE', 'absent'))\n"
+    )
+    monkeypatch.delenv("JETON_SECRET_DE_L_AUTRE_INSTANCE", raising=False)
+    sortie = subprocess.run(
+        [sys.executable, "-c", sonde], cwd=str(lancer.BASE_DIR),
+        env={**os.environ, **env}, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert sortie == "absent"
+
+    # Contre-épreuve : sans la variable, le même `.env` est bien lu.
+    sans = {c: v for c, v in os.environ.items()
+            if c != environnement.VARIABLE_FICHIER_ENV}
+    sortie = subprocess.run(
+        [sys.executable, "-c", sonde], cwd=str(lancer.BASE_DIR),
+        env=sans, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert sortie == "ne-doit-pas-passer"

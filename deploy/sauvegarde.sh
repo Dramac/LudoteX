@@ -8,7 +8,7 @@
 #   « .backup » SQLite (sûre même en mode WAL, jamais un simple cp qui pourrait
 #   capturer une base à mi-écriture), regroupées avec un INFO.txt.
 # - L'archive produite est directement RESTAURABLE depuis l'espace admin
-#   (/admin/données → « Restaurer une sauvegarde »), au même format que l'export
+#   (/admin/donnees → « Sauvegarde complète — restaurer »), au même format que l'export
 #   manuel.
 # - Nature de l'archive, lue dans son nom (voir app/sauvegarde.py, « LES
 #   ARCHIVES DU SERVEUR ») : « routine » (ludotex-backup-*.zip, le minuteur de

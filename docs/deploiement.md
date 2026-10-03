@@ -312,7 +312,7 @@ du serveur ».
 
 Chaque sauvegarde est une archive `.zip` regroupant les **trois bases** (prêt,
 tournois, planning) — directement restaurable depuis l'espace admin
-(`/admin/données` → « Restaurer une sauvegarde »).
+(`/admin/donnees` → « Sauvegarde complète — restaurer »).
 
 > **Dossier sensible (SEC-11)** : `deploy/install.sh` pose
 > `$DATA_DIR/sauvegardes` en **0700, propriétaire du service** — ces
@@ -436,7 +436,7 @@ sudo ./deploy/update.sh
 
 Le script fait une **sauvegarde de sécurité avant toute modification** : en cas
 de souci après la mise à jour, on peut restaurer cet état depuis
-`/admin/données`. Le schéma des bases se met à jour tout seul (migrations
+`/admin/donnees`. Le schéma des bases se met à jour tout seul (migrations
 automatiques et sans perte de données).
 
 **Avant de lancer le script**, lire `docs/notes-de-deploiement.md` : il porte,
@@ -711,6 +711,33 @@ mise à jour ordinaire la met à jour, sans geste nginx.
   surveillance des sauvegardes : de temps en temps, et chaque matin d'un
   événement, la vérification du § 7 (une sauvegarde de routine de moins de
   14 heures).
+- **Mises à jour automatiques du système.** `unattended-upgrades` et
+  `needrestart` (`/etc/apt/apt.conf.d/20auto-upgrades`) appliquent chaque jour
+  les correctifs de sécurité et **redémarrent eux-mêmes** `ludotex`,
+  `ludotex-formation` et nginx quand un composant partagé change — 42
+  démarrages de `ludotex` entre juillet et le 3 octobre 2026 (journal systemd
+  de la production), dont tous ne sont pas des mises à jour faites à la main :
+  celui du 12 septembre à 06:58 était `apt-daily-upgrade`. Deux conséquences : une coupure de quelques secondes à tout
+  moment ; et un `git pull` fait sur le serveur sans `deploy/update.sh` serait
+  mis en service au redémarrage suivant, sans que personne l'ait décidé.
+  **La veille d'un événement**, suspendre les minuteries, et les rétablir
+  après :
+
+  ```bash
+  sudo systemctl stop  apt-daily-upgrade.timer apt-daily.timer   # veille
+  sudo systemctl start apt-daily-upgrade.timer apt-daily.timer   # après
+  systemctl is-active apt-daily-upgrade.timer apt-daily.timer    # inactive / active
+  ```
+
+  Le geste est écrit ici pour qu'on ne le « nettoie » pas : il ne change rien
+  de permanent. Laisser les correctifs s'appliquer hors événement est le bon
+  défaut.
+- **Aucune alerte n'existe** (`EXP-01`). Si l'application tombe, personne
+  n'est prévenu : systemd la relance (`Restart=on-failure`, `RestartSec=3`,
+  jamais abandonnée), mais rien ne le signale. Pendant un événement, ouvrir
+  `/sante` depuis un téléphone de temps en temps. Une sonde externe gratuite
+  sur `/sante` (un `GET`, aucune donnée envoyée) est une piste ; c'est une
+  dépendance extérieure, donc **une décision du bureau**, non installée.
 
 ---
 

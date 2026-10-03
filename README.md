@@ -153,7 +153,7 @@ Let's Encrypt, sauvegarde quotidienne — et affiche à la fin le lien d'activat
 des bénévoles. Guide pas à pas, dépannage et mises à jour :
 [docs/deploiement.md](docs/deploiement.md).
 
-**Essayer sur son poste**, sans serveur ni ligne de commande :
+**Essayer sur son poste**, sans serveur (une installation une fois au terminal, puis un double-clic) :
 [docs/lancement-local.md](docs/lancement-local.md).
 
 **Remplir le catalogue pour voir à quoi ça ressemble.** Une base vide ne montre

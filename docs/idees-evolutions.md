@@ -1,5 +1,14 @@
 # Idées d'évolutions — exploration libre
 
+> **État au 2026-10-03 : document daté, pas une référence de l'existant.** Les
+> fiches ci-dessous ont été écrites en juillet 2026 et relues le 18 et le 21
+> juillet ; **le code a continué d'évoluer depuis** (annonces de l'écran de
+> salle bornées, lot 8 ; accès bénévole prolongeable, lot 5 ; carnet de
+> maintenance ; transfert de pochette…). Pour savoir ce que l'application fait
+> aujourd'hui, la référence est `docs/specification.md`. Les passages
+> corrigés depuis portent la mention « MàJ 2026-10 ». Ce fichier reste dans
+> le dépôt parce que le code et d'autres documents le citent.
+
 Brainstorm sans contrainte de faisabilité (session du 2026-07-15). À trier avec
 le CA : certaines idées iront au backlog, d'autres à la corbeille. Les chantiers **déjà actés** (double élimination,
 e-mails, sauvegarde externe automatisée, notifications planning) ne sont pas
@@ -374,10 +383,13 @@ mise en œuvre quand elle coule de source.
   (`/admin/ecran-salle`, aucune nouvelle page). Bandeau conditionnel sur
   `/live`, apparition/disparition sans rechargement, texte injecté via
   `textContent` (jamais `innerHTML`). **Ajout en cours de route, non prévu par
-  cette fiche** : une **durée d'affichage optionnelle en minutes** — passé ce
-  délai, l'annonce s'auto-masque (calcul à la lecture, rien n'est purgé en
-  base : elle reste éditable/rappelable en admin) ; vide = illimité comme
-  imaginé à l'origine. **Rappel dans la carte Supervision** du tableau de bord
+  cette fiche** : une **durée d'affichage en minutes** — passé ce délai,
+  l'annonce s'auto-masque (calcul à la lecture). **MàJ 2026-10 (lot 8) :
+  « vide = illimité » n'est plus vrai** — une durée vide ou illisible vaut
+  30 minutes, et la durée est plafonnée à 12 heures
+  (`DUREE_ANNONCE_DEFAUT_MIN`, `DUREE_ANNONCE_MAX_MIN` dans
+  `app/services.py`) ; l'annonce est un texte libre, donc jamais journalisée
+  ni archivée (voir `wiki/Rgpd.md`). **Rappel dans la carte Supervision** du tableau de bord
   quand une annonce est active, pour qu'elle ne reste jamais affichée toute la
   journée sans que le bureau ne la voie. **8 tests dédiés.** Voir CLAUDE.md
   (334 tests verts).

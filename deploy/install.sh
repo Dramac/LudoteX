@@ -437,6 +437,7 @@ fi
 # ============================================================================
 etape "Configuration nginx et certificat HTTPS"
 
+ANCIEN_NGINX_PROD="$(garder_https /etc/nginx/sites-available/ludotex)"
 cp "$INSTALL_DIR/deploy/nginx-ludotex.conf" /etc/nginx/sites-available/ludotex
 sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex
 sed -i "s/pret\.example\.fr/${DOMAINE}/g" /etc/nginx/sites-available/ludotex
@@ -458,10 +459,39 @@ ln -sf /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/attrape-
 creer_journal_nginx() {
     [[ -e "$1" ]] || install -o www-data -g adm -m 640 /dev/null "$1"
 }
+
+# Relance sur un serveur en service : le fichier déjà installé porte les lignes
+# de certbot (`listen 443 ssl`, `ssl_certificate*`), que la copie du modèle
+# ci-dessous efface. Recharger nginx à ce moment-là coupe l'HTTPS jusqu'à ce que
+# certbot repose ces lignes — le piège que la procédure manuelle du wiki
+# (« Étape 2 » à « Étape 4 ») interdit déjà. On regarde donc AVANT la copie, on
+# garde l'ancien fichier de côté, et on ne recharge qu'une fois certbot passé
+# (il recharge lui-même). Si certbot ne passe pas, on remet l'ancien fichier.
+https_deja_en_place() {
+    grep -q 'managed by Certbot' "$1" 2>/dev/null
+}
+garder_https() {
+    # $1 = fichier installé. Affiche le chemin de la copie, ou rien.
+    if https_deja_en_place "$1"; then
+        cp -p "$1" "$1.avant-install"
+        echo "$1.avant-install"
+    fi
+}
+remettre_https() {
+    # $1 = fichier installé, $2 = copie gardée (vide : rien à remettre).
+    [[ -n "$2" ]] || return 0
+    cp -p "$2" "$1"
+    nginx -t && systemctl reload nginx
+    avert "Certbot n'a pas abouti : l'ancien fichier nginx, avec son HTTPS, a été remis en place."
+}
 creer_journal_nginx /var/log/nginx/ludotex-access.log
 
 nginx -t
-systemctl reload nginx
+if [[ -n "$ANCIEN_NGINX_PROD" ]]; then
+    info "nginx : rechargement différé, certbot va reposer les lignes HTTPS (et recharger)."
+else
+    systemctl reload nginx
+fi
 info "nginx configuré pour $DOMAINE."
 
 IP_SERVEUR="$(curl -s -4 ifconfig.me || true)"
@@ -480,10 +510,12 @@ if [[ "${TENTER_CERTBOT,,}" == o* ]]; then
     else
         avert "Échec de l'obtention du certificat. Réessayer plus tard avec :"
         avert "  sudo certbot --nginx -d $DOMAINE -m $EMAIL"
+        remettre_https /etc/nginx/sites-available/ludotex "$ANCIEN_NGINX_PROD"
     fi
 else
     info "Certificat HTTPS non demandé. Une fois le DNS propagé, lancer :"
     info "  sudo certbot --nginx -d $DOMAINE -m $EMAIL"
+    remettre_https /etc/nginx/sites-available/ludotex "$ANCIEN_NGINX_PROD"
 fi
 
 # ============================================================================
@@ -725,13 +757,18 @@ EOF
     fi
 
     info "Configuration nginx pour $DOMAINE_FORMATION..."
+    ANCIEN_NGINX_FORM="$(garder_https /etc/nginx/sites-available/ludotex-formation)"
     cp "$INSTALL_DIR/deploy/nginx-ludotex-formation.conf" /etc/nginx/sites-available/ludotex-formation
     sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex-formation
     sed -i "s/formation\.pret\.example\.fr/${DOMAINE_FORMATION}/g" /etc/nginx/sites-available/ludotex-formation
     ln -sf /etc/nginx/sites-available/ludotex-formation /etc/nginx/sites-enabled/ludotex-formation
     creer_journal_nginx /var/log/nginx/ludotex-formation-access.log
     nginx -t
-    systemctl reload nginx
+    if [[ -n "$ANCIEN_NGINX_FORM" ]]; then
+        info "nginx : rechargement différé, certbot va reposer les lignes HTTPS (et recharger)."
+    else
+        systemctl reload nginx
+    fi
 
     IP_SERVEUR_F="$(curl -s -4 ifconfig.me || true)"
     IP_DOMAINE_F="$(dig +short "$DOMAINE_FORMATION" | tail -n1 || true)"
@@ -741,10 +778,12 @@ EOF
         else
             avert "Échec de l'obtention du certificat pour $DOMAINE_FORMATION. Réessayer plus tard avec :"
             avert "  sudo certbot --nginx -d $DOMAINE_FORMATION -m $EMAIL"
+            remettre_https /etc/nginx/sites-available/ludotex-formation "$ANCIEN_NGINX_FORM"
         fi
     else
         avert "Le DNS de $DOMAINE_FORMATION ne pointe pas (encore) vers ce serveur : certificat non demandé."
         avert "Une fois le DNS propagé : sudo certbot --nginx -d $DOMAINE_FORMATION -m $EMAIL"
+        remettre_https /etc/nginx/sites-available/ludotex-formation "$ANCIEN_NGINX_FORM"
     fi
 
     # Lien affiché au tableau de bord admin de la PRODUCTION.

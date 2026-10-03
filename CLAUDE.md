@@ -17,7 +17,7 @@ session va dans le message de commit, dans `CHANGELOG.md` et dans
 | `docs/specification.md` | La conception **fait foi**. En cas de divergence, c'est elle qui a raison. |
 | `docs/guide-developpeur.md` | Architecture, conventions, flux d'une requête, recettes d'extension, pièges connus. |
 | `docs/conception-*.md` | La conception d'un module donné (tournois, planning, journal, rangement, programme, signalements…). |
-| `docs/ui-composants.md` | Les dix composants d'interface canoniques et leurs règles d'emploi. |
+| `docs/ui-composants.md` | Les composants d'interface canoniques et leurs règles d'emploi (le nombre n'en est pas figé : lire le document). |
 | `wiki/` | Le **guide utilisateur** (bénévoles, bureau). Aucun jargon, aucun chemin de fichier. Dépôt git **séparé**, à committer à part. |
 | `CHANGELOG.md`, `VERSION`, `app/version.py` | L'histoire livrée, tournée utilisateur. Les trois portent toujours le même numéro. |
 | `docs/notes-de-deploiement.md` | Les gestes de serveur qu'une version demande en plus d'`update.sh`. Jamais dans `CHANGELOG.md`, dont les puces partent sur `/apropos`. |

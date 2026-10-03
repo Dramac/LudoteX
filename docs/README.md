@@ -12,7 +12,7 @@ ni au bureau d'une association : ce guide-là vit dans le wiki du dépôt.
    requête, recettes d'extension, pièges connus. Le point d'entrée pour
    reprendre le code.
 3. **`lancement-local.md`** — installer et lancer l'application sur son
-   propre poste, avec ou sans ligne de commande.
+   propre poste (installation une fois au terminal, démarrage ensuite en double-clic).
 4. **`deploiement.md`** — mettre l'application en ligne sur un VPS.
 5. **`personnaliser.md`** — ce qui reste à régler une fois l'installation
    terminée : l'identité depuis `/admin/identite`, l'infrastructure dans le
