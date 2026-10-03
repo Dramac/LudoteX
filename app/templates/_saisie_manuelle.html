@@ -42,8 +42,15 @@
    pour 97 % du catalogue, et l'écran se réaffichant depuis sa propre URL
    après chaque code accepté, une seule boîte d'extension condamnerait sinon
    au clavier complet tout le reste d'une séance de rangement. #}
+{# LE MESSAGE D'ERREUR, RELIÉ AU CHAMP. Après un code introuvable, le champ
+   reprend le focus (`autofocus`) pour qu'on corrige sans viser : un lecteur
+   d'écran y dépose donc l'utilisateur DIRECTEMENT, sans passer par le message,
+   affiché plus haut par l'appelant (au-dessus de la caméra, où les voyants le
+   lisent). `erreur_id` est l'`id` de ce message : `aria-describedby` le fait
+   lire avec le champ, `aria-invalid` annonce que la saisie est à reprendre.
+   Patron : la consigne de l'annonce, dans admin_live.html. #}
 {% macro saisie_manuelle(action, bouton, aide, code_saisi='', erreur=False,
-                         lettres=False, lien_bascule='') -%}
+                         lettres=False, lien_bascule='', erreur_id='') -%}
 <section class="carte">
   <h2>Saisie manuelle</h2>
   <p class="scanner-aide">{{ aide }}</p>
@@ -54,7 +61,8 @@
              inputmode="{{ 'text' if lettres else 'numeric' }}"
              autocomplete="off" autocapitalize="off"
              spellcheck="false" placeholder="ex. 0012" required
-             {% if erreur %}autofocus{% endif %}>
+             {% if erreur %}autofocus aria-invalid="true"{% if erreur_id %}
+             aria-describedby="{{ erreur_id }}"{% endif %}{% endif %}>
     </div>
     {% if lettres %}
       <input type="hidden" name="lettres" value="1">

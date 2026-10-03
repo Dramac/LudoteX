@@ -34,7 +34,7 @@
     <p class="resultat resultat-info">🗄️ {{ confirmation_rangement }}</p>
   {% endif %}
   {% if erreur %}
-    <p class="resultat resultat-attention">{{ erreur }}</p>
+    <p class="resultat resultat-attention" id="code-erreur">{{ erreur }}</p>
   {% endif %}
 
   <p class="scanner-statut" id="statut" aria-live="polite">Démarrage de la caméra…</p>
@@ -78,7 +78,7 @@
      aide='QR illisible ou caméra capricieuse ? Tapez le code de la boîte à ranger.'
           if rangement.actif else
           'QR illisible ou caméra capricieuse ? Tapez le code de la boîte.',
-     code_saisi=code_saisi, erreur=erreur, lettres=lettres,
+     code_saisi=code_saisi, erreur=erreur, erreur_id='code-erreur', lettres=lettres,
      lien_bascule=lien_bascule) }}
 
 <!-- Décodage QR côté navigateur — jsQR hébergé en local (aucune dépendance CDN). -->

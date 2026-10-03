@@ -9,8 +9,9 @@ prochaines retouches.
 
 Toutes les classes vivent dans `app/static/css/style.css` (fichier unique,
 pas de préprocesseur). Les couleurs passent par les variables `:root` :
-d'un côté les couleurs de SENS (`--vert`, `--rouge`, `--orange`, `--gris`,
-`--bord`, `--texte`), de l'autre les six variables de la couleur d'IDENTITÉ
+d'un côté les couleurs de SENS (`--vert`, `--rouge`, `--orange`, `--bleu`,
+`--gris`, `--bord`, `--bord-champ`, `--texte`), de l'autre les sept variables
+de la couleur d'IDENTITÉ
 (`--primaire` et ses nuances), réglable par l'association — voir le § 18, qui
 dit lesquelles peuvent porter du texte et lesquelles sont décoratives.
 
@@ -394,7 +395,9 @@ une autre sans faire ressortir la pièce d'identité de son casier. Réutiliser
 le vert ou le bleu aurait fait faire au bénévole le geste exact que la
 fonctionnalité supprime — d'où une troisième couleur, celle d'identité du site
 (`--primaire`, déjà `.bouton-filtrer`, `theme-color`), qui ne porte par
-ailleurs aucun sens de dépôt/retrait sur cet écran.
+ailleurs aucun sens de dépôt/retrait sur cet écran. Le numéro est écrit en
+`--primaire-lisible` (§ 18) : la même couleur, assombrie si elle est trop pâle
+pour se lire sur le vert pâle du résultat — un jaune y devient un olive.
 
 ⚠️ **Depuis que cette couleur est réglable** (§ 18), c'est la seule
 signification portée par `--primaire`. Une association qui choisirait un vert
@@ -451,19 +454,20 @@ global qu'il faudra rediscuter, pas la liste des exceptions.
 
 ---
 
-## 18. Couleur de thème — six variables, une seule saisie
+## 18. Couleur de thème — sept variables, une seule saisie
 
 L'association qui déploie LudoteX règle **une** couleur depuis
-`/admin/identite`. Les six variables du `:root` en découlent :
+`/admin/identite`. Les sept variables du `:root` en découlent :
 
 | Variable | Rôle | Peut porter du texte ? |
 |---|---|---|
-| `--primaire` | bandeau, bouton compact, indicateurs de focus, chiffres de statistiques | oui, avec `--primaire-texte` |
+| `--primaire` | **fond seulement** : bandeau, bouton compact | oui, avec `--primaire-texte` |
 | `--primaire-survol` | survol du bouton compact | oui (même texte) |
 | `--primaire-clair` | **décoratif seulement** : barres de l'histogramme, bordure de survol d'une carte | **non** |
-| `--primaire-fond` | aplats teintés (puces de filtre) | oui, avec `--primaire` |
+| `--primaire-fond` | aplats teintés (puces de filtre) | oui, avec `--primaire-lisible` |
 | `--primaire-fond-leger` | aplats les plus pâles (aide en ligne, cartes de chiffres) | oui, avec `--texte` ou `--gris` |
-| `--primaire-texte` | texte posé sur `--primaire` — **noir ou blanc, calculé** | — |
+| `--primaire-texte` | texte posé sur `--primaire` — **noir ou blanc, calculé** ; contour de focus sur le bandeau | — |
+| `--primaire-lisible` | la couleur **comme texte ou contour sur fond clair** : indicateurs de focus, chiffres, puces, aide en ligne, numéro de pochette du transfert — **calculée** | c'est elle, le texte |
 
 **Règle de dérivation** (implémentée dans `app/services.py`, section « Identité
 de l'ASSOCIATION » ; `nuances_theme`) : conversion en HSL, **teinte et
@@ -475,8 +479,9 @@ saturation conservées**, luminosité imposée.
 | `clair` | 62 % | + 10 points |
 | `fond` | 94 % | + 25 points |
 | `fond_leger` | 97 % | + 25 points |
+| `lisible` | la couleur elle-même si elle atteint 4,5:1 sur tous les fonds clairs, sinon descendue par pas de 0,5 point jusqu'à les atteindre | inchangée |
 
-Quatre décisions à ne pas défaire :
+Six décisions à ne pas défaire :
 
 1. **Pas de mélange vers le blanc.** Il vire au gris et perd la teinte — sur
    l'anthracite `#2a2724`, le fond clair tombait sur `#efeeec` au lieu de
@@ -486,7 +491,7 @@ Quatre décisions à ne pas défaire :
 2. **`--primaire-clair` ne porte jamais d'information.** À 62 % de luminosité,
    son contraste sur blanc tourne autour de 2,5:1, en dessous des 3:1 exigés
    d'un élément graphique porteur de sens (et loin des 4,5:1 d'un texte). C'est
-   pour cela que les indicateurs de focus utilisent `--primaire`, et que les
+   pour cela que les indicateurs de focus utilisent `--primaire-lisible`, et que les
    barres de l'histogramme sont toujours doublées de leur valeur écrite.
 3. **`--primaire-texte` n'est jamais un choix de l'utilisateur.** Noir ou
    blanc, celui des deux qui contraste le mieux au sens WCAG. Le pire cas de
@@ -495,11 +500,21 @@ Quatre décisions à ne pas défaire :
 4. **Le survol s'inverse au-dessus de 50 % de luminosité.** Ajouter 12 points à
    une couleur déjà très claire donnerait du blanc pur, et le bouton
    disparaîtrait au survol sur une page blanche. C'est l'ÉCART qui compte, pas
-   son sens.
+   son sens. Le sens s'inverse aussi quand le sens habituel ferait passer le
+   texte du bouton sous 4,5:1 (un bleu moyen sous texte blanc tombait à 4,2:1).
+5. **`--primaire` nue ne sert jamais de texte ni de contour sur fond clair.**
+   Pour un thème pâle, elle y tombait à 1,2:1 — numéro de pochette du
+   transfert compris. Partout où elle serait un texte, c'est
+   `--primaire-lisible` (`couleur_lisible_sur_clair`), qui complète
+   `couleur_texte_sur` sans la remplacer. Un test refuse toute déclaration
+   `color`, `border` ou `outline` en `var(--primaire)` (`tests/test_contrastes.py`).
+6. **Sur une surface colorée, le contour de focus prend la couleur du texte de
+   cette surface** (`--primaire-texte` sur le bandeau, blanc sur le bandeau du
+   mode rangement). De la couleur même du fond, il était invisible.
 
 **Le calcul est fait en Python, jamais en CSS.** Ni `color-mix()`, ni les
 fonctions de couleur récentes : sur un téléphone qui ne les connaît pas, le
-thème perdrait ses nuances sans que personne le sache. Le serveur envoie six
+thème perdrait ses nuances sans que personne le sache. Le serveur envoie sept
 valeurs hexadécimales dans un `<style>` en ligne de `base.html`, alimenté par
 le context processor d'`app/templating.py`.
 
@@ -512,7 +527,9 @@ besoin puisqu'un attribut ne peut pas porter une variable CSS. Un test
 diverger en silence.
 
 **Ce qui ne suit PAS le thème, et ne doit pas le suivre** : le bleu des liens
-(`#1a73e8`), le vert / rouge / orange sémantiques, l'orange du mode formation,
+(`--bleu`, `#1967d2` : 4,68:1 sur le bleu pâle de `.resultat-info`, là où
+l'ancien `#1a73e8` n'atteignait que 3,93:1), le vert / rouge / orange
+sémantiques, l'orange du mode formation,
 le bleu du mode rangement et le violet des blocs « programme » du planning. Ce
 sont des significations, pas une identité : elles doivent rester les mêmes
 quelle que soit la couleur choisie.

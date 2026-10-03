@@ -139,9 +139,19 @@
         les nuanciers, et celle qui permet de reprendre exactement la couleur de
         votre charte. Les nuances (survol, aplats) et la couleur du texte du
         bandeau sont <strong>calculées automatiquement</strong> : aucune couleur
-        choisie ne peut rendre le bandeau illisible.
+        choisie ne peut rendre le bandeau illisible. Là où elle sert de texte
+        sur fond clair (chiffres, numéro de pochette d'un transfert), le site
+        la fonce automatiquement si elle est trop pâle pour se lire.
         <strong>Laissez vide</strong> pour revenir au thème par défaut.
       </small>
+      {% if couleur_lisible %}
+        {# Avertissement, jamais un refus : la couleur est enregistrée. #}
+        <p class="stats-note">Cette couleur est trop claire pour se lire en
+          texte sur les fonds clairs du site : là où elle sert de texte
+          (chiffres, numéro de pochette d'un transfert, filtres), le site
+          emploie à sa place <code>{{ couleur_lisible }}</code>, de la même
+          teinte. Le bandeau et les boutons, eux, gardent votre couleur.</p>
+      {% endif %}
     </div>
 
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>

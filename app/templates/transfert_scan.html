@@ -18,7 +18,7 @@
   </p>
 
   {% if erreur %}
-    <p class="resultat resultat-attention">{{ erreur }}</p>
+    <p class="resultat resultat-attention" id="code-erreur">{{ erreur }}</p>
   {% endif %}
 
   {# Le POST vient de refuser : la boîte visée est tenue par un prêt jamais
@@ -49,7 +49,7 @@
      action="/pret/" ~ id_rendu ~ "/transfert/saisie",
      bouton="Continuer",
      aide="QR illisible ou caméra capricieuse ? Tapez le code de la nouvelle boîte.",
-     code_saisi=code_saisi, erreur=erreur, lettres=lettres,
+     code_saisi=code_saisi, erreur=erreur, erreur_id='code-erreur', lettres=lettres,
      lien_bascule=lien_bascule) }}
 
 <!-- Décodage QR côté navigateur — même script que /scanner, aucune duplication. -->

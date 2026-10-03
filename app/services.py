@@ -2397,9 +2397,9 @@ def lien_journal_versions(depot_url: str) -> str | None:
 # entre dans la FEUILLE DE STYLE de toutes les pages. Trois conséquences, qui
 # expliquent la forme de ce qui suit.
 #
-# 1. UNE SEULE VALEUR EST SAISIE, LES CINQ AUTRES SONT CALCULÉES. Le thème
-#    compte six variables CSS (voir le `:root` d'app/static/css/style.css).
-#    Demander six couleurs à un bureau non technicien produirait tôt ou tard
+# 1. UNE SEULE VALEUR EST SAISIE, LES SIX AUTRES SONT CALCULÉES. Le thème
+#    compte sept variables CSS (voir le `:root` d'app/static/css/style.css).
+#    Demander sept couleurs à un bureau non technicien produirait tôt ou tard
 #    un bandeau illisible. La dérivation passe par la teinte et la saturation
 #    (HSL), CONSERVÉES, et impose la seule luminosité : c'est ce qui garde la
 #    couleur choisie reconnaissable dans ses nuances. Le mélange naïf vers le
@@ -2408,11 +2408,14 @@ def lien_journal_versions(depot_url: str) -> str | None:
 #    contraste le mieux avec la couleur choisie au sens WCAG. C'est ce qui
 #    garantit qu'AUCUNE saisie ne peut rendre le bandeau illisible : le pire
 #    cas possible de cette règle est 4,58:1, au-dessus du minimum de 4,5:1.
+#    Son pendant, pour la couleur employée COMME texte ou comme contour sur
+#    un fond clair, est `couleur_lisible_sur_clair` : la couleur choisie si
+#    elle s'y lit, une version assombrie sinon (lot-12-pré-production, ACC-02).
 # 3. LE CALCUL EST FAIT ICI, EN PYTHON, PAS EN CSS. `color-mix()` et les
 #    fonctions de couleur récentes feraient le même travail en une ligne, mais
 #    seulement sur un navigateur récent : sur le téléphone d'un bénévole qui ne
 #    l'est pas, le bandeau perdrait ses nuances sans que personne le sache. Le
-#    serveur envoie six valeurs hexadécimales, comprises partout.
+#    serveur envoie sept valeurs hexadécimales, comprises partout.
 CLE_ASSOCIATION_COULEUR = "asso_couleur"
 
 # Le thème par défaut. SEUL DOMICILE de ce littéral côté Python — la valeur est
@@ -2505,9 +2508,59 @@ def couleur_texte_sur(fond: str) -> str:
     return "#000000"
 
 
+# Seuil WCAG AA d'un texte de taille courante. Les puces de filtre et l'aide
+# en ligne sont en petits caractères : on vise donc 4,5:1 partout, sans faire
+# de cas particulier pour le numéro de pochette (5 rem, qui se contenterait de
+# 3:1) — une seule règle, et le contour de focus (3:1 exigé) en profite.
+CONTRASTE_TEXTE_MIN = 4.5
+
+# Les fonds clairs FIXES sur lesquels `--primaire-lisible` est posée : le
+# blanc des cartes, le gris de la page (`body` d'app/static/css/style.css) et
+# le vert pâle du résultat de prêt (`--vert-clair`, fond du numéro de pochette
+# du transfert). Les deux autres, `--primaire-fond` et `--primaire-fond-leger`,
+# dépendent de la couleur choisie et sont ajoutés au calcul. Duplication de
+# littéraux inévitable (une feuille statique ne lit pas Python), VERROUILLÉE
+# par tests/test_contrastes.py, qui relit style.css.
+FONDS_CLAIRS_FIXES = ("#ffffff", "#f1f3f4", "#e6f4ea")
+
+
+def couleur_lisible_sur_clair(couleur: str, fonds: tuple[str, ...]) -> str:
+    """
+    `couleur` si elle atteint `CONTRASTE_TEXTE_MIN` sur CHACUN des `fonds`,
+    sinon la même teinte et la même saturation, assombrie juste assez.
+
+    Pendant de `couleur_texte_sur`, qu'elle complète sans le remplacer : celle-
+    là garantit le texte posé SUR la couleur choisie (le bandeau), celle-ci la
+    couleur choisie posée COMME texte ou comme contour sur un fond clair (le
+    numéro du transfert, les chiffres, les puces, le contour de focus). Sans
+    elle, un jaune pâle réglé par le bureau tombait à 1,2:1 sur blanc.
+
+    Une couleur qui se lit déjà n'est PAS modifiée : c'est la couleur de la
+    charte, on n'y touche que si elle ne se lit pas. La recherche descend la
+    luminosité HSL par pas de 0,5 point ; elle s'arrête toujours, puisque le
+    noir atteint au moins 18:1 sur le plus sombre des fonds clairs du site.
+    """
+    import colorsys
+
+    def suffit(valeur: str) -> bool:
+        return min(contraste(valeur, fond) for fond in fonds) >= CONTRASTE_TEXTE_MIN
+
+    if suffit(couleur):
+        return couleur
+    rouge, vert, bleu = (int(couleur[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    teinte, lum, sat = colorsys.rgb_to_hls(rouge, vert, bleu)
+    while lum > 0:
+        lum = max(0.0, lum - 0.005)
+        r, v, b = colorsys.hls_to_rgb(teinte, lum, sat)
+        candidate = "#%02x%02x%02x" % (round(r * 255), round(v * 255), round(b * 255))
+        if suffit(candidate):
+            return candidate
+    return "#000000"
+
+
 def nuances_theme(couleur: str) -> dict[str, str]:
     """
-    Les six valeurs du thème, dérivées de la seule couleur saisie.
+    Les sept valeurs du thème, dérivées de la seule couleur saisie.
 
     Teinte et saturation CONSERVÉES, luminosité imposée (voir l'en-tête de
     section) :
@@ -2517,14 +2570,22 @@ def nuances_theme(couleur: str) -> dict[str, str]:
       bouton primaire s'ÉCLAIRCIT au survol, ce qui se voit sur une couleur
       sombre là où un assombrissement ne se verrait pas — mais sur une couleur
       très claire, ajouter 12 points donnerait du blanc pur, et le bouton
-      disparaîtrait au survol sur une page blanche. Le sens s'inverse alors ;
+      disparaîtrait au survol sur une page blanche. Le sens s'inverse alors.
+      Et il s'inverse AUSSI quand le sens habituel ferait passer le texte du
+      bouton (`texte`, inchangé au survol) sous 4,5:1 : un bleu moyen sous
+      texte blanc tombait à 4,2:1 en s'éclaircissant, un gris moyen sous texte
+      noir à 3,4:1 en s'assombrissant (lot-12-pré-production). Le sens opposé
+      ÉLOIGNE toujours la nuance de la couleur du texte, il ne peut donc pas
+      échouer ;
     - `clair`      : luminosité 62 %, saturation + 10 — usage DÉCORATIF
       seulement (barres de l'histogramme, bordure de survol d'une carte) : à
       cette luminosité, le contraste sur blanc tourne autour de 2,5:1, en
       dessous des 3:1 d'un élément porteur d'information ;
     - `fond`       : luminosité 94 %, saturation + 25 — aplats teintés (puces
       de filtre) ;
-    - `fond_leger` : luminosité 97 %, même saturation — aplats les plus pâles.
+    - `fond_leger` : luminosité 97 %, même saturation — aplats les plus pâles ;
+    - `lisible`    : la couleur employée comme TEXTE ou CONTOUR sur fond clair,
+      voir `couleur_lisible_sur_clair` — elle-même dès qu'elle s'y lit.
 
     Le supplément de saturation des trois dernières n'est pas une coquetterie :
     sans lui, une couleur très désaturée donne des aplats parfaitement gris,
@@ -2537,16 +2598,24 @@ def nuances_theme(couleur: str) -> dict[str, str]:
 
     def compose(luminosite: float, supplement_sat: float = 0.0) -> str:
         r, v, b = colorsys.hls_to_rgb(
-            teinte, min(1.0, luminosite), min(1.0, sat + supplement_sat))
+            teinte, max(0.0, min(1.0, luminosite)), min(1.0, sat + supplement_sat))
         return "#%02x%02x%02x" % (round(r * 255), round(v * 255), round(b * 255))
+
+    texte = couleur_texte_sur(couleur)
+    survol = compose(lum + 0.12 if lum <= 0.5 else lum - 0.12)
+    if contraste(survol, texte) < CONTRASTE_TEXTE_MIN:
+        survol = compose(lum - 0.12 if lum <= 0.5 else lum + 0.12)
+    fond, fond_leger = compose(0.94, 0.25), compose(0.97, 0.25)
 
     return {
         "primaire": couleur,
-        "survol": compose(lum + 0.12 if lum <= 0.5 else lum - 0.12),
+        "survol": survol,
         "clair": compose(0.62, 0.10),
-        "fond": compose(0.94, 0.25),
-        "fond_leger": compose(0.97, 0.25),
-        "texte": couleur_texte_sur(couleur),
+        "fond": fond,
+        "fond_leger": fond_leger,
+        "texte": texte,
+        "lisible": couleur_lisible_sur_clair(
+            couleur, FONDS_CLAIRS_FIXES + (fond, fond_leger)),
     }
 
 
@@ -2557,7 +2626,7 @@ def theme_association() -> dict:
     - `couleur` : la couleur effective, toujours un `#rrggbb` — celle qui part
       dans le `<meta name="theme-color">`, qui ne peut pas porter une variable
       CSS et a donc besoin d'une valeur ;
-    - `style`   : le contenu du `<style>` en ligne qui redéfinit les six
+    - `style`   : le contenu du `<style>` en ligne qui redéfinit les sept
       variables sur `:root`, ou **None** si aucune couleur n'est réglée. None
       et non le thème par défaut : dans ce cas le `:root` d'app/static/css/
       style.css fait foi, et n'injecter RIEN évite d'alourdir chaque page d'une
@@ -2599,7 +2668,8 @@ def theme_association() -> dict:
             f"--primaire-clair:{n['clair']};"
             f"--primaire-fond:{n['fond']};"
             f"--primaire-fond-leger:{n['fond_leger']};"
-            f"--primaire-texte:{n['texte']}"
+            f"--primaire-texte:{n['texte']};"
+            f"--primaire-lisible:{n['lisible']}"
             "}"
         ),
     }

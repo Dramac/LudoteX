@@ -7,7 +7,7 @@ propos » (tests/test_apropos_reglages.py) et du logo (tests/test_logo.py), dont
 il reprend le domicile, le patron de lecture et le patron de refus. Ce fichier
 vérifie ce qui les en DISTINGUE :
 
-1. **Cinq nuances sur six sont CALCULÉES**, jamais saisies : teinte et
+1. **Six nuances sur sept sont CALCULÉES**, jamais saisies : teinte et
    saturation conservées, luminosité imposée.
 2. **La couleur du texte du bandeau n'est jamais un choix.** Elle est déduite
    de la luminance, et le contraste obtenu ne descend jamais sous 4,5:1 —
@@ -32,9 +32,12 @@ import pytest
 
 MOT_DE_PASSE = "secret-admin-theme"
 
-# Les six variables que le `<style>` en ligne doit redéfinir, ni plus ni moins.
+# Les sept variables que le `<style>` en ligne doit redéfinir, ni plus ni
+# moins. La septième, `--primaire-lisible`, date du lot-12-pré-production
+# (ACC-02) : ses contrastes sont vérifiés dans tests/test_contrastes.py.
 VARIABLES = ("--primaire", "--primaire-survol", "--primaire-clair",
-             "--primaire-fond", "--primaire-fond-leger", "--primaire-texte")
+             "--primaire-fond", "--primaire-fond-leger", "--primaire-texte",
+             "--primaire-lisible")
 
 
 @pytest.fixture
@@ -178,9 +181,9 @@ def test_le_litteral_du_theme_par_defaut_est_le_meme_des_deux_cotes():
 
 
 # ---------------------------------------------------------------------------
-# 2. LES SIX VARIABLES — ni plus, ni moins, et sur toutes les pages
+# 2. LES SEPT VARIABLES — ni plus, ni moins, et sur toutes les pages
 # ---------------------------------------------------------------------------
-def test_les_six_variables_sont_injectees_et_seulement_elles(client):
+def test_les_sept_variables_sont_injectees_et_seulement_elles(client):
     _enregistrer(client, couleur="#1b4d3e")
     bloc = _bloc_injecte(client.get("/").text)
     assert bloc is not None
@@ -231,6 +234,7 @@ def test_les_nuances_du_theme_par_defaut_sont_celles_arbitrees():
         "fond": "#f5f0eb",
         "fond_leger": "#faf7f5",
         "texte": "#ffffff",
+        "lisible": "#2a2724",   # déjà lisible sur clair : inchangée
     }
 
 
@@ -463,7 +467,7 @@ def test_une_valeur_ecrite_directement_en_base_ne_peut_pas_s_echapper(client):
 def test_le_style_ne_contient_que_des_hexadecimaux(client):
     _enregistrer(client, couleur="#1b4d3e")
     bloc = _bloc_injecte(client.get("/").text)
-    assert re.fullmatch(r":root\{(--[a-z-]+:#[0-9a-f]{6};){5}--[a-z-]+:#[0-9a-f]{6}\}",
+    assert re.fullmatch(r":root\{(--[a-z-]+:#[0-9a-f]{6};){6}--[a-z-]+:#[0-9a-f]{6}\}",
                         bloc), bloc
 
 

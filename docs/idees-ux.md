@@ -55,10 +55,10 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
   — c'est le même besoin de lisibilité, et le numéro est noyé dans une phrase.
 - **Suggestion** : même mise en page que le prêt : libellé « Récupérer la pièce
   d'identité à l'emplacement n° » + numéro en classe `.pochette-num` (déclinée
-  en bleu `#1a73e8` pour distinguer retour de prêt).
+  en bleu (`--bleu`) pour distinguer retour de prêt).
 - **Corrigé** le 2026-07-17 : `pret.html` (résultat `rendu`) reprend le même
   gabarit `.resultat-libelle` + `.pochette-num` qu'au prêt, avec la nouvelle
-  variante `.pochette-num--retour` (bleu `#1a73e8`, `style.css`). `rendu_tournoi`
+  variante `.pochette-num--retour` (bleu `--bleu`, `style.css`). `rendu_tournoi`
   non touché (pas d'emplacement). Test ajouté. Voir `CLAUDE.md`.
 
 ### Q4. ✅ FAIT — « Scanner le jeu suivant » : l'action la plus fréquente est un petit lien

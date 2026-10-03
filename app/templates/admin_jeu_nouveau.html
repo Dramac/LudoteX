@@ -7,12 +7,15 @@
   <h1>Créer une fiche de jeu</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
 
-  {% if erreur %}<p class="resultat resultat-attention">{{ erreur }}</p>{% endif %}
+  {% if erreur %}<p class="resultat resultat-attention" id="nom-erreur">{{ erreur }}</p>{% endif %}
 
   <form method="post" action="/admin/jeu-nouveau" class="recherche-form form-2col">
     <div class="champ">
       <label for="nom">Nom du jeu *</label>
-      <input type="text" id="nom" name="nom" required autofocus>
+      {# Seul refus de la route : le nom manquant. Relié au champ qui prend
+         le focus, comme dans _saisie_manuelle.html. #}
+      <input type="text" id="nom" name="nom" required autofocus
+             {% if erreur %}aria-invalid="true" aria-describedby="nom-erreur"{% endif %}>
     </div>
     <div class="champ">
       <label for="type_jeu">Type</label>

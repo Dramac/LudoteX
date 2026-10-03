@@ -1,8 +1,8 @@
 :root {
-  /* Couleur d'IDENTITÉ (thème). Ces six variables sont les seules que l'écran
+  /* Couleur d'IDENTITÉ (thème). Ces sept variables sont les seules que l'écran
      d'administration « Identité » peut redéfinir : elles portent l'identité de
      l'association qui déploie, pas une signification.
-     Ne thématiser NI le bleu des liens (#1a73e8), NI le vert / rouge / orange
+     Ne thématiser NI le bleu des liens (--bleu), NI le vert / rouge / orange
      ci-dessous, NI le violet des blocs « programme » du planning : ce sont des
      significations (dépôt, erreur, attention, catégorie d'animation), elles
      doivent rester identiques quelle que soit la couleur choisie. */
@@ -12,6 +12,12 @@
   --primaire-fond: #f5f0eb;     /* L 94 % */
   --primaire-fond-leger: #faf7f5;/* L 97 % */
   --primaire-texte: #fff;       /* texte posé sur --primaire — ici 14,9:1 */
+  /* --primaire employée COMME texte ou contour sur un fond clair (numéro du
+     transfert, chiffres, puces, aide en ligne, focus). Calculée par
+     app/services.py::couleur_lisible_sur_clair : la couleur elle-même si elle
+     atteint 4,5:1 sur tous les fonds clairs du site, assombrie sinon. Jamais
+     --primaire nue sur fond clair : un thème pâle y tombait à 1,2:1. */
+  --primaire-lisible: #2a2724;
 
   --vert: #1f7a3d;
   --vert-clair: #e6f4ea;
@@ -19,8 +25,18 @@
   --rouge-clair: #fce8e6;
   --orange: #8a5a00;
   --orange-clair: #fff4e0;
+  /* Bleu des liens et du retour : 4,68:1 sur le bleu pâle de .resultat-info,
+     4,82:1 sur le gris de la page. L'ancien #1a73e8 n'atteignait 4,5:1 que
+     sur blanc pur (4,05:1 dans le pied de page, 3,93:1 sur #e8f0fe). */
+  --bleu: #1967d2;
   --gris: #5f6368;
+  /* Deux bordures : --bord sépare (cartes, lignes de tableau) et reste
+     décoratif ; --bord-champ DÉLIMITE un élément qu'on doit trouver pour s'en
+     servir (champ de saisie, bouton blanc sur carte blanche) et atteint donc
+     les 3:1 d'un composant d'interface — 3,05:1 sur blanc. Foncer --bord
+     partout aurait alourdi chaque carte sans rien rendre plus utilisable. */
   --bord: #dadce0;
+  --bord-champ: #909498;
   --texte: #202124;
 }
 
@@ -56,7 +72,7 @@ body {
 
 /* Menu bénévole (fragment partagé bandeau / dashboard admin) */
 .menu-benevole { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-.menu-benevole a { color: #1a73e8; text-decoration: none; font-weight: 600; }
+.menu-benevole a { color: var(--bleu); text-decoration: none; font-weight: 600; }
 .menu-benevole a:hover { text-decoration: underline; }
 /* Sur le bandeau coloré, les liens passent en --primaire-texte. */
 .bandeau .menu-benevole { margin-top: 8px; }
@@ -151,7 +167,7 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
   margin-top: 4px;
 }
 .bouton-principal { background: var(--vert); }
-.bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord); }
+.bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord-champ); }
 /* Bouton désactivé (générique, tout usage) : avant cette règle, chaque écran
    qui en avait besoin réinventait son propre gris en style inline
    (voir admin_fonctionnalites.html) faute de composant partagé. */
@@ -172,7 +188,7 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
   color: var(--texte);
   padding: 10px 16px;
   border-radius: 8px;
-  border: 2px solid var(--primaire);
+  border: 2px solid var(--primaire-lisible);
   text-decoration: none;
   font-weight: 600;
 }
@@ -188,17 +204,25 @@ select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid var(--primaire);
+  outline: 3px solid var(--primaire-lisible);
   outline-offset: 2px;
   border-radius: 6px;
 }
+/* Sur une surface colorée, le contour prend la couleur du TEXTE de cette
+   surface : posé en --primaire-lisible sur le bandeau, il était de la couleur
+   même du fond, donc invisible (ACC-01). --primaire-texte est garantie à
+   4,5:1 au moins sur --primaire, quelle que soit la couleur réglée. Le
+   bandeau du mode rangement porte, lui, du blanc sur son bleu fixe. */
+.bandeau :focus-visible { outline-color: var(--primaire-texte); }
+.rangement-bandeau-global :focus-visible { outline-color: currentColor; }
 /* Champs de saisie : liseré coloré au focus (souris comme clavier).
-   Comme les deux règles ci-dessus, ces marqueurs de focus prennent --primaire
-   et non --primaire-clair : une teinte à 62 % de luminosité ne donne qu'environ
-   2,6:1 sur blanc, sous le minimum de 3:1 attendu d'un indicateur de focus. */
+   Comme les deux règles ci-dessus, ces marqueurs de focus prennent
+   --primaire-lisible et non --primaire-clair : une teinte à 62 % de luminosité
+   ne donne qu'environ 2,6:1 sur blanc, sous le minimum de 3:1 attendu d'un
+   indicateur de focus. */
 .champ input:focus,
 .champ select:focus,
-.champ textarea:focus { border-color: var(--primaire); }
+.champ textarea:focus { border-color: var(--primaire-lisible); }
 
 /* Retour visuel à l'appui sur les boutons et puces. */
 .bouton, .bouton-filtrer, .chip-filtre { transition: filter .12s ease, transform .06s ease, background .12s ease; }
@@ -234,7 +258,7 @@ summary:focus-visible,
 .aide-inline > summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--primaire);
+  color: var(--primaire-lisible);
   transition: color .12s ease;
 }
 .aide-inline p:last-child { margin-bottom: 0; }
@@ -277,6 +301,7 @@ summary:focus-visible,
   .jeu:hover, .bouton:active, .bouton-filtrer:active, .chip-filtre:active { transform: none; }
   .recherche[open] > *:not(summary),
   .aide-inline[open] > *:not(summary) { animation: none; }
+  .recherche > summary, .aide-inline > summary { transition: none; }
 }
 
 /* Page d'accueil */
@@ -295,7 +320,7 @@ summary:focus-visible,
   text-align: center;
 }
 .resultat-ok { background: var(--vert-clair); border: 2px solid var(--vert); }
-.resultat-info { background: #e8f0fe; border: 2px solid #1a73e8; }
+.resultat-info { background: #e8f0fe; border: 2px solid var(--bleu); }
 .resultat-attention { background: var(--orange-clair); border: 2px solid var(--orange); color: var(--orange); }
 .resultat-libelle { margin: 0; font-size: 1.1rem; color: var(--vert); }
 .pochette-num {
@@ -307,7 +332,7 @@ summary:focus-visible,
 }
 /* Retour d'un jeu : même gabarit que le prêt, numéro en BLEU pour distinguer
    d'un coup d'œil « je récupère » (retour) de « je dépose » (prêt, vert). */
-.pochette-num--retour { color: #1a73e8; }
+.pochette-num--retour { color: var(--bleu); }
 /* Transfert de pochette (docs/conception-transfert-pochette.md §8) : ni vert
    (glissez la PI) ni bleu (récupérez-la) — une troisième couleur pour dire
    NE TOUCHEZ PAS À LA POCHETTE. Réutilise la couleur d'IDENTITÉ du site
@@ -316,7 +341,7 @@ summary:focus-visible,
    ⚠️ Depuis que cette couleur est réglable, c'est la seule signification
    portée par --primaire : une association qui choisirait un vert ou un bleu
    proches de ceux du prêt et du retour affaiblirait la distinction. */
-.pochette-num--transfert { color: var(--primaire); }
+.pochette-num--transfert { color: var(--primaire-lisible); }
 .resultat-consigne { margin: 0; font-weight: 600; }
 
 /* Code personnel (fiche D4, docs/audit-ux-2026-07-18.md) : code de
@@ -338,7 +363,7 @@ summary:focus-visible,
   margin: 4px 0;
 }
 
-.lien { color: #1a73e8; }
+.lien { color: var(--bleu); }
 .lien-fiche { margin: 16px 0 0; text-align: center; }
 
 /* Catalogue */
@@ -375,7 +400,7 @@ summary:focus-visible,
 .recherche > summary {
   cursor: pointer;
   font-weight: 600;
-  color: var(--primaire);
+  color: var(--primaire-lisible);
 }
 .recherche-form {
   display: grid;
@@ -392,7 +417,7 @@ summary:focus-visible,
   width: 52px;
   min-height: 44px;          /* même cible tactile que les autres champs */
   padding: 2px;
-  border: 1px solid var(--bord);
+  border: 1px solid var(--bord-champ);
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
@@ -401,7 +426,7 @@ summary:focus-visible,
 .champ label { color: var(--gris); font-size: 0.9rem; }
 .champ input, .champ select {
   padding: 10px;
-  border: 1px solid var(--bord);
+  border: 1px solid var(--bord-champ);
   border-radius: 8px;
   font-size: 1rem;
   background: #fff;
@@ -482,7 +507,7 @@ summary:focus-visible,
 .filtres-actifs .fa-label { color: var(--gris); font-size: .9rem; }
 .chip-filtre {
   display: inline-flex; align-items: center; gap: 6px;
-  background: var(--primaire-fond); color: var(--primaire);
+  background: var(--primaire-fond); color: var(--primaire-lisible);
   border-radius: 999px; padding: 4px 12px;
   font-size: .85rem; font-weight: 600; text-decoration: none;
 }
@@ -495,7 +520,7 @@ summary:focus-visible,
 /* Statistiques */
 .stats-chiffres { display: flex; flex-wrap: wrap; gap: 16px; }
 .chiffre { flex: 1; min-width: 120px; text-align: center; background: var(--primaire-fond-leger); border-radius: 10px; padding: 14px; }
-.chiffre-val { display: block; font-size: 1.8rem; font-weight: 800; color: var(--primaire); }
+.chiffre-val { display: block; font-size: 1.8rem; font-weight: 800; color: var(--primaire-lisible); }
 .chiffre-lib { color: var(--gris); font-size: 0.85rem; }
 .stats-bascule { color: var(--gris); }
 .palmares { margin: 8px 0 20px; padding-left: 24px; }
@@ -639,7 +664,7 @@ summary:focus-visible,
    se posent côte à côte dans une cellule au lieu de s'empiler. */
 .rangement-form-inline { display: inline-flex; align-items: center; gap: 6px; margin: 2px 6px 2px 0; }
 .rangement-form-inline input[type="text"] {
-  padding: 4px 8px; border: 1px solid var(--bord); border-radius: 6px;
+  padding: 4px 8px; border: 1px solid var(--bord-champ); border-radius: 6px;
   font-size: 0.85rem; width: 140px;
 }
 .rangement-ordre, .rangement-actions { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -650,7 +675,7 @@ summary:focus-visible,
    Plus compact que .resultat (pas son padding 20px) : pensé pour rester
    affiché en permanence au-dessus de la caméra, pas pour un message ponctuel. */
 .rangement-bandeau {
-  background: #e8f0fe; border: 2px solid #1a73e8; color: #1a73e8;
+  background: #e8f0fe; border: 2px solid var(--bleu); color: var(--bleu);
   border-radius: 10px; padding: 10px 14px; margin-bottom: 12px;
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
   font-weight: 600;
@@ -666,7 +691,7 @@ summary:focus-visible,
    rangement au scanner (identité "rangement" cohérente sur tout le site). */
 .rangement-valeur {
   margin: 4px 0; font-size: 1.8rem; font-weight: 800; line-height: 1.25;
-  color: #1a73e8;
+  color: var(--bleu);
 }
 
 /* Édition à l'unité du rangement sur la fiche admin (admin_fiche.html, §4.c) :
@@ -674,7 +699,7 @@ summary:focus-visible,
 .rangement-edition { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .rangement-edition label { font-size: 0.85rem; color: var(--gris); }
 .rangement-edition select {
-  padding: 4px 8px; border: 1px solid var(--bord); border-radius: 6px; font-size: 0.85rem;
+  padding: 4px 8px; border: 1px solid var(--bord-champ); border-radius: 6px; font-size: 0.85rem;
 }
 
 /* Sous-groupes du menu "Gérer" (Jeux & étiquettes / Données & accès / Événement /
@@ -778,7 +803,7 @@ summary:focus-visible,
 .etiquette-bloc { padding: 12px 16px; }
 .etiquette-entete { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .etiquette-apercu { display: block; width: 100%; max-width: 360px; height: auto; border: 1px solid var(--bord); border-radius: 6px; }
-.champ textarea { padding: 10px; border: 1px solid var(--bord); border-radius: 8px; font-size: 1rem; font-family: inherit; }
+.champ textarea { padding: 10px; border: 1px solid var(--bord-champ); border-radius: 8px; font-size: 1rem; font-family: inherit; }
 .copie-ok { color: var(--vert); font-weight: 600; margin-left: 8px; }
 
 /* Partage du lien d'activation : pastilles colorées par canal */
@@ -792,14 +817,14 @@ summary:focus-visible,
 }
 .chip-wa { background: #25d366; }       /* WhatsApp */
 .chip-mail { background: #5f6368; }     /* E-mail */
-.chip-sms { background: #1a73e8; }      /* SMS */
+.chip-sms { background: var(--bleu); }      /* SMS */
 .chip-discord { background: #5865f2; }  /* Discord (couleur Blurple) */
 
 /* Impression d'étiquettes en lot */
 .grille-params { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
 .grille-params label { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; color: var(--gris); }
-.grille-params input { padding: 6px 8px; border: 1px solid var(--bord); border-radius: 6px; }
-.compteur { font-weight: 700; color: var(--primaire); margin: 10px 0; }
+.grille-params input { padding: 6px 8px; border: 1px solid var(--bord-champ); border-radius: 6px; }
+.compteur { font-weight: 700; color: var(--primaire-lisible); margin: 10px 0; }
 .filtre-cat { margin-bottom: 12px; }
 /* Réglage STOCKÉ « code de la boîte sur l'étiquette » : encadré à part, entre
    les avertissements et le formulaire de génération. Il ne décrit pas la
@@ -813,7 +838,7 @@ summary:focus-visible,
 }
 .reglage-etiquette .stats-note { margin: 6px 0 10px; }
 .select-actions { display: flex; gap: 12px; margin-bottom: 8px; }
-.lien-bouton { background: none; border: none; color: #1a73e8; font-weight: 600; cursor: pointer; padding: 0; }
+.lien-bouton { background: none; border: none; color: var(--bleu); font-weight: 600; cursor: pointer; padding: 0; }
 .liste-jeux { list-style: none; margin: 0 0 16px; padding: 0; max-height: 360px; overflow-y: auto; border: 1px solid var(--bord); border-radius: 8px; }
 .liste-jeux li { padding: 6px 12px; border-bottom: 1px solid #eee; }
 .liste-jeux .case { display: flex; align-items: center; gap: 8px; font-weight: 400; }
@@ -907,7 +932,7 @@ button.lien {
   text-decoration: none;
   color: var(--texte);
   background: #eef3fe;
-  border-left: 4px solid #1a73e8;
+  border-left: 4px solid var(--bleu);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(0,0,0,.08);
   padding: 3px 8px;
@@ -980,10 +1005,10 @@ button.lien {
 }
 .pl-recherche { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
 .pl-recherche input[type="text"], .pl-recherche input[type="number"] {
-  padding: 8px; border: 1px solid var(--bord); border-radius: 8px; font-size: 0.95rem;
+  padding: 8px; border: 1px solid var(--bord-champ); border-radius: 8px; font-size: 0.95rem;
 }
 .pl-check { display: inline-flex; align-items: center; gap: 4px; color: var(--gris); font-size: 0.9rem; }
-.pl-besoin { width: 3rem; text-align: center; padding: 4px; border: 1px solid var(--bord); border-radius: 6px; }
+.pl-besoin { width: 3rem; text-align: center; padding: 4px; border: 1px solid var(--bord-champ); border-radius: 6px; }
 .pl-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .pl-actions form { margin: 0; }
 
@@ -1027,7 +1052,7 @@ button.lien {
 .rr-table td { font-weight: 700; }
 .rr-v { background: var(--vert-clair); color: var(--vert); }
 .rr-d { background: var(--rouge-clair); color: var(--rouge); }
-.rr-n { background: #e8f0fe; color: #1a73e8; }
+.rr-n { background: #e8f0fe; color: var(--bleu); }
 .rr-vide { color: #6b7075; }
 .rr-self { background: #f1f3f4; }
 
@@ -1062,7 +1087,7 @@ button.lien {
   justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
-  background: #1a73e8;      /* bleu = identité "rangement" du site */
+  background: var(--bleu);      /* bleu = identité "rangement" du site */
   color: #fff;
   font-weight: 700;
   text-align: center;

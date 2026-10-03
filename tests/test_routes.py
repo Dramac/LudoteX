@@ -1,6 +1,7 @@
 """Tests d'intégration des routes (fiche + prêt/retour) via une base temporaire."""
 
 import os
+import re
 
 import pytest
 
@@ -919,7 +920,10 @@ def test_admin_login_autofocus(client, monkeypatch):
     # Q10 : le champ mot de passe reçoit le focus automatiquement.
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     r = client.get("/admin")
-    assert '<input type="password" id="mot_de_passe" name="mot_de_passe" autofocus>' in r.text
+    # Forme relâchée depuis lot-12-pré-production : la balise porte désormais,
+    # après un refus, le lien vers le message (voir tests/test_accessibilite.py).
+    assert re.search(r'<input type="password" id="mot_de_passe" name="mot_de_passe" autofocus\b',
+                     r.text)
 
 
 def test_favicon_carre(client):

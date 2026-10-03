@@ -238,7 +238,7 @@ commit, quel que soit le sujet du chantier.
    iCalendar, publiés l'un et l'autre. Les noms surveillés vivent dans
    `interne/noms-bannis.txt`, hors dépôt ; sans ce fichier le test est ignoré,
    donc vert sur un clone public.
-2. **Aucune couleur en dur.** Les six variables du `:root` de
+2. **Aucune couleur en dur.** Les sept variables du `:root` de
    `app/static/css/style.css` font foi ; une valeur hexadécimale écrite dans un
    gabarit, une feuille de style ou un export PDF rompt le thème réglable.
    Exception documentée : les couleurs sémantiques (vert, rouge, orange) et le

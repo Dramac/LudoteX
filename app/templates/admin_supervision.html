@@ -8,7 +8,14 @@
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
   <p class="stats-note">Page en lecture seule — aucune action possible ici.
      Rechargez la page pour actualiser les informations.</p>
+</section>
 
+{# Le fragment titre ses rubriques en <h3> : il vit aussi dans le tableau de
+   bord, sous le <h2> « Supervision » de sa colonne. Ici, ce <h2> évite le
+   saut h1 → h3 qu'un lecteur d'écran fait en naviguant par titres
+   (lot-12-pré-production, trouvé par tests/test_accessibilite.py). #}
+<section class="carte">
+  <h2>🩺 État de l'application</h2>
   {% include "_supervision_contenu.html" %}
 </section>
 {% endblock %}

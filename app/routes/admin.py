@@ -1329,6 +1329,20 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
     """
     from app.config import DEPOT_URL, NOM_ASSOCIATION
 
+    # Avertir sans bloquer (lot-12-pré-production, ACC-02) : une couleur trop
+    # pâle pour se lire en texte sur fond clair est acceptée telle quelle, et
+    # le site en emploie une version assombrie là où elle sert de texte. Le
+    # bureau doit pouvoir le constater ici plutôt que de le découvrir sur
+    # l'écran de prêt. Rien quand la saisie est refusée : il n'y a alors pas
+    # de couleur dont parler.
+    couleur_valide = services.normaliser_couleur_association(
+        saisies.get("couleur") or "")
+    couleur_lisible = None
+    if couleur_valide:
+        lisible = services.nuances_theme(couleur_valide)["lisible"]
+        if lisible != couleur_valide:
+            couleur_lisible = lisible
+
     return templates.TemplateResponse(
         request, "admin_identite.html",
         {"logo_regle": logo.logo_regle(),
@@ -1342,6 +1356,7 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
          "couleur_effective": (saisies.get("couleur")
                                or services.COULEUR_ASSOCIATION_DEFAUT),
          "couleur_par_defaut": services.COULEUR_ASSOCIATION_DEFAUT,
+         "couleur_lisible": couleur_lisible,
          "nom_par_defaut": NOM_ASSOCIATION,
          "depot_par_defaut": DEPOT_URL,
          "longueur_max": services.LONGUEUR_NOM_ASSOCIATION,

@@ -106,6 +106,14 @@
       margin-left: 0.6em;
       vertical-align: middle;
     }
+    /* Le point qui bat est la seule animation de l'écran. Portée marginale :
+       /live tourne sur le poste de projection, qui n'applique pas la
+       préférence d'un visiteur — mais un membre du bureau qui ouvre la page
+       sur son propre appareil, lui, l'a peut-être réglée. Le point reste
+       affiché, fixe ; sa couleur dit toujours « en ligne » ou « hors ligne ». */
+    @media (prefers-reduced-motion: reduce) {
+      .entete .horloge .point { animation: none; }
+    }
 
     /* --- Les deux zones ---
        `flex: N 1 0` plutôt qu'une hauteur en pourcentage : si une zone est

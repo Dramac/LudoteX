@@ -175,8 +175,11 @@
         </td>
         <td>
           <form method="post" action="/admin/jeton/appareil/{{ a.appareil }}/libelle">
+            {# Un libellé par ligne : le nom accessible dit DE QUEL appareil,
+               le texte indicatif ne tient pas lieu d'étiquette. #}
             <input type="text" name="libelle" value="{{ a.libelle or '' }}"
-                   maxlength="40" placeholder="ex. comptoir 2">
+                   maxlength="40" placeholder="ex. comptoir 2"
+                   aria-label="Libellé de l'appareil {{ a.appareil }}">
             <button type="submit" class="bouton-filtrer">Enregistrer</button>
           </form>
         </td>
