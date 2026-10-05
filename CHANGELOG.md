@@ -6,6 +6,17 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.17.0 — 2026-10-05
+
+- **Quand l'on annonce une pochette vide et qu'elle ne l'est pas, il y a maintenant deux issues, dont une qui prévient le bureau.** Le comptoir n'est plus coincé : la boîte est rendue ou transférée comme avant, et un signalement part au carnet de maintenance pour que quelqu'un aille voir la pochette. Il ne porte aucun numéro de pochette.
+- **Les retours non scannés sont comptés comme des prêts, mais n'allongent plus la durée moyenne.** Un visiteur est bien reparti avec la boîte ; seule la durée, fausse, est écartée du calcul.
+- **Une adresse mal tapée ou qui ne désigne rien donne une page qui explique et propose de revenir, et non plus du texte brut.**
+- **Quand un tournoi refuse de se lancer, la page de gestion dit pourquoi et quoi faire** : pas assez de participants pour le mode choisi, aucun inscrit, nombre de rondes à revoir.
+- **Une couleur d'identité très claire reste lisible là où elle sert de texte, et le focus clavier se voit sur le bandeau.** Le survol des boutons garde lui aussi un texte lisible, quelle que soit la couleur choisie.
+- **Les fichiers exportés (statistiques, planning, catalogue, signalements) ne peuvent plus déclencher un calcul en s'ouvrant dans un tableur.**
+- **Prolonger ou réinitialiser l'accès bénévole refuse une date passée ou illisible, avec un message clair,** au lieu de l'accepter en silence.
+- **La documentation d'exploitation dit désormais que le serveur se met à jour seul et qu'aucune alerte n'existe**, et le lanceur local ne laisse plus un autre site de votre navigateur l'arrêter.
+
 ## 1.16.0 — 2026-09-28
 
 - **L'annonce de l'écran de salle a désormais toujours une fin : 30 minutes proposées, 12 heures au plus.** La durée « illimitée » n'existe plus. Une durée oubliée ou mal tapée ne bloque jamais l'annonce : elle prend alors 30 minutes, et le message le dit.
