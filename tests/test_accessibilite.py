@@ -285,14 +285,15 @@ def test_une_couleur_lisible_n_est_pas_signalee(client):
 # ---------------------------------------------------------------------------
 # 5. LA PAGE D'INDISPONIBILITÉ — statique, sans couleur de thème
 # ---------------------------------------------------------------------------
-def test_la_page_d_indisponibilite_tient_sans_feuille_de_style():
+@pytest.mark.parametrize("fichier", ["indisponible.html", "envoi-trop-volumineux.html"])
+def test_la_page_d_indisponibilite_tient_sans_feuille_de_style(fichier):
     """
-    Servie par nginx quand l'application est arrêtée : ni base, ni style.css,
-    donc aucune variable de thème. Langue déclarée, largeur de téléphone,
-    couleurs laissées au navigateur (`color-scheme`, aucune valeur écrite),
-    un seul h1.
+    Servies par nginx sans l'application (arrêtée, 502 ; ou jamais atteinte,
+    413) : ni base, ni style.css, donc aucune variable de thème. Langue
+    déclarée, largeur de téléphone, couleurs laissées au navigateur
+    (`color-scheme`, aucune valeur écrite), un seul h1.
     """
-    page = Path("app/static/indisponible.html").read_text(encoding="utf-8")
+    page = Path("app/static", fichier).read_text(encoding="utf-8")
     assert '<html lang="fr">' in page
     assert 'name="viewport" content="width=device-width, initial-scale=1"' in page
     style = re.search(r"<style>(.*?)</style>", page, re.S).group(1)

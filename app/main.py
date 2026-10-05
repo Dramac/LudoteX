@@ -38,7 +38,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import auth, journal, services
+from app import auth, envois, journal, services
 from app.db import get_connection, init_db
 from app.modules import ModuleDesactive, garde_module
 from app.routes import (acces, admin, catalogue, images, live, maintenance, pret,
@@ -114,6 +114,14 @@ async def rafraichir_cookie_benevole(request, call_next):
                 reponse, request, jeton, services.appareil_de(request)
             )
     return reponse
+
+
+# SEC-14 élargi (lot-17-pré-production) : un envoi multipart n'atteint que les
+# trois routes d'envoi de fichier ; partout ailleurs, refus 415 SANS lecture du
+# corps — motifs dans `envois.MultipartHorsEnvois`. Déclaré APRÈS le middleware
+# ci-dessus, donc placé AUTOUR de lui : c'est le premier à voir la requête. La
+# liste blanche est celle des routes elles-mêmes (`admin.CHEMINS_ENVOI`).
+app.add_middleware(envois.MultipartHorsEnvois, chemins_autorises=admin.CHEMINS_ENVOI)
 
 
 @app.exception_handler(ModuleDesactive)

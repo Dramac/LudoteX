@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<!--
+  Page servie par nginx LUI-MÊME quand un envoi dépasse `client_max_body_size`
+  (erreur 413, lot-17-pré-production) : voir `error_page 413` dans
+  deploy/nginx-ludotex.conf. nginx refuse l'envoi AVANT de le transmettre :
+  l'application ne voit jamais la requête, donc cette page ne peut rien lui
+  demander — ni le nom de l'événement, ni le logo, ni la couleur d'identité,
+  ni la feuille de style. Elle est donc NEUTRE par construction, et non par
+  oubli : style minimal ici même, SANS AUCUNE COULEUR (`color-scheme` laisse
+  le navigateur choisir les siennes, en clair comme en sombre), aucune
+  mention de l'association, aucun logo, aucune ressource externe, aucun script.
+  Même patron que indisponible.html (erreur 502).
+
+  Aucun chiffre de taille ici : la limite vit dans la configuration nginx, et
+  les bornes de chaque envoi dans l'application, qui les affiche elle-même
+  quand un fichier les dépasse. Un nombre recopié ici mentirait le jour où
+  l'un des deux bouge.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Fichier trop volumineux</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: 1rem;
+  }
+  h1 { font-size: 1.5rem; line-height: 1.25; }
+  h2 { font-size: 1.15rem; margin-top: 1.5rem; }
+  li { margin-bottom: .4rem; }
+  a { font-weight: bold; }
+  a:focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ce fichier est trop volumineux</h1>
+
+  <p>Le serveur a refusé l'envoi avant même de le lire&nbsp;: le fichier
+  dépasse la taille qu'il accepte. <strong>Rien n'a été enregistré</strong>,
+  et ce qui était en place avant n'a pas bougé.</p>
+
+  <h2>Que faire&nbsp;?</h2>
+  <ul>
+    <li><strong>Vérifiez qu'il s'agit du bon fichier.</strong> Le plus souvent,
+    c'est un autre fichier qui a été choisi dans la liste. Un catalogue, une
+    sauvegarde ou un logo pèsent bien moins que cela.</li>
+    <li>Pour un logo&nbsp;: <strong>réduisez l'image</strong> (moins de pixels,
+    ou un autre format), puis réessayez.</li>
+    <li>Si le fichier est bien le bon et ne peut pas être réduit,
+    <strong>prévenez la personne qui s'occupe du serveur</strong>.</li>
+  </ul>
+
+  <p><a href="/admin">Revenir à l'administration</a>&nbsp;·
+  <a href="/">Accueil</a></p>
+</main>
+</body>
+</html>

@@ -419,3 +419,195 @@ def test_ligne_de_commande_sans_plafond(tmp_path):
     chemin.write_bytes(_catalogue(import_csv.MAX_LIGNES_CATALOGUE + 1))
     lignes, _ = import_csv.lire_csv(chemin)
     assert len(lignes) == import_csv.MAX_LIGNES_CATALOGUE + 1
+
+
+# ---------------------------------------------------------------------------
+# 6. SEC-14 élargi (lot-17-pré-production) — le multipart n'entre que par les
+#    trois routes d'envoi ; partout ailleurs, 415 sans lire le corps
+# ---------------------------------------------------------------------------
+TROIS_ENVOIS = {"/admin/donnees/import", "/admin/sauvegarde/import", "/admin/identite"}
+
+
+def _appel_brut(chemin: str, content_type: bytes = b"multipart/form-data; boundary=x"):
+    """
+    Appelle l'application au niveau ASGI, avec un `receive` qui LÈVE : si
+    quoi que ce soit tire le corps, l'appel échoue. C'est l'observable exigé
+    — plus fort qu'un compte d'octets : même un `receive` vide est interdit.
+
+    Renvoie (code, corps de la réponse, nombre d'appels à `receive`).
+    """
+    import asyncio
+
+    from app.main import app
+
+    appels = []
+
+    async def receive():
+        appels.append(1)
+        raise AssertionError("le corps de la requête a été lu")
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": chemin,
+        "raw_path": chemin.encode(), "query_string": b"", "root_path": "",
+        "headers": [(b"host", b"testserver"), (b"content-type", content_type),
+                    (b"content-length", str(20 * 1024 * 1024).encode())],
+        "client": ("127.0.0.1", 50000), "server": ("testserver", 80),
+    }
+    asyncio.run(app(scope, receive, send))
+    corps = b"".join(m.get("body", b"") for m in messages
+                     if m["type"] == "http.response.body")
+    return messages[0]["status"], corps.decode(), len(appels)
+
+
+def _routes_post_hors_envois() -> list[str]:
+    """
+    Toutes les routes POST de l'application, sauf les trois envois, chemin
+    rendu concret (`{x}` → `1`). Le refus ne dépend pas de la route : on les
+    prend TOUTES, publiques comprises, pour qu'une route ajoutée demain soit
+    couverte sans y penser.
+    """
+    from fastapi.routing import APIRoute
+
+    from app.main import app
+
+    chemins = sorted({
+        re.sub(r"\{[^}]+\}", "1", route.path)
+        for route in app.routes
+        if isinstance(route, APIRoute) and "POST" in route.methods
+        and route.path not in TROIS_ENVOIS
+    })
+    return chemins
+
+
+def test_l_inventaire_des_routes_post_est_complet():
+    """Témoin de la recherche (leçon du lot 1) : elle trouve les cas connus."""
+    chemins = _routes_post_hors_envois()
+    for connu in ("/admin/login", "/admin/evenement", "/pret/1/preter"):
+        assert connu in chemins, connu
+    assert not TROIS_ENVOIS & set(chemins)
+    assert len(chemins) > 50
+
+
+@pytest.mark.parametrize("chemin", _routes_post_hors_envois())
+def test_multipart_refuse_hors_envois_sans_lire_le_corps(bases, chemin):
+    """415, la page d'erreur de l'application, et `receive` jamais appelé."""
+    code, corps, lectures = _appel_brut(chemin)
+    assert code == 415
+    assert lectures == 0
+    assert "Cet envoi n" in corps and "accepté à cette adresse" in corps
+
+
+@pytest.mark.parametrize("content_type", [
+    b"Multipart/Form-Data; boundary=x",
+    b"  multipart/form-data; boundary=x",
+    b"MULTIPART/FORM-DATA",
+    b"multipart/mixed; boundary=x",
+])
+def test_multipart_refuse_quelle_que_soit_l_ecriture(bases, content_type):
+    """L'analyseur de Starlette ignore la casse : le refus aussi."""
+    code, _, lectures = _appel_brut("/admin/login", content_type)
+    assert (code, lectures) == (415, 0)
+
+
+def test_multipart_refuse_meme_sur_une_adresse_inconnue(bases):
+    """La liste blanche est une liste d'admission, pas une liste d'exclusion."""
+    code, _, lectures = _appel_brut("/n-existe-pas")
+    assert (code, lectures) == (415, 0)
+
+
+@pytest.mark.parametrize("chemin", ["/admin/login", "/admin/evenement"])
+def test_multipart_reel_refuse_sans_rien_tirer(client, espion, chemin):
+    """
+    Le cas du lot 11, par le client de test : un vrai multipart de 2 Mo à
+    deux routes à formulaire. Avant ce lot, l'espion comptait 2 097 343 octets
+    lus sur chacune ; il n'en compte plus aucun, et la page est du HTML.
+    """
+    reponse = client.post(chemin, data={"mot_de_passe": "x"},
+                          files={"piece": ("gros.bin", GROS, "application/octet-stream")},
+                          follow_redirects=False)
+    assert reponse.status_code == 415
+    assert espion.octets_lus == 0
+    assert reponse.headers["content-type"].startswith("text/html")
+
+
+def test_formulaire_ordinaire_inchange(client):
+    """Un formulaire urlencodé n'est pas concerné : la connexion passe."""
+    reponse = _connexion(client)
+    assert reponse.status_code == 200
+    assert "Administration" in reponse.text
+
+
+@pytest.mark.parametrize("chemin,champs,champ_fichier,nom,type_mime", ENVOIS)
+def test_multipart_passe_sur_les_trois_routes_d_envoi(
+    client, espion, chemin, champs, champ_fichier, nom, type_mime
+):
+    """Connecté : le multipart atteint la route, qui lit le corps et répond."""
+    _connexion(client)
+    espion.octets_lus = 0
+    reponse = client.post(chemin, data=champs,
+                          files={champ_fichier: (nom, b"contenu", type_mime)},
+                          follow_redirects=False)
+    assert reponse.status_code != 415
+    assert espion.octets_lus > 0
+
+
+def test_la_liste_blanche_est_celle_des_routes_d_envoi():
+    """
+    Un seul domicile : `CHEMINS_ENVOI` est rempli par `_envoi_admin`, et
+    coïncide avec les routes qui portent la garde avant lecture.
+    """
+    from app.routes import admin as routes_admin
+
+    routes_envoi = {route.path for route in routes_admin.router.routes
+                    if isinstance(route, routes_admin.RouteEnvoiAdmin)}
+    assert routes_admin.CHEMINS_ENVOI == routes_envoi == TROIS_ENVOIS
+
+
+def test_chaque_formulaire_multipart_poste_vers_une_route_d_envoi():
+    """
+    Le côté gabarits : tout `<form>` multipart vise une adresse de la liste
+    blanche, sans quoi le bureau verrait son envoi refusé. Et chaque route
+    d'envoi a bien son formulaire.
+    """
+    from app.routes import admin as routes_admin
+
+    actions = set()
+    for gabarit in (RACINE / "app" / "templates").rglob("*.html"):
+        for balise in re.findall(r"<form\b[^>]*>", gabarit.read_text(), re.S):
+            if "multipart/form-data" in balise:
+                action = re.search(r'action="([^"]+)"', balise)
+                assert action, f"{gabarit.name} : formulaire multipart sans action"
+                actions.add(action.group(1))
+    assert actions == routes_admin.CHEMINS_ENVOI
+
+
+def test_import_de_catalogue_de_la_formation_passe(client, bases, monkeypatch):
+    """
+    L'instance de formation est le même code, aux mêmes chemins : son import
+    de catalogue — sa raison d'être — franchit le middleware.
+    """
+    from app.routes import admin as routes_admin
+
+    monkeypatch.setattr(routes_admin, "MODE_FORMATION", True)
+    _connexion(client)
+    avant = _exemplaires(bases)
+    reponse = client.post("/admin/donnees/import",
+                          files={"fichier": ("c.csv", _catalogue(3), "text/csv")})
+    assert reponse.status_code == 200
+    assert _exemplaires(bases) == avant + 3
+
+
+@pytest.mark.parametrize("service", ["ludotex.service", "ludotex-formation.service"])
+def test_aucun_prefixe_de_chemin_pour_uvicorn(service):
+    """
+    La liste blanche compare le chemin exact : un `--root-path` (instance
+    servie sous un préfixe) la ferait manquer, et couperait les trois envois.
+    """
+    texte = (RACINE / "deploy" / service).read_text()
+    assert "--root-path" not in texte

@@ -82,6 +82,71 @@ est installée.
 
 ---
 
+## À paraître
+
+### nginx : une page quand un fichier envoyé est trop volumineux — à faire plus tard, si vous le souhaitez, hors événement
+
+**Ce geste est facultatif** : sans lui, tout fonctionne comme avant, et un
+fichier de plus de 20 Mo reçoit toujours la page d'erreur brute de nginx
+(« 413 Request Entity Too Large »). Le contrôle de report signale les deux
+fichiers nginx tant qu'il n'est pas fait. **Hors événement uniquement**, pour
+la même raison qu'en 1.16.0 : une erreur rechargée fait tomber les deux sites.
+
+Les deux fichiers nginx gagnent chacun deux directives : `error_page 413` et
+une `location` interne qui sert `app/static/envoi-trop-volumineux.html`. La
+page vient avec le code, `update.sh` l'installe ; seule la configuration nginx
+est à reporter.
+
+**Si les gestes nginx de la 1.16.0 ne sont pas encore faits**, les faire
+maintenant suffit : leurs étapes 4 et 5 copient les fichiers **entiers** du
+dépôt, ces deux directives comprises. Ajouter seulement la vérification de
+l'étape 2 ci-dessous à leur étape 4, et sauter le reste de cette section.
+
+**Prérequis** : `sudo ./deploy/update.sh` de cette version déjà passé :
+```bash
+ls /opt/ludotex/app/static/envoi-trop-volumineux.html
+```
+*À voir :* le chemin, sans « No such file ».
+
+1. **Formation d'abord** : `docs/deploiement.md`, « Mettre à jour la
+   configuration nginx », bloc **Formation**, étapes 1 à 5, avec le
+   `grep -n server_name` qui doit montrer `<domaine de formation>` exactement.
+   Rien n'est rechargé tant que `sudo nginx -t` n'a pas répondu
+   `test is successful` ; s'il répond autre chose, s'arrêter et remettre la
+   sauvegarde de l'étape 1 de ce bloc (voir la 1.16.0, « Si `sudo nginx -t`
+   répond autre chose »).
+
+2. **Constater sur la formation** — un faux fichier de 25 Mo, refusé par nginx
+   sans atteindre l'application :
+   ```bash
+   head -c 26214400 /dev/zero > /tmp/gros.bin
+   curl -s -D - -o /tmp/413.html -F "fichier=@/tmp/gros.bin" https://<domaine de formation>/admin/donnees/import | grep -iE '^HTTP|content-security'
+   grep -o '<title>.*</title>' /tmp/413.html
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine de formation>/envoi-trop-volumineux.html
+   rm -f /tmp/gros.bin /tmp/413.html
+   ```
+   *À voir :* `HTTP/1.1 413`, la ligne `Content-Security-Policy` ;
+   `<title>Fichier trop volumineux</title>` ; puis `404` (la page ne s'ouvre
+   pas en tapant son adresse).
+
+3. **Production ensuite** : même section, bloc **Production**, étapes 1 à 5,
+   `grep -n server_name` → `<domaine>` exactement. Puis la même vérification
+   que l'étape 2, sur `https://<domaine>/admin/donnees/import` : rien n'est
+   importé, nginx refuse avant de transmettre.
+
+4. **Relancer le contrôle de report** :
+   ```bash
+   sudo -u pretjeux /opt/ludotex/.venv/bin/python /opt/ludotex/scripts/controle_report.py
+   ```
+   *À voir :* plus aucune ligne `error_page 413` ni
+   `envoi-trop-volumineux.html` sous « Configuration nginx ». S'il en reste
+   d'autres, ce sont des gestes de la 1.16.0 encore à faire (attrape-tout,
+   par exemple), pas celui-ci.
+
+**Retour en arrière** : la sauvegarde horodatée prise à l'étape 1 de chaque
+bloc (`docs/deploiement.md` § 9, « Une page semble cassée après une mise à
+jour de nginx »).
+
 ## 1.16.0 — 2026-09-28
 
 ### nginx : attrape-tout, un journal par site, une page quand l'application est arrêtée, un frein devant `/admin` — à faire plus tard, si vous le souhaitez, hors événement

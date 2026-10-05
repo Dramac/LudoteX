@@ -4,7 +4,8 @@
 {# Page d'erreur HTTP GÉNÉRIQUE : tout code qui n'a pas de gabarit dédié
    (403 → acces_refuse.html, 404 → introuvable.html, 500 → erreur.html).
    Les cas atteignables sont le 405 et le 422 — voir _MESSAGES_HTTP dans
-   app/main.py, qui fournit `titre` et `message`. #}
+   app/main.py, qui fournit `titre` et `message` — et le 415, rendu par le
+   middleware `MultipartHorsEnvois` (app/envois.py, REFUS_MULTIPART). #}
 {% block contenu %}
 <section class="carte">
   <h1>{{ titre }}</h1>

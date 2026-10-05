@@ -354,7 +354,9 @@ ls -lh /var/lib/ludotex/sauvegardes/ludotex-backup-*.zip | tail -1
 > 15 Mo pour une archive (et 200 Mo une fois ses bases décompressées), 8 Mo
 > et 20 000 lignes pour un catalogue, 2 Mo pour un logo. Un fichier trop gros
 > reçoit donc la page de l'écran, avec un message, plutôt que l'erreur brute
-> de nginx. Si la mesure ci-dessus approche durablement 15 Mo, remonter
+> de nginx. Au-delà de 20 Mo, nginx refuse lui-même, mais avec une page
+> statique qui dit quoi faire (`app/static/envoi-trop-volumineux.html`,
+> `error_page 413` des deux fichiers nginx). Si la mesure ci-dessus approche durablement 15 Mo, remonter
 > **ensemble** `client_max_body_size` (dans les deux fichiers nginx) et
 > `TAILLE_MAX_ARCHIVE` (`app/sauvegarde.py`) ; `tests/test_envois_bornes.py`
 > vérifie leur ordre.

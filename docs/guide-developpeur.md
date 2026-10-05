@@ -168,6 +168,16 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   `app.envois.lire_borne`, avec la borne de son usage, jamais par
   `fichier.file.read()` sans borne. `tests/test_envois_bornes.py` en est le
   modèle.
+- **Le multipart n'atteint que les routes d'envoi.** Le middleware ASGI
+  `app.envois.MultipartHorsEnvois` refuse en `415`, sans lire le corps, tout
+  envoi `multipart/*` adressé ailleurs qu'à un chemin de
+  `admin.CHEMINS_ENVOI` — liste que `_envoi_admin` remplit à la déclaration.
+  Sans lui, toute route à `Form(...)`, `/admin/login` compris, analysait un
+  fichier qu'on lui postait. Un nouveau formulaire `enctype="multipart/form-data"`
+  vise donc forcément une route déclarée par `_envoi_admin`, sans quoi il
+  est refusé dès le premier essai ; un test relie gabarits et liste blanche.
+  Au-delà de `client_max_body_size` (20 Mo), c'est nginx qui refuse, avec la
+  page statique `app/static/envoi-trop-volumineux.html`.
 - **Pas de file d'écritures hors ligne** (service worker qui garderait prêts et
   retours pour les rejouer plus tard) : le numéro de pochette est attribué par
   le serveur, deux téléphones déconnectés attribueraient le même. La

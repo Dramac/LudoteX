@@ -16,6 +16,8 @@ lot. Ce fichier verrouille ce qui peut l'être sur le TEXTE des fichiers :
   formats intacts ;
 - `EXP-05` : `error_page` vers une page statique, dans une `location` qui
   n'hérite pas du cache d'un an et ne pose aucun `add_header` ;
+- page 413 (lot-17-pré-production) : le même motif pour un envoi au-delà de
+  `client_max_body_size`, au lieu de la 413 brute de nginx ;
 - `SEC-14` (volet nginx) : un débit devant `/admin`, pas devant le prêt.
 """
 
@@ -31,6 +33,7 @@ from tests.test_neutralisation import _motif, _noms_bannis
 RACINE = Path(__file__).resolve().parent.parent
 DEPLOY = RACINE / "deploy"
 PAGE = RACINE / "app" / "static" / "indisponible.html"
+PAGE_413 = RACINE / "app" / "static" / "envoi-trop-volumineux.html"
 
 # Les deux sites et le préfixe de leurs noms nginx (zones, map, log_format).
 SITES = {
@@ -123,16 +126,21 @@ def test_les_erreurs_de_l_amont_menent_a_la_page_statique(nom):
     texte = _texte(nom)
     lignes = _directives(texte)
     assert "error_page 502 503 504 /indisponible.html;" in lignes
-    # Au niveau `server` : une seule déclaration, et aucune `location` ne la
+    # Au niveau `server` : exactement ces deux déclarations — l'amont (502) et
+    # l'envoi trop lourd (413, lot 17) — et aucune `location` ne les
     # redéclare (elle perdrait l'héritage, comme add_header).
-    assert sum(l.startswith("error_page") for l in lignes) == 1
+    assert [l for l in lignes if l.startswith("error_page")] == [
+        "error_page 502 503 504 /indisponible.html;",
+        "error_page 413 /envoi-trop-volumineux.html;",
+    ]
     # Jamais interceptées : les erreurs propres à l'application gardent leur page.
     assert not any(l.startswith("proxy_intercept_errors") for l in lignes)
 
 
+@pytest.mark.parametrize("page", ["/indisponible.html", "/envoi-trop-volumineux.html"])
 @pytest.mark.parametrize("nom", SITES)
-def test_la_page_est_servie_hors_du_cache_long_et_garde_les_en_tetes(nom):
-    location = _bloc_location(_texte(nom), "location = /indisponible.html")
+def test_la_page_est_servie_hors_du_cache_long_et_garde_les_en_tetes(nom, page):
+    location = _bloc_location(_texte(nom), f"location = {page}")
     assert "internal;" in location
     # La même substitution de chemin qu'`alias` de /static/ : sed d'install.sh.
     assert "root /opt/ludotex/app/static;" in location
@@ -174,6 +182,50 @@ def test_la_page_d_indisponibilite_ne_nomme_aucune_association():
     html = PAGE.read_text(encoding="utf-8")
     for nom in noms:
         assert not _motif(nom).search(html), "nom banni dans la page d'indisponibilité"
+
+
+# ===========================================================================
+# lot-17-pré-production — une page quand un envoi dépasse la limite de nginx
+# ===========================================================================
+@pytest.mark.parametrize("nom", SITES)
+def test_un_envoi_trop_lourd_mene_a_la_page_statique_en_gardant_son_code(nom):
+    lignes = _directives(_texte(nom))
+    assert "error_page 413 /envoi-trop-volumineux.html;" in lignes
+    # Jamais `=200` : le refus reste un refus, pour le navigateur comme pour
+    # les journaux.
+    assert not any(l.startswith("error_page") and "=" in l for l in lignes)
+
+
+def test_la_page_413_existe_et_dit_quoi_faire():
+    html = PAGE_413.read_text(encoding="utf-8")
+    assert '<html lang="fr">' in html
+    texte = " ".join(re.sub(r"<[^>]+>", " ", html.split("-->", 1)[1]).split())
+    for consigne in ("trop volumineux", "Rien n'a été enregistré",
+                     "bon fichier", "réduisez", "prévenez la personne"):
+        assert consigne in texte, consigne
+    # Aucun chiffre de taille : il mentirait le jour où la limite bouge.
+    assert not re.search(r"\d+\s*(Mo|Ko|MB)", texte)
+
+
+def test_la_page_413_ne_porte_aucune_couleur_ni_ressource_externe():
+    # nginx refuse l'envoi sans le transmettre : l'application ne voit pas la
+    # requête, la page ne peut rien lui demander. Mêmes règles que la 502.
+    html = PAGE_413.read_text(encoding="utf-8")
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", html)
+    assert not re.search(r"\b(rgb|rgba|hsl|hsla|oklch|color-mix)\(", html)
+    assert not re.search(r"\b(background|color)\s*:", html.replace("color-scheme", ""))
+    assert not re.search(r"<(script|link|img|iframe)\b", html)
+    assert not re.search(r"(src|href)=\"(https?:)?//", html)
+    assert re.findall(r'href="([^"]*)"', html) == ["/admin", "/"]
+
+
+def test_la_page_413_ne_nomme_aucune_association():
+    noms = _noms_bannis()
+    if not noms:
+        pytest.skip("interne/noms-bannis.txt absent ou vide : rien à surveiller ici")
+    html = PAGE_413.read_text(encoding="utf-8")
+    for nom in noms:
+        assert not _motif(nom).search(html), "nom banni dans la page 413"
 
 
 # ===========================================================================

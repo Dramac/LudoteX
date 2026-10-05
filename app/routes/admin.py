@@ -68,11 +68,12 @@ class RouteEnvoiAdmin(APIRoute):
     délibérée, bien meilleure qu'un 403 pour un bureau non technicien.
 
     Réservée aux trois routes qui reçoivent un fichier (`_envoi_admin`) ; les
-    autres gardent `_garde` en tête de fonction. LIMITE CONNUE, non traitée
-    ici : n'importe quelle route POST qui déclare un `Form(...)` analyse, elle
-    aussi, un envoi multipart qu'on lui adresserait sans session — fichier
-    compris, même non attendu (constaté sur `/admin/evenement` et
-    `/admin/login`). nginx borne chaque envoi à 20 Mo et freine `/admin/`.
+    autres gardent `_garde` en tête de fonction. Toute AUTRE route qui déclare
+    un `Form(...)` analyserait, elle aussi, un envoi multipart qu'on lui
+    adresserait — fichier compris, même non attendu (constaté au lot 11 sur
+    `/admin/evenement` et `/admin/login`). Ce cas est fermé en amont, par le
+    middleware `envois.MultipartHorsEnvois` : le multipart n'atteint plus que
+    les chemins de `CHEMINS_ENVOI`, que ce décorateur remplit.
 
     Ce que ça ne change pas : nginx met le corps en tampon avant de le
     transmettre (`client_max_body_size` 20m, `limit_req` sur `/admin/`).
@@ -90,11 +91,21 @@ class RouteEnvoiAdmin(APIRoute):
         return garder_puis_traiter
 
 
+# Chemins COMPLETS des seules routes qui acceptent un envoi multipart : la
+# liste blanche du middleware `envois.MultipartHorsEnvois` (branché dans
+# `app/main.py`). Remplie par `_envoi_admin` à la déclaration, jamais à la
+# main : une liste recopiée ailleurs se désynchroniserait, et une quatrième
+# route d'envoi déclarée sans ce décorateur verrait son formulaire refusé
+# (415) dès le premier essai, plutôt que d'ouvrir une porte sans garde.
+CHEMINS_ENVOI: set[str] = set()
+
+
 def _envoi_admin(chemin: str):
     """`@router.post(chemin)`, mais avec la garde avant lecture de `RouteEnvoiAdmin`."""
     def declarer(fonction):
         router.add_api_route(chemin, fonction, methods=["POST"],
                              route_class_override=RouteEnvoiAdmin)
+        CHEMINS_ENVOI.add(router.prefix + chemin)
         return fonction
     return declarer
 
