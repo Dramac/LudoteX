@@ -11,6 +11,8 @@ Les contrastes ont leur propre fichier (tests/test_contrastes.py). Ici :
    du bloc qui les coupe.
 3. **Le message d'erreur relié au champ** qui prend le focus (`ACC-06`).
 4. **La page d'indisponibilité**, servie par nginx sans l'application.
+5. **Aucun `<label>` orphelin** et **un bouton qui remplit un champ en JS se
+   fait entendre** (lot-17-pré-production, restes d'`admin_live.html`).
 
 Rien ici ne remplace un lecteur d'écran : ces tests vérifient le balisage,
 pas ce qu'un utilisateur entend.
@@ -301,3 +303,72 @@ def test_la_page_d_indisponibilite_tient_sans_feuille_de_style(fichier):
     assert not re.search(r"#[0-9a-fA-F]{3,6}\b|rgb\(|hsl\(", style)
     assert len(re.findall(r"<h1\b", page)) == 1
     assert "focus-visible" in style
+
+
+# ---------------------------------------------------------------------------
+# 6. LIBELLÉS ORPHELINS ET BOUTONS MUETS (lot-17-pré-production)
+# ---------------------------------------------------------------------------
+TOUS_LES_GABARITS = sorted(p.name for p in GABARITS.glob("*.html"))
+
+
+def _labels_orphelins(texte: str) -> list[str]:
+    """
+    Les `<label>` qui ne visent aucun champ : ni `for=`, ni champ enveloppé.
+    Un lecteur d'écran les lit seuls, sans les rattacher à rien ; un titre de
+    groupe de cases s'écrit en `<fieldset>` + `<legend>`.
+    """
+    texte = re.sub(r"\{#.*?#\}", "", texte, flags=re.S)
+    return [
+        " ".join(interieur.split())
+        for attributs, interieur in re.findall(r"<label\b([^>]*)>(.*?)</label>", texte, re.S)
+        if "for=" not in attributs
+        and not re.search(r"<(input|select|textarea)\b", interieur)
+    ]
+
+
+def test_la_recherche_de_labels_orphelins_trouve_le_cas_connu():
+    """Témoin : l'ancien titre des panneaux d'admin_live.html (avant ce lot)."""
+    ancien = """<div class="champ">
+      <label>Panneaux affichés en salle</label>
+      <label class="case"><input type="checkbox" name="p"> Barre</label>
+      <label for="x">Durée</label>"""
+    assert _labels_orphelins(ancien) == ["Panneaux affichés en salle"]
+
+
+@pytest.mark.parametrize("nom", TOUS_LES_GABARITS)
+def test_aucun_label_orphelin(nom):
+    assert _labels_orphelins((GABARITS / nom).read_text(encoding="utf-8")) == []
+
+
+def _connecte(client):
+    client.post("/admin/login", data={"mot_de_passe": "secret-admin-accessibilite"})
+
+
+def test_les_panneaux_de_l_ecran_de_salle_forment_un_groupe_legende(client):
+    _connecte(client)
+    page = client.get("/admin/ecran-salle").text
+    groupe = re.search(r"<fieldset[^>]*>(.*?)</fieldset>", page, re.S)
+    assert groupe, "aucun fieldset sur la page"
+    assert re.search(r"<legend>\s*Panneaux affichés en salle\s*</legend>", groupe.group(1))
+    assert len(re.findall(r'type="checkbox" name="panneau_', groupe.group(1))) == 4
+    # Le patron d'admin_evenement.html, dont le CSS retire bordure et marges.
+    assert 'class="champ champ-groupe"' in groupe.group(0)
+
+
+@pytest.mark.parametrize("bouton,zone", [
+    (r"data-min=", "annonce-duree-statut"),
+    (r'id="alerte-texte-propose"', "alerte-texte-statut"),
+])
+def test_les_boutons_qui_remplissent_un_champ_se_font_entendre(client, bouton, zone):
+    """
+    Chaque groupe de boutons qui écrit dans un champ en JS a sa zone d'état :
+    présente et VIDE au chargement (une zone créée avec son texte n'est pas
+    toujours lue), masquée à l'écran, et remplie par le script au clic.
+    """
+    _connecte(client)
+    page = client.get("/admin/ecran-salle").text
+    assert re.search(bouton, page)
+    element = re.search(r'<p class="sr-only" role="status" id="' + zone + r'"></p>', page)
+    assert element, zone
+    script = re.search(r"<script>(.*?)</script>", page[element.end():], re.S).group(1)
+    assert re.search(r'getElementById\("' + zone + r'"\)\.textContent\s*=', script)

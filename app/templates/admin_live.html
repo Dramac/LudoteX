@@ -53,8 +53,11 @@
   {% endif %}
 
   <form method="post" action="/admin/ecran-salle" class="recherche-form">
-    <div class="champ">
-      <label>Panneaux affichés en salle</label>
+    {# <fieldset>/<legend> (patron d'admin_evenement.html) : l'ancien
+       <label> ne visait aucun champ, et un lecteur d'écran l'annonçait seul,
+       sans le rattacher aux quatre cases. La légende est lue avant chacune. #}
+    <fieldset class="champ champ-groupe">
+      <legend>Panneaux affichés en salle</legend>
       <label class="case">
         <input type="checkbox" name="panneau_chiffres" value="1"
                {% if panneaux.chiffres %}checked{% endif %}>
@@ -93,7 +96,7 @@
         rien au reste de l'application — pour désactiver une fonctionnalité
         partout, passez par
         <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a>.</p>
-    </div>
+    </fieldset>
 
     <div class="champ">
       <label for="annonce">Annonce affichée en bandeau sur /live</label>
@@ -126,6 +129,10 @@
         <button type="button" class="bouton-filtrer" data-min="240">4 h</button>
         <button type="button" class="bouton-filtrer" data-min="{{ annonce_duree_max }}">12 h</button>
       </p>
+      {# Ces boutons écrivent dans le champ en JS : sans cette zone, un
+         lecteur d'écran n'entendait rien. Vide au chargement (une zone
+         ajoutée en même temps que son texte n'est pas toujours lue). #}
+      <p class="sr-only" role="status" id="annonce-duree-statut"></p>
     </div>
 
     {% if annonce %}
@@ -197,6 +204,7 @@
         <button type="button" class="bouton-filtrer" id="alerte-texte-propose"
                 data-modele="{{ message_propose }}">Utiliser ce texte</button>
       </p>
+      <p class="sr-only" role="status" id="alerte-texte-statut"></p>
     </div>
 
     <div class="champ">
@@ -228,6 +236,8 @@
   document.querySelectorAll(".duree-rapide button[data-min]").forEach(function (bouton) {
     bouton.addEventListener("click", function () {
       document.getElementById("annonce_duree").value = bouton.dataset.min;
+      document.getElementById("annonce-duree-statut").textContent =
+        "Durée d'affichage réglée sur " + bouton.textContent + ".";
     });
   });
 
@@ -238,6 +248,8 @@
   if (proposeAlerte) {
     proposeAlerte.addEventListener("click", function () {
       document.getElementById("alerte_message").value = proposeAlerte.dataset.modele;
+      document.getElementById("alerte-texte-statut").textContent =
+        "Texte proposé repris dans le message de l'alerte.";
     });
   }
 </script>
