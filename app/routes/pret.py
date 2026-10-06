@@ -276,7 +276,7 @@ def _est_verrou(erreur: sqlite3.OperationalError) -> bool:
 def _sans_conflit(conn, id_exemplaire: str, ecrire) -> dict:
     """
     Exécute une écriture de prêt en traduisant un conflit d'accès simultané en
-    MESSAGE, jamais en erreur brute (règle « ne jamais bloquer », spec §6).
+    MESSAGE, jamais en erreur brute (règle « ne jamais bloquer », spec §2).
 
     Deux échecs sont possibles depuis que les écritures s'ouvrent en
     `BEGIN IMMEDIATE` (voir services.transaction), et aucun ne doit donner un

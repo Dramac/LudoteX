@@ -261,7 +261,7 @@ def cle_saisie(code: str) -> str:
 
     Sert uniquement à retrouver une boîte. Ce qui est stocké en base et affiché
     à l'écran reste la chaîne d'origine : `id_exemplaire` est du TEXT, jamais
-    réinterprété comme un entier (docs/specification.md §3).
+    réinterprété comme un entier (docs/specification.md §3.1).
 
     Args:
         code: ce que le bénévole a tapé, ou un code du catalogue.
@@ -334,7 +334,7 @@ def message_code_introuvable(code: str, codes_proches: list[str] | None = None) 
     Le message rendu quand un code saisi ne mène à aucune boîte — UN SEUL
     DOMICILE pour les quatre écrans qui l'affichent.
 
-    Jamais bloquant (docs/specification.md, règle générale) : il nomme le code
+    Jamais bloquant (docs/specification.md §2) : il nomme le code
     refusé, que le champ garde prérempli, et dit quoi faire. Quand plusieurs
     boîtes se ressemblent, il les liste au lieu de prétendre qu'aucune
     n'existe — ce qui ferait retaper la même chose.

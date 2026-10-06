@@ -14,7 +14,7 @@ session va dans le message de commit, dans `CHANGELOG.md` et dans
 
 | Domicile | Contenu |
 | --- | --- |
-| `docs/specification.md` | La conception **fait foi**. En cas de divergence, c'est elle qui a raison. |
+| `docs/specification.md` | Ce que fait LudoteX et pourquoi. Fait foi sur les **intentions et les règles métier** ; le **code** fait foi sur le comportement effectif ; toute divergence est un écart à signaler. Cité par numéro de section : numérotation figée, `tests/test_renvois_specification.py`. |
 | `docs/guide-developpeur.md` | Architecture, conventions, flux d'une requête, recettes d'extension, pièges connus. |
 | `docs/conception-*.md` | La conception d'un module donné (tournois, planning, journal, rangement, programme, signalements…). |
 | `docs/ui-composants.md` | Les composants d'interface canoniques et leurs règles d'emploi (le nombre n'en est pas figé : lire le document). |
@@ -415,8 +415,8 @@ aux lots 1 à 3c.*
   échappé par Jinja, **jamais de HTML libre saisi en admin**.
 
 **4. Tri de `docs/`.** Le dépôt public garde ce qui permet d'installer,
-d'exploiter, de comprendre et de contribuer : `specification.md` (fait foi),
-`guide-developpeur.md`, `deploiement.md`, `lancement-local.md`,
+d'exploiter, de comprendre et de contribuer : `specification.md` (fait foi
+sur les intentions), `guide-developpeur.md`, `deploiement.md`, `lancement-local.md`,
 `mode-formation.md`, `vocabulaire.md`, `versioning.md`, `ui-composants.md`,
 `protocole-stress-test.md`, et les `conception-*.md` des modules **livrés**.
 Sortent du dépôt : prompts d'implémentation, `budget.md`, présentation au CA,

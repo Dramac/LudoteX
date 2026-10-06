@@ -194,7 +194,7 @@ async def collecte_post(request: Request, ev: int):
     comprendre pourquoi. C'était atteignable sans le moindre accès simultané
     (nom laissé vide, ou questionnaire fermé par le bureau entre l'ouverture de
     la page et l'envoi) et contredisait frontalement la règle « ne jamais
-    bloquer : message + rattrapage en un tap » (spec §6).
+    bloquer : message + rattrapage en un tap » (spec §2).
     """
     form = await request.form()
     nom = form.get("nom", "")

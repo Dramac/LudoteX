@@ -1,21 +1,48 @@
-# Système de prêt de jeux — Document de spécification
+# LudoteX — spécification
 
-**Version :** 1.1 — base de discussion
-**Objet :** remplacer la feuille de prêt papier par un système numérique multi-accès, fondé sur un QR code par exemplaire de jeu et une base de données en ligne.
+**Objet :** ce que fait LudoteX et pourquoi il est fait ainsi — règles métier,
+invariants, périmètre. Le *comment* (architecture, conventions, recettes) est
+dans `docs/guide-developpeur.md` ; le mode d'emploi, dans le wiki ; l'histoire
+livrée, dans `CHANGELOG.md`.
+
+**Ce qui fait foi.** Ce document fait foi sur les **intentions et les règles
+métier**. Le code fait foi sur le comportement effectif. Une divergence entre
+les deux est un **écart à signaler**, jamais une préséance à appliquer en
+silence.
+
+> **Numérotation figée.** Le code et d'autres documents citent ce fichier par
+> numéro de section (« §3.2 », « §6 »…). Les numéros 1 à 12 sont donc
+> conservés d'une version à l'autre ; une section neuve prend un numéro
+> libre (sous-section ou fin de document) plutôt que d'en décaler une autre.
+> `tests/test_renvois_specification.py` vérifie que chaque renvoi tombe sur
+> une section qui existe et qui porte le sujet annoncé.
 
 ---
 
 ## 1. Contexte et objectif
 
-L'association dispose d'un parc d'environ 700 jeux et organise chaque année un événement où ces jeux sont prêtés au public dans une salle des fêtes. Le prêt fonctionne aujourd'hui contre dépôt d'une pièce d'identité (PI), consignée sur une feuille papier unique au comptoir.
+LudoteX est né dans une association qui prête un parc d'environ 700 jeux de
+société pendant son événement annuel, dans une salle des fêtes. Le prêt s'y
+faisait contre dépôt d'une pièce d'identité (PI), consignée sur une feuille
+papier unique au comptoir : un système fiable mais centralisé, un seul point
+d'écriture et de recherche, donc un goulet d'étranglement aux heures de pointe.
 
-Ce système est fiable mais centralisé : un seul point d'écriture et de recherche, ce qui crée un goulet d'étranglement aux heures de pointe.
+**Objectif :** permettre à plusieurs bénévoles, chacun muni d'un smartphone,
+d'enregistrer prêts et retours en parallèle, en scannant un QR code collé sur
+chaque boîte, sur une base partagée.
 
-**Objectif :** permettre à plusieurs bénévoles, chacun muni d'un smartphone, d'enregistrer prêts et retours en parallèle, en scannant un QR code apposé sur chaque jeu, avec une base de données en ligne partagée et synchronisée.
+Le logiciel est **réutilisable par toute association** qui prête des jeux
+selon le même principe : le nom, le logo, la couleur et les textes de
+présentation sont des réglages de l'instance (§10), pas des constantes du code.
 
-**Objectifs secondaires (prévus) :**
-- offrir au public un accès en consultation au catalogue des jeux et à leur disponibilité, depuis chez lui et avant l'événement ;
-- disposer d'un **site internet d'association** éditable par plusieurs bénévoles non techniciens, doté d'une **fonctionnalité de newsletter**.
+Les utilisateurs sont des **bénévoles non techniciens sur smartphone**, en
+conditions dégradées (wifi de salle lent, petit écran, geste répété des
+centaines de fois dans la journée), et un **bureau** sans compétence
+informatique. Le public, lui, consulte sans compte.
+
+Autour du prêt, LudoteX outille aussi le reste de l'événement — catalogue
+public, statistiques, tournois, programme, planning des bénévoles, écran de
+salle, rangement, carnet de maintenance (§5.4).
 
 ---
 
@@ -23,12 +50,25 @@ Ce système est fiable mais centralisé : un seul point d'écriture et de recher
 
 Ces principes guident toutes les décisions du document.
 
-1. **Aucune donnée personnelle dans le modèle de données du prêt.** L'emprunteur n'est jamais identifié nominativement. Le seul lien prêt ↔ personne est un **numéro de pochette** physique où est glissée la PI. Les champs de texte libre qui pourraient malgré tout recevoir un nom sont recensés dans `wiki/Rgpd.md`.
-2. **Ne jamais bloquer le bénévole en pic.** Toute incohérence est signalée et accompagnée d'une action de rattrapage en un tap, jamais d'une erreur bloquante.
-3. **Simplicité maximale de l'interface de prêt.** Le bénévole confirme une action pré-sélectionnée ; on ne lui demande un choix explicite que dans les cas réellement ambigus.
-4. **Séparer la lecture de l'écriture.** La consultation est publique ; les actions de prêt/retour sont réservées aux bénévoles.
-5. **Souplesse du catalogue.** Le CSV pourra évoluer librement, à l'exception de deux clés non négociables (voir §3).
-6. **Pas de sur-ingénierie.** On construit d'abord le système de prêt ; on se contente de ne pas se fermer la porte des évolutions futures.
+1. **Aucune donnée personnelle dans le modèle de données du prêt.**
+   L'emprunteur n'est jamais identifié nominativement. Le seul lien prêt ↔
+   personne est un **numéro de pochette** physique où est glissée la PI. Les
+   champs de texte libre qui pourraient malgré tout recevoir un nom sont
+   recensés dans `wiki/Rgpd.md` (voir §9).
+2. **Ne jamais bloquer le bénévole.** Toute incohérence est signalée par un
+   message clair, accompagné d'une action de rattrapage en un tap, jamais
+   d'une erreur brute. Cette règle prime sur les autres.
+3. **Simplicité maximale de l'interface de prêt.** Le bénévole confirme une
+   action présélectionnée ; on ne lui demande un choix explicite que dans les
+   cas réellement ambigus.
+4. **Séparer la lecture de l'écriture.** La consultation est publique ; les
+   actions de prêt et de retour sont réservées aux bénévoles (§8).
+5. **Souplesse du catalogue.** Le CSV peut évoluer librement, à l'exception
+   de deux clés non négociables (§3.1).
+6. **Pas de sur-ingénierie.** SQLite plutôt qu'un serveur de base, pages
+   rendues côté serveur plutôt qu'une application JavaScript, aucun compte
+   individuel (§10). Un module neuf ne se fait que s'il ne compromet aucun des
+   principes ci-dessus.
 
 ---
 
@@ -36,10 +76,24 @@ Ces principes guident toutes les décisions du document.
 
 ### 3.1 Les deux clés non négociables
 
-Quelles que soient les évolutions du CSV, deux champs doivent exister et rester stables :
+Quelles que soient les évolutions du CSV, deux champs existent et restent
+stables :
 
-- **`id_exemplaire`** — identifiant unique et stable d'une **boîte physique**. C'est ce que le QR code encode. Il ne doit jamais changer une fois le QR imprimé et collé, même si l'on modifie l'éditeur, la catégorie, etc. Si le CSV n'en possède pas, on le génère et il devient la référence.
-- **`reference_titre`** — clé de regroupement commune à tous les exemplaires d'un **même jeu**. Trois boîtes de Catan partagent par exemple la référence `CATAN`. C'est indispensable pour agréger correctement les statistiques par titre (voir §7).
+- **`id_exemplaire`** — identifiant unique et stable d'une **boîte
+  physique**. C'est ce que le QR code encode. Il ne change jamais une fois le
+  QR imprimé et collé, même si l'on modifie l'éditeur, la catégorie, etc. Il
+  est stocké en **texte**, jamais réinterprété comme un entier, pour préserver
+  un éventuel zéro de tête (`00472`). Une boîte ajoutée depuis
+  l'administration reçoit un identifiant généré.
+- **`reference_titre`** — clé de regroupement commune à tous les exemplaires
+  d'un **même jeu** : trois boîtes de Catan partagent la référence `CATAN`.
+  Elle est dérivée du nom du jeu, par la même règle à l'import et dans
+  l'administration. Elle sert à agréger les statistiques par titre (§7).
+
+À l'import, seuls le code d'exemplaire et le nom du jeu sont exigés ; les
+autres colonnes reconnues sont facultatives, et leurs intitulés tolérés sont
+listés dans `scripts/import_csv.py`. Les colonnes d'état d'un CSV (« prêt en
+cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 
 ### 3.2 Tables
 
@@ -49,8 +103,8 @@ Quelles que soient les évolutions du CSV, deux champs doivent exister et rester
 |---|---|
 | `reference_titre` | clé primaire (ex. `CATAN`) |
 | `nom` | nom affiché du jeu |
-| `categorie` | catégorie pour le filtrage public (définie dans le CSV) |
-| *(champs libres)* | nb de joueurs, durée, éditeur… — peuvent évoluer librement |
+| `categorie` | catégorie pour le filtrage public |
+| *(champs facultatifs)* | joueurs, durée, âge, éditeur, auteur, descriptif… — tous nullables |
 
 **`exemplaires`** — les boîtes physiques, niveau « unité prêtable ».
 
@@ -58,6 +112,7 @@ Quelles que soient les évolutions du CSV, deux champs doivent exister et rester
 |---|---|
 | `id_exemplaire` | clé primaire, encodée dans le QR |
 | `reference_titre` | clé étrangère → `titres` |
+| *(emplacements)* | où ranger la boîte, deux contextes (`docs/conception-rangement.md`) |
 
 **`prets`** — l'historique complet de tous les prêts (jamais purgé).
 
@@ -65,60 +120,91 @@ Quelles que soient les évolutions du CSV, deux champs doivent exister et rester
 |---|---|
 | `id_pret` | clé primaire |
 | `id_exemplaire` | clé étrangère → `exemplaires` |
-| `numero_pochette` | numéro de pochette attribué pour ce prêt ; **effacé une fois le prêt clos** (voir ci-dessous) |
+| `numero_pochette` | numéro attribué pour ce prêt ; **effacé une fois le prêt clos** (voir ci-dessous) |
 | `date_sortie` | horodatage de sortie |
 | `date_retour` | horodatage de retour ; **vide tant que le jeu est sorti** |
+| `motif` | `pret` (au public), `tournoi` (sortie pour un tournoi, sans pochette), `erreur` (rendu en moins d'une minute), `oubli` (retour jamais scanné, clos plus tard) — voir §7 |
 
-> **Décision Simon du 2026-07-18 — durée de vie du numéro de pochette.**
+> **Durée de vie du numéro de pochette — décision du 2026-07-18.**
 > Le numéro de pochette est une donnée **sensible** : il désigne le casier où
-> se trouve une pièce d'identité. Il n'est donc jamais visible d'un visiteur
-> (seuls bénévoles et administrateurs y ont accès), et il n'a d'utilité que
-> **pendant** le prêt — pour retrouver la pièce à restituer. Une fois
-> `date_retour` posée, la pochette est libérée et recyclée : le numéro
-> conservé ne renseigne plus sur rien d'utile mais resterait exposé dans tous
-> les exports et toutes les sauvegardes. Il est donc **effacé à la clôture du
-> prêt** (retour, re-prêt, clôture de fin d'événement).
+> se trouve une pièce d'identité. Il n'est donc jamais montré à un visiteur
+> (seuls bénévoles et administrateurs le voient), et il n'a d'utilité que
+> **pendant** le prêt. Une fois `date_retour` posée, le numéro ne renseigne
+> plus sur rien d'utile mais resterait exposé dans les exports et les
+> sauvegardes : il est **effacé à la clôture du prêt** (retour, re-prêt,
+> transfert, clôture de fin d'événement).
 >
-> Cette décision **révoque** le choix initial (« numéro conservé après retour
-> comme trace historique »). Elle ne change rien à la règle « historique
-> jamais purgé » : la **ligne** de prêt reste, avec ses dates et son motif —
-> seul le numéro est effacé. Aucune statistique n'est affectée (aucune requête
-> n'agrège ni ne filtre sur ce champ), et les prêts **en cours** conservent
-> leur numéro en base, donc dans les sauvegardes — la reprise après incident
-> pendant l'événement reste assurée.
->
-> **Mise en œuvre : FAITE** (fiche **D5** de `docs/audit-ux-2026-07-18.md`).
-> L'effacement a lieu aux trois points de clôture (`services.rendre` — après
-> avoir affiché le numéro au bénévole —, `services.repreter` pour l'ancien
-> prêt seulement, et `services.cloturer_tous_les_prets`). La colonne
-> `prets.numero_pochette` est devenue NULLABLE par reconstruction de table
-> (`db._migrer_pochette_nullable`), qui purge au passage l'historique déjà
-> constitué. La liste détaillée de `/stats` et les exports Excel/PDF n'ont
-> plus de colonne « emplacement » : elle y serait toujours vide.
+> La règle « historique jamais purgé » tient toujours : la **ligne** de prêt
+> reste, avec ses dates et son motif — seul le numéro est effacé. Aucune
+> statistique ne lit ce champ. Les prêts **en cours** gardent leur numéro, donc
+> une sauvegarde prise pendant l'événement permet la reprise après incident.
+> Mise en œuvre : fiche D5 de `docs/audit-ux-2026-07-18.md`.
 
-**`pochettes`** — l'occupation du moment (quels numéros sont actuellement utilisés).
+**`pochettes`** — l'occupation du moment (quels numéros sont utilisés).
 
 | Champ | Description |
 |---|---|
 | `numero_pochette` | numéro (recyclé, voir §6) |
 | `occupe` | libre / occupé |
 
+La base de prêt porte aussi les réglages (`parametres`), le registre des
+appareils autorisés à écrire (`appareils`), les emplacements de rangement et
+le carnet de maintenance (`signalements`, `categories_signalement`). Détail
+des colonnes : `app/models.py`, commenté.
+
 ### 3.3 Règles dérivées
 
-- Un exemplaire est **disponible** s'il n'a aucun prêt avec `date_retour` vide ; il est **sorti** sinon.
-- Le **numéro de pochette** n'est qu'une occupation du moment : il est libéré au retour et réutilisable. Il est aussi **effacé de la ligne de prêt** à la clôture (voir §3.2) ; la ligne, elle, demeure, et les statistiques sont inchangées (aucune requête n'agrège ni ne filtre sur ce champ).
-- L'historique des prêts n'est jamais supprimé : c'est lui qui alimente les statistiques (volume total, prêts par heure, palmarès).
+- Un exemplaire est **disponible** s'il n'a aucun prêt avec `date_retour`
+  vide ; il est **sorti** sinon. Cet état est **déduit, jamais stocké**.
+- Le numéro de pochette n'est qu'une occupation du moment : libéré au retour,
+  réutilisable, et effacé de la ligne de prêt à la clôture (§3.2).
+- L'historique des prêts n'est jamais supprimé : il alimente les
+  statistiques.
+
+### 3.4 Trois bases indépendantes — invariant
+
+LudoteX tient **trois bases SQLite séparées**, chacune avec son schéma, ses
+migrations et son initialisation :
+
+| Base | Contenu | Données personnelles |
+|---|---|---|
+| Prêt | catalogue, exemplaires, prêts, pochettes, réglages, rangement, carnet de maintenance | aucune dans le modèle (§9.1) |
+| Tournois | tournois, inscriptions, rencontres, programme du week-end | pseudo des inscrits |
+| Planning | événements, postes, créneaux, bénévoles, disponibilités, affectations | assumées (§9.2) |
+
+**L'invariant : un service ne lit jamais une autre base que la sienne.**
+Quand un module a besoin d'un réglage qui vit ailleurs (le nom de l'événement
+dans un en-tête de calendrier, par exemple), c'est la route qui le lit et le
+transmet. Ce cloisonnement est ce qui garantit l'absence de donnée personnelle
+dans la base de prêt, et ce qui permet de purger le planning sans toucher au
+reste. C'est aussi l'invariant le plus facile à rompre par commodité.
+
+Le **journal d'activité** n'est pas une base : c'est un fichier à rotation, à
+vocabulaire fermé (`docs/conception-journal.md`, et son §8 pour ce qui n'y
+entre jamais).
 
 ---
 
 ## 4. QR codes
 
-- **Un QR unique par exemplaire physique** (pas par titre). Deux boîtes du même jeu ont deux QR distincts.
+- **Un QR unique par exemplaire physique** (pas par titre). Deux boîtes du
+  même jeu ont deux QR distincts.
 - Le QR encode une **URL** de la forme `https://pret.example.fr/jeu/00472`.
+  L'adresse du site est donc figée par les étiquettes imprimées : elle relève
+  de l'infrastructure (§10), pas d'un réglage d'interface.
 - **Un seul format, deux modes de lecture :**
-  - **Scanner embarqué dans la page** (caméra active dans l'application web) — mode principal pour le bénévole au comptoir : il enchaîne les scans sans quitter l'application, une seule autorisation caméra en début de session.
-  - **Appareil photo natif du téléphone** — filet de sécurité si un modèle gère mal la caméra dans le navigateur, et support de l'usage public éventuel.
-- Le contenu du QR (URL de fiche) ne comporte **aucun secret** : il donne le même niveau d'accès que le catalogue public (lecture seule).
+  - le **scanner embarqué** dans l'application — mode principal au comptoir :
+    le bénévole enchaîne les scans sans quitter la page ;
+  - l'**appareil photo natif** du téléphone — filet de sécurité : le QR mène
+    à la fiche publique, qui offre au bénévole un accès direct à l'écran de
+    prêt.
+- **Saisie de secours** : si l'étiquette est illisible ou la caméra
+  capricieuse, le code de la boîte se tape sous le scanner. La saisie tolère
+  la casse et les zéros de tête, et propose les codes proches plutôt que de
+  répondre « introuvable ». L'étiquette imprimée peut afficher ce code en
+  clair.
+- Le QR ne comporte **aucun secret** : il donne le même accès que le catalogue
+  public (lecture seule).
 
 ---
 
@@ -126,71 +212,175 @@ Quelles que soient les évolutions du CSV, deux champs doivent exister et rester
 
 ### 5.1 Écran de prêt / retour (bénévole)
 
-Déclenché par un scan. Le système connaît l'état de l'exemplaire et **pré-sélectionne l'action la plus probable** :
+Déclenché par un scan. Le système connaît l'état de l'exemplaire et
+**présélectionne l'action la plus probable** :
 
 **Cas — exemplaire DISPONIBLE** (pas d'ambiguïté)
-→ Action unique : **Prêter**. Le système attribue le plus petit numéro de pochette libre et l'affiche en grand (« Pochette n°7 — glissez-y la pièce d'identité »). Un seul tap.
+→ Action principale : **Prêter**. Le système attribue le plus petit numéro de
+pochette libre et l'affiche en grand. Un seul tap. Une action secondaire sort
+la boîte **pour un tournoi** : sans pièce d'identité ni pochette, hors
+statistiques.
 
 **Cas — exemplaire SORTI** (ambiguïté possible, choix explicite requis)
-Deux actions présentées, l'action dominante mise en avant :
-- **Rendre** *(action principale)* — « Rendre — libère la pochette n°7 ». Clôt le prêt en cours, libère le numéro.
-- **Le re-prêter** *(action secondaire, cas d'oubli de scan)* — considère le prêt précédent comme rentré (date de retour = maintenant, ancien numéro libéré, motif `oubli` : voir §7), puis ouvre un nouveau prêt avec un nouveau numéro de pochette. Si la pochette libérée contient encore une pièce d'identité, un bouton prévient le bureau (voir `docs/conception-transfert-pochette.md` §6 ter).
+- **Rendre** *(action principale)* — clôt le prêt en cours et libère la
+  pochette, dont le numéro est rappelé sur le bouton. Un retour en moins d'une
+  minute est requalifié en **erreur de prêt** (mauvaise boîte scannée,
+  visiteur qui se ravise) et sort des statistiques.
+- **Transférer** (rendre et prêter un nouveau jeu) — le visiteur rapporte une boîte et repart avec une autre :
+  la pièce d'identité reste dans sa pochette, c'est le jeu rattaché au numéro
+  qui change (`docs/conception-transfert-pochette.md`).
+- **Le re-prêter** *(cas d'oubli de scan)* — l'ancien prêt est clos
+  (motif `oubli`, §7), puis un nouveau prêt s'ouvre, avec le plus petit numéro
+  libre (§6) — souvent celui qu'on vient de libérer.
 
-C'est le seul écran où un choix explicite est demandé, et uniquement parce que la réalité physique peut diverger de la base.
+Quand un geste rencontre un **retour jamais scanné** — la pochette libérée
+peut encore contenir une pièce d'identité —, l'écran demande de vérifier que
+la pochette est vide et offre, si elle ne l'est pas, de **prévenir le
+bureau** : un signalement rédigé par l'application, sans champ à remplir (`docs/conception-transfert-pochette.md`
+§6 bis et §6 ter).
+
+C'est le seul écran où un choix explicite est demandé, parce que la réalité
+physique peut diverger de la base. Un conflit entre deux bénévoles sur la même
+boîte donne un message, jamais une erreur (§2).
 
 ### 5.2 Catalogue public (consultation)
 
 - Accès en **lecture seule**, sans donnée personnelle, sans bouton d'action.
-- Navigation **en vrac** ou **par catégorie** (catégories définies dans le CSV).
-- Affiche pour chaque jeu sa disponibilité (au niveau titre : combien d'exemplaires disponibles).
-- Destiné à être consultable **à l'année**, y compris en amont de l'événement.
+- Recherche, filtres (catégorie, nombre de joueurs, âge…) et fiche par
+  exemplaire.
+- Disponibilité affichée au niveau du titre (combien d'exemplaires
+  disponibles).
+- Consultable **à l'année**, y compris en amont de l'événement.
 
-### 5.3 Page de statistiques (post-événement)
+### 5.3 Page de statistiques
 
 Voir §7.
+
+### 5.4 Modules autour du prêt
+
+Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
+
+- **Tournois** — quatre modes de scoring (high score, ronde suisse, round
+  robin, élimination directe), tournois par équipes, inscription publique par
+  pseudo avec un code de désinscription (**l'e-mail n'est jamais demandé ni
+  stocké**), inscription réservable aux bénévoles, export calendrier.
+  `docs/conception-tournois.md`.
+- **Programme du week-end** — animations et temps forts hors tournoi, grille
+  publique, reprise sur l'écran de salle et l'accueil.
+  `docs/conception-programme.md`.
+- **Planning bénévoles** — questionnaire de disponibilités et de préférences,
+  préremplissage automatique, ajustement à la main par le bureau, publication
+  aux bénévoles. Base séparée (§3.4), données personnelles assumées (§9.2).
+  `docs/conception-planning.md`.
+- **Écran de salle** — tableau de bord projeté (chiffres du prêt, derniers
+  mouvements, tournois, programme), annonces du bureau limitées dans le temps, alerte « rapportez
+  les exemplaires » avant chaque tournoi. Aucun numéro de pochette n'y
+  apparaît. `docs/conception-alerte-tournoi.md`.
+- **Rangement** — où ranger chaque boîte, selon deux contextes
+  interchangeables (l'événement, le local de l'association), affectation par
+  scan ou en lot. `docs/conception-rangement.md`.
+- **Carnet de maintenance** — signalements d'état des boîtes (pièce
+  manquante, livret abîmé), rappelés au prêt suivant, consultables par les
+  bénévoles et traités par le bureau ; jamais public.
+  `docs/conception-signalements.md`.
+- **Journal d'activité** — qui a fait quoi, à quel appareil près, jamais à
+  quelle personne. `docs/conception-journal.md`.
+- **Administration** — mot de passe distinct du jeton bénévole : catalogue et
+  étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
+  supervision, identité, visibilité des modules, clôture de fin d'événement.
+- **Mode formation** — une seconde instance du même code, sur ses propres
+  bases, pour s'entraîner sur de vraies boîtes sans rien inscrire pour de bon.
+  `docs/mode-formation.md`.
+
+Chaque module optionnel a quatre états de visibilité : *tous*, *bénévoles*,
+*discret* (adresse ouverte, lien masqué), *désactivé*. Le carnet de
+maintenance ne peut pas être rendu public. La visibilité règle l'affichage ;
+la protection d'un écran d'écriture, elle, ne dépend jamais de ce réglage (§8).
 
 ---
 
 ## 6. Gestion des numéros de pochette
 
-Le numéro identifie une **pochette numérotée** (ou un ticket numéroté agrafé à la PI), pas un emplacement de meuble en nombre fixe. Le principe est donc **sans plafond** : on ne refuse jamais un prêt.
+Le numéro identifie une **pochette numérotée** (ou un ticket agrafé à la PI),
+pas un emplacement de meuble en nombre fixe. Le principe est donc **sans
+plafond** : on ne refuse jamais un prêt.
 
-- Numérotation **à partir de 1** ; à chaque nouveau prêt, attribution du **plus petit numéro libre**.
-- La PI est glissée dans la pochette portant ce numéro ; les pochettes sont rangées dans l'ordre pour une récupération rapide au retour.
+- Numérotation **à partir de 1** ; à chaque nouveau prêt, attribution du
+  **plus petit numéro libre**.
+- La PI est glissée dans la pochette portant ce numéro ; les pochettes sont
+  rangées dans l'ordre pour une récupération rapide au retour.
 - Un numéro libéré au retour est immédiatement **recyclé**.
-- **Aucune limite logicielle ni physique** : le stock de pochettes est extensible (coût matériel négligeable). En cas d'affluence record, le système continue d'attribuer des numéros croissants sans blocage.
-- **Point essentiel** : le numéro doit rester **physiquement attaché à la PI** (pochette / ticket numéroté). Une PI mise « en vrac » sans numéro casserait le lien numéro → emplacement et réintroduirait une recherche manuelle au retour — précisément le goulet d'étranglement à supprimer.
-- Le numéro identifie *la PI déposée*, pas la personne, et **un seul jeu par PI / par numéro** (règle retenue).
+- **Aucune limite logicielle** : en cas d'affluence record, le système
+  continue d'attribuer des numéros croissants. Le stock physique de pochettes
+  est l'affaire de l'association.
+- Le numéro doit rester **physiquement attaché à la PI**. Une PI rangée « en
+  vrac » casserait le lien numéro → casier et réintroduirait la recherche
+  manuelle au retour — précisément le goulet à supprimer.
+- Le numéro identifie *la PI déposée*, pas la personne : **un seul jeu par PI
+  et par numéro**.
+- **Une seule exception, assumée : le transfert** (§5.1) réutilise le numéro
+  du prêt qu'il clôt, même si un plus petit est libre — la pochette n'a jamais
+  été vidée (`docs/conception-transfert-pochette.md` §3).
+- Deux bénévoles qui prêtent au même instant ne peuvent pas recevoir le même
+  numéro : l'attribution se fait dans une transaction exclusive
+  (`docs/protocole-stress-test.md`).
 
 ---
 
 ## 7. Statistiques
 
-Toutes les statistiques s'appuient sur l'historique complet de la table `prets`.
+Les statistiques s'appuient sur l'historique complet de la table `prets` et
+ne contiennent aucune donnée personnelle.
 
-Elles comptent les prêts au public : motif `pret`, et motif `oubli` — un prêt dont le retour n'a pas été scanné, clos plus tard par un re-prêt ou un transfert. Ce dernier est un vrai prêt, mais sa durée est inconnue : il est exclu de la durée moyenne et affiché à part (« retours non scannés »). Les sorties tournoi et les erreurs de prêt (retour en moins d'une minute) sont hors statistiques.
+Elles comptent les **prêts au public** : motif `pret`, et motif `oubli` — un
+prêt dont le retour n'a pas été scanné, clos plus tard par un re-prêt ou un
+transfert. Ce dernier est un vrai prêt, mais sa durée est inconnue : il est
+exclu de la durée moyenne et affiché à part (« retours non scannés »). Les
+sorties tournoi et les erreurs de prêt sont hors statistiques.
 
-Indicateurs prévus :
+Indicateurs :
 
-- **Nombre total de jeux prêtés** sur l'événement.
-- **Palmarès des jeux les plus prêtés**, agrégé **par titre** (`reference_titre`) : les exemplaires multiples d'un même jeu sont additionnés.
-- **Palmarès des jeux les moins prêtés**, y compris ceux **jamais sortis** (valeur 0). Pour cela, on part de la liste de **tous les titres du catalogue** et on y rattache les prêts (raisonnement « catalogue d'abord »), faute de quoi les jeux à zéro prêt seraient invisibles.
-- **Nombre de prêts par heure** (histogramme sur la durée de l'événement), à partir des horodatages de sortie.
-
-Option à valider : présenter le palmarès en **deux vues** — total brut par titre, et « par exemplaire » (pour ne pas avantager mécaniquement les titres présents en plusieurs boîtes).
+- **Nombre total de prêts**, durée moyenne, filtrables par période.
+- **Palmarès des jeux les plus et les moins prêtés**, agrégé **par titre**
+  (`reference_titre`), en deux vues : total brut, ou rapporté au nombre
+  d'exemplaires (pour ne pas avantager mécaniquement les titres présents en
+  plusieurs boîtes).
+- Le palmarès des moins prêtés inclut les jeux **jamais sortis** : on part de
+  **tous les titres du catalogue** et on y rattache les prêts (« catalogue
+  d'abord »), faute de quoi les jeux à zéro prêt seraient invisibles.
+- **Prêts par heure** (histogramme), liste détaillée, jeux actuellement
+  sortis — le numéro de pochette n'y est montré qu'aux bénévoles.
+- Exports Excel et PDF.
 
 ---
 
 ## 8. Contrôle d'accès et sécurité
 
-L'association fait confiance à ses bénévoles : **pas de comptes individuels**. La distinction nécessaire n'est pas entre bénévoles, mais entre **public (lecture)** et **bénévoles (écriture)**.
+L'association fait confiance à ses bénévoles : **pas de comptes
+individuels**. La distinction nécessaire n'est pas entre bénévoles, mais
+entre **public (lecture)**, **bénévoles (écriture)** et **bureau
+(administration)**.
 
-Mécanisme retenu :
-
-- **Jeton aléatoire long** (≈ 32 caractères) plutôt qu'un mot de passe « humain ». Distribué une fois par an aux bénévoles via le canal interne (groupe de discussion, mail) sous forme d'un lien d'activation. Le téléphone le mémorise (cookie/localStorage) ; ce jeton autorise ensuite les écritures. Un tel jeton n'est pas devinable par force brute, contrairement à un mot de passe court.
-- **Séparation lecture / écriture :** les fiches de consultation (`/jeu/...`) sont publiques et sans action ; les opérations de prêt/retour passent par un point d'entrée distinct, protégé par le jeton.
-- **Limitation de débit** côté serveur (nombre de tentatives par minute et par IP) — mesure complémentaire « ceinture et bretelles » contre le brute-force.
-- **Rotation annuelle** du jeton (révocation / régénération à chaque édition).
+- **Jeton bénévole** — un secret aléatoire long, partagé, distribué par un
+  lien d'activation. L'appareil le mémorise dans un cookie et peut ensuite
+  écrire. Un tel jeton ne se devine pas par force brute, contrairement à un
+  mot de passe court.
+- **Échéance prolongeable** — le jeton porte une date de fin. Le bureau est
+  averti à l'approche, et peut la repousser **sans changer le lien**. Passée
+  l'échéance, l'accès en écriture se ferme pour tous les appareils (§12).
+- **Rotation** — réinitialiser le jeton invalide d'un coup tous les appareils
+  activés ; c'est le seul geste de révocation.
+- **Séparation lecture / écriture** — les fiches (`/jeu/...`) sont publiques
+  et sans action ; les opérations de prêt passent par des adresses
+  distinctes, chacune protégée par le jeton dans le code, indépendamment de la
+  visibilité des modules.
+- **Administration** — un mot de passe distinct, haché en base, avec une
+  session à durée limitée.
+- **Limitation de débit** par adresse IP sur l'activation du jeton et sur la
+  connexion d'administration.
+- **Registre des appareils** — chaque appareil autorisé reçoit un
+  identifiant tiré au hasard, qui dit « c'est le même téléphone », jamais
+  « c'est le téléphone de quelqu'un ». Le bureau peut lui donner un libellé.
 
 ---
 
@@ -198,63 +388,111 @@ Mécanisme retenu :
 
 ### 9.1 Application de prêt — aucune donnée personnelle dans le modèle de données
 
-Par conception, le modèle de données de l'application de prêt **ne prévoit aucune donnée personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa pièce d'identité reste physiquement au comptoir et lui est rendue au retour du jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un appareil, annonce de l'écran de salle) pourraient recevoir un nom : ils portent une consigne, et leur liste, avec ce que chacun garde, vit dans `wiki/Rgpd.md`. Cette propriété doit être préservée dans les évolutions futures (voir §11). Ce qu'elle implique pour les obligations d'une association relève de son appréciation ; ce document ne tranche pas.
+Par conception, le modèle de données du prêt **ne prévoit aucune donnée
+personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa
+pièce d'identité reste physiquement au comptoir et lui est rendue au retour du
+jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un
+appareil, annonce de l'écran de salle) pourraient recevoir un nom : ils portent
+une consigne, et leur liste, avec ce que chacun garde, vit dans
+`wiki/Rgpd.md`. Cette propriété doit être préservée dans les évolutions
+futures (§11) : **toute proposition qui ferait entrer une donnée personnelle
+se signale comme telle avant d'être écrite**. Ce qu'elle implique pour les
+obligations d'une association relève de son appréciation ; ce document ne
+tranche pas.
 
-### 9.2 Site et newsletter — traitement de données personnelles
+### 9.2 Modules qui traitent des données personnelles
 
-La fonctionnalité de **newsletter** (voir §10) introduit, elle, un traitement de données personnelles : la collecte et la conservation d'adresses e-mail. Elle est **strictement cloisonnée** de l'application de prêt (deux briques distinctes), mais impose à l'association les obligations habituelles :
+Deux modules s'écartent assumément du principe, chacun cloisonné dans une
+autre base que celle du prêt (§3.4) :
 
-- **consentement explicite** de l'abonné au moment de l'inscription (case à cocher non pré-cochée) ;
-- **lien de désinscription** dans chaque envoi (géré nativement par l'outil d'emailing) ;
-- **page de politique de confidentialité** sur le site (finalité, durée de conservation, droits d'accès et de suppression) ;
-- **non-réutilisation** des adresses pour une autre finalité que la newsletter.
+- **Planning bénévoles** — noms, contact facultatif, disponibilités et
+  affectations des bénévoles. Finalité unique (organiser l'événement), base
+  séparée, purge par le bureau. Une suppression promise s'entend **sur les
+  octets** de la base et de ses archives, pas seulement sur le résultat d'une
+  requête.
+- **Tournois** — le pseudo (ou nom d'équipe) des inscrits ; jamais d'e-mail.
 
-Ces obligations relèvent de la responsabilité de l'association et sont sans incidence sur l'anonymat de l'application de prêt.
+### 9.3 Site vitrine et newsletter — hors de ce dépôt
+
+Une association peut adjoindre à LudoteX un site vitrine avec newsletter. Ce
+n'est **pas** une brique de ce dépôt. Une newsletter collecte des adresses
+e-mail et impose les obligations habituelles (consentement explicite, lien de
+désinscription, politique de confidentialité, finalité unique) ; garder les
+deux briques séparées est ce qui préserve l'anonymat de l'application de prêt.
 
 ---
 
 ## 10. Architecture technique et hébergement
 
-L'ensemble repose sur **deux briques cloisonnées**, sous un **nom de domaine unique** (sous-domaines). Le fournisseur d'hébergement est à choisir par le bureau parmi des acteurs européens (de préférence français) ; candidats retenus : Infomaniak (Suisse, forte démarche écologique), o2switch et PlanetHoster (France, mutualisé), OVHcloud, Ikoula et Scaleway (France, VPS). La newsletter peut être intégrée à l'hébergeur (cas d'Infomaniak) ou déléguée à un outil externe français (Brevo, palier gratuit conforme RGPD).
+Le *comment* est dans `docs/guide-developpeur.md` et `docs/deploiement.md` ;
+voici les choix et leur raison.
 
-### 10.1 Brique « application de prêt » — VPS Lite (technique)
-
-- **Application web** (pas d'application native) : les bénévoles ouvrent une URL ; option « ajouter à l'écran d'accueil » (PWA) pour un lancement en un tap. Aucune installation, aucun store, compatible avec tout smartphone.
-- **Backend Python** : FastAPI ou Flask.
-- **Base de données SQLite** : largement suffisante pour la charge réelle (quelques écritures par minute, poignée de bénévoles) ; pas besoin de PostgreSQL.
-- **Pas de temps réel complexe** (pas de websocket) : chaque scan lit l'état courant en base ; les conflits rares (deux bénévoles sur le même exemplaire) se gèrent par un contrôle d'état côté serveur.
-- **Hébergement : un VPS** (Debian/Ubuntu, accès SSH root), tournant à l'année. Candidats : Infomaniak VPS Lite, OVHcloud, Ikoula, Scaleway, ou Hetzner (Allemagne) si le prix prime. Héberge l'appli de prêt **et** le catalogue public. Administré par le référent technique. Le NAS Synology peut servir d'environnement de dev/test.
-- Accès attendu : `pret.<domaine>` (outil bénévole) et `<domaine>/catalogue` (consultation publique).
-
-### 10.2 Brique « site + newsletter » — Hébergement Web (éditorial)
-
-- **Hébergement mutualisé avec WordPress** (o2switch, PlanetHoster, ou hébergement Web Infomaniak) : site vitrine de l'association, **éditable par plusieurs bénévoles non techniciens** via une interface clic-bouton, sans code.
-- **Newsletter** : soit l'outil d'emailing intégré à l'hébergeur (cas d'Infomaniak, crédits gratuits mensuels), soit un service externe français (Brevo), avec statistiques d'envoi et gestion native de la désinscription.
-- Accès attendu : `www.<domaine>`.
-
-### 10.3 Pourquoi deux briques
-
-- L'édition du site par des non-techniciens et la newsletter sont **clés en main** sur l'hébergement Web mutualisé.
-- L'application de prêt (Python persistant) demande le **contrôle d'un VPS**, mal adapté au mutualisé.
-- Le cloisonnement préserve l'anonymat de l'appli de prêt face au traitement de données de la newsletter (voir §9).
+- **Application web**, pas d'application native : les bénévoles ouvrent une
+  adresse. Le site s'ajoute à l'écran d'accueil du téléphone avec sa propre
+  icône, sans store. **Ce n'est pas une PWA** : ni manifeste ni service
+  worker, donc **aucun fonctionnement hors ligne** — chaque scan lit et écrit
+  l'état courant sur le serveur.
+- **Python + FastAPI**, pages **rendues côté serveur** (Jinja2), CSS sans
+  framework ni étape de compilation. Le JavaScript reste marginal (scanner
+  caméra, rafraîchissement de l'écran de salle) et ne dépend d'aucun CDN.
+- **SQLite**, largement suffisant pour la charge réelle (quelques écritures
+  par minute, une poignée de bénévoles). Les écritures concurrentes sur les
+  pochettes sont sérialisées par transaction (§6).
+- **Pas de temps réel complexe** (pas de websocket) : chaque scan lit l'état
+  courant ; l'écran de salle interroge le serveur à intervalle régulier.
+- **Un seul processus** applicatif : les sessions d'administration vivent en
+  mémoire.
+- **Hébergement : un VPS** Debian/Ubuntu, derrière nginx, servi par systemd,
+  en HTTPS (Let's Encrypt), avec sauvegarde automatique deux fois par jour.
+  Une instance de formation peut tourner à côté (§5.4). Un lanceur local
+  permet aussi de la faire tourner sur un simple ordinateur, sans serveur
+  distant.
+- **Ce qui se règle où.** L'identité (nom de l'association, présentation,
+  contact, logo, couleur) est une donnée **éditoriale**, en base, modifiable
+  depuis l'administration sans redéploiement. Ce qui engage l'infrastructure
+  ou la sécurité (adresse du site figée par les QR, chemins, secrets, mode
+  formation) reste dans le fichier d'environnement de l'instance
+  (`docs/personnaliser.md`).
 
 ---
 
-## 11. Hors périmètre v1 — évolutions prévues
+## 11. Hors périmètre — ce que LudoteX ne fait pas
 
-À ne pas développer maintenant, mais à ne pas compromettre :
+*Relu le 2026-10-06.* À ne pas développer sans décision, et à ne pas
+compromettre :
 
-- **Catalogue public navigable** : la couche de lecture est conçue dès la v1 pour resservir telle quelle.
-- **Favoris du public** : à implémenter d'abord **en local sur l'appareil du visiteur** (localStorage), éventuellement avec un « code de liste » à noter pour la retrouver ailleurs. Objectif : zéro donnée personnelle côté serveur. Des comptes utilisateurs ne seraient qu'un ajout ultérieur, pas une refonte — et rouvriraient la question RGPD.
+- **Comptes individuels**, pour les bénévoles comme pour le public. Ils
+  rouvriraient la question des données personnelles (§9.1) pour un gain que le
+  jeton partagé couvre déjà.
+- **Favoris du public** — non réalisés. S'ils l'étaient, d'abord **en local
+  sur l'appareil du visiteur**, sans rien côté serveur.
+- **Fonctionnement hors ligne** au comptoir (§10).
+- **Envoi d'e-mails** par l'application (code de désinscription d'un tournoi,
+  rappels du planning) : le code s'affiche à l'écran, rien ne part.
+- **Prêts longue durée aux adhérents** : ils exigeraient de savoir *qui* a
+  emprunté, donc une donnée personnelle dans le prêt — contraire au §9.1.
+- **Plusieurs associations sur une même instance** : une instance sert une
+  association.
+
+Les idées non retenues ou non instruites sont rassemblées, datées, dans
+`docs/idees-evolutions.md`.
 
 ---
 
 ## 12. Points encore ouverts
 
-- [ ] **Colonnes exactes du CSV** (le CSV n'est pas encore disponible et évoluera). Seules contraintes fermes : `id_exemplaire` et `reference_titre`.
-- [ ] **Stock de pochettes numérotées** à prévoir (extensible, sans plafond) — remplace l'ancienne question de dimensionnement par le pic.
-- [ ] **Double vue du palmarès** (par titre / par exemplaire) : à confirmer.
-- [ ] **Validation du budget annuel** par le bureau (deux abonnements + domaine, voir topo budgétaire dédié).
-- [ ] **Nom de domaine** à réserver.
-- [ ] **Rédaction de la politique de confidentialité** du site (liée à la newsletter, §9.2).
-- [ ] Liste exhaustive des **cas limites** secondaires à expliciter au moment de la spec détaillée (au-delà des deux cas déjà traités : exemplaire sorti rescanné, retour d'un jeu déjà disponible).
+*Relu le 2026-10-06.* Les points de la première version de ce document (colonnes du
+CSV, double vue du palmarès, cas limites du scan) sont tranchés et intégrés
+ci-dessus ; ceux qui ne relevaient que d'une association (budget, nom de
+domaine, politique de confidentialité du site) sont sortis du document.
+
+- [ ] **Échéance du jeton** (2026-09) : passée la date, l'accès en écriture
+  se ferme pour tous les appareils. L'alternative — continuer d'écrire en
+  avertissant — n'est pas tranchée ; c'est la fermeture qui s'applique.
+- [ ] **Planning, avant son premier usage réel** (2026-09) : la publication
+  montre aux bénévoles les noms des autres bénévoles ; il n'existe pas encore
+  de retrait individuel d'un bénévole, seulement la purge d'un événement
+  entier. À trancher quand le module servira.
+- [ ] **Conservation des signalements** (2026-09) : le détail d'un
+  signalement n'est jamais purgé. Acceptable tant que le carnet reste peu
+  rempli ; à rouvrir s'il accumule des textes libres.

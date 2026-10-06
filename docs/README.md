@@ -6,8 +6,9 @@ ni au bureau d'une association : ce guide-là vit dans le wiki du dépôt.
 
 ## Par où commencer, pour reprendre le projet
 
-1. **`specification.md`** — la conception **fait foi**. En cas de divergence
-   avec le code ou un autre document, c'est elle qui a raison.
+1. **`specification.md`** — ce que fait LudoteX et pourquoi : règles métier,
+   invariants, périmètre. Elle fait foi sur les intentions ; le code fait foi
+   sur le comportement effectif, et toute divergence est un écart à signaler.
 2. **`guide-developpeur.md`** — architecture, conventions, flux d'une
    requête, recettes d'extension, pièges connus. Le point d'entrée pour
    reprendre le code.

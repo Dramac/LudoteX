@@ -231,7 +231,8 @@ LudoteX/
   [docs/personnaliser.md](docs/personnaliser.md).
 - **Comprendre et reprendre le code** :
   [docs/README.md](docs/README.md) donne l'ordre de lecture.
-  La conception fait foi — [docs/specification.md](docs/specification.md).
+  Ce que fait le logiciel et pourquoi, règles métier et invariants :
+  [docs/specification.md](docs/specification.md).
 
 ## Sécurité
 

@@ -1,7 +1,7 @@
 """
 Import / mise à jour du catalogue depuis le CSV de l'association.
 
-Principes (voir docs/specification.md §3 et §5) :
+Principes (voir docs/specification.md §3.1) :
 - Tolérant aux colonnes variables : seules deux données sont exigées,
   l'identifiant d'exemplaire (CSV « Code jeu ») et le nom du jeu. Tout le
   reste est optionnel ; l'import remplit ce qu'il trouve.

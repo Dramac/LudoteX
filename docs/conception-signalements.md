@@ -12,7 +12,7 @@ elle-même dit indissociables : **2.2 « Signalement d'état au retour »** (le
 geste bénévole) et **6.2 « Carnet de maintenance du parc »** (sa face
 administrative).
 
-À lire avec `docs/specification.md` §6 (« ne jamais bloquer »),
+À lire avec `docs/specification.md` §2 (« ne jamais bloquer »),
 `docs/conception-rangement.md` §6/§9 (emplacement affiché),
 `docs/conception-journal.md` §8 (ce qui n'entre jamais dans le journal) et
 `docs/vocabulaire.md`.
