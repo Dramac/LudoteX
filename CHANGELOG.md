@@ -6,6 +6,12 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.17.1 — 2026-10-07
+
+- **Un fichier beaucoup trop lourd reçoit maintenant une page qui explique** que rien n'a été enregistré et ce qu'il faut vérifier, au lieu d'une erreur brute du serveur.
+- **Les envois de fichiers sont mieux gardés** : le site n'en accepte plus qu'aux trois endroits de l'administration prévus pour cela, et dit clairement que rien n'a été lu ailleurs.
+- **L'écran d'annonce de l'écran de salle est mieux annoncé par les lecteurs d'écran** : les durées proposées forment un groupe nommé, et les boutons qui remplissent un champ disent ce qu'ils ont fait.
+
 ## 1.17.0 — 2026-10-05
 
 - **Quand l'on annonce une pochette vide et qu'elle ne l'est pas, il y a maintenant deux issues, dont une qui prévient le bureau.** Le comptoir n'est plus coincé : la boîte est rendue ou transférée comme avant, et un signalement part au carnet de maintenance pour que quelqu'un aille voir la pochette. Il ne porte aucun numéro de pochette.

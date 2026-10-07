@@ -82,7 +82,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.17.1 — 2026-10-07
 
 ### nginx : une page quand un fichier envoyé est trop volumineux — à faire plus tard, si vous le souhaitez, hors événement
 
