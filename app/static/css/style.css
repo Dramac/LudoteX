@@ -423,6 +423,49 @@ summary:focus-visible,
   cursor: pointer;
 }
 .champ-couleur input[type="text"] { flex: 1 1 auto; font-family: monospace; }
+/* Couleurs tirées du logo (/admin/identite) : une rangée de boutons qui
+   reprennent chacun une couleur dans le champ ci-dessus. Le fond de l'aperçu
+   n'est PAS une couleur en dur : il vient du logo déposé, posé par le gabarit.
+   Le bouton choisi se distingue par un trait épais, pas par la seule couleur. */
+.suggestions-couleur { margin-top: 6px; }
+.suggestions-couleur-liste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.suggestion-couleur {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--bord-champ);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.suggestion-couleur[aria-pressed="true"] {
+  border: 3px solid var(--primaire-lisible);
+  padding: 4px 8px 4px 4px;
+}
+.suggestion-couleur-apercu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 32px;
+  border-radius: 6px;
+  font-weight: bold;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.suggestion-couleur small { flex-basis: 100%; color: var(--gris); }
 .champ label { color: var(--gris); font-size: 0.9rem; }
 .champ input, .champ select {
   padding: 10px;

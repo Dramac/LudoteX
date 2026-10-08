@@ -132,6 +132,37 @@
                value="{{ couleur_saisie or '' }}"
                oninput="if (/^#[0-9a-fA-F]{6}$/.test(this.value)) { document.getElementById('couleur_pastille').value = this.value; }">
       </div>
+      {% if suggestions_couleur %}
+        {# Une aide au choix, jamais un réglage : rien n'est enregistré avant
+           « Enregistrer ». Chaque bouton montre la couleur telle que le
+           bandeau la porterait (fond et texte calculés par le site) et son
+           code en clair : sans JavaScript, les boutons ne font rien, mais le
+           code reste lisible et se recopie dans le champ. #}
+        <div class="suggestions-couleur">
+          <p class="stats-note" id="suggestions-couleur-titre">
+            <strong>Couleurs tirées de votre logo</strong>, de la plus présente
+            à la moins présente. Touchez-en une pour la reprendre (ou recopiez
+            son code dans le champ), puis enregistrez.
+          </p>
+          <ul class="suggestions-couleur-liste" aria-labelledby="suggestions-couleur-titre">
+            {% for s in suggestions_couleur %}
+              <li>
+                <button type="button" class="suggestion-couleur"
+                        data-couleur="{{ s.couleur }}"
+                        aria-pressed="{{ 'true' if (couleur_saisie or '')|lower == s.couleur else 'false' }}">
+                  <span class="suggestion-couleur-apercu" aria-hidden="true"
+                        style="background: {{ s.couleur }}; color: {{ s.texte }};">Aa</span>
+                  <code>{{ s.couleur }}</code>
+                  {% if s.lisible %}
+                    <small>foncée en <code>{{ s.lisible }}</code> pour le texte</small>
+                  {% endif %}
+                </button>
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="sr-only" role="status" id="suggestions-couleur-statut"></p>
+        </div>
+      {% endif %}
       <small class="stats-note">
         Couleur du bandeau, des boutons et des aplats de tout le site. Elle
         s'écrit avec un dièse suivi de six caractères, par exemple
@@ -175,4 +206,24 @@
 {% endif %}
 
 <p class="lien-fiche"><a class="lien" href="/admin">← Retour à l'administration</a></p>
+
+{% if suggestions_couleur %}
+<script>
+  // Reprend une couleur tirée du logo dans le champ qui fait foi, et dans la
+  // pastille du sélecteur. Aucun déplacement du focus (il ouvrirait le
+  // clavier sur téléphone) : c'est la zone d'état qui annonce le geste.
+  document.querySelectorAll(".suggestion-couleur").forEach(function (bouton) {
+    bouton.addEventListener("click", function () {
+      var couleur = bouton.dataset.couleur;
+      document.getElementById("couleur").value = couleur;
+      document.getElementById("couleur_pastille").value = couleur;
+      document.querySelectorAll(".suggestion-couleur").forEach(function (autre) {
+        autre.setAttribute("aria-pressed", autre === bouton ? "true" : "false");
+      });
+      document.getElementById("suggestions-couleur-statut").textContent =
+        "Couleur " + couleur + " reprise dans le champ. Enregistrez pour l'appliquer.";
+    });
+  });
+</script>
+{% endif %}
 {% endblock %}

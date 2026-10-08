@@ -1397,6 +1397,21 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
         if lisible != couleur_valide:
             couleur_lisible = lisible
 
+    # Couleurs tirées du logo déposé (voir `logo.couleurs_du_logo`), avec ce
+    # qu'en ferait le site : texte du bandeau, et version foncée là où elle
+    # sert de texte. Le bureau choisit ainsi en voyant le résultat, pas un
+    # code hexadécimal. Relu à chaque rendu : la page qui suit un dépôt de
+    # logo propose donc déjà ses couleurs.
+    suggestions_couleur = []
+    for suggeree in logo.couleurs_du_logo():
+        nuances = services.nuances_theme(suggeree)
+        suggestions_couleur.append({
+            "couleur": suggeree,
+            "texte": nuances["texte"],
+            "lisible": (nuances["lisible"]
+                        if nuances["lisible"] != suggeree else None),
+        })
+
     return templates.TemplateResponse(
         request, "admin_identite.html",
         {"logo_regle": logo.logo_regle(),
@@ -1411,6 +1426,7 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
                                or services.COULEUR_ASSOCIATION_DEFAUT),
          "couleur_par_defaut": services.COULEUR_ASSOCIATION_DEFAUT,
          "couleur_lisible": couleur_lisible,
+         "suggestions_couleur": suggestions_couleur,
          "nom_par_defaut": NOM_ASSOCIATION,
          "depot_par_defaut": DEPOT_URL,
          "longueur_max": services.LONGUEUR_NOM_ASSOCIATION,

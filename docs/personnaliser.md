@@ -46,6 +46,9 @@ Trois choses valent d'être sues avant de s'y mettre :
   qu'aucun choix ne peut rendre le bandeau illisible. Certaines couleurs ne
   bougent jamais parce qu'elles portent un sens et non une identité : le vert du
   prêt, le bleu du retour, l'orange des avertissements, le rouge des erreurs.
+  Une fois le logo déposé, l'écran propose sous le champ les **couleurs
+  dominantes du logo** (`app/logo.py`, `couleurs_du_logo`) : un tap en recopie
+  le code, rien n'est appliqué avant l'enregistrement.
 - **Déposez le logo avant d'imprimer les étiquettes.** Elles portent le logo au
   moment de l'impression ; celles déjà imprimées ne changeront pas ensuite.
 - **Le logo n'est pas dans les sauvegardes**, qui ne contiennent que les

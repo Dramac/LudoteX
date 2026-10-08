@@ -435,3 +435,111 @@ def supprimer() -> bool:
         except OSError:
             pass
     return retire
+
+
+# ---------------------------------------------------------------------------
+# Couleurs du logo — suggestions pour la couleur du site
+# ---------------------------------------------------------------------------
+# Une SUGGESTION, jamais un réglage : déposer un logo ne change pas la couleur
+# du site (le bureau a pu choisir sa couleur avant, et la garder est
+# légitime). L'écran « Identité » propose seulement les couleurs dominantes du
+# logo déposé, pour qu'une personne sans notion de graphisme n'ait pas à
+# deviner le code du violet de son logo. Rien n'est stocké : le calcul est
+# refait à l'affichage, sur une copie réduite, ce qui coûte quelques
+# millisecondes et dispense de toute migration.
+
+# Côté de la copie analysée. Les couleurs dominantes d'un logo se lisent aussi
+# bien sur 96 pixels que sur 1024, pour cent fois moins de pixels à compter.
+COTE_ANALYSE = 96
+
+# Nombre de couleurs proposées au plus. Au-delà, le choix redevient difficile,
+# et c'est précisément ce qu'on veut épargner.
+SUGGESTIONS_MAX = 5
+
+# Part minimale des pixels retenus qu'une couleur doit couvrir pour être
+# proposée : en dessous, c'est un liseré ou l'anticrénelage d'un bord.
+PART_MIN = 0.02
+
+# Distance (euclidienne, en RVB 0-255) en dessous de laquelle deux couleurs
+# sont « la même » pour un œil non exercé. Sans cette fusion, les deux faces
+# d'un dégradé violet occuperaient deux places sur cinq.
+DISTANCE_MIN = 48
+
+
+def _neutre(rouge: int, vert: int, bleu: int) -> bool:
+    """
+    Vrai pour un blanc, un noir ou un gris — ce qu'on ne propose qu'en dernier.
+
+    Un fond blanc (JPEG) ou un contour noir couvre souvent plus de pixels que
+    la couleur de la marque : sans ce tri, « blanc » arriverait en tête de
+    presque toutes les listes, et ce n'est jamais la réponse cherchée.
+    """
+    import colorsys
+
+    _teinte, lum, sat = colorsys.rgb_to_hls(rouge / 255, vert / 255, bleu / 255)
+    return sat < 0.15 or lum > 0.93 or lum < 0.08
+
+
+def _dominantes(pixels: list[tuple[int, int, int]]) -> list[str]:
+    """Couleurs dominantes de `pixels`, de la plus présente à la moins présente."""
+    echantillon = Image.new("RGB", (len(pixels), 1))
+    echantillon.putdata(pixels)
+    # Coupe médiane : regroupe les pixels en au plus 12 couleurs moyennes.
+    # Plus que SUGGESTIONS_MAX, parce que la fusion ci-dessous en retire.
+    reduite = echantillon.quantize(colors=12, method=Image.Quantize.MEDIANCUT)
+    palette = reduite.getpalette() or []
+    comptes = sorted(reduite.getcolors() or [], reverse=True)
+
+    retenues: list[tuple[int, int, int]] = []
+    for compte, indice in comptes:
+        if compte / len(pixels) < PART_MIN:
+            break
+        couleur = tuple(palette[indice * 3:indice * 3 + 3])
+        if all(sum((a - b) ** 2 for a, b in zip(couleur, deja)) ** 0.5
+               >= DISTANCE_MIN for deja in retenues):
+            retenues.append(couleur)
+        if len(retenues) == SUGGESTIONS_MAX:
+            break
+    return ["#%02x%02x%02x" % couleur for couleur in retenues]
+
+
+def couleurs_du_logo() -> list[str]:
+    """
+    Couleurs dominantes du logo DÉPOSÉ, en `#rrggbb`, la plus présente d'abord.
+
+    Liste vide sans logo déposé : le meeple LudoteX a déjà sa couleur, celle
+    du thème par défaut, et le proposer n'aiderait personne.
+
+    Les pixels transparents sont ignorés (le fond d'un PNG n'est pas une
+    couleur du logo), puis les neutres (voir `_neutre`). Un logo entièrement
+    noir, gris ou blanc n'est pas laissé sans réponse : ses neutres sont alors
+    proposés, blanc pur excepté — un bandeau blanc n'a jamais été la couleur
+    de personne.
+
+    NE LÈVE JAMAIS : c'est une aide, et la page « Identité » doit s'afficher
+    même si le fichier est illisible.
+    """
+    try:
+        if not logo_regle():
+            return []
+        # Réduction au PLUS PROCHE VOISIN, pas en LANCZOS comme `_reduit` : un
+        # filtre de qualité mélange les pixels d'une frontière et inventerait
+        # des teintes intermédiaires (un violet sombre entre le violet et le
+        # noir) qui finiraient proposées comme couleurs du logo.
+        with Image.open(chemin_regle(NOM_LOGO)) as image:
+            copie = image.convert("RGBA")
+        copie.thumbnail((COTE_ANALYSE, COTE_ANALYSE), Image.NEAREST)
+        # `tobytes` plutôt que `getdata`, déprécié par les Pillow récents et
+        # seul accès aux pixels commun à toutes les versions installables.
+        octets = copie.tobytes()
+        opaques = [tuple(octets[i:i + 3]) for i in range(0, len(octets), 4)
+                   if octets[i + 3] >= 128]
+        colores = [p for p in opaques if not _neutre(*p)]
+        # Les colorées l'emportent dès qu'elles pèsent un peu : un logo noir à
+        # liseré violet doit proposer le violet, pas le noir.
+        if len(colores) >= max(1, PART_MIN * len(opaques)):
+            return _dominantes(colores)
+        sans_blanc = [p for p in opaques if min(p) < 240]
+        return _dominantes(sans_blanc) if sans_blanc else []
+    except Exception:  # noqa: BLE001 - une aide ne casse jamais une page
+        return []
