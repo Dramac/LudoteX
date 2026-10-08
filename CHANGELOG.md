@@ -6,6 +6,12 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.18.0 — 2026-10-08
+
+- **Le code de classement imprimé sur les étiquettes ne commence plus par « XXX ».** Il résume le jeu — âge minimum, nombre de joueurs, durée — et se choisit sous deux formes dans Administration → Étiquettes : **lisible** (`8+ · 2-4j · 30min`, par défaut) ou **dense** (`8-2-4-30`). Le choix vaut aussi pour la réimpression d'une étiquette abîmée.
+- **Un code de classement trop long s'imprime un peu plus petit, jamais coupé** : il ne déborde plus de sa case.
+- **Le catalogue gagne une colonne « Lettres classement »**, à l'import comme à l'export. Elle restera vide tant que la classification automatique n'est pas en service, et une case vide n'efface jamais rien : les lettres de classement n'apparaissent donc pas encore sur les étiquettes.
+
 ## 1.17.1 — 2026-10-07
 
 - **Un fichier beaucoup trop lourd reçoit maintenant une page qui explique** que rien n'a été enregistré et ce qu'il faut vérifier, au lieu d'une erreur brute du serveur.
