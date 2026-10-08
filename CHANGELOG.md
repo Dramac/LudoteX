@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.19.0 — 2026-10-08
+
+- **Choisir la couleur du site devient simple : l'écran « Identité » propose les couleurs de votre logo.** Une fois le logo déposé, jusqu'à cinq couleurs tirées du logo s'affichent sous le champ, chacune telle que le bandeau la porterait. Un tap reprend la couleur, et rien ne change avant d'avoir enregistré.
+
 ## 1.18.0 — 2026-10-08
 
 - **Le code de classement imprimé sur les étiquettes ne commence plus par « XXX ».** Il résume le jeu — âge minimum, nombre de joueurs, durée — et se choisit sous deux formes dans Administration → Étiquettes : **lisible** (`8+ · 2-4j · 30min`, par défaut) ou **dense** (`8-2-4-30`). Le choix vaut aussi pour la réimpression d'une étiquette abîmée.
