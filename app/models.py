@@ -73,7 +73,15 @@ CREATE TABLE IF NOT EXISTS titres (
     auteur           TEXT,                        -- CSV "Auteur"
     annee_edition    INTEGER,                     -- CSV "Année édition"
     descriptif       TEXT,                        -- CSV "Descriptif" (affiché sur la fiche)
-    date_achat       TEXT                         -- CSV "Date achat", ISO AAAA-MM-JJ (la + récente des exemplaires)
+    date_achat       TEXT,                        -- CSV "Date achat", ISO AAAA-MM-JJ (la + récente des exemplaires)
+
+    -- Lettres du code de classement (app/classement.py) : une colonne par
+    -- position, une lettre majuscule tirée d'une liste FERMÉE du code, ou NULL.
+    -- Imprimées seulement si les trois sont valides. Remplies par la future
+    -- classification automatique, jamais effacées par un import (COALESCE).
+    lettre_public    TEXT,                        -- 1 : public (E, T, I, X — catégories de l'As d'Or)
+    lettre_jeu       TEXT,                        -- 2 : façon de jouer (liste non arrêtée)
+    lettre_materiel  TEXT                         -- 3 : matériel dominant (liste non arrêtée)
 );
 """
 

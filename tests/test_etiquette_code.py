@@ -32,6 +32,7 @@ eux, largeur, présence de pixels noirs) ne dépendent pas de la police install�
 import pytest
 
 from app import services
+from app.classement import FORMATS
 from app.etiquettes import (CADRE_BAS_H, CODE_PART_CADRE, MARGE_EXTERIEURE,
                             image_etiquette, url_fiche)
 
@@ -123,12 +124,18 @@ def test_le_code_partage_le_cadre_du_bas_sans_rien_deplacer():
     assert _pixels_noirs(avec.crop(cadre)) > _pixels_noirs(sans.crop(cadre))
 
 
-def test_le_code_est_deux_fois_plus_haut_que_le_code_de_classement():
+@pytest.mark.parametrize("format_code", FORMATS)
+def test_le_code_est_deux_fois_plus_haut_que_le_code_de_classement(format_code):
     """
     Rien n'est imprimé pour dire lequel des deux codes taper : une mention
     tiendrait à 1,3 mm de haut une fois l'étiquette à l'échelle, et coûterait
     4 % de QR. C'est la HIÉRARCHIE DE TAILLE qui porte le message — donc elle
-    se teste.
+    se teste, dans les deux formats du code de classement.
+
+    Le jeu mesuré n'a pas de nombre de joueurs : en format lisible, le « j »
+    de `3-4j` descend sous la ligne, et la hauteur d'encre mesurerait alors
+    son jambage, pas la taille des chiffres. Ce que l'œil compare, c'est la
+    hauteur des chiffres des deux codes.
     """
     from PIL import ImageFont
 
@@ -137,7 +144,12 @@ def test_le_code_est_deux_fois_plus_haut_que_le_code_de_classement():
     if not isinstance(_police(24), ImageFont.FreeTypeFont):
         pytest.skip("aucune police TrueType : toutes les tailles se valent ici")
 
-    case_code, case_classement = _cases_du_cadre(_etiquette("042"))
+    ex = dict(EXEMPLE, id_exemplaire="042", nb_joueurs_min=None,
+              nb_joueurs_max=None)
+    image = image_etiquette(url_fiche("https://exemple.test", "042"), ex,
+                            format_code=format_code)
+    case_code, case_classement = _cases_du_cadre(image)
+    assert _hauteur_encre(case_classement) > 0
     assert _hauteur_encre(case_code) >= 1.7 * _hauteur_encre(case_classement)
 
 

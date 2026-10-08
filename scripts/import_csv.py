@@ -41,6 +41,8 @@ from app.db import get_connection, init_db  # noqa: E402
 # rangement sert à résoudre/créer tolérament l'« Emplacement local » du CSV
 # (docs/conception-rangement.md §4.b, étape 7) sans dupliquer sa logique.
 from app.services import obtenir_ou_creer_emplacement_rangement, slug_titre  # noqa: E402
+# Les lettres du code de classement se valident au domicile de leurs listes.
+from app.classement import COLONNES_LETTRES, lire_saisie  # noqa: E402
 # L'export du catalogue neutralise les formules par une apostrophe (SEC-06) :
 # l'import la retire, avec la fonction inverse, au même domicile.
 from app.exports import retirer_neutralisation_csv  # noqa: E402
@@ -99,6 +101,10 @@ COLONNES = {
     # (app/services.py), donc à un export ré-importable sans réglage.
     "emplacement_evenement": ["emplacement événement", "emplacement evenement"],
     "emplacement_local":     ["emplacement local"],
+    # Code de classement (app/classement.py) : UNE colonne où l'on tape `TPC`,
+    # découpée en trois lettres. Ni « classification » (déjà pris par
+    # `categorie` ci-dessus) ni « classement » seul (trop vague).
+    "lettres_classement":    ["lettres classement"],
 }
 
 # Mois français (abrégés ou complets, sans accents) -> numéro, pour parser les
@@ -272,6 +278,8 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         à l'import — voir `importer`, qui applique cette règle via COALESCE).
       - titres      : dict reference_titre -> champs agrégés (1re valeur non vide)
       - groupes     : reference_titre -> liste d'id_exemplaire (pour le rapport)
+      - lettres_refusees : nombre de lignes dont la case « Lettres classement »
+        est remplie mais invalide (la ligne s'importe, sans ses lettres)
     Lève une erreur si les colonnes clés (Code jeu, Nom jeu) sont absentes.
 
     Pure (aucun accès base) : utilisable en toute sécurité par le mode
@@ -295,6 +303,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
     groupes: dict[str, list[str]] = defaultdict(list)
     ignores: list[str] = []
     vus: set[str] = set()
+    lettres_refusees = 0
 
     for ligne in lignes:
         id_ex = (val(ligne, "id_exemplaire") or "").strip()
@@ -317,6 +326,14 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         groupes[ref].append(id_ex)
 
         nb_min, nb_max = parse_nb_joueurs(val(ligne, "nb_joueurs"))
+        # Lettres : une case vide ne dit rien (None partout, voir le COALESCE
+        # d'`importer`) ; une case remplie mais invalide non plus, mais elle
+        # est COMPTÉE pour le rapport. Jamais de lettre partielle en base.
+        saisie = (val(ligne, "lettres_classement") or "").strip()
+        triplet = lire_saisie(saisie) if saisie else None
+        if saisie and triplet is None:
+            lettres_refusees += 1
+        lettres = dict(zip(COLONNES_LETTRES, triplet or (None, None, None)))
         champs = {
             "reference_titre": ref,
             "nom": nom,
@@ -331,22 +348,29 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
             "annee_edition": parse_annee(val(ligne, "annee")),
             "descriptif": _ou_none(val(ligne, "descriptif")),
             "date_achat": parse_date_achat(val(ligne, "date_achat")),
+            **lettres,
         }
         # Agrégation au niveau titre : on conserve la 1re valeur non vide
-        # rencontrée parmi les exemplaires d'un même titre.
+        # rencontrée parmi les exemplaires d'un même titre. Les trois lettres
+        # voyagent ENSEMBLE : un titre prend le premier triplet valide, jamais
+        # une lettre d'une ligne et deux d'une autre.
         if ref not in titres:
             titres[ref] = champs
         else:
             for k, v in champs.items():
+                if k in COLONNES_LETTRES:
+                    continue
                 if titres[ref].get(k) in (None, "") and v not in (None, ""):
                     titres[ref][k] = v
+            if triplet and titres[ref][COLONNES_LETTRES[0]] is None:
+                titres[ref].update(lettres)
         # Exception : date_achat = la PLUS RÉCENTE parmi les exemplaires du titre
         # (dernière acquisition). Les dates ISO se comparent comme des chaînes.
         da = champs["date_achat"]
         if da and (titres[ref].get("date_achat") is None or da > titres[ref]["date_achat"]):
             titres[ref]["date_achat"] = da
 
-    return exemplaires, titres, groupes, ignores
+    return exemplaires, titres, groupes, ignores, lettres_refusees
 
 
 # ---------------------------------------------------------------------------
@@ -384,11 +408,13 @@ def importer(chemin: Path, dry_run: bool = False,
 
     Returns:
         dict de synthèse (compteurs, regroupements multi-exemplaires, lignes
-        ignorées, données titres pour le rapport, et la liste des noms
-        d'emplacements locaux créés à la volée).
+        ignorées, données titres pour le rapport, la liste des noms
+        d'emplacements locaux créés à la volée, et le nombre de lignes dont
+        les lettres de classement ont été refusées).
     """
     lignes, index = lire_csv(chemin, max_lignes=max_lignes)
-    exemplaires, titres, groupes, ignores = construire_donnees(lignes, index)
+    exemplaires, titres, groupes, ignores, lettres_refusees = construire_donnees(
+        lignes, index)
     emplacements_locaux_crees: list[str] = []
 
     if not dry_run:
@@ -400,10 +426,12 @@ def importer(chemin: Path, dry_run: bool = False,
                 """
                 INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
                     nb_joueurs_min, nb_joueurs_max, duree_min, age_min,
-                    editeur, auteur, annee_edition, descriptif, date_achat)
+                    editeur, auteur, annee_edition, descriptif, date_achat,
+                    lettre_public, lettre_jeu, lettre_materiel)
                 VALUES (:reference_titre, :nom, :type_jeu, :categorie,
                     :nb_joueurs_min, :nb_joueurs_max, :duree_min, :age_min,
-                    :editeur, :auteur, :annee_edition, :descriptif, :date_achat)
+                    :editeur, :auteur, :annee_edition, :descriptif, :date_achat,
+                    :lettre_public, :lettre_jeu, :lettre_materiel)
                 ON CONFLICT(reference_titre) DO UPDATE SET
                     nom=excluded.nom, type_jeu=excluded.type_jeu,
                     categorie=excluded.categorie,
@@ -413,7 +441,21 @@ def importer(chemin: Path, dry_run: bool = False,
                     editeur=excluded.editeur, auteur=excluded.auteur,
                     annee_edition=excluded.annee_edition,
                     descriptif=excluded.descriptif,
-                    date_achat=excluded.date_achat
+                    date_achat=excluded.date_achat,
+                    -- EXCEPTION VOULUE à la règle des titres, qui écrase : une
+                    -- case vide, une valeur invalide ou une colonne absente ne
+                    -- touchent JAMAIS aux lettres déjà en base, comme les
+                    -- colonnes de rangement. Les lettres viendront de la
+                    -- classification automatique, pas du tableur du bureau :
+                    -- avec la règle générale, le premier ré-import d'un vieux
+                    -- tableur effacerait d'un coup tout ce travail. Le triplet
+                    -- est complet ou absent (construire_donnees), les trois
+                    -- COALESCE basculent donc ensemble.
+                    lettre_public=COALESCE(excluded.lettre_public,
+                                           titres.lettre_public),
+                    lettre_jeu=COALESCE(excluded.lettre_jeu, titres.lettre_jeu),
+                    lettre_materiel=COALESCE(excluded.lettre_materiel,
+                                             titres.lettre_materiel)
                 """,
                 list(titres.values()),
             )
@@ -470,6 +512,7 @@ def importer(chemin: Path, dry_run: bool = False,
         "ignores": ignores,
         "titres_data": titres,
         "emplacements_locaux_crees": emplacements_locaux_crees,
+        "lettres_refusees": lettres_refusees,
     }
 
 
@@ -493,6 +536,10 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
     if res.get("emplacements_locaux_crees"):
         noms = res["emplacements_locaux_crees"]
         print(f"Emplacements locaux créés : {len(noms)} -> {noms}")
+    if res.get("lettres_refusees"):
+        print(f"Lettres de classement non reconnues : {res['lettres_refusees']} "
+              "ligne(s), importées sans leurs lettres (attendu tant que les "
+              "listes de lettres ne sont pas complètes)")
 
     # Taux de remplissage par colonne optionnelle
     champs = ["categorie", "nb_joueurs_min", "duree_min", "age_min",

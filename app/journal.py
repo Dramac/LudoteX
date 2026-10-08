@@ -98,6 +98,11 @@ ACTIONS = {
     # boîte y figure ou non. `objet` porte l'état retenu (« affiché » /
     # « masqué ») — un réglage d'affichage, aucune donnée personnelle.
     "etiquette_code_modifie",
+    # Même écran, même formulaire : le format du code de classement imprimé à
+    # côté. `objet` porte le format retenu (« dense » / « lisible ») — un
+    # réglage d'affichage, aucune donnée personnelle. Écrit au changement
+    # seulement, comme la ligne ci-dessus.
+    "etiquette_format_modifie",
     # Identité de l'association (/admin/identite) : le nom du déploiement,
     # distinct du nom de l'ÉDITION ci-dessus, et les trois réglages qui
     # alimentent la page « À propos ».

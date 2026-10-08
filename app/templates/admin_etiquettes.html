@@ -41,8 +41,25 @@
         Les étiquettes s'impriment sans le code à taper. La saisie manuelle du
         scanner reste possible, mais rien sur la boîte ne dit quel code entrer.
       {% endif %}
-      Ce réglage vaut aussi pour la <strong>réimpression d'une étiquette
-      abîmée</strong> depuis la fiche d'un jeu.
+    </p>
+    <fieldset class="champ champ-groupe">
+      <legend>Forme du code de classement</legend>
+      {% for valeur, exemple in formats %}
+      <label class="case">
+        <input type="radio" name="format_code" value="{{ valeur }}"
+               {{ 'checked' if valeur == format_code else '' }}>
+        {{ valeur | capitalize }} : <code>{{ exemple }}</code>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <p class="stats-note">
+      Le code de classement résume le jeu : âge minimum, nombre de joueurs,
+      durée en minutes. Une information absente de la fiche est omise en forme
+      lisible, remplacée par « ? » en forme dense. Trois lettres de classement
+      viendront s'y ajouter devant quand la classification automatique sera en
+      service.
+      Ces deux réglages valent aussi pour la <strong>réimpression d'une
+      étiquette abîmée</strong> depuis la fiche d'un jeu.
     </p>
     <button type="submit" class="bouton-filtrer">Enregistrer ce réglage</button>
   </form>

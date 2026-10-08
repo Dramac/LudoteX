@@ -28,8 +28,8 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 
-from app import (admin_auth, auth, carnet, envois, exports, formation, journal,
-                 logo, sauvegarde, services, supervision)
+from app import (admin_auth, auth, carnet, classement, envois, exports,
+                 formation, journal, logo, sauvegarde, services, supervision)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -403,9 +403,10 @@ def etiquette_png(request: Request, id_exemplaire: str):
     en lot. C'est ce qui permet de réimprimer une étiquette abîmée sans changer
     le code du QR.
 
-    D'où la lecture du réglage `etiquette_code` ICI aussi, alors que cette route
-    n'a aucun formulaire : le code de la boîte se porte ou ne se porte pas, mais
-    jamais sur la moitié du parc (voir services.CLE_ETIQUETTE_CODE).
+    D'où la lecture des réglages `etiquette_code` et `etiquette_format` ICI
+    aussi, alors que cette route n'a aucun formulaire : le code de la boîte se
+    porte ou ne se porte pas, le classement s'écrit d'une forme ou de l'autre,
+    mais jamais sur la moitié du parc (voir services.CLE_ETIQUETTE_CODE).
     """
     if (garde := _garde(request)):
         return garde
@@ -413,12 +414,14 @@ def etiquette_png(request: Request, id_exemplaire: str):
     try:
         info = services.info_exemplaire(conn, id_exemplaire)
         afficher_code = services.lire_etiquette_code(conn)
+        format_code = services.lire_etiquette_format(conn)
     finally:
         conn.close()
     if info is None:
         return Response(status_code=404)
     url = url_fiche(_base_url(request), id_exemplaire)
-    img = image_etiquette(url, info, charger_logo(), afficher_code=afficher_code)
+    img = image_etiquette(url, info, charger_logo(), afficher_code=afficher_code,
+                          format_code=format_code)
     buf = BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
@@ -444,6 +447,7 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
         filtre = categorie if categorie in categories else None
         jeux = services.titres_pour_etiquettes(conn, filtre)
         afficher_code = services.lire_etiquette_code(conn)
+        format_code = services.lire_etiquette_format(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -453,6 +457,13 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
          # Le réglage TEL QU'ENREGISTRÉ : la case doit rouvrir dans l'état où
          # le bureau l'a laissée, jamais sur son défaut.
          "afficher_code": afficher_code,
+         # Même règle pour le format du code de classement. Chaque bouton
+         # montre un exemple RENDU par le code, jamais un littéral du gabarit.
+         "format_code": format_code,
+         "formats": [
+             (f, classement.code_classement(classement.EXEMPLE_FORMAT, f))
+             for f in classement.FORMATS
+         ],
          # Lot 3c : le cadre « LOGO » a disparu des étiquettes (voir
          # app/etiquettes.py::charger_logo) — le signal qu'il portait déménage
          # ici, seul endroit où il peut encore être lu et corrigé avant
@@ -462,9 +473,11 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
 
 
 @router.post("/etiquettes/code")
-def etiquettes_code(request: Request, afficher_code: str = Form("")):
+def etiquettes_code(request: Request, afficher_code: str = Form(""),
+                    format_code: str | None = Form(None)):
     """
-    Enregistre le réglage « imprimer le code de la boîte », puis REDIRIGE.
+    Enregistre les deux réglages de l'étiquette — « imprimer le code de la
+    boîte » et le format du code de classement —, puis REDIRIGE.
 
     Formulaire SÉPARÉ de celui qui génère la planche, et non une case de plus
     dans celui-ci : `etiquettes_pdf` renvoie un fichier et ne réaffiche jamais
@@ -475,6 +488,11 @@ def etiquettes_code(request: Request, afficher_code: str = Form("")):
     Une case décochée n'est pas transmise par le navigateur : d'où la lecture
     par présence (`Form("")` + `bool`), et non un `Form(True)` qui rendrait la
     case impossible à décocher.
+
+    Le format, lui, est un bouton radio : il est TOUJOURS transmis par la page
+    d'aujourd'hui. S'il manque (onglet ouvert avant la mise à jour) ou porte
+    une valeur inconnue, le format enregistré NE CHANGE PAS — un vieil onglet
+    ne doit pas remettre le réglage du bureau à son défaut en silence.
     """
     if (garde := _garde(request)):
         return garde
@@ -483,19 +501,32 @@ def etiquettes_code(request: Request, afficher_code: str = Form("")):
     try:
         precedent = services.lire_etiquette_code(conn)
         services.ecrire_etiquette_code(conn, afficher)
+        format_precedent = services.lire_etiquette_format(conn)
+        nouveau_format = (format_code if format_code in classement.FORMATS
+                          else format_precedent)
+        services.ecrire_etiquette_format(conn, nouveau_format)
     finally:
         conn.close()
+    phrases = []
     if afficher != precedent:
         journal.journaliser(
             request, "admin", "etiquette_code_modifie",
             objet="affiché" if afficher else "masqué",
         )
-    message = (
-        "Le code de la boîte sera imprimé sur les étiquettes, "
-        "réimpressions comprises."
-        if afficher else
-        "Le code de la boîte ne sera plus imprimé, réimpressions comprises."
-    )
+        phrases.append(
+            "Le code de la boîte sera imprimé sur les étiquettes."
+            if afficher else
+            "Le code de la boîte ne sera plus imprimé.")
+    if nouveau_format != format_precedent:
+        journal.journaliser(request, "admin", "etiquette_format_modifie",
+                            objet=nouveau_format)
+        exemple = classement.code_classement(classement.EXEMPLE_FORMAT,
+                                             nouveau_format)
+        phrases.append(f"Le code de classement s'écrira sous la forme « {exemple} ».")
+    if phrases:
+        message = " ".join(phrases) + " Cela vaut aussi pour les réimpressions."
+    else:
+        message = "Rien n'a changé : le réglage enregistré est conservé."
     return RedirectResponse(
         "/admin/etiquettes?message=" + quote(message), status_code=303)
 
@@ -539,6 +570,7 @@ def etiquettes_pdf(
     try:
         exemplaires = services.exemplaires_pour_etiquettes(conn, references)
         afficher_code = services.lire_etiquette_code(conn)
+        format_code = services.lire_etiquette_format(conn)
     finally:
         conn.close()
     if not exemplaires:
@@ -553,6 +585,7 @@ def etiquettes_pdf(
             marge_haut_mm=_float_ou(8, marge_haut),
             marge_bas_mm=_float_ou(8, marge_bas),
             afficher_code=afficher_code,
+            format_code=format_code,
         )
     except ValueError as exc:
         return etiquettes_selection(request, message=str(exc))
@@ -673,6 +706,16 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         if crees:
             texte += (f" {len(crees)} nouvel(aux) emplacement(s) local(-aux) "
                       f"créé(s) : {', '.join(crees)}.")
+        # Lettres de classement : une case remplie mais non reconnue n'empêche
+        # pas la ligne d'entrer, ses lettres seules restent dehors. Tant que
+        # les listes de lettres ne sont pas complètes, AUCUNE valeur n'est
+        # reconnue : la phrase le dit, pour ne pas affoler.
+        refusees = res.get("lettres_refusees") or 0
+        if refusees:
+            texte += (f" Lettres de classement non reconnues sur {refusees} "
+                      "ligne(s) : ces jeux sont importés sans leurs lettres, ce "
+                      "qui est normal tant que la classification automatique "
+                      "n'est pas en service.")
         message = ("succes", texte)
         # §4.d : lien direct vers la page des manques s'il en reste.
         conn = get_connection()

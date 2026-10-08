@@ -22,6 +22,7 @@ Usage :
     python -m scripts.generate_qr --limit 12               # échantillon (tests)
     python -m scripts.generate_qr --simple                 # QR nu, sans décor
     python -m scripts.generate_qr --sans-code              # sans le code de la boîte
+    python -m scripts.generate_qr --format dense           # code de classement dense
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from pathlib import Path
 # Permet « python scripts/generate_qr.py » comme « python -m scripts.generate_qr ».
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app import services  # noqa: E402
+from app import classement, services  # noqa: E402
 from app.db import get_connection  # noqa: E402
 from app.etiquettes import (  # noqa: E402
     charger_logo,
@@ -49,7 +50,9 @@ DEFAULT_OUT = Path("qr")
 def charger_exemplaires(limit: int | None = None) -> list[dict]:
     """
     Charge les exemplaires depuis la base, avec les champs du titre nécessaires
-    à l'étiquette (nom) et au code de classement (âge, joueurs, durée).
+    à l'étiquette (nom) et au code de classement (âge, joueurs, durée, et les
+    trois lettres — une requête qui les oublierait imprimerait sans lettres,
+    en silence, le jour où elles seront remplies).
 
     Args:
         limit: si fourni, ne renvoie que les N premiers (échantillon de test).
@@ -61,7 +64,8 @@ def charger_exemplaires(limit: int | None = None) -> list[dict]:
     try:
         sql = """
             SELECT e.id_exemplaire, t.nom, t.categorie,
-                   t.age_min, t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min
+                   t.age_min, t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min,
+                   t.lettre_public, t.lettre_jeu, t.lettre_materiel
             FROM exemplaires e
             JOIN titres t ON t.reference_titre = e.reference_titre
             ORDER BY e.id_exemplaire
@@ -87,8 +91,23 @@ def lire_reglage_code() -> bool:
         conn.close()
 
 
+def lire_reglage_format() -> str:
+    """
+    Lit en base le format du code de classement (/admin/etiquettes).
+
+    Même règle que `lire_reglage_code` : le domicile du réglage et de son
+    défaut est `app/services.py`, ce script l'interroge.
+    """
+    conn = get_connection()
+    try:
+        return services.lire_etiquette_format(conn)
+    finally:
+        conn.close()
+
+
 def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool,
-                 afficher_code: bool = True) -> int:
+                 afficher_code: bool = True,
+                 format_code: str = classement.FORMAT_DEFAUT) -> int:
     """
     Écrit un PNG par exemplaire dans `out` (fichier `<id>.png`).
 
@@ -100,6 +119,7 @@ def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool,
         simple: True = QR nu ; False = étiquette complète.
         afficher_code: imprimer ou non le code de la boîte (sans effet sur un
             QR nu, qui n'a pas de décor).
+        format_code: format du code de classement (`app.classement.FORMATS`).
 
     Returns:
         Le nombre d'étiquettes générées.
@@ -108,14 +128,16 @@ def generer_pngs(exemplaires, base_url, out: Path, logo, simple: bool,
     for ex in exemplaires:
         url = url_fiche(base_url, ex["id_exemplaire"])
         img = (image_qr_nu(url) if simple
-               else image_etiquette(url, ex, logo, afficher_code=afficher_code))
+               else image_etiquette(url, ex, logo, afficher_code=afficher_code,
+                                    format_code=format_code))
         img.save(out / f"{ex['id_exemplaire']}.png")
     return len(exemplaires)
 
 
 def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
                     colonnes: int, logo, simple: bool, marge_mm: float = 2.0,
-                    afficher_code: bool = True) -> int:
+                    afficher_code: bool = True,
+                    format_code: str = classement.FORMAT_DEFAUT) -> int:
     """
     Génère une planche A4 multipage prête à imprimer.
 
@@ -124,7 +146,8 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
     dépendre du codec JPEG, absent de certains builds Pillow.
 
     Args:
-        exemplaires, base_url, logo, simple, afficher_code: voir generer_pngs.
+        exemplaires, base_url, logo, simple, afficher_code, format_code: voir
+            generer_pngs.
         chemin_pdf: fichier PDF de sortie.
         lignes, colonnes: disposition de la grille.
         marge_mm: marge intérieure de chaque cellule, en millimètres.
@@ -160,7 +183,8 @@ def generer_planche(exemplaires, base_url, chemin_pdf: Path, lignes: int,
         for j, ex in enumerate(exemplaires[i:i + par_page]):
             url = url_fiche(base_url, ex["id_exemplaire"])
             label = (image_qr_nu(url) if simple
-                     else image_etiquette(url, ex, logo, afficher_code=afficher_code))
+                     else image_etiquette(url, ex, logo, afficher_code=afficher_code,
+                                          format_code=format_code))
             iw, ih = label.size
             # Position dans la grille (colonne, ligne) à partir de l'indice j.
             col, row = j % colonnes, j // colonnes
@@ -211,6 +235,9 @@ def main() -> None:
     p.add_argument("--sans-code", action="store_true",
                    help="Ne pas imprimer le code de la boîte, pour CE tirage "
                         "seulement (le réglage enregistré n'est pas modifié).")
+    p.add_argument("--format", choices=classement.FORMATS, dest="format_code",
+                   help="Forme du code de classement pour CE tirage seulement "
+                        "(défaut : le réglage enregistré ; il n'est pas modifié).")
     p.add_argument("--limit", type=int, help="Limiter le nombre d'exemplaires (tests).")
     args = p.parse_args()
 
@@ -233,6 +260,9 @@ def main() -> None:
     # n'écrit RIEN en base — une option de ligne de commande ne doit pas
     # modifier le réglage du bureau derrière son dos.
     afficher_code = lire_reglage_code() and not args.sans_code
+    # Même règle pour le format du code de classement : `--format` force ce
+    # tirage, le réglage du bureau reste intact.
+    format_code = args.format_code or lire_reglage_format()
 
     exemplaires = charger_exemplaires(args.limit)
     if not exemplaires:
@@ -247,16 +277,18 @@ def main() -> None:
 
     if not args.simple:
         print(f"Code de la boîte : {'imprimé' if afficher_code else 'masqué'}")
+        print(f"Code de classement : forme {format_code}")
 
     n = generer_pngs(exemplaires, args.base_url, args.out, logo, args.simple,
-                     afficher_code)
+                     afficher_code, format_code)
     print(f"{n} étiquette(s) PNG écrites dans : {args.out}/")
 
     if args.planche:
         lignes, colonnes = _parse_grille(args.grille)
         pdf = args.out / "planche-qr.pdf"
         pages = generer_planche(exemplaires, args.base_url, pdf, lignes, colonnes,
-                                logo, args.simple, afficher_code=afficher_code)
+                                logo, args.simple, afficher_code=afficher_code,
+                                format_code=format_code)
         print(f"Planche PDF : {pdf} — grille {lignes}x{colonnes} "
               f"({lignes * colonnes}/page), {pages} page(s).")
 

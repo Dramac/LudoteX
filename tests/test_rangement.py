@@ -1008,7 +1008,7 @@ def test_construire_donnees_lit_les_deux_colonnes_emplacement():
          "Emplacement événement": "", "Emplacement local": ""},
     ]
     index = import_csv.construire_index_colonnes(list(lignes[0].keys()))
-    exemplaires, titres, groupes, ignores = import_csv.construire_donnees(lignes, index)
+    exemplaires, titres, groupes, ignores, _ = import_csv.construire_donnees(lignes, index)
     ex1 = next(e for e in exemplaires if e["id_exemplaire"] == "001")
     ex2 = next(e for e in exemplaires if e["id_exemplaire"] == "002")
     assert ex1["emplacement_evenement"] == "Étagère 2"

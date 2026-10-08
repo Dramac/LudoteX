@@ -142,6 +142,15 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
 
 - `templates.TemplateResponse` : signature **(request, nom, contexte, …)** —
   `request` en premier (version récente de Starlette).
+- **Code de classement : un seul domicile, `app/classement.py`.** Listes de
+  lettres, validation, lecture de la colonne CSV et les deux formats y vivent ;
+  `app/etiquettes.py` ne fait que dessiner. Les **trois producteurs**
+  d'étiquettes (route PNG, planche PDF, `scripts/generate_qr.py`) lisent
+  chacun les trois lettres par **leur propre requête SQL** : une colonne
+  ajoutée au code de classement doit l'être aux trois, sans quoi un producteur
+  imprime sans elle, en silence (`tests/test_classement.py` les espionne).
+  Les listes se remplissent dans les tests par `monkeypatch.setattr` — d'où
+  `classement._listes()`, qui les relit à chaque appel.
 - Planche PDF : passer un **PNG** à reportlab (pas l'objet PIL) pour préserver la
   couleur sans dépendre du codec JPEG.
 - QR : l'URL encodée est **définitive** — ne tirer les étiquettes qu'une fois le

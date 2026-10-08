@@ -10,16 +10,18 @@ Centraliser le rendu ici garantit que les deux produisent EXACTEMENT la même
 étiquette. Ce module ne touche pas à la base : il reçoit les données déjà lues.
 
 DISPOSITION DE L'ÉTIQUETTE (format paysage)
-    +------------------+-----------------------------+
-    |                  |  [LOGO]           (gommette)|
-    |     QR code      |         Nom du jeu          |
-    |                  | [ 00472 | CODE CLASSEMENT ] |
-    +------------------+-----------------------------+
+    +------------------+-------------------------------+
+    |                  |  [LOGO]             (gommette)|
+    |     QR code      |          Nom du jeu           |
+    |                  | [ 00472 | 8+ · 2-4j · 30min ] |
+    +------------------+-------------------------------+
 
 La case de gauche du cadre du bas porte le CODE DE LA BOÎTE (`id_exemplaire`),
 celui que la saisie manuelle de secours réclame quand le QR ne se lit pas. Il
 partage le cadre existant plutôt que d'occuper une zone à lui : voir le
-commentaire de `image_etiquette`, qui donne les mesures.
+commentaire de `image_etiquette`, qui donne les mesures. La case de droite
+porte le CODE DE CLASSEMENT, composé par `app/classement.py` — son domicile
+unique ; ce module ne fait que le dessiner.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ from pathlib import Path
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
+
+from app.classement import FORMAT_DEFAUT, code_classement
 
 # Couleurs de base (RVB).
 NOIR = (0, 0, 0)
@@ -125,30 +129,6 @@ def charger_logo(chemin: Path | None = None) -> Image.Image:
     if chemin and Path(chemin).exists():
         return _aplati_sur_blanc(Image.open(chemin))
     return _aplati_sur_blanc(Image.open(_MEEPLE_DEFAUT))
-
-
-def code_classement(ex: dict) -> str:
-    """
-    Code de classement type « EAM8-3-5-15 » (structure PROVISOIRE).
-
-    Format : [3 lettres][âge]-[joueurs min]-[joueurs max]-[durée]
-        E = cible (enfant…), A = ambiance (catégorie), M = mot (sous-catégorie).
-    Les 3 lettres ne sont pas dérivables des données actuelles → placeholder
-    « XXX ». La partie chiffrée vient de la base (« ? » si l'info manque).
-    À FAIRE ÉVOLUER ICI quand la nomenclature des lettres sera fixée.
-
-    Args:
-        ex: dict contenant age_min, nb_joueurs_min, nb_joueurs_max, duree_min.
-
-    Returns:
-        La chaîne du code de classement.
-    """
-    def v(x):
-        return str(x) if x not in (None, "") else "?"
-
-    lettres = "XXX"  # placeholder : cible / catégorie / sous-catégorie
-    return (f"{lettres}{v(ex.get('age_min'))}-{v(ex.get('nb_joueurs_min'))}"
-            f"-{v(ex.get('nb_joueurs_max'))}-{v(ex.get('duree_min'))}")
 
 
 # ---------------------------------------------------------------------------
@@ -285,9 +265,22 @@ CODE_PART_CADRE = 0.42   # part du cadre revenant au code de la boîte
 CODE_TAILLE_MAX = 72     # borne haute de l'ajustement (voir _police_encre)
 MARGE_EXTERIEURE = 18    # marge blanche autour de l'étiquette, px
 
+# CODE DE CLASSEMENT — ajusté à sa case, plafonné à sa taille d'origine.
+# Il était imprimé à taille FIXE (24). Le format lisible (`8+ · 2-4j · 30min`,
+# voir app/classement.py) est plus long que le dense : au pire cas réel du
+# catalogue, il dépasse la case de 232 px du cadre partagé — et avec trois
+# lettres devant, nettement. La police cède donc, comme pour le code de la
+# boîte, plutôt que la chaîne. Le plafond garantit qu'un code qui tenait sort
+# EXACTEMENT à la taille d'avant : le format dense n'a pas bougé d'un point.
+# Mesures police par police : interne/comptes-rendus/lot-classement-1-*.md.
+CLASSEMENT_TAILLE_MAX = 24
+CLASSEMENT_TAILLE_MIN = 6   # plancher de sécurité : jamais atteint au catalogue réel
+MARGE_INTERIEURE = 11       # marge entre un code et les traits de sa case, px
+
 
 def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
-                    box: int = 8, *, afficher_code: bool = True) -> Image.Image:
+                    box: int = 8, *, afficher_code: bool = True,
+                    format_code: str = FORMAT_DEFAUT) -> Image.Image:
     """
     Compose l'étiquette complète d'un exemplaire (format paysage).
 
@@ -305,7 +298,8 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
 
     Args:
         url: URL encodée dans le QR (voir url_fiche).
-        ex: dict avec au moins `nom` + les champs de code_classement, et
+        ex: dict avec au moins `nom` + les champs du code de classement
+            (`app.classement.code_classement`, lettres comprises), et
             `id_exemplaire` si le code doit être imprimé.
         logo: image du logo à imprimer, ou None pour reprendre le repli de
             `charger_logo()` (le logo déposé par l'association, sinon le
@@ -315,6 +309,10 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
             DOMICILE de ce choix est le réglage `etiquette_code` de la base
             (`services.lire_etiquette_code`) : ce module ne lit jamais la
             base, ce sont ses appelants qui lui transmettent la valeur.
+        format_code: format du code de classement, dense ou lisible
+            (constantes de `app.classement`). Même chemin que
+            `afficher_code` : le domicile du réglage est
+            `services.lire_etiquette_format`, transmis par les appelants.
 
     Returns:
         Une image PIL RGB prête à enregistrer/placer.
@@ -329,7 +327,6 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     classif_h = CADRE_BAS_H
 
     f_nom = _police(24)
-    f_classif = _police(24)
     f_small = _police(13)
 
     code = str(ex.get("id_exemplaire") or "")
@@ -377,11 +374,12 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     # Cadre du bas : code de la boîte (à gauche) et code de classement.
     cy = H - pad - classif_h
     d.rectangle([px, cy, px + panel_w, cy + classif_h], outline=NOIR, width=3)
+    classement = code_classement(ex, format_code)
     if montrer_code:
-        _dessiner_cadre_partage(d, code, code_classement(ex), px, cy,
-                                panel_w, classif_h, f_classif)
+        _dessiner_cadre_partage(d, code, classement, px, cy,
+                                panel_w, classif_h)
     else:
-        _texte_centre(d, panel_cx, cy + 11, code_classement(ex), f_classif)
+        _dessiner_classement(d, classement, px, cy, panel_w, classif_h)
 
     return img
 
@@ -394,26 +392,41 @@ def _texte_cale(d, texte, police, gauche, haut, largeur, hauteur):
            texte, fill=NOIR, font=police)
 
 
-def _dessiner_cadre_partage(d, code, classement, px, cy, panel_w, cadre_h,
-                            f_classif):
+def _dessiner_classement(d, texte, gauche, haut, largeur, hauteur):
+    """
+    Dessine le code de classement centré dans sa case, à la plus grande taille
+    où il tient — sans jamais dépasser `CLASSEMENT_TAILLE_MAX`.
+
+    Un code vide (format lisible, aucune donnée connue) ne dessine rien : la
+    case reste blanche plutôt que de porter un signe qui n'apprend rien.
+    """
+    if not texte:
+        return
+    police = _police_encre(d, texte, largeur - 2 * MARGE_INTERIEURE,
+                           hauteur - 12, taille_max=CLASSEMENT_TAILLE_MAX,
+                           taille_min=CLASSEMENT_TAILLE_MIN)
+    _texte_cale(d, texte, police, gauche, haut, largeur, hauteur)
+
+
+def _dessiner_cadre_partage(d, code, classement, px, cy, panel_w, cadre_h):
     """
     Partage le cadre du bas : [ code de la boîte | code de classement ].
 
     Les deux ne sont PAS de même nature, et l'étiquette doit le dire sans un
     mot : le code de la boîte est un identifiant qu'on recopie, le code de
-    classement une chaîne composite dont les trois lettres sont encore un
-    placeholder. D'où la case propre, le trait de séparation, et surtout la
-    taille — le code sort environ deux fois plus haut que son voisin.
+    classement une chaîne composite qui résume le jeu et ne se tape jamais.
+    D'où la case propre, le trait de séparation, et surtout la taille — le
+    code sort environ deux fois plus haut que son voisin. L'ajustement du code
+    de classement ne peut que le rétrécir : la hiérarchie ne fait que croître.
     """
     part_code = int(panel_w * CODE_PART_CADRE)
     sep = px + part_code
     d.line([sep, cy, sep, cy + cadre_h], fill=NOIR, width=3)
 
-    marge_i = 11
-    f_code = _police_encre(d, code, part_code - 2 * marge_i, cadre_h - 12,
-                           taille_max=CODE_TAILLE_MAX)
+    f_code = _police_encre(d, code, part_code - 2 * MARGE_INTERIEURE,
+                           cadre_h - 12, taille_max=CODE_TAILLE_MAX)
     _texte_cale(d, code, f_code, px, cy, part_code, cadre_h)
-    _texte_cale(d, classement, f_classif, sep, cy, panel_w - part_code, cadre_h)
+    _dessiner_classement(d, classement, sep, cy, panel_w - part_code, cadre_h)
 
 
 # Espace intérieur de chaque cellule (mm) pour ne pas coller les étiquettes.
@@ -423,7 +436,7 @@ ESPACE_CELLULE_MM = 1.5
 def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
                 marge_gauche_mm=8.0, marge_droite_mm=8.0,
                 marge_haut_mm=8.0, marge_bas_mm=8.0,
-                afficher_code=True) -> bytes:
+                afficher_code=True, format_code=FORMAT_DEFAUT) -> bytes:
     """
     Construit une planche A4 d'étiquettes (PDF couleur) et renvoie les octets.
 
@@ -435,7 +448,7 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
     Utilise reportlab (gère la couleur du logo, sans dépendre du codec JPEG).
 
     Args:
-        exemplaires: liste de dicts (nom + champs de code_classement + id).
+        exemplaires: liste de dicts (nom + champs du code de classement + id).
         base_url: base de l'URL encodée dans le QR.
         logo: image PIL du logo, ou None pour reprendre le repli de
             `charger_logo()` — résolu UNE SEULE FOIS ici, pas à chaque
@@ -446,6 +459,8 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
         afficher_code: imprimer ou non le code de la boîte sur chaque
             étiquette (voir `image_etiquette`). Transmis tel quel : la lecture
             du réglage appartient à l'appelant.
+        format_code: format du code de classement (voir `image_etiquette`),
+            transmis tel quel lui aussi.
 
     Returns:
         Le contenu binaire du PDF.
@@ -490,7 +505,8 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
     for i in range(0, len(exemplaires), par_page):
         for j, ex in enumerate(exemplaires[i:i + par_page]):
             url = url_fiche(base_url, ex["id_exemplaire"])
-            label = image_etiquette(url, ex, logo, afficher_code=afficher_code)
+            label = image_etiquette(url, ex, logo, afficher_code=afficher_code,
+                                    format_code=format_code)
             iw, ih = label.size
             col, row = j % colonnes, j // colonnes
             avail_w, avail_h = cw - 2 * pad, ch - 2 * pad

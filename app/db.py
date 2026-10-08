@@ -108,6 +108,11 @@ _MIGRATIONS_COLONNES = [
     ("titres", "date_achat", "TEXT"),
     ("exemplaires", "emplacement_evenement", "TEXT"),
     ("exemplaires", "emplacement_local_id", "INTEGER"),
+    # Lettres du code de classement (app/classement.py) : vides sur une base
+    # existante, dont les étiquettes sortent donc sans lettres.
+    ("titres", "lettre_public", "TEXT"),
+    ("titres", "lettre_jeu", "TEXT"),
+    ("titres", "lettre_materiel", "TEXT"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

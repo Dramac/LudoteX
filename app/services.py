@@ -49,6 +49,8 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from app import classement
+
 # Fuseau de l'événement (saisies « 20h », « 2h du matin » = heure locale FR).
 # Les horodatages sont STOCKÉS en UTC ; on convertit aux frontières (filtre,
 # affichage). Comme tout est en ISO 8601 UTC à offset fixe « +00:00 », la
@@ -208,13 +210,15 @@ def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None
     Returns:
         Un dict des colonnes (id_exemplaire, reference_titre, nom, categorie,
         nb_joueurs_min/max, duree_min, age_min, editeur, auteur, annee_edition,
-        descriptif), ou ``None`` si l'exemplaire est inconnu.
+        descriptif, et les trois lettres du code de classement — l'étiquette
+        de réimpression en dépend), ou ``None`` si l'exemplaire est inconnu.
     """
     row = conn.execute(
         """
         SELECT e.id_exemplaire, t.reference_titre, t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
-               t.editeur, t.auteur, t.annee_edition, t.descriptif
+               t.editeur, t.auteur, t.annee_edition, t.descriptif,
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         WHERE e.id_exemplaire = ?
@@ -949,12 +953,15 @@ def _date_fr(iso: str | None) -> str:
 
 # En-têtes de l'export catalogue — choisis pour être RÉ-IMPORTABLES (mêmes
 # intitulés que ceux reconnus par scripts/import_csv.COLONNES).
-# Les deux dernières colonnes (rangement, §4.b) sont PAR EXEMPLAIRE : on
-# exporte un libellé LISIBLE (le nom de l'emplacement local, pas son id).
+# Les deux colonnes de rangement (§4.b) sont PAR EXEMPLAIRE : on exporte un
+# libellé LISIBLE (le nom de l'emplacement local, pas son id).
+# « Lettres classement » (app/classement.py), ajoutée en fin pour ne décaler
+# aucune colonne d'un tableur existant : les trois lettres d'un titre, remplie
+# seulement quand elles sont imprimables — l'export dit ce que l'étiquette dit.
 EN_TETES_CATALOGUE = [
     "Code jeu", "Nom jeu", "Type", "Type jeu", "Nb joueurs", "Age joueurs",
     "Temps jeu", "Marque", "Auteur", "Année édition", "Date achat", "Descriptif",
-    "Emplacement événement", "Emplacement local",
+    "Emplacement événement", "Emplacement local", "Lettres classement",
 ]
 
 
@@ -981,7 +988,8 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
                er.nom AS emplacement_local_nom,
                t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
-               t.editeur, t.auteur, t.annee_edition, t.descriptif, t.date_achat
+               t.editeur, t.auteur, t.annee_edition, t.descriptif, t.date_achat,
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         LEFT JOIN emplacements_rangement er ON er.id_emplacement = e.emplacement_local_id
@@ -1005,6 +1013,7 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
             "Descriptif": r["descriptif"] or "",
             "Emplacement événement": r["emplacement_evenement"] or "",
             "Emplacement local": r["emplacement_local_nom"] or "",
+            "Lettres classement": classement.lettres_imprimables(dict(r)),
         })
     return EN_TETES_CATALOGUE, lignes
 
@@ -1930,12 +1939,13 @@ def exemplaires_pour_etiquettes(conn: sqlite3.Connection,
 
     Returns:
         Liste de dicts {id_exemplaire, nom, categorie, age_min, nb_joueurs_min,
-        nb_joueurs_max, duree_min}, triée par nom puis id (étiquettes d'un même
-        jeu groupées).
+        nb_joueurs_max, duree_min, lettre_public, lettre_jeu, lettre_materiel},
+        triée par nom puis id (étiquettes d'un même jeu groupées).
     """
     sql = """
         SELECT e.id_exemplaire, t.nom, t.categorie, t.age_min,
-               t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min
+               t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min,
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
     """
@@ -2163,6 +2173,25 @@ def lire_etiquette_code(conn: sqlite3.Connection) -> bool:
 def ecrire_etiquette_code(conn: sqlite3.Connection, afficher: bool) -> None:
     """Enregistre le réglage d'affichage du code de la boîte."""
     ecrire_parametre(conn, CLE_ETIQUETTE_CODE, "1" if afficher else "0")
+
+
+# Format du CODE DE CLASSEMENT imprimé à côté du code de la boîte : dense
+# (`8-2-4-30`) ou lisible (`8+ · 2-4j · 30min`). Stocké pour la même raison
+# que le réglage ci-dessus, et lu par les MÊMES trois producteurs : une
+# réimpression doit ressembler au reste du parc. Les valeurs possibles et le
+# défaut (lisible, y compris sur une base qui n'a jamais vu la clé) sont des
+# constantes d'`app/classement.py`, domicile du code de classement.
+CLE_ETIQUETTE_FORMAT = "etiquette_format"
+
+
+def lire_etiquette_format(conn: sqlite3.Connection) -> str:
+    """Le format du code de classement ; une valeur inconnue vaut le défaut."""
+    return classement.format_connu(lire_parametre(conn, CLE_ETIQUETTE_FORMAT, None))
+
+
+def ecrire_etiquette_format(conn: sqlite3.Connection, format_code: str) -> None:
+    """Enregistre le format du code de classement (normalisé : jamais d'inconnu)."""
+    ecrire_parametre(conn, CLE_ETIQUETTE_FORMAT, classement.format_connu(format_code))
 
 
 # ===========================================================================

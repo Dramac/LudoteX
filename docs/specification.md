@@ -203,6 +203,14 @@ entre jamais).
   la casse et les zéros de tête, et propose les codes proches plutôt que de
   répondre « introuvable ». L'étiquette imprimée peut afficher ce code en
   clair.
+- **Code de classement** : à côté du code de la boîte, l'étiquette résume le
+  jeu — âge minimum, nombre de joueurs, durée — sous une forme **dense**
+  (`8-2-4-30`) ou **lisible** (`8+ · 2-4j · 30min`, par défaut), au choix du
+  bureau. Trois lettres pourront le précéder (public, façon de jouer,
+  matériel), tirées de listes **fermées et figées dans le code** : une lettre
+  imprimée ne change pas de sens. Elles ne s'impriment que si les trois sont
+  valides ; aucune ne l'est tant que les listes 2 et 3 sont vides. Ce code
+  n'est **pas un identifiant** : il ne sert ni à chercher, ni à saisir.
 - Le QR ne comporte **aucun secret** : il donne le même accès que le catalogue
   public (lecture seule).
 
