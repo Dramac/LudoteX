@@ -76,3 +76,28 @@ def test_le_controle_voit_un_appel_place_avant_la_definition():
     ], start=1))
     assert fonctions_utilisees_trop_tot(lignes) == [
         "garder_https : utilisée ligne 1, définie ligne 2"]
+
+
+# ===========================================================================
+# Un échec de certbot dit où chercher
+# ===========================================================================
+def test_chaque_echec_de_certbot_nomme_le_pare_feu_de_l_hebergeur():
+    """
+    Le script ouvre `ufw`, pas le pare-feu que l'hébergeur place devant le
+    serveur. Port 80 fermé là-bas, certbot échoue sans dire pourquoi : les deux
+    demandes de certificat (production, formation) renvoient vers la cause.
+    """
+    texte = (DEPLOY / "install.sh").read_text(encoding="utf-8")
+    demandes = re.findall(r"if certbot --nginx[^\n]*\n(.*?)\n\s*fi\n", texte, flags=re.DOTALL)
+    assert len(demandes) == 2
+    for bloc in demandes:
+        assert "causes_echec_certificat" in bloc.split("else", 1)[1]
+    aide = texte[texte.index("causes_echec_certificat() {"):]
+    aide = aide[:aide.index("\n}\n")]
+    assert "pare-feu de l'hébergeur" in aide and "port 80" in aide
+
+
+def test_la_documentation_annonce_les_ports_a_ouvrir_chez_l_hebergeur():
+    doc = (DEPLOY.parent / "docs" / "deploiement.md").read_text(encoding="utf-8")
+    prerequis = doc[doc.index("## 0. "):doc.index("## 1. ")]
+    assert "ports 80 et 443 ouverts chez l'hébergeur" in prerequis

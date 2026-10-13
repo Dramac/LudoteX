@@ -462,6 +462,19 @@ remettre_https() {
     avert "Certbot n'a pas abouti : l'ancien fichier nginx, avec son HTTPS, a été remis en place."
 }
 
+# Certbot a échoué : dire où chercher. Le pare-feu de la machine est ouvert
+# depuis l'étape 1 ; celui de l'hébergeur, en amont, ne se voit pas d'ici. Pas
+# de test de joignabilité : une requête du serveur vers sa propre adresse ne
+# ressort pas, elle aboutirait même port fermé et rassurerait à tort.
+causes_echec_certificat() {
+    # $1 = domaine demandé.
+    avert "Let's Encrypt doit joindre ce serveur sur le port 80. Deux causes fréquentes :"
+    avert "  - le DNS de $1 ne pointe pas encore ici (dig +short $1) ;"
+    avert "  - le port 80 est fermé dans le pare-feu de l'hébergeur (interface web de"
+    avert "    l'hébergeur, pas ufw). Depuis un autre appareil : http://$1/sante"
+    avert "Voir docs/deploiement.md, « En cas de problème »."
+}
+
 ANCIEN_NGINX_PROD="$(garder_https /etc/nginx/sites-available/ludotex)"
 cp "$INSTALL_DIR/deploy/nginx-ludotex.conf" /etc/nginx/sites-available/ludotex
 sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex
@@ -511,6 +524,7 @@ if [[ "${TENTER_CERTBOT,,}" == o* ]]; then
     else
         avert "Échec de l'obtention du certificat. Réessayer plus tard avec :"
         avert "  sudo certbot --nginx -d $DOMAINE -m $EMAIL"
+        causes_echec_certificat "$DOMAINE"
         remettre_https /etc/nginx/sites-available/ludotex "$ANCIEN_NGINX_PROD"
     fi
 else
@@ -779,6 +793,7 @@ EOF
         else
             avert "Échec de l'obtention du certificat pour $DOMAINE_FORMATION. Réessayer plus tard avec :"
             avert "  sudo certbot --nginx -d $DOMAINE_FORMATION -m $EMAIL"
+            causes_echec_certificat "$DOMAINE_FORMATION"
             remettre_https /etc/nginx/sites-available/ludotex-formation "$ANCIEN_NGINX_FORM"
         fi
     else

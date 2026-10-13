@@ -21,6 +21,13 @@ pendant et après son exécution.
   disponible) pointant vers l'adresse IP du VPS. C'est l'hébergeur du domaine
   (souvent différent du VPS) qui permet de régler ça, dans une section
   généralement appelée « zone DNS » ou « gestion DNS ».
+- Les **ports 80 et 443 ouverts chez l'hébergeur**, en plus du port SSH.
+  Beaucoup d'hébergeurs placent devant le VPS un pare-feu qui leur est propre,
+  réglé depuis leur interface web (« pare-feu réseau », « groupe de
+  sécurité », « firewall »). Le script d'installation ouvre le pare-feu **de
+  la machine** (`ufw`), mais il n'a aucune prise sur celui-là. Tant que le
+  port 80 y est fermé, Let's Encrypt ne peut pas joindre le serveur et le
+  certificat HTTPS n'est pas délivré.
 - Une **adresse e-mail** valide (sert uniquement aux alertes de renouvellement
   du certificat HTTPS, envoyées par Let's Encrypt).
 - Le **mot de passe** que l'on souhaite donner à l'espace d'administration du
@@ -618,6 +625,22 @@ mise à jour ordinaire la met à jour, sans geste nginx.
   `sudo certbot --nginx -d jeux.monasso.fr -m contact@monasso.fr`
   (le renouvellement est normalement automatique, `certbot` programme sa
   propre tâche).
+- **Le certificat HTTPS n'est pas délivré** (certbot échoue, souvent sur un
+  délai dépassé ou une connexion refusée) : Let's Encrypt n'arrive pas à
+  joindre le serveur sur le **port 80**. Deux causes, dans cet ordre :
+  1. le **DNS** ne pointe pas encore vers le VPS — `dig +short jeux.monasso.fr`
+     doit renvoyer son adresse IP ;
+  2. le port 80 est fermé **chez l'hébergeur** (§ 0). `sudo ufw status` ne
+     montre que le pare-feu de la machine : il peut afficher « Nginx Full »
+     autorisé alors que le pare-feu de l'hébergeur, en amont, bloque encore.
+     La vérification se fait **depuis un autre appareil** que le serveur :
+     ouvrir `http://jeux.monasso.fr/sante` dans un navigateur. Une page qui ne
+     charge jamais désigne le pare-feu de l'hébergeur. Le serveur ne peut pas
+     faire ce contrôle sur lui-même : une requête vers sa propre adresse ne
+     ressort pas, elle aboutit même quand le port est fermé de l'extérieur.
+
+  Une fois la cause levée, relancer la commande `certbot` ci-dessus, ou
+  `install.sh` en entier.
 - **Mot de passe admin oublié** : pas de récupération par e-mail (aucune
   donnée personnelle stockée). Le mot de passe vit **haché en base** ;
   `ADMIN_PASSWORD` n'est lue qu'une fois, quand la base n'en a encore aucun :
