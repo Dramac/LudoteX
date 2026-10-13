@@ -82,6 +82,36 @@ est installée.
 
 ---
 
+## 1.19.1 — 2026-10-13
+
+### `install.sh` corrigé à la main sur le serveur : l'annuler avant la mise à jour
+
+**Ne concerne que les serveurs installés de la 1.17.0 à la 1.19.0.** Sur ces
+versions, `install.sh` s'arrêtait à son étape 7 (« garder_https : command not
+found »). Si l'installation a abouti, c'est que le script a été corrigé sur
+place — et `update.sh` refuse de tourner tant qu'un fichier suivi est modifié
+(« Des fichiers suivis ont été modifiés »). Un serveur installé plus tôt, ou
+jamais retouché, n'a rien à faire.
+
+1. Regarder ce qui est modifié (chemin par défaut ; l'adapter si l'installation
+   est ailleurs) :
+   ```bash
+   sudo -u pretjeux git -C /opt/ludotex status --short
+   ```
+   Une ligne ` M deploy/install.sh` est attendue. Les lignes `??` (fichiers non
+   suivis, un catalogue déposé là par exemple) ne gênent pas la mise à jour.
+2. Si `deploy/install.sh` est **le seul** fichier marqué ` M`, annuler sa
+   modification — la version du dépôt porte désormais le correctif :
+   ```bash
+   sudo -u pretjeux git -C /opt/ludotex checkout -- deploy/install.sh
+   ```
+   Si d'autres fichiers sont marqués ` M`, ne pas les annuler à l'aveugle :
+   regarder d'abord ce qu'ils portent (`git -C /opt/ludotex diff`).
+3. Lancer la mise à jour comme d'habitude : `sudo ./deploy/update.sh`.
+
+Pour revenir en arrière : rien à défaire, le correctif du dépôt est le même
+que celui posé à la main.
+
 ## 1.17.1 — 2026-10-07
 
 ### nginx : une page quand un fichier envoyé est trop volumineux — à faire plus tard, si vous le souhaitez, hors événement

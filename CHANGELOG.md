@@ -6,6 +6,12 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.19.1 — 2026-10-13
+
+- **Un catalogue enregistré au format CSV depuis Excel s'importe désormais tel quel, accents compris.** Il était refusé avec un message incompréhensible dès le premier accent. Le message de fin d'import signale ce cas et invite à vérifier qu'un nom accentué s'affiche correctement.
+- **L'installation sur un serveur neuf va maintenant jusqu'au bout** : elle s'arrêtait au moment de configurer le site web.
+- **Quand le certificat HTTPS n'est pas délivré, l'installation dit où chercher**, et la documentation annonce qu'il faut ouvrir l'accès web chez l'hébergeur avant de commencer.
+
 ## 1.19.0 — 2026-10-08
 
 - **Choisir la couleur du site devient simple : l'écran « Identité » propose les couleurs de votre logo.** Une fois le logo déposé, jusqu'à cinq couleurs tirées du logo s'affichent sous le champ, chacune telle que le bandeau la porterait. Un tap reprend la couleur, et rien ne change avant d'avoir enregistré.
