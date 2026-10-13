@@ -295,8 +295,11 @@ def test_install_sh_desactive_default_avant_de_tester_nginx():
     etape7 = install_sh[install_sh.index("# 7. nginx + HTTPS") : install_sh.index("# 8. Sauvegarde automatique")]
     retrait = etape7.index("rm -f /etc/nginx/sites-enabled/default")
     activation = etape7.index("ln -sf /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/attrape-tout")
-    assert retrait < etape7.index("nginx -t")
-    assert activation < etape7.index("nginx -t")
+    # Le `nginx -t` de l'étape, en début de ligne : celui de `remettre_https`,
+    # indenté dans une fonction définie plus haut, ne s'exécute pas ici.
+    test_nginx = re.search(r"^nginx -t$", etape7, flags=re.MULTILINE).start()
+    assert retrait < test_nginx
+    assert activation < test_nginx
 
 
 # ===========================================================================

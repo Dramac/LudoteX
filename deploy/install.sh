@@ -437,29 +437,6 @@ fi
 # ============================================================================
 etape "Configuration nginx et certificat HTTPS"
 
-ANCIEN_NGINX_PROD="$(garder_https /etc/nginx/sites-available/ludotex)"
-cp "$INSTALL_DIR/deploy/nginx-ludotex.conf" /etc/nginx/sites-available/ludotex
-sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex
-sed -i "s/pret\.example\.fr/${DOMAINE}/g" /etc/nginx/sites-available/ludotex
-
-ln -sf /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/ludotex
-
-# Attrape-tout (PROD-07) : ferme toute visite qui ne désigne pas l'un des
-# sites, à la place du site `default` de Debian — les deux se déclarent
-# `default_server` sur le port 80, ils ne peuvent pas coexister. Aucune valeur
-# à substituer. Voir le commentaire de deploy/nginx-attrape-tout.conf.
-cp "$INSTALL_DIR/deploy/nginx-attrape-tout.conf" /etc/nginx/sites-available/attrape-tout
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/attrape-tout
-
-# Journal d'accès propre au site (PROD-08), créé avec les droits que logrotate
-# lui donnera ; nginx, qui tourne en root, le créerait sinon lisible par tous
-# jusqu'à la première rotation. Jamais recréé s'il existe : `install` le
-# viderait.
-creer_journal_nginx() {
-    [[ -e "$1" ]] || install -o www-data -g adm -m 640 /dev/null "$1"
-}
-
 # Relance sur un serveur en service : le fichier déjà installé porte les lignes
 # de certbot (`listen 443 ssl`, `ssl_certificate*`), que la copie du modèle
 # ci-dessous efface. Recharger nginx à ce moment-là coupe l'HTTPS jusqu'à ce que
@@ -484,6 +461,30 @@ remettre_https() {
     nginx -t && systemctl reload nginx
     avert "Certbot n'a pas abouti : l'ancien fichier nginx, avec son HTTPS, a été remis en place."
 }
+
+ANCIEN_NGINX_PROD="$(garder_https /etc/nginx/sites-available/ludotex)"
+cp "$INSTALL_DIR/deploy/nginx-ludotex.conf" /etc/nginx/sites-available/ludotex
+sed -i "s#/opt/ludotex#${INSTALL_DIR}#g" /etc/nginx/sites-available/ludotex
+sed -i "s/pret\.example\.fr/${DOMAINE}/g" /etc/nginx/sites-available/ludotex
+
+ln -sf /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/ludotex
+
+# Attrape-tout (PROD-07) : ferme toute visite qui ne désigne pas l'un des
+# sites, à la place du site `default` de Debian — les deux se déclarent
+# `default_server` sur le port 80, ils ne peuvent pas coexister. Aucune valeur
+# à substituer. Voir le commentaire de deploy/nginx-attrape-tout.conf.
+cp "$INSTALL_DIR/deploy/nginx-attrape-tout.conf" /etc/nginx/sites-available/attrape-tout
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/attrape-tout /etc/nginx/sites-enabled/attrape-tout
+
+# Journal d'accès propre au site (PROD-08), créé avec les droits que logrotate
+# lui donnera ; nginx, qui tourne en root, le créerait sinon lisible par tous
+# jusqu'à la première rotation. Jamais recréé s'il existe : `install` le
+# viderait.
+creer_journal_nginx() {
+    [[ -e "$1" ]] || install -o www-data -g adm -m 640 /dev/null "$1"
+}
+
 creer_journal_nginx /var/log/nginx/ludotex-access.log
 
 nginx -t
