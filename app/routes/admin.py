@@ -716,6 +716,13 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
                       "ligne(s) : ces jeux sont importés sans leurs lettres, ce "
                       "qui est normal tant que la classification automatique "
                       "n'est pas en service.")
+        # Fichier lu dans l'encodage d'Excel faute d'être de l'UTF-8 : le cas
+        # courant passe sans geste, mais ce repli ne se vérifie pas (voir
+        # `import_csv.detecter_encodage`). On le dit, avec quoi regarder.
+        if res.get("encodage_repli"):
+            texte += (" Ce fichier a été lu comme un CSV enregistré par Excel : "
+                      "vérifiez dans le catalogue qu'un nom accentué s'affiche "
+                      "correctement.")
         message = ("succes", texte)
         # §4.d : lien direct vers la page des manques s'il en reste.
         conn = get_connection()

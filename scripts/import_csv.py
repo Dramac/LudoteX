@@ -222,14 +222,49 @@ def _ou_none(valeur: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Lecture du CSV
 # ---------------------------------------------------------------------------
+# Encodage de repli : celui dans lequel Excel, sous Windows, enregistre un
+# « CSV (séparateur : point-virgule) ». C'est le fichier que produit quelqu'un
+# qui suit la consigne « enregistrez votre classeur au format CSV ».
+ENCODAGE_EXCEL = "cp1252"
+_BOM_UTF16 = (b"\xff\xfe", b"\xfe\xff")
+
+
+def detecter_encodage(chemin: Path) -> str:
+    """
+    L'encodage dans lequel lire le CSV : UTF-8 s'il en est, sinon celui d'Excel.
+
+    L'UTF-8 se vérifie : un texte accentué écrit autrement n'en est presque
+    jamais un valide. On tente donc l'UTF-8 sur tout le fichier (par morceaux,
+    sans le garder en mémoire) et, s'il casse, on retient `ENCODAGE_EXCEL`.
+    L'inverse ne se vérifie pas — n'importe quelle suite d'octets ou presque se
+    lit en cp1252 — d'où l'ordre, et d'où le message que l'appelant affiche
+    quand le repli a servi (`importer`, clé `encodage_repli`) : un fichier venu
+    d'ailleurs (ancien Excel pour Mac) passerait avec des accents faux, jamais
+    en silence.
+
+    Un « Texte Unicode » d'Excel (UTF-16) se reconnaît à ses deux premiers
+    octets.
+    """
+    with open(chemin, "rb") as brut:
+        if brut.read(2) in _BOM_UTF16:
+            return "utf-16"
+    try:
+        with open(chemin, encoding="utf-8-sig", newline="") as fh:
+            while fh.read(65536):
+                pass
+    except UnicodeDecodeError:
+        return ENCODAGE_EXCEL
+    return "utf-8-sig"
+
+
 def lire_csv(
     chemin: Path, max_lignes: int | None = None,
 ) -> tuple[list[dict], dict[str, str | None]]:
     """
     Lit le CSV et détecte automatiquement le séparateur.
 
-    `encoding="utf-8-sig"` gère le BOM éventuel (fréquent sur les exports
-    Windows/Excel). Le séparateur est deviné par `csv.Sniffer` parmi `;`, `,` et
+    L'encodage est choisi par `detecter_encodage` : UTF-8 (avec ou sans BOM),
+    sinon celui d'un CSV enregistré par Excel. Le séparateur est deviné par `csv.Sniffer` parmi `;`, `,` et
     tabulation ; à défaut, on retombe sur `;`.
 
     Args:
@@ -245,7 +280,11 @@ def lire_csv(
         ligne, clés = en-têtes réels) et `index_colonnes` la correspondance
         champ logique → en-tête réel.
     """
-    with open(chemin, encoding="utf-8-sig", newline="") as fh:
+    # `errors="replace"` : cp1252 laisse cinq octets sans caractère. Un fichier
+    # qui en porte n'est pas un catalogue ; il échouera plus loin sur ses
+    # colonnes clés, avec un message lisible, plutôt qu'ici sur un numéro d'octet.
+    with open(chemin, encoding=detecter_encodage(chemin), errors="replace",
+              newline="") as fh:
         echantillon = fh.read(4096)
         fh.seek(0)
         try:
@@ -513,6 +552,9 @@ def importer(chemin: Path, dry_run: bool = False,
         "titres_data": titres,
         "emplacements_locaux_crees": emplacements_locaux_crees,
         "lettres_refusees": lettres_refusees,
+        # True : le fichier n'était pas de l'UTF-8, il a été lu comme un CSV
+        # d'Excel. À dire à l'utilisateur (voir `detecter_encodage`).
+        "encodage_repli": detecter_encodage(chemin) == ENCODAGE_EXCEL,
     }
 
 
@@ -536,6 +578,9 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
     if res.get("emplacements_locaux_crees"):
         noms = res["emplacements_locaux_crees"]
         print(f"Emplacements locaux créés : {len(noms)} -> {noms}")
+    if res.get("encodage_repli"):
+        print("Encodage : le fichier n'est pas en UTF-8, il a été lu comme un "
+              "CSV enregistré par Excel. Vérifier les accents dans le catalogue.")
     if res.get("lettres_refusees"):
         print(f"Lettres de classement non reconnues : {res['lettres_refusees']} "
               "ligne(s), importées sans leurs lettres (attendu tant que les "
