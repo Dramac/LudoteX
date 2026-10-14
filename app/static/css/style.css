@@ -588,6 +588,18 @@ summary:focus-visible,
 .bloc-bgg { margin: 0 0 16px; }
 .actions-bgg { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .actions-bgg form { margin: 0; }
+/* Candidats d'une recherche BGG (lot fiche-3) : une carte par candidat,
+   empilées sur téléphone, en grille sur grand écran. Le bord et le texte
+   viennent des variables du thème ; un nom BGG très long se coupe plutôt que
+   de faire déborder la carte à 375 px. */
+.candidats-bgg { list-style: none; padding: 0; margin: 12px 0 16px; display: grid; gap: 12px; }
+.candidat-bgg { border: 1px solid var(--bord); border-radius: 8px; padding: 12px; overflow-wrap: anywhere; min-width: 0; }
+.candidat-bgg h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.candidat-bgg .stats-note { margin: 0 0 8px; }
+.candidat-valeurs { margin: 0 0 8px; padding-left: 1.2em; }
+@media (min-width: 900px) {
+  .candidats-bgg { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+}
 /* Logo « Powered by BGG » de la page « À propos » : une marque de BGG,
    affichée telle quelle (voir img/powered-by-bgg.NOTICE.txt). */
 .mention-bgg img { display: block; height: 48px; width: auto; max-width: 100%; }

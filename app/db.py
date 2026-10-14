@@ -118,6 +118,15 @@ _MIGRATIONS_COLONNES = [
     # lien BGG, aucun avertissement d'import.
     ("titres", "bgg_id", "INTEGER"),
     ("titres", "modifie_le", "TEXT"),
+    # « Ce jeu n'est pas sur BGG » (série « fiche », lot 3) : 0 sur une base
+    # existante, aucun jeu marqué, liste des jeux à relier identique. Même
+    # contrainte que `models.SCHEMA_TITRES` : SQLite l'accepte dans un
+    # ADD COLUMN et la vérifie sur les lignes présentes (toutes à 0).
+    ("titres", "bgg_absent", "INTEGER NOT NULL DEFAULT 0 CHECK (bgg_absent IN (0, 1) "
+                             "AND (bgg_absent = 0 OR bgg_id IS NULL))"),
+    # Année de première parution d'une copie BGG (lot 3) : vide sur les copies
+    # d'avant, qui la gagnent à la prochaine récupération.
+    ("fiches_bgg", "annee", "INTEGER"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

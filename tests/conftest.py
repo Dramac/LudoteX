@@ -4,6 +4,9 @@ Fixtures PARTAGÉES par toute la suite de tests.
 `_aucun_reseau` (autouse) : aucun test ne parle au réseau, et le jeton
 BoardGameGeek d'un `.env` local n'atteint aucun test (voir la fixture).
 
+`_cadence_bgg_simulee` (autouse) : la cadence des appels BoardGameGeek tourne
+sur une horloge simulée — aucun test n'attend les 3 s entre deux appels.
+
 `_reinitialiser_limite_debit` (autouse) : `app.auth._tentatives` est un
 dictionnaire GLOBAL au process (fenêtre glissante de limitation de débit par
 IP, voir app/auth.py::trop_de_tentatives) — volontairement en mémoire, pensé
@@ -87,6 +90,37 @@ def _aucun_reseau(monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", _filtre(connecter))
     monkeypatch.setattr(socket.socket, "connect_ex", _filtre(connecter_ex))
+
+
+class HorlogeSimulee:
+    """Une horloge qu'on avance à la main ; `dormir` l'avance sans attendre."""
+
+    def __init__(self, depart: float = 1000.0):
+        self.t = depart
+        self.sommes: list[float] = []
+
+    def __call__(self) -> float:
+        return self.t
+
+    def dormir(self, secondes: float) -> None:
+        self.sommes.append(secondes)
+        self.t += secondes
+
+
+@pytest.fixture(autouse=True)
+def _cadence_bgg_simulee(monkeypatch):
+    """
+    La cadence des appels BGG (`app.bgg_api.CADENCE`, lot fiche-3) sur une
+    horloge SIMULÉE : elle espace les appels de 3 s, et aucun test ne doit
+    attendre pour de vrai. Neuve à chaque test, comme si le processus venait
+    de démarrer. Rendue au test qui veut lire ou avancer l'heure.
+    """
+    from app import bgg_api
+
+    horloge = HorlogeSimulee()
+    cadence = bgg_api.Cadence(bgg_api.INTERVALLE_APPELS_S, horloge, horloge.dormir)
+    monkeypatch.setattr(bgg_api, "CADENCE", cadence)
+    return horloge
 
 
 @pytest.fixture(autouse=True)

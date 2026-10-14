@@ -110,6 +110,7 @@ cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 | *(champs facultatifs)* | joueurs, durée, âge, éditeur, auteur, descriptif… — tous nullables |
 | `bgg_id` | numéro de la fiche du jeu sur BoardGameGeek, s'il est connu ; sert un lien de vérification, et désigne la copie des données BGG (`fiches_bgg`, ci-dessous) |
 | `modifie_le` | date de la dernière correction faite à l'écran ; l'import s'en sert pour signaler qu'un fichier plus ancien la défait |
+| `bgg_absent` | marque « ce jeu n'est pas sur BGG » (0 ou 1) : le jeu sort de la liste des jeux à relier. Réversible ; jamais posée sur un jeu relié (contrainte en base). Portée par la colonne « Fiche BoardGameGeek » de l'export, valeur réservée « pas sur BGG » |
 
 **`exemplaires`** — les boîtes physiques, niveau « unité prêtable ».
 
@@ -305,7 +306,9 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue
   (création et correction de la fiche d'un jeu, lien vers sa fiche
   BoardGameGeek et copie de ses données, affichées à côté des nôtres et
-  reprenables avant d'enregistrer, import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
+  reprenables avant d'enregistrer ; recherche des jeux restants sur BGG,
+  candidats comparés aux nôtres, enchaînement d'un jeu au suivant et marque
+  « pas sur BGG » ; import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
   supervision, identité, visibilité des modules, clôture de fin d'événement.
 - **Mode formation** — une seconde instance du même code, sur ses propres
   bases, pour s'entraîner sur de vraies boîtes sans rien inscrire pour de bon.
@@ -404,9 +407,13 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
   seulement si l'instance a reçu une clé d'accès (`BGG_TOKEN`, dans le
   fichier d'environnement, jamais en base ni à l'écran). L'appel part d'un
   bouton d'administration, jamais de l'affichage d'une page : une panne de
-  BGG n'empêche d'ouvrir ni d'enregistrer quoi que ce soit. Rien de ce que tape
-  le bureau n'est transmis, seulement des numéros de fiche ; la réponse est
-  bornée en temps et en taille avant d'être lue. Sans clé, la fonction est
+  BGG n'empêche d'ouvrir ni d'enregistrer quoi que ce soit. Partent des
+  numéros de fiche et, pour « Chercher sur BGG », un nom de jeu — celui de la
+  fiche, ou celui que le bureau retape —, en paramètre encodé vers l'adresse
+  fixe de BGG ; ce nom n'est gardé nulle part, ni en base, ni au journal, ni
+  dans une adresse de LudoteX. Les appels sont espacés pour tout le serveur et
+  un clic est borné à 20 s ; la réponse est bornée en temps et en taille avant
+  d'être lue. Sans clé, la fonction est
   absente et rien d'autre ne change. Le lien vers BGG sur les fiches publiques
   est un réglage d'instance, décoché par défaut.
 

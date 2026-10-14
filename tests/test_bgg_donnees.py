@@ -236,6 +236,8 @@ def test_lecture_d_un_jeu():
         "duree_min": 60, "duree_max": 120,
         # « (I) » distingue deux homonymes chez BGG : jamais sur une boîte.
         "auteurs": "Steve Jackson",
+        # Première parution (lot fiche-3) : montrée sur les candidats.
+        "annee": 2001,
     }
 
 

@@ -51,6 +51,7 @@ from app.db import get_connection, init_db  # noqa: E402
 from app.services import (CHAMPS_FICHE, nettoyer_nom,  # noqa: E402
                           obtenir_ou_creer_emplacement_rangement, slug_titre)
 # L'identifiant BoardGameGeek se lit au même domicile qu'à l'écran.
+from app.bgg import est_pas_sur_bgg  # noqa: E402
 from app.bgg import lire_identifiant as lire_bgg_id  # noqa: E402
 # Les lettres du code de classement se valident au domicile de leurs listes.
 from app.classement import COLONNES_LETTRES, lire_saisie  # noqa: E402
@@ -478,10 +479,12 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
             lettres_refusees += 1
         lettres = dict(zip(COLONNES_LETTRES, triplet or (None, None, None)))
         # Fiche BoardGameGeek : même règle que les lettres — case vide neutre,
-        # case illisible neutre mais comptée.
+        # case illisible neutre mais comptée. La valeur réservée « pas sur
+        # BGG » (app/bgg.py, lot fiche-3) pose la marque, sans identifiant.
         saisie_bgg = (val(ligne, "bgg_id") or "").strip()
-        bgg_id = lire_bgg_id(saisie_bgg) if saisie_bgg else None
-        if saisie_bgg and bgg_id is None:
+        pas_sur_bgg = est_pas_sur_bgg(saisie_bgg)
+        bgg_id = lire_bgg_id(saisie_bgg) if saisie_bgg and not pas_sur_bgg else None
+        if saisie_bgg and not pas_sur_bgg and bgg_id is None:
             bgg_refusees += 1
         champs = {
             "reference_titre": ref,
@@ -498,6 +501,8 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
             "descriptif": _ou_none(val(ligne, "descriptif")),
             "date_achat": parse_date_achat(val(ligne, "date_achat")),
             "bgg_id": bgg_id,
+            # None : la case ne dit rien de la marque (elle n'est pas touchée).
+            "bgg_absent": 1 if pas_sur_bgg else None,
             **lettres,
         }
         # Agrégation au niveau titre : on conserve la 1re valeur non vide
@@ -671,9 +676,24 @@ def importer(chemin: Path, dry_run: bool = False,
                                              titres.lettre_materiel),
                     -- Même exception pour la fiche BoardGameGeek : elle se
                     -- saisit à l'écran, un vieux fichier ne l'efface pas.
-                    bgg_id=COALESCE(excluded.bgg_id, titres.bgg_id)
+                    bgg_id=COALESCE(excluded.bgg_id, titres.bgg_id),
+                    -- Un jeu relié n'est jamais « pas sur BGG » (contrainte de
+                    -- `titres.bgg_absent`) : l'identifiant, du fichier ou de
+                    -- la base, retire la marque. Les expressions d'un UPDATE
+                    -- lisent toutes la ligne d'AVANT.
+                    bgg_absent=CASE
+                        WHEN COALESCE(excluded.bgg_id, titres.bgg_id) IS NOT NULL THEN 0
+                        ELSE titres.bgg_absent END
                 """,
                 list(titres.values()),
+            )
+            # « pas sur BGG » dans le fichier : la marque, sauf sur un jeu que
+            # la base relie déjà (une liaison faite à l'écran après l'export
+            # est plus récente que le fichier). Une case vide n'y touche pas.
+            conn.executemany(
+                "UPDATE titres SET bgg_absent = 1 "
+                "WHERE reference_titre = ? AND bgg_id IS NULL",
+                [(ref,) for ref, t in titres.items() if t.get("bgg_absent")],
             )
             # Une correction faite à l'écran, écrasée par ce fichier : la
             # fiche n'a plus rien à protéger, le tableur fait de nouveau foi.

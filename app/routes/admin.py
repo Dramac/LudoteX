@@ -28,9 +28,9 @@ from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 
-from app import (admin_auth, auth, bgg, bgg_api, carnet, classement, envois,
-                 exports, formation, journal, logo, sauvegarde, services,
-                 supervision)
+from app import (admin_auth, auth, bgg, bgg_api, bgg_recherche, carnet,
+                 classement, envois, exports, formation, journal, logo,
+                 sauvegarde, services, supervision)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -274,15 +274,21 @@ def logout(request: Request):
 # ---------------------------------------------------------------------------
 @router.get("/jeux")
 def liste_jeux(request: Request, q: str | None = None,
-               sans_bgg: str | None = None, bgg_lot: str = "",
-               bgg_inconnues: str = "", bgg_echec: str = ""):
+               sans_bgg: str | None = None, pas_sur_bgg: str | None = None,
+               bgg_lot: str = "", bgg_inconnues: str = "", bgg_echec: str = "",
+               fait: str = "", precedent: str = ""):
     """
     Liste/recherche des jeux pour atteindre une fiche (réimpression incluse).
 
     `sans_bgg` (case « sans fiche BoardGameGeek ») : la liste de travail de
     l'association manuelle, une fois la première passe automatique faite.
     Toute valeur non vide coche la case — un paramètre d'URL inattendu ne
-    donne jamais d'erreur.
+    donne jamais d'erreur. Les jeux marqués « pas sur BGG » n'y sont pas ;
+    `pas_sur_bgg` les montre, pour revenir sur une marque (lot fiche-3).
+
+    `fait` et `precedent` : on arrive ici après « C'est ce jeu » ou « Ce jeu
+    n'est pas sur BGG » quand il ne reste plus aucun jeu à relier (voir
+    `_vers_jeu_suivant`).
 
     `bgg_lot`, `bgg_inconnues`, `bgg_echec` : le compte rendu du dernier clic
     sur « Récupérer les données BGG manquantes » — deux NOMBRES et un CODE
@@ -292,12 +298,18 @@ def liste_jeux(request: Request, q: str | None = None,
     if (garde := _garde(request)):
         return garde
     q = (q or "").strip() or None
-    filtre_bgg = bool((sans_bgg or "").strip())
+    filtre_absents = bool((pas_sur_bgg or "").strip())
+    filtre_bgg = bool((sans_bgg or "").strip()) and not filtre_absents
     disponible = bgg_api.disponible()
     conn = get_connection()
     try:
-        jeux = services.lister_catalogue(conn, q=q, sans_bgg=filtre_bgg)
+        jeux = services.lister_catalogue(conn, q=q, sans_bgg=filtre_bgg,
+                                         pas_sur_bgg=filtre_absents)
         restantes = len(services.ids_bgg_sans_copie(conn)) if disponible else 0
+        relier = {"restants": services.compter_a_relier(conn),
+                  "premier": services.jeu_suivant_a_relier(conn),
+                  "marques": services.compter_pas_sur_bgg(conn),
+                  "fait": _message_fait(conn, fait, precedent)}
     finally:
         conn.close()
     lot = None
@@ -307,6 +319,7 @@ def liste_jeux(request: Request, q: str | None = None,
     return templates.TemplateResponse(
         request, "admin_jeux.html",
         {"jeux": jeux, "q": q, "sans_bgg": filtre_bgg,
+         "pas_sur_bgg": filtre_absents, "relier": relier,
          "bgg_disponible": disponible, "bgg_restantes": restantes,
          "bgg_lot": lot, "message_bgg": MESSAGES_BGG_FICHE.get(bgg_echec)},
     )
@@ -364,7 +377,9 @@ def jeux_recuperer_bgg(request: Request):
 @router.get("/jeu/{reference_titre}")
 def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                 etiquette: str = "", bgg_echec: str = "",
-                reprise: str = Query("", alias="bgg")):
+                reprise: str = Query("", alias="bgg"),
+                candidats: str = "", recherche: str = "",
+                fait: str = "", precedent: str = ""):
     """
     Fiche admin d'un jeu : l'éditeur de ses champs, ses lettres de
     classement, ses exemplaires + l'étiquette de chacun.
@@ -377,6 +392,15 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
     `?bgg=reprendre` : « Reprendre les valeurs BGG ». Une simple navigation,
     qui réaffiche le formulaire avec les valeurs de la copie BGG à la place
     des nôtres — RIEN n'est écrit, rien n'est journalisé.
+
+    `candidats` : les IDENTIFIANTS des candidats d'une recherche BGG, dans
+    leur ordre (« 83195,118705 »), posés par `fiche_chercher_bgg`. La page ne
+    lit que leur copie en base : recharger ne relance AUCUNE recherche, et le
+    texte cherché n'est jamais dans l'adresse. `recherche` : un code fermé
+    (« aucun », ou un échec de `bgg_api.MESSAGES_ECHEC`).
+
+    `fait` et `precedent` : on arrive ici, jeu suivant de la liste à relier,
+    après une décision sur le jeu `precedent` (`MESSAGES_FAIT`).
     """
     if (garde := _garde(request)):
         return garde
@@ -384,7 +408,9 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                          message=MESSAGES_FICHE.get(ok),
                          etiquette_perimee=(etiquette == "1"),
                          bgg_echec=bgg_echec,
-                         reprendre=(reprise == "reprendre"))
+                         reprendre=(reprise == "reprendre"),
+                         candidats=_lire_candidats(candidats),
+                         recherche=recherche, fait=fait, precedent=precedent)
 
 
 # Ce que dit chaque position du code de classement (app/classement.py).
@@ -398,6 +424,29 @@ MESSAGES_FICHE = {
     "bgg_recupere": "Données BGG récupérées : elles s'affichent sous les cases.",
     "enregistre_bgg": ("Fiche enregistrée, et données BGG récupérées : elles "
                        "s'affichent sous les cases."),
+    "bgg_present": ("La marque « pas sur BGG » est retirée : ce jeu revient "
+                    "parmi les jeux à relier."),
+    "deja_relie": ("Ce jeu est relié à une fiche BoardGameGeek : il ne peut pas "
+                   "être marqué « pas sur BGG ». Pour le délier, videz la case "
+                   "« Fiche BoardGameGeek », puis enregistrez."),
+}
+
+# Ce qui vient d'être décidé sur le jeu précédent de la liste à relier, par
+# code. `{nom}` est lu EN BASE à partir de la référence, jamais dans l'URL.
+MESSAGES_FAIT = {
+    "relie": "« {nom} » est relié à BoardGameGeek.",
+    "absent": ("« {nom} » est marqué « pas sur BGG » : il ne figure plus parmi "
+               "les jeux à relier."),
+}
+
+# Issue d'une recherche sans candidat à montrer, par code. Les échecs du
+# client BGG gardent leurs messages (`bgg_api.MESSAGES_ECHEC`).
+MESSAGES_RECHERCHE = {
+    **bgg_api.MESSAGES_ECHEC,
+    "aucun": ("BoardGameGeek ne trouve aucun jeu sous ce nom. Essayez un autre "
+              "nom (le nom anglais, ou celui du pays d'origine) dans la case "
+              "« Chercher un autre nom », ou, si vous êtes sûr qu'il n'y est "
+              "pas, touchez « Ce jeu n'est pas sur BGG »."),
 }
 
 # Ce qui empêche d'avoir la copie d'une fiche BGG, par code. Affiché en
@@ -411,9 +460,61 @@ MESSAGES_BGG_FICHE = {
 }
 
 
+def _lire_candidats(texte: str) -> list[int]:
+    """Les identifiants de `?candidats=…`, entiers seulement, cinq au plus."""
+    ids: list[int] = []
+    for morceau in (texte or "").split(",")[:bgg_recherche.NB_CANDIDATS]:
+        bgg_id = bgg.lire_identifiant(morceau)
+        if bgg_id is not None and bgg_id not in ids:
+            ids.append(bgg_id)
+    return ids
+
+
+def _message_fait(conn, fait: str, precedent: str) -> dict | None:
+    """Le message « ce qui vient d'être fait » et le lien de retour, ou None."""
+    gabarit = MESSAGES_FAIT.get(fait)
+    titre = services.get_titre(conn, precedent) if gabarit and precedent else None
+    if titre is None:
+        return None
+    return {"texte": gabarit.format(nom=titre["nom"]), "nom": titre["nom"],
+            "reference_titre": titre["reference_titre"]}
+
+
+def _contexte_relier(conn, titre: dict, candidats: list[int], recherche: str,
+                     fait: str, precedent: str) -> dict | None:
+    """
+    Le bloc « Relier à BoardGameGeek » d'un jeu sans fiche BGG, ou None.
+
+    AUCUN APPEL RÉSEAU : les candidats sont lus dans la copie en base.
+    """
+    if titre["bgg_id"] is not None:
+        return None
+    nous = {c: ("" if titre[c] is None else str(titre[c])) for c in services.CHAMPS_FICHE}
+    copies = [c for c in (services.lire_fiche_bgg(conn, i) for i in candidats)
+              if c and c["trouve"]]
+    relies = services.titres_relies_a(conn, [c["bgg_id"] for c in copies],
+                                      sauf=titre["reference_titre"])
+    suivant = services.jeu_suivant_a_relier(conn, titre["reference_titre"])
+    return {
+        "marque": bool(titre["bgg_absent"]),
+        "restants": services.compter_a_relier(conn),
+        "suivant": suivant,
+        "candidats": [{
+            "copie": c,
+            "indications": services.comparer_avec_bgg(nous, c),
+            "relie_a": relies.get(c["bgg_id"], []),
+            "lien": bgg.url_fiche(c["bgg_id"]),
+        } for c in copies],
+        "message_recherche": (None if copies else MESSAGES_RECHERCHE.get(recherche)),
+        "recherche_echec": recherche in bgg_api.MESSAGES_ECHEC,
+        "fait": _message_fait(conn, fait, precedent),
+    }
+
+
 def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                   etiquette_perimee=False, saisie=None, erreurs=None,
-                  bgg_echec="", reprendre=False):
+                  bgg_echec="", reprendre=False, candidats=(), recherche="",
+                  fait="", precedent=""):
     """
     Rend la fiche d'administration d'un jeu.
 
@@ -437,6 +538,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         emplacements_locaux = services.emplacements_actifs(conn)
         categories = services.lister_categories(conn)
         copie_bgg = services.lire_fiche_bgg(conn, titre["bgg_id"]) if titre else None
+        relier = (_contexte_relier(conn, titre, list(candidats), recherche, fait,
+                                   precedent) if titre else None)
     finally:
         conn.close()
     contexte = {"titre": titre, "exemplaires": exemplaires,
@@ -445,7 +548,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         if saisie is None:
             saisie = {c: ("" if titre[c] is None else str(titre[c]))
                       for c in services.CHAMPS_FICHE}
-            saisie["bgg"] = "" if titre["bgg_id"] is None else str(titre["bgg_id"])
+            saisie["bgg"] = (str(titre["bgg_id"]) if titre["bgg_id"] is not None
+                             else bgg.PAS_SUR_BGG if titre["bgg_absent"] else "")
         repris: set = set()
         message_reprise = None
         if reprendre and copie_bgg and copie_bgg["trouve"]:
@@ -472,6 +576,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                                if copie_bgg else None),
             "bgg_disponible": bgg_api.disponible(),
             "indications_bgg": services.comparer_avec_bgg(saisie, copie_bgg, repris),
+            "relier": relier,
+            "champs_fiche": services.CHAMPS_FICHE,
             # Lettres en base, avec leur libellé quand la lettre est dans sa
             # liste (sinon « hors liste ») : affichées, jamais saisissables.
             "lettres": [
@@ -653,6 +759,166 @@ def fiche_recuperer_bgg(request: Request, reference_titre: str):
     if echec is None:
         return _vers_fiche(reference_titre, "bgg_recupere", False)
     return _vers_fiche(reference_titre, "", False, bgg_echec=echec)
+
+
+# ---------------------------------------------------------------------------
+# Relier les jeux un par un (série « fiche », lot 3)
+# ---------------------------------------------------------------------------
+def _ancre_relier(url: str) -> RedirectResponse:
+    return RedirectResponse(url + "#relier-bgg", status_code=303)
+
+
+def _vers_jeu_suivant(reference_titre: str, fait: str) -> RedirectResponse:
+    """
+    Après une décision sur `reference_titre` : le jeu SUIVANT à relier, avec
+    un message par code et un lien de retour. Plus aucun : la liste des jeux,
+    qui le dit.
+
+    REDIRECTION DIRECTE, pas un bouton « Suivant » sur la fiche traitée
+    (arbitrage du lot) : c'est la vitesse que le bureau demande, sur plus de
+    deux cents jeux. Le lien de retour couvre le besoin de revoir le jeu
+    traité (comparer ses valeurs avec BGG, annuler).
+    """
+    conn = get_connection()
+    try:
+        suivant = services.jeu_suivant_a_relier(conn, reference_titre)
+    finally:
+        conn.close()
+    retour = f"fait={fait}&precedent={quote(reference_titre)}"
+    if suivant is None:
+        return RedirectResponse(f"/admin/jeux?sans_bgg=1&{retour}", status_code=303)
+    return _ancre_relier(f"/admin/jeu/{quote(suivant['reference_titre'])}?{retour}")
+
+
+def _titre_ou_rien(reference_titre: str) -> dict | None:
+    conn = get_connection()
+    try:
+        return services.get_titre(conn, reference_titre)
+    finally:
+        conn.close()
+
+
+@router.post("/jeu/{reference_titre}/bgg/chercher")
+def fiche_chercher_bgg(request: Request, reference_titre: str,
+                       nom: str = Form("")):
+    """
+    « Chercher sur BGG » : quelques appels à BGG, bornés à
+    `bgg_recherche.BORNE_CLIC_S`, puis REDIRECTION (303) vers la fiche avec
+    les seuls identifiants des candidats.
+
+    POURQUOI UN POST, PUIS UNE REDIRECTION. Le nom cherché est un texte libre :
+    en POST, il voyage dans le corps de la requête, que nginx ne journalise
+    pas (son `log_format` écrit la ligne de requête, adresse comprise). La
+    redirection ne porte que des entiers ; la page qui suit ne lit que la
+    copie en base. Recharger la page ne relance donc rien, et le retour
+    arrière non plus — sur un téléphone, pas de « renvoyer le formulaire ? ».
+
+    Les fiches des candidats sont gardées en copie (`fiches_bgg`) : « C'est ce
+    jeu » n'a plus rien à demander à BGG. Le texte cherché, lui, n'est écrit
+    nulle part : ni en base, ni au journal (qui note le NOM DE NOTRE JEU).
+    """
+    if (garde := _garde(request)):
+        return garde
+    titre = _titre_ou_rien(reference_titre)
+    if titre is None:
+        return _rendre_fiche(request, reference_titre)
+    base = f"/admin/jeu/{quote(reference_titre)}"
+    if titre["bgg_id"] is not None or titre["bgg_absent"]:
+        # Bouton absent dans ces deux cas ; une requête forgée revient à la fiche.
+        return _ancre_relier(base)
+    if not bgg_api.disponible():
+        return _ancre_relier(f"{base}?recherche=sans_jeton")
+    candidats, fiches, echec = bgg_recherche.chercher(titre, nom)
+    if fiches:
+        conn = get_connection()
+        try:
+            services.enregistrer_fiches_bgg(conn, fiches)
+        finally:
+            conn.close()
+    journal.journaliser(request, "catalogue", "bgg_recherche",
+                        objet=titre["nom"], ref=reference_titre,
+                        ok=echec is None, detail=echec)
+    if candidats:
+        return _ancre_relier(f"{base}?candidats={','.join(map(str, candidats))}")
+    return _ancre_relier(f"{base}?recherche={echec or 'aucun'}")
+
+
+@router.post("/jeu/{reference_titre}/bgg/relier")
+def fiche_relier_bgg(request: Request, reference_titre: str,
+                     bgg_id: str = Form("")):
+    """
+    « C'est ce jeu » : relie le titre à la fiche BGG choisie, puis passe au
+    jeu suivant. AUCUN APPEL RÉSEAU : la copie est déjà en base (la recherche
+    l'y a mise).
+
+    Écrit par `services.modifier_titre`, seul chemin d'écriture de
+    l'identifiant : la marque « pas sur BGG » tombe, `modifie_le` ne bouge
+    pas (un identifiant BGG seul ne le pose pas, règle du lot fiche-1).
+    """
+    if (garde := _garde(request)):
+        return garde
+    identifiant = bgg.lire_identifiant(bgg_id)
+    if identifiant is None:
+        return _ancre_relier(f"/admin/jeu/{quote(reference_titre)}")
+    conn = get_connection()
+    try:
+        resultat = services.modifier_titre(conn, reference_titre, {"bgg_id": identifiant})
+    finally:
+        conn.close()
+    if resultat is None:
+        return _rendre_fiche(request, reference_titre)
+    if resultat["changes"]:
+        journal.journaliser(request, "catalogue", "bgg_relie",
+                            objet=resultat["apres"]["nom"], ref=reference_titre)
+    return _vers_jeu_suivant(reference_titre, "relie")
+
+
+@router.post("/jeu/{reference_titre}/bgg/absent")
+def fiche_marquer_absent_bgg(request: Request, reference_titre: str):
+    """
+    « Ce jeu n'est pas sur BGG » : pose la marque, puis passe au jeu suivant.
+    Aucun appel à BGG : marche sans clé d'accès, et pendant une panne.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        resultat = services.modifier_titre(conn, reference_titre, {"bgg_absent": 1})
+    finally:
+        conn.close()
+    if resultat is None:
+        return _rendre_fiche(request, reference_titre)
+    if resultat["apres"]["bgg_id"] is not None:
+        # Un jeu relié ne se marque pas (bouton absent : requête forgée, ou
+        # jeu relié depuis un autre onglet).
+        return _ancre_relier(f"/admin/jeu/{quote(reference_titre)}?ok=deja_relie")
+    if resultat["changes"]:
+        journal.journaliser(request, "catalogue", "bgg_absent_marque",
+                            objet=resultat["apres"]["nom"], ref=reference_titre)
+    return _vers_jeu_suivant(reference_titre, "absent")
+
+
+@router.post("/jeu/{reference_titre}/bgg/present")
+def fiche_retirer_absent_bgg(request: Request, reference_titre: str):
+    """
+    « Annuler : ce jeu est peut-être sur BGG » : retire la marque et RESTE sur
+    la fiche — le jeu revient dans la liste à relier, et on peut le chercher
+    tout de suite.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        resultat = services.modifier_titre(conn, reference_titre, {"bgg_absent": 0})
+    finally:
+        conn.close()
+    if resultat is None:
+        return _rendre_fiche(request, reference_titre)
+    if not resultat["changes"]:
+        return _ancre_relier(f"/admin/jeu/{quote(reference_titre)}?ok=inchange")
+    journal.journaliser(request, "catalogue", "bgg_absent_retire",
+                        objet=resultat["apres"]["nom"], ref=reference_titre)
+    return _ancre_relier(f"/admin/jeu/{quote(reference_titre)}?ok=bgg_present")
 
 
 @router.post("/jeu/{reference_titre}/lettres/effacer")

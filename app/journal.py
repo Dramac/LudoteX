@@ -157,6 +157,22 @@ ACTIONS = {
     # /admin/identite. `objet` = « affiché » ou « masqué ». Écrit au
     # changement seulement.
     "bgg_lien_public_modifie",
+    # « Chercher sur BGG » depuis la fiche d'un jeu (série « fiche », lot 3).
+    # `objet` = le nom de NOTRE jeu, `ref` = sa référence — JAMAIS le texte
+    # cherché, que le bureau a pu retaper (« Chercher un autre nom ») : un
+    # champ libre ne s'écrit nulle part. Un échec part en `ok=False`, avec le
+    # code de l'issue en `detail`. Ligne écrite parce que la recherche garde
+    # en base les copies des fiches candidates, et pour suivre les refus de BGG.
+    "bgg_recherche",
+    # « C'est ce jeu » : le jeu est relié à la fiche BGG choisie parmi les
+    # candidats. Même `objet` et `ref`. Une liaison par la case de l'éditeur,
+    # elle, reste un `jeu_modifie`.
+    "bgg_relie",
+    # « Ce jeu n'est pas sur BGG » posé, puis retiré (« Annuler : ce jeu est
+    # peut-être sur BGG »). Même `objet` et `ref`. Écrit au changement
+    # seulement.
+    "bgg_absent_marque",
+    "bgg_absent_retire",
     # --- Priorité 2 — tournois, programme, planning (§2.2) -----------------
     "tournoi_cree",
     "tournoi_modifie",

@@ -21,9 +21,24 @@ faux, les boutons ne s'affichent pas, et rien d'autre ne change.
 
 CE QUI ENTRE DANS L'ADRESSE
 ---------------------------
-Des identifiants ENTIERS, déjà validés (`bgg.lire_identifiant` à la saisie,
-entier strictement positif en base), et rien d'autre : aucun texte tapé par le
-bureau n'est jamais transmis à BGG.
+Pour `thing` : des identifiants ENTIERS, déjà validés (`bgg.lire_identifiant`
+à la saisie, entier strictement positif en base), et rien d'autre.
+
+Pour `search` (« Chercher sur BGG », série « fiche », lot 3) : un nom de jeu,
+que le bureau peut retaper (« Chercher un autre nom »). C'est un TEXTE LIBRE :
+il n'entre dans l'adresse que comme valeur d'un paramètre ENCODÉ
+(`urlencode`), vers l'hôte fixe de `URL_SEARCH`, borné à
+`LONGUEUR_REQUETE_MAX` caractères, sans caractère de contrôle. Il n'est ni
+gardé, ni journalisé, ni recopié dans une adresse de LudoteX : il vit le temps
+d'un clic.
+
+LA CADENCE
+----------
+Un clic sur « Chercher sur BGG » coûte plusieurs appels (variantes du nom,
+puis les fiches des candidats), et deux personnes peuvent chercher en même
+temps. `CADENCE` espace TOUS les appels du processus (un seul worker uvicorn,
+`deploy/ludotex.service` : un verrou en mémoire suffit) d'au moins
+`INTERVALLE_APPELS_S`, quel que soit le bouton qui les lance.
 
 LA RÉPONSE, D'ORIGINE EXTÉRIEURE
 --------------------------------
@@ -49,15 +64,26 @@ from __future__ import annotations
 import http.client
 import os
 import re
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Callable
 
-# Adresse de l'API. Le seul point d'entrée employé : `thing`, qui décrit des
-# fiches à partir de leurs identifiants.
+# Adresses de l'API. Deux points d'entrée : `thing`, qui décrit des fiches à
+# partir de leurs identifiants, et `search`, qui cherche des fiches par nom.
 URL_THING = "https://boardgamegeek.com/xmlapi2/thing"
+URL_SEARCH = "https://boardgamegeek.com/xmlapi2/search"
+
+# Les deux types de fiche cherchés : jeux et extensions (`search` les mêle).
+TYPES_RECHERCHE = "boardgame,boardgameexpansion"
+
+# Longueur maximale du texte cherché. Le plus long nom du catalogue de
+# référence fait moins de 80 caractères ; 100 suffisent, et bornent ce qu'un
+# formulaire forgé enverrait à BGG.
+LONGUEUR_REQUETE_MAX = 100
 
 # BGG accepte 20 identifiants par appel `thing` (mesuré par la sonde du
 # 2026-10-09, et c'est aussi la borne de ses conditions d'utilisation).
@@ -86,8 +112,21 @@ PAUSE_ENTRE_APPELS_S = 5
 # manquantes » dure donc au plus 40 s, loin des 60 s au bout desquelles nginx
 # abandonne (délai par défaut de `proxy_read_timeout`, aucune configuration du
 # dépôt ni des serveurs ne le change — vérifié le 2026-10-14). En pratique,
-# cinq appels de 20 fiches, soit 100 fiches en 25 s environ.
+# cinq appels de 20 fiches, soit 100 fiches en 25 s environ. Une recherche
+# lancée en même temps (`CADENCE`) peut retarder le dernier appel d'un créneau
+# de `INTERVALLE_APPELS_S` : 43 s au pire, toujours sous les 60 s.
 BORNE_LOT_S = 40
+
+# Écart minimal entre deux appels QUELCONQUES du processus (`CADENCE`). La
+# sonde et la collecte du 2026-10-10 ont enchaîné plusieurs centaines d'appels
+# à 3 s d'écart sans un seul refus. Le lot de la liste des jeux garde en plus
+# sa propre pause, plus longue (`PAUSE_ENTRE_APPELS_S`).
+INTERVALLE_APPELS_S = 3
+
+# Temps minimal laissé à un appel lancé sous une échéance (`fin`) : en deçà,
+# on ne le lance pas — mesuré entre 0,2 et 1,8 s pour `search` et `thing`
+# (2026-10-14), un appel qui n'aurait qu'une seconde échouerait souvent.
+DUREE_MIN_APPEL_S = 2
 
 # Ce que BGG voit de nous.
 USER_AGENT = "LudoteX (logiciel libre de pret de jeux, usage non commercial)"
@@ -129,6 +168,13 @@ MESSAGES_ECHEC = {
         "La réponse de BoardGameGeek est illisible. Rien n'a été modifié : "
         "réessayez plus tard ; si cela se répète, prévenez la personne qui "
         "administre le serveur."),
+    # Une recherche n'a pas pu aboutir dans le temps imparti à un clic
+    # (`bgg_recherche.BORNE_CLIC_S`) : BGG lent, ou une autre recherche en
+    # cours sur ce site, qui passe avant (`CADENCE`).
+    "trop_long": (
+        "La recherche a pris trop de temps : BoardGameGeek répond lentement, "
+        "ou une autre recherche est en cours sur ce site. Rien n'a été "
+        "modifié : réessayez dans un moment."),
 }
 
 
@@ -143,6 +189,52 @@ class EchecBGG(Exception):
     def __init__(self, code: str):
         self.code = code
         super().__init__(MESSAGES_ECHEC[code])
+
+
+class Cadence:
+    """
+    Espace les appels à BGG d'au moins `intervalle` secondes, pour tout le
+    processus.
+
+    Chaque appel RÉSERVE son créneau sous le verrou (le plus tôt possible,
+    mais pas avant `intervalle` après le créneau précédent), relâche le
+    verrou, puis attend son heure : deux recherches simultanées s'intercalent
+    au lieu de se bloquer. Le verrou ne couvre jamais l'appel réseau lui-même.
+
+    `horloge` et `dormir` sont remplaçables : la suite de tests pose une
+    horloge simulée (`tests/conftest.py`), aucun test n'attend pour de vrai.
+    """
+
+    def __init__(self, intervalle: float,
+                 horloge: Callable[[], float] = time.monotonic,
+                 dormir: Callable[[float], None] = time.sleep):
+        self.intervalle = intervalle
+        self.horloge = horloge
+        self.dormir = dormir
+        self._verrou = threading.Lock()
+        self._prochain = float("-inf")
+
+    def reserver(self, fin: float | None = None) -> bool:
+        """
+        Attend le prochain créneau libre, puis rend True.
+
+        Avec une échéance `fin` (même horloge) : si ce créneau ne laisse pas
+        `DUREE_MIN_APPEL_S` avant elle, rend False sans rien réserver ni
+        attendre.
+        """
+        with self._verrou:
+            maintenant = self.horloge()
+            creneau = max(maintenant, self._prochain)
+            if fin is not None and creneau + DUREE_MIN_APPEL_S > fin:
+                return False
+            self._prochain = creneau + self.intervalle
+        if creneau > maintenant:
+            self.dormir(creneau - maintenant)
+        return True
+
+
+# La cadence du processus : un seul worker uvicorn (deploy/ludotex.service).
+CADENCE = Cadence(INTERVALLE_APPELS_S)
 
 
 def _jeton() -> str | None:
@@ -220,17 +312,15 @@ def lire_fiche(item) -> dict | None:
         "duree_min": _entier(item.find("minplaytime")) or duree,
         "duree_max": _entier(item.find("maxplaytime")) or duree,
         "auteurs": _auteurs(item),
+        # Première parution chez BGG : montrée sur les candidats d'une
+        # recherche, pour distinguer deux éditions. Jamais comparée à notre
+        # année d'édition (`services.CHAMPS_BGG`).
+        "annee": _entier(item.find("yearpublished")),
     }
 
 
-def lire_reponse(octets: bytes) -> dict[int, dict]:
-    """
-    Les fiches d'une réponse `thing`, par identifiant.
-
-    Un identifiant demandé et absent de la réponse est inconnu de BGG : c'est
-    à l'appelant de le constater. Lève `EchecBGG("illisible")` sur tout ce qui
-    n'est pas une liste `<items>` bien formée.
-    """
+def _analyser(octets: bytes):
+    """La racine `<items>` d'une réponse, ou `EchecBGG("illisible")`."""
     # Refusé AVANT analyse. Aucune réponse de BGG ne déclare de DOCTYPE.
     if b"<!DOCTYPE" in octets or b"<!ENTITY" in octets:
         raise EchecBGG("illisible")
@@ -240,20 +330,69 @@ def lire_reponse(octets: bytes) -> dict[int, dict]:
         raise EchecBGG("illisible") from None
     if racine.tag != "items":
         raise EchecBGG("illisible")
+    return racine
+
+
+def lire_reponse(octets: bytes, *, popularite: bool = False) -> dict[int, dict]:
+    """
+    Les fiches d'une réponse `thing`, par identifiant.
+
+    Un identifiant demandé et absent de la réponse est inconnu de BGG : c'est
+    à l'appelant de le constater. Lève `EchecBGG("illisible")` sur tout ce qui
+    n'est pas une liste `<items>` bien formée.
+
+    `popularite` : chaque fiche gagne `votes`, le nombre de personnes qui l'ont
+    notée (réponse demandée avec `stats=1`), None s'il manque. Il sert à
+    départager des homonymes dans une recherche ; il n'est pas gardé en base.
+    """
     fiches: dict[int, dict] = {}
-    for item in racine.findall("item"):
+    for item in _analyser(octets).findall("item"):
         fiche = lire_fiche(item)
         if fiche is not None:
+            if popularite:
+                fiche["votes"] = _entier(item.find("statistics/ratings/usersrated"))
             fiches[fiche["bgg_id"]] = fiche
     return fiches
+
+
+def lire_recherche(octets: bytes) -> list[dict]:
+    """
+    Les résultats d'une réponse `search`, dans l'ordre de BGG.
+
+    Chaque résultat : {"bgg_id", "type", "nom", "annee"}. `nom` est le nom SOUS
+    LEQUEL BGG a trouvé la fiche (parfois un nom « alternate », français par
+    exemple), pas forcément son nom principal. Une même fiche peut revenir
+    deux fois (une fois par type) : seule la première est gardée.
+    """
+    resultats: list[dict] = []
+    vus: set[int] = set()
+    for item in _analyser(octets).findall("item"):
+        identifiant = (item.get("id") or "").strip()
+        if not identifiant.isascii() or not identifiant.isdigit():
+            continue
+        bgg_id = int(identifiant)
+        if bgg_id <= 0 or bgg_id in vus:
+            continue
+        vus.add(bgg_id)
+        element = item.find("name")
+        nom = _couper(element.get("value") or "", LONGUEUR_NOM) if element is not None else ""
+        type_fiche = (item.get("type") or "").strip()
+        resultats.append({
+            "bgg_id": bgg_id,
+            "type": type_fiche if re.fullmatch(r"[a-z]{1,40}", type_fiche) else None,
+            "nom": nom,
+            "annee": _entier(item.find("yearpublished")),
+        })
+    return resultats
 
 
 # ---------------------------------------------------------------------------
 # L'appel réseau
 # ---------------------------------------------------------------------------
-def _telecharger(url: str, jeton: str) -> bytes:
+def _telecharger(url: str, jeton: str, delai: float = DELAI_APPEL_S) -> bytes:
     """
-    GET `url` avec le jeton en en-tête, borné en temps et en taille.
+    GET `url` avec le jeton en en-tête, borné en temps (`delai`, au plus
+    `DELAI_APPEL_S`) et en taille.
 
     Lève `EchecBGG` pour toute issue autre qu'un 200 lisible. Les exceptions
     de `urllib` ne remontent JAMAIS : `from None` coupe la chaîne, pour
@@ -264,9 +403,9 @@ def _telecharger(url: str, jeton: str) -> bytes:
         "User-Agent": USER_AGENT,
         "Accept": "application/xml",
     })
-    fin = time.monotonic() + DELAI_APPEL_S
+    fin = time.monotonic() + delai
     try:
-        with urllib.request.urlopen(requete, timeout=DELAI_APPEL_S) as reponse:
+        with urllib.request.urlopen(requete, timeout=delai) as reponse:
             statut = reponse.status
             if statut == 202:          # BGG a mis la demande en file d'attente
                 raise EchecBGG("attendre")
@@ -305,9 +444,35 @@ def _telecharger(url: str, jeton: str) -> bytes:
         raise EchecBGG("panne") from None
 
 
-def recuperer(ids: list[int]) -> dict[int, dict | None]:
+def _appeler(url: str, fin: float | None) -> bytes:
+    """
+    Un appel à BGG, à son tour dans la `CADENCE` du processus.
+
+    `fin` : échéance (horloge de `CADENCE`) que l'appel ne doit pas dépasser.
+    Si le prochain créneau libre n'en laisse pas le temps, rien n'est envoyé :
+    `EchecBGG("trop_long")`. Sinon, le délai de l'appel est raccourci pour
+    finir avant elle.
+    """
+    jeton = _jeton()
+    if jeton is None:
+        raise EchecBGG("sans_jeton")
+    if not CADENCE.reserver(fin):
+        raise EchecBGG("trop_long")
+    delai = DELAI_APPEL_S
+    if fin is not None:
+        delai = min(DELAI_APPEL_S, max(fin - CADENCE.horloge(), DUREE_MIN_APPEL_S))
+    return _telecharger(url, jeton, delai)
+
+
+def recuperer(ids: list[int], *, popularite: bool = False,
+              fin: float | None = None) -> dict[int, dict | None]:
     """
     Les fiches BGG de `ids` (20 au plus), en UN appel.
+
+    `popularite` : demande aussi les statistiques (`stats=1`, réponse plus
+    lourde d'environ 8 % : 45 311 octets au lieu de 41 739 pour cinq fiches,
+    mesuré le 2026-10-14) et ajoute `votes` à chaque fiche. `fin` : voir
+    `_appeler`.
 
     Returns:
         {identifiant: fiche, ou None si BGG ne connaît pas cet identifiant}.
@@ -322,12 +487,36 @@ def recuperer(ids: list[int]) -> dict[int, dict | None]:
         return {}
     if len(ids) > IDS_PAR_APPEL:
         raise ValueError(f"{IDS_PAR_APPEL} identifiants au plus par appel")
-    jeton = _jeton()
-    if jeton is None:
-        raise EchecBGG("sans_jeton")
     url = f"{URL_THING}?id={','.join(str(i) for i in ids)}"
-    fiches = lire_reponse(_telecharger(url, jeton))
+    if popularite:
+        url += "&stats=1"
+    fiches = lire_reponse(_appeler(url, fin), popularite=popularite)
     return {i: fiches.get(i) for i in ids}
+
+
+def nettoyer_requete(texte: str | None) -> str:
+    """
+    Le texte à chercher, tel qu'il partira : sans caractère de contrôle,
+    espaces resserrés, coupé à `LONGUEUR_REQUETE_MAX`. Vide s'il ne reste rien.
+    """
+    propre = "".join(c if c.isprintable() else " " for c in (texte or ""))
+    return " ".join(propre.split())[:LONGUEUR_REQUETE_MAX].strip()
+
+
+def rechercher(requete: str, *, fin: float | None = None) -> list[dict]:
+    """
+    Les fiches que BGG trouve pour `requete` (jeux et extensions), en UN appel.
+
+    Le texte n'entre dans l'adresse que comme paramètre ENCODÉ, après
+    `nettoyer_requete` ; l'hôte est fixe. Une requête vide ne coûte aucun
+    appel. Returns: `lire_recherche`. Raises: `EchecBGG`, comme `recuperer`.
+    """
+    requete = nettoyer_requete(requete)
+    if not requete:
+        return []
+    url = URL_SEARCH + "?" + urllib.parse.urlencode(
+        {"query": requete, "type": TYPES_RECHERCHE})
+    return lire_recherche(_appeler(url, fin))
 
 
 def recuperer_lot(ids: list[int], *,

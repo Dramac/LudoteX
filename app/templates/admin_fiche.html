@@ -62,6 +62,103 @@
     </form>
   </section>
 
+  {# Relier à BoardGameGeek (série « fiche », lot 3) : seulement pour un jeu
+     SANS fiche BGG. Tout ici lit la base : les candidats sont la copie gardée
+     par la recherche (leurs identifiants seuls viennent de l'URL). Seul
+     « Chercher sur BGG » appelle BGG, et seulement si le site a une clé :
+     « Ce jeu n'est pas sur BGG » et « Passer » marchent sans elle. #}
+  {% if relier %}
+  <section class="carte" id="relier-bgg">
+    <h2>Relier à BoardGameGeek</h2>
+    {% if relier.fait %}
+    <p class="resultat resultat-ok" role="status">{{ relier.fait.texte }}
+       <a class="lien" href="/admin/jeu/{{ relier.fait.reference_titre }}">Revenir à « {{ relier.fait.nom }} »</a></p>
+    {% endif %}
+    {% if relier.marque %}
+    <p>Ce jeu est marqué « pas sur BGG » : il ne figure plus parmi les jeux à
+       relier.</p>
+    <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/present">
+      <button type="submit" class="bouton-filtrer">Annuler : ce jeu est peut-être sur BGG</button>
+    </form>
+    {% else %}
+    <p class="stats-note">{{ relier.restants }} {{ pluriel(relier.restants, 'jeu', 'jeux') }}
+       à relier{% if exemplaires %}, celui-ci compris{% endif %}.</p>
+    {% if relier.suivant %}
+    <p><a class="lien" href="/admin/jeu/{{ relier.suivant.reference_titre }}#relier-bgg">Passer au jeu suivant :
+       « {{ relier.suivant.nom }} »</a></p>
+    {% elif exemplaires %}
+    <p class="stats-note">C'est le dernier jeu à relier.</p>
+    {% endif %}
+
+    {% if bgg_disponible %}
+    <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/chercher" class="recherche-form">
+      <div class="champ">
+        <label for="bgg-nom">Chercher un autre nom</label>
+        <input type="text" id="bgg-nom" name="nom" value="{{ titre.nom }}" maxlength="100"
+               aria-describedby="bgg-nom-aide">
+        <p class="stats-note" id="bgg-nom-aide">Le nom de notre fiche est déjà
+           dans la case. Si BoardGameGeek ne le connaît pas, remplacez-le par
+           le nom anglais, ou celui du pays d'origine. Tapez seulement un nom
+           de jeu : il est envoyé à BoardGameGeek, et n'est gardé nulle part.</p>
+      </div>
+      <div><button type="submit" class="bouton-filtrer">Chercher sur BGG</button></div>
+    </form>
+    {% else %}
+    <p class="stats-note">La recherche sur BoardGameGeek n'est pas disponible
+       sur ce site (il n'a pas de clé d'accès). Pour relier ce jeu, collez le
+       numéro de sa fiche dans la case « Fiche BoardGameGeek », plus bas.</p>
+    {% endif %}
+
+    {% if relier.message_recherche %}
+    <p class="resultat resultat-attention" {% if relier.recherche_echec %}role="alert"{% else %}role="status"{% endif %}>{{ relier.message_recherche }}</p>
+    {% endif %}
+    {% if relier.candidats %}
+    <p class="resultat resultat-info" role="status">{{ relier.candidats | length }}
+       {{ pluriel(relier.candidats | length, 'jeu trouvé', 'jeux trouvés') }} sur BoardGameGeek.
+       Comparez avec votre boîte, puis touchez « C'est ce jeu » sous le bon.</p>
+    <ol class="candidats-bgg">
+      {% for c in relier.candidats %}{% set f = c.copie %}
+      <li class="candidat-bgg">
+        <h3><cite>{{ f.nom or ("Fiche n° " ~ f.bgg_id) }}</cite>{% if f.annee %} ({{ f.annee }}){% endif %}</h3>
+        <p class="stats-note">{% if f.type == "boardgameexpansion" %}Extension{% else %}Jeu{% endif %}
+           · fiche n° {{ f.bgg_id }}</p>
+        {% if c.indications %}
+        <ul class="candidat-valeurs">
+          {% for champ, i in c.indications.items() %}
+          <li>{{ champs_fiche[champ] }} : {{ i.texte }}
+            {%- if i.etat == "identique" %} — identique
+            {%- elif i.etat == "different" %} — <strong>différent</strong> (chez nous : {{ titre[champ] }})
+            {%- elif i.etat == "vide" %} — la case est vide chez nous
+            {%- endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if c.relie_a %}
+        <p class="resultat resultat-attention">Déjà relié à :
+           {% for nom in c.relie_a %}<cite>{{ nom }}</cite>{% if not loop.last %}, {% endif %}{% endfor %}.
+           Choisissez-le quand même s'il s'agit d'une autre édition du même jeu.</p>
+        {% endif %}
+        <div class="actions-bgg">
+          <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/relier">
+            <input type="hidden" name="bgg_id" value="{{ f.bgg_id }}">
+            <button type="submit" class="bouton-filtrer">C'est ce jeu<span class="sr-only"> : {{ f.nom or f.bgg_id }}{% if f.annee %} ({{ f.annee }}){% endif %}</span></button>
+          </form>
+          <a class="lien" href="{{ c.lien }}" target="_blank" rel="noopener noreferrer">Ouvrir<span class="sr-only"> {{ f.nom or f.bgg_id }}</span> sur BoardGameGeek<span class="sr-only"> (s'ouvre dans un nouvel onglet)</span></a>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+
+    <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/absent">
+      <button type="submit" class="bouton-filtrer">Ce jeu n'est pas sur BGG</button>
+    </form>
+    <p class="stats-note">Après « C'est ce jeu » ou « Ce jeu n'est pas sur BGG »,
+       le jeu suivant s'ouvre.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="carte" id="modifier">
     <h2>Modifier la fiche</h2>
     {# Copie BoardGameGeek : lue en base, JAMAIS récupérée à l'affichage. Le
@@ -112,8 +209,8 @@
         <p class="resultat resultat-attention" id="bgg-erreur">{{ erreurs.bgg }}</p>
         {%- endif %}
         <p class="stats-note" id="bgg-aide">Collez le numéro de la fiche, ou
-           l'adresse de sa page sur boardgamegeek.com. Videz la case pour
-           retirer le lien.</p>
+           l'adresse de sa page sur boardgamegeek.com, ou écrivez « pas sur
+           BGG » si ce jeu n'y est pas. Videz la case pour retirer le lien.</p>
         {# Lien de VÉRIFICATION, construit à partir du seul identifiant
            ENREGISTRÉ (app/bgg.py), pas de la saisie en cours : rien de ce
            que le bureau a collé n'est recopié dans la page. #}

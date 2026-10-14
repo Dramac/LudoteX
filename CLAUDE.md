@@ -156,7 +156,7 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 
 ## État de l'application
 
-**Dernière version au dépôt : 1.20.1** (voir `VERSION` et `CHANGELOG.md`,
+**Dernière version au dépôt : 1.22.0** (voir `VERSION` et `CHANGELOG.md`,
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
 du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
@@ -201,7 +201,9 @@ livré, par module :
   **données BoardGameGeek** (seul appel sortant, jeton facultatif en `.env`,
   copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
   des cases, reprise sans enregistrer, lien public réglable et décoché par
-  défaut), étiquettes en lot, import/export
+  défaut ; **relier les jeux un par un** : recherche bornée et cadencée,
+  candidats comparés, enchaînement au jeu suivant, marque « pas sur BGG »
+  portée par l'export), étiquettes en lot, import/export
   du catalogue,
   **sauvegarde et restauration des trois bases**, archives du serveur
   téléchargeables (routine et filets, distingués par leur nom), supervision à

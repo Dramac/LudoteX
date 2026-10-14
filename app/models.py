@@ -93,7 +93,15 @@ CREATE TABLE IF NOT EXISTS titres (
     -- d'administration) sur une colonne que l'import écrase, ou NULL. Sert à
     -- dire, à l'import, qu'un fichier plus ancien défait une correction.
     -- Remise à NULL quand un import a effectivement écrasé la correction.
-    modifie_le       TEXT
+    modifie_le       TEXT,
+    -- « Ce jeu n'est pas sur BGG » (série « fiche », lot 3) : 1 si le bureau a
+    -- cherché et constaté que BGG ne connaît pas ce jeu ; il sort alors de la
+    -- liste des jeux à relier. Réversible. Un jeu relié (`bgg_id`) ne peut
+    -- pas porter la marque : la contrainte le refuse en base, et le code
+    -- retire la marque en reliant (`services.modifier_titre`). Même
+    -- définition pour une base d'avant : `app/db.py::_MIGRATIONS_COLONNES`.
+    bgg_absent       INTEGER NOT NULL DEFAULT 0
+                     CHECK (bgg_absent IN (0, 1) AND (bgg_absent = 0 OR bgg_id IS NULL))
 );
 """
 
@@ -351,6 +359,7 @@ CREATE TABLE IF NOT EXISTS fiches_bgg (
     duree_min       INTEGER,                     -- minplaytime, repli sur playingtime
     duree_max       INTEGER,                     -- maxplaytime, repli sur playingtime
     auteurs         TEXT,                        -- auteurs joints par des virgules
+    annee           INTEGER,                     -- première parution chez BGG (lot 3)
     recupere_le     TEXT NOT NULL                -- UTC ISO, date de la copie
 );
 """

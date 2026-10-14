@@ -516,7 +516,8 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
                      q: str | None = None, age: int | None = None,
                      joueurs: int | None = None,
                      dispo_seulement: bool = False,
-                     sans_bgg: bool = False) -> list[dict]:
+                     sans_bgg: bool = False,
+                     pas_sur_bgg: bool = False) -> list[dict]:
     """
     Construit le catalogue AU NIVEAU TITRE, avec disponibilité et filtres.
 
@@ -534,9 +535,12 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         q         : sous-chaîne dans le nom (LIKE, insensible à la casse ASCII).
         age       : jeux accessibles dès cet âge (`age_min <= age`).
         joueurs   : jeux jouables à ce nombre EXACT (`min <= joueurs <= max`).
-        sans_bgg  : jeux qui n'ont pas encore de fiche BoardGameGeek
-                    (`bgg_id IS NULL`). Administration seulement : le
-                    catalogue public ne parle jamais de BGG.
+        sans_bgg  : la liste des jeux À RELIER à BoardGameGeek — sans fiche
+                    (`bgg_id IS NULL`) et non marqués « pas sur BGG »
+                    (`bgg_absent = 0`, lot fiche-3). Administration
+                    seulement : le catalogue public ne parle jamais de BGG.
+        pas_sur_bgg : les jeux marqués « pas sur BGG », pour revenir sur
+                    une marque posée par erreur.
     Les jeux dont l'information filtrée est absente (âge/joueurs NULL) sont
     naturellement exclus quand le filtre correspondant est actif (comparaison
     avec NULL = faux).
@@ -551,7 +555,8 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         categorie, q, age, joueurs: filtres optionnels (voir ci-dessus).
         dispo_seulement: si True, ne garde que les titres ayant au moins un
             exemplaire disponible.
-        sans_bgg: si True, ne garde que les titres sans fiche BoardGameGeek.
+        sans_bgg: si True, ne garde que les titres à relier à BoardGameGeek.
+        pas_sur_bgg: si True, ne garde que les titres marqués « pas sur BGG ».
 
     Returns:
         Liste de dicts {reference_titre, nom, categorie, id_repr, total,
@@ -584,7 +589,9 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         conditions.append("t.nb_joueurs_min <= ? AND t.nb_joueurs_max >= ?")
         params.extend([joueurs, joueurs])
     if sans_bgg:
-        conditions.append("t.bgg_id IS NULL")
+        conditions.append("t.bgg_id IS NULL AND t.bgg_absent = 0")
+    if pas_sur_bgg:
+        conditions.append("t.bgg_absent = 1")
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY t.reference_titre, t.nom, t.categorie"
@@ -967,7 +974,9 @@ def _date_fr(iso: str | None) -> str:
 # « Lettres classement » (app/classement.py), ajoutée en fin pour ne décaler
 # aucune colonne d'un tableur existant : les trois lettres d'un titre, remplie
 # seulement quand elles sont imprimables — l'export dit ce que l'étiquette dit.
-# « Fiche BoardGameGeek » (app/bgg.py), même règle : en fin, le numéro seul.
+# « Fiche BoardGameGeek » (app/bgg.py), même règle : en fin, le numéro seul,
+# ou la valeur réservée « pas sur BGG » (`bgg.PAS_SUR_BGG`, lot fiche-3) pour un
+# jeu marqué — l'import la relit, la marque survit à l'aller-retour.
 # Une colonne nouvelle s'ajoute TOUJOURS en fin de liste.
 EN_TETES_CATALOGUE = [
     "Code jeu", "Nom jeu", "Type", "Type jeu", "Nb joueurs", "Age joueurs",
@@ -1001,7 +1010,8 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
                t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
                t.editeur, t.auteur, t.annee_edition, t.descriptif, t.date_achat,
-               t.lettre_public, t.lettre_jeu, t.lettre_materiel, t.bgg_id
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel, t.bgg_id,
+               t.bgg_absent
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         LEFT JOIN emplacements_rangement er ON er.id_emplacement = e.emplacement_local_id
@@ -1026,7 +1036,8 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
             "Emplacement événement": r["emplacement_evenement"] or "",
             "Emplacement local": r["emplacement_local_nom"] or "",
             "Lettres classement": classement.lettres_imprimables(dict(r)),
-            "Fiche BoardGameGeek": str(r["bgg_id"]) if r["bgg_id"] is not None else "",
+            "Fiche BoardGameGeek": (str(r["bgg_id"]) if r["bgg_id"] is not None
+                                    else bgg.PAS_SUR_BGG if r["bgg_absent"] else ""),
         })
     return EN_TETES_CATALOGUE, lignes
 
@@ -2016,12 +2027,14 @@ def lire_saisie_fiche(saisie: dict, type_actuel: str | None = None
 
     Args:
         saisie: les champs du formulaire, tels que reçus (chaînes) — les clés
-            de `CHAMPS_FICHE`, plus `bgg` (numéro ou adresse BoardGameGeek).
+            de `CHAMPS_FICHE`, plus `bgg` (numéro ou adresse BoardGameGeek,
+            ou la valeur réservée « pas sur BGG »).
         type_actuel: le type en base, accepté même hors de `TYPES_JEU`.
 
     Returns:
         (valeurs, erreurs). `valeurs` porte une valeur par colonne de
-        `CHAMPS_FICHE`, plus `bgg_id` ; une case vide vaut None. `erreurs`
+        `CHAMPS_FICHE`, plus `bgg_id` et `bgg_absent` (0 ou 1) ; une case
+        vide vaut None. `erreurs`
         associe à chaque champ refusé un message à afficher sous le champ ;
         vide si tout est lisible. Dès qu'il y a une erreur, l'appelant
         n'écrit RIEN et réaffiche la saisie telle quelle.
@@ -2081,10 +2094,14 @@ def lire_saisie_fiche(saisie: dict, type_actuel: str | None = None
                 "à un nombre fixe de joueurs, ou videz les deux cases.")
 
     bgg_saisie = champ("bgg").strip()
-    valeurs["bgg_id"] = bgg.lire_identifiant(bgg_saisie) if bgg_saisie else None
-    if bgg_saisie and valeurs["bgg_id"] is None:
+    # « pas sur BGG » : la marque, sans identifiant (même règle qu'à l'import).
+    valeurs["bgg_absent"] = 1 if bgg.est_pas_sur_bgg(bgg_saisie) else 0
+    valeurs["bgg_id"] = (bgg.lire_identifiant(bgg_saisie)
+                         if bgg_saisie and not valeurs["bgg_absent"] else None)
+    if bgg_saisie and not valeurs["bgg_absent"] and valeurs["bgg_id"] is None:
         erreurs["bgg"] = ("Collez le numéro de la fiche, ou l'adresse de sa page "
-                          "(boardgamegeek.com/boardgame/…).")
+                          "(boardgamegeek.com/boardgame/…), ou écrivez "
+                          f"« {bgg.PAS_SUR_BGG} ».")
 
     return valeurs, erreurs
 
@@ -2094,31 +2111,44 @@ def modifier_titre(conn: sqlite3.Connection, reference_titre: str,
     """
     Écrit les corrections de la fiche d'un jeu — seulement ce qui a changé.
 
+    SEUL CHEMIN D'ÉCRITURE de l'identifiant BGG et de la marque « pas sur
+    BGG » : l'éditeur, « C'est ce jeu » et « Ce jeu n'est pas sur BGG » y
+    passent tous (lot fiche-3), avec la même règle — un jeu relié ne garde
+    jamais la marque (la contrainte de `titres.bgg_absent` le refuserait).
+
     `reference_titre` ne bouge jamais, même quand le nom change. `modifie_le`
     est posé quand une colonne de `CHAMPS_FICHE` a réellement changé : ce sont
     celles que l'import écrase, et la date sert à dire qu'un fichier plus ancien
-    les défait. Un identifiant BGG seul ne la pose pas : l'import ne l'efface
-    jamais (`COALESCE`), il n'y a rien à protéger, et la poser ferait signaler
-    à tort, au ré-import suivant, des écarts que l'écran n'a pas créés.
+    les défait. Un identifiant BGG ou une marque seuls ne la posent pas :
+    l'import ne les efface jamais (`COALESCE`), il n'y a rien à protéger, et la
+    poser ferait signaler à tort, au ré-import suivant, des écarts que l'écran
+    n'a pas créés.
 
     Args:
-        valeurs: lues par `lire_saisie_fiche`, sans erreur.
+        valeurs: lues par `lire_saisie_fiche`, sans erreur — ou seulement les
+            colonnes à changer (`{"bgg_id": 13}`) : une colonne absente de
+            `valeurs` n'est pas touchée.
 
     Returns:
         None si le titre est inconnu ; sinon {"changes": colonnes modifiées
         (liste vide si rien n'a changé — rien n'est alors écrit), "avant": le
         titre avant, "apres": le titre après}.
     """
-    colonnes = (*CHAMPS_FICHE, "bgg_id")
+    colonnes = (*CHAMPS_FICHE, "bgg_id", "bgg_absent")
     with transaction(conn):
         avant = get_titre(conn, reference_titre)
         if avant is None:
             return None
-        changes = [c for c in colonnes if avant.get(c) != valeurs.get(c)]
+        nouvelles = {c: valeurs[c] for c in colonnes if c in valeurs}
+        # Relié, donc pas « pas sur BGG » — y compris quand c'est l'identifiant
+        # déjà en base qui empêche de poser la marque.
+        if nouvelles.get("bgg_id", avant.get("bgg_id")) is not None:
+            nouvelles["bgg_absent"] = 0
+        changes = [c for c in nouvelles if avant.get(c) != nouvelles[c]]
         if changes:
             # Noms de colonnes tirés de `colonnes`, jamais de la requête.
             affectations = [f"{c} = :{c}" for c in changes]
-            parametres = {c: valeurs.get(c) for c in changes}
+            parametres = {c: nouvelles[c] for c in changes}
             if any(c in CHAMPS_FICHE for c in changes):
                 affectations.append("modifie_le = :modifie_le")
                 parametres["modifie_le"] = maintenant()
@@ -2127,7 +2157,7 @@ def modifier_titre(conn: sqlite3.Connection, reference_titre: str,
                 "WHERE reference_titre = :reference_titre",
                 {**parametres, "reference_titre": reference_titre},
             )
-    apres = dict(avant, **{c: valeurs.get(c) for c in changes})
+    apres = dict(avant, **{c: nouvelles[c] for c in changes})
     return {"changes": changes, "avant": avant, "apres": apres}
 
 
@@ -2189,7 +2219,7 @@ CHAMPS_BGG: dict[str, str] = {
 }
 
 _COLONNES_FICHE_BGG = ("type", "nom", "nb_joueurs_min", "nb_joueurs_max",
-                       "age_min", "duree_min", "duree_max", "auteurs")
+                       "age_min", "duree_min", "duree_max", "auteurs", "annee")
 
 
 def lire_fiche_bgg(conn: sqlite3.Connection, bgg_id: int | None) -> dict | None:
@@ -2325,6 +2355,81 @@ def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None) -> tuple[dict, set]
         nouvelles[champ] = valeur
         repris.add(champ)
     return nouvelles, repris
+
+
+# ---------------------------------------------------------------------------
+# Relier les jeux un par un (série « fiche », lot 3)
+#
+# La liste de travail : les jeux SANS fiche BGG, NON marqués « pas sur BGG »,
+# qui ont au moins une boîte — exactement ceux que montre la case « Seulement
+# les jeux sans fiche BoardGameGeek » de la liste des jeux (`lister_catalogue`
+# joint les exemplaires). Le compteur, le jeu suivant et la liste disent donc
+# le même nombre. Un titre sans boîte (né d'un import qui a fait passer ses
+# boîtes sous un autre nom) n'a rien à relier.
+# ---------------------------------------------------------------------------
+_SQL_A_RELIER = ("t.bgg_id IS NULL AND t.bgg_absent = 0 AND EXISTS "
+                 "(SELECT 1 FROM exemplaires e WHERE e.reference_titre = t.reference_titre)")
+
+
+def compter_a_relier(conn: sqlite3.Connection) -> int:
+    """Le nombre de jeux qui restent à relier à BoardGameGeek."""
+    return conn.execute(f"SELECT COUNT(*) FROM titres t WHERE {_SQL_A_RELIER}").fetchone()[0]
+
+
+def compter_pas_sur_bgg(conn: sqlite3.Connection) -> int:
+    """Le nombre de jeux marqués « pas sur BGG »."""
+    return conn.execute("SELECT COUNT(*) FROM titres WHERE bgg_absent = 1").fetchone()[0]
+
+
+def jeu_suivant_a_relier(conn: sqlite3.Connection,
+                         reference_titre: str | None = None) -> dict | None:
+    """
+    Le prochain jeu à relier APRÈS `reference_titre`, en une requête.
+
+    Ordre de la liste des jeux (nom sans égard à la casse), départagé par la
+    référence : deux jeux de même nom à la casse près passent l'un après
+    l'autre, sans boucler. Arrivé au bout, on reprend au début. Le jeu courant
+    n'est jamais rendu : s'il est le seul restant, la réponse est None, et
+    c'est à l'appelant de dire qu'il est le dernier. Sans référence (ou avec
+    une référence inconnue) : le premier jeu de la liste.
+
+    Returns:
+        {"reference_titre", "nom"}, ou None s'il n'y en a pas d'autre.
+    """
+    ligne = conn.execute(
+        f"""
+        WITH courant(nom) AS (SELECT nom FROM titres WHERE reference_titre = :ref)
+        SELECT t.reference_titre, t.nom FROM titres t
+        WHERE {_SQL_A_RELIER} AND t.reference_titre IS NOT :ref
+        ORDER BY CASE
+                   WHEN t.nom COLLATE NOCASE > (SELECT nom FROM courant) THEN 0
+                   WHEN t.nom COLLATE NOCASE = (SELECT nom FROM courant)
+                        AND t.reference_titre > :ref THEN 0
+                   ELSE 1 END,
+                 t.nom COLLATE NOCASE, t.reference_titre
+        LIMIT 1
+        """, {"ref": reference_titre}).fetchone()
+    return dict(ligne) if ligne else None
+
+
+def titres_relies_a(conn: sqlite3.Connection, ids: list[int],
+                    sauf: str | None = None) -> dict[int, list[str]]:
+    """
+    Pour chaque identifiant BGG de `ids`, les noms de NOS titres qui y sont
+    déjà reliés (hors `sauf`). C'est ainsi que la première passe a fabriqué
+    ses doublons : un candidat déjà pris le dit, sans être refusé — deux
+    éditions d'un même jeu existent.
+    """
+    if not ids:
+        return {}
+    marques = ", ".join("?" for _ in ids)
+    relies: dict[int, list[str]] = {}
+    for ligne in conn.execute(
+            f"SELECT bgg_id, nom FROM titres WHERE bgg_id IN ({marques}) "
+            "AND reference_titre IS NOT ? ORDER BY nom COLLATE NOCASE",
+            (*ids, sauf)):
+        relies.setdefault(ligne["bgg_id"], []).append(ligne["nom"])
+    return relies
 
 
 # ---------------------------------------------------------------------------

@@ -10,11 +10,16 @@ du lien de vérification (`url_fiche`). L'éditeur de la fiche
 deux : une adresse acceptée à l'écran l'est aussi dans le tableur, et
 réciproquement.
 
+La même case accepte une VALEUR RÉSERVÉE, « pas sur BGG » (`PAS_SUR_BGG`,
+série « fiche », lot 3) : le bureau a cherché, BGG ne connaît pas ce jeu. Elle
+pose la marque `titres.bgg_absent` à l'écran comme à l'import, et l'export
+l'écrit dans la colonne : la marque survit à une réinstallation depuis le
+fichier.
+
 AUCUN APPEL RÉSEAU, AUCUN JETON. Ce module ne fait que lire une chaîne. Il
 n'importe aucune bibliothèque réseau, et un test le verrouille
-(`tests/test_fiche_jeu.py`) : la recherche en ligne, si elle vient un jour,
-fera l'objet de son propre lot (série « fiche », lot 2), avec ses propres
-arbitrages — où vit le jeton, quelle mention « Powered by BGG ».
+(`tests/test_fiche_jeu.py`) : le seul module qui parle à BGG est
+`app/bgg_api.py`.
 
 Un identifiant BGG ne désigne personne : ce n'est pas une donnée personnelle.
 """
@@ -44,6 +49,18 @@ CHIFFRES_MAX = 10
 # Le chemin `/boardgame/` vaut pour un jeu ; qu'il mène aussi à une extension
 # reste à vérifier dans un navigateur (compte rendu du lot fiche-1).
 URL_FICHE = "https://boardgamegeek.com/boardgame/{}"
+
+
+# La valeur réservée de la case « Fiche BoardGameGeek » : « ce jeu n'est pas
+# sur BGG ». Écrite telle quelle par l'export ; relue sans égard à la casse ni
+# aux espaces (`est_pas_sur_bgg`). Elle ne contient aucun chiffre : jamais
+# confondue avec un numéro.
+PAS_SUR_BGG = "pas sur BGG"
+
+
+def est_pas_sur_bgg(saisie: str | None) -> bool:
+    """True si `saisie` est la valeur réservée « pas sur BGG »."""
+    return " ".join((saisie or "").split()).casefold() == PAS_SUR_BGG.casefold()
 
 
 def _entier_positif(chiffres: str) -> int | None:

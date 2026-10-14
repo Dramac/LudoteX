@@ -995,8 +995,10 @@ def test_la_liste_des_jeux_filtre_ceux_sans_fiche_bgg(client):
     assert "checked" in _case_sans_bgg(filtre)
     assert "1 jeu sans fiche BoardGameGeek" in filtre
 
-    # Combinable avec la recherche par nom.
-    assert "/admin/jeu/DOBBLE" not in client.get("/admin/jeux?sans_bgg=1&q=cat").text
+    # Combinable avec la recherche par nom. (Le lien « Relier les jeux un par
+    # un », lot fiche-3, mène à DOBBLE quel que soit le filtre : on cherche
+    # l'entrée de la LISTE, dont l'adresse se ferme sans ancre.)
+    assert 'href="/admin/jeu/DOBBLE"' not in client.get("/admin/jeux?sans_bgg=1&q=cat").text
 
 
 def test_le_filtre_bgg_n_atteint_pas_le_catalogue_public(anonyme):

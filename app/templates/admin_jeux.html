@@ -18,8 +18,32 @@
     </label>
     <div><button type="submit" class="bouton-filtrer">Rechercher</button></div>
   </form>
+  {# Relier les jeux un par un (lot fiche-3) : ouvre le premier jeu à relier
+     (sans fiche BGG, non marqué « pas sur BGG ») ; chaque décision ouvre le
+     suivant. Marche sans clé d'accès BGG : « pas sur BGG » et « Passer » ne
+     l'appellent pas. #}
+  {% if relier.fait %}
+  <p class="resultat resultat-ok" role="status">{{ relier.fait.texte }}
+     {% if not relier.restants %}Il ne reste plus aucun jeu à relier.{% endif %}
+     <a class="lien" href="/admin/jeu/{{ relier.fait.reference_titre }}">Revenir à « {{ relier.fait.nom }} »</a></p>
+  {% endif %}
+  {% if relier.premier %}
+  <p>{{ relier.restants }} {{ pluriel(relier.restants, 'jeu', 'jeux') }} à relier à BoardGameGeek.
+     <a class="lien" href="/admin/jeu/{{ relier.premier.reference_titre }}#relier-bgg">Relier les jeux un par un</a></p>
+  {% elif not relier.fait %}
+  <p class="stats-note">Tous les jeux sont reliés à BoardGameGeek, ou marqués « pas sur BGG ».</p>
+  {% endif %}
   <p class="catalogue-compte">{{ jeux | length }} {{ pluriel(jeux | length, 'jeu', 'jeux') }}
-     {%- if sans_bgg %} sans fiche BoardGameGeek{% endif %}</p>
+     {%- if sans_bgg %} sans fiche BoardGameGeek{% elif pas_sur_bgg %} {{ pluriel(jeux | length, 'marqué', 'marqués') }} « pas sur BGG »{% endif %}</p>
+  {% if pas_sur_bgg %}
+  <p class="stats-note">Ces jeux ne sont pas dans la liste à relier. Pour revenir
+     sur une marque posée par erreur, ouvrez le jeu et touchez « Annuler : ce jeu
+     est peut-être sur BGG ».</p>
+  {% elif sans_bgg and relier.marques %}
+  <p class="stats-note">{{ relier.marques }} {{ pluriel(relier.marques, 'jeu marqué', 'jeux marqués') }}
+     « pas sur BGG » n'y {{ pluriel(relier.marques, 'est', 'sont') }} pas :
+     <a class="lien" href="/admin/jeux?pas_sur_bgg=1">voir les jeux marqués « pas sur BGG »</a>.</p>
+  {% endif %}
 </section>
 
 {# Récupération des copies BGG manquantes : UN LOT BORNÉ par clic, sans tâche

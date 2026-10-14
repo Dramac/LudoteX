@@ -167,8 +167,11 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   est verrouillée par `tests/test_fiche_jeu.py` ; toute colonne ajoutée à
   `titres` doit la tenir (une valeur que l'export écrit, l'import doit la
   relire à l'identique — d'où les bornes de `services.BORNES_FICHE`).
-- **Colonnes de `titres` que l'import n'écrase pas** : les trois lettres et
-  `bgg_id` (`COALESCE`), parce qu'elles ne viennent pas du tableur du bureau.
+- **Colonnes de `titres` que l'import n'écrase pas** : les trois lettres,
+  `bgg_id` (`COALESCE`) et la marque `bgg_absent`, parce qu'elles ne viennent
+  pas du tableur du bureau. La marque voyage dans la colonne « Fiche
+  BoardGameGeek » sous la valeur réservée « pas sur BGG » (`bgg.PAS_SUR_BGG`) ;
+  un identifiant, du fichier ou de la base, la retire.
   Toutes les autres sont écrasées, case vide comprise ; celles que l'écran
   corrige sont listées par `services.CHAMPS_FICHE`, et un import qui en défait
   une le dit (`import_csv.corrections_defaites`, colonne `modifie_le`).
@@ -184,6 +187,30 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   Un lot (`recuperer_lot`) ne lance un appel que s'il peut finir avant
   `BORNE_LOT_S` (40 s), sous les 60 s du `proxy_read_timeout` par défaut de
   nginx : en changeant le délai ou la pause, refaire ce calcul.
+- **La cadence et le moteur de recherche BGG** (série « fiche », lot 3). Tous
+  les appels du processus passent par `bgg_api._appeler`, qui réserve un
+  créneau dans `bgg_api.CADENCE` : deux appels quelconques sont espacés d'au
+  moins `INTERVALLE_APPELS_S` (3 s), qu'ils viennent du même clic, de deux
+  clics ou de deux personnes. Le verrou est en mémoire : il suppose l'unique
+  worker de `deploy/ludotex.service` (comme le limiteur de débit). Il ne
+  couvre que la réservation, jamais l'appel réseau. Un lot de la liste des
+  jeux garde sa pause de 5 s ; une recherche simultanée peut retarder d'un
+  créneau (3 s) le dernier appel qu'il lance, soit 43 s au pire au lieu de
+  40 — encore sous les 60 s de nginx (chaque contrôle de la borne compte le
+  temps réellement écoulé, attentes comprises). Le moteur (`app/bgg_recherche.py`, sans
+  import réseau, le réseau lui est passé) essaie les variantes du nom et
+  s'arrête à la première égalité, garde cinq candidats, lit leurs fiches en un
+  appel `thing` avec `stats=1` (la popularité départage des homonymes), puis
+  les classe. Un clic est borné à `BORNE_CLIC_S` (20 s) par une échéance
+  passée à chaque appel : la cadence refuse un créneau trop tardif
+  (`EchecBGG("trop_long")`) et le délai d'un appel est raccourci pour finir
+  avant elle ; les variantes laissent toujours le temps de lire les fiches.
+  **Le texte cherché est un champ libre** : il part en POST (nginx journalise
+  la ligne de requête, pas le corps), n'entre dans l'adresse de BGG qu'encodé,
+  et la redirection qui suit ne porte que les identifiants des candidats —
+  la page ne lit que leur copie en base, la recharger ne relance rien. La
+  fixture autouse `_cadence_bgg_simulee` de `tests/conftest.py` pose une
+  horloge simulée : aucun test n'attend les 3 s pour de vrai.
 - **Le `.env` local atteint les tests.** `app/environnement.py` charge le
   `.env` de la racine dès l'import : un `BGG_TOKEN` posé là pour un essai
   réel rendait les boutons BGG actifs dans les tests, et un test a appelé BGG
