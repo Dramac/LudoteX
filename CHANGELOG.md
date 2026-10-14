@@ -13,6 +13,7 @@ vers l'utilisateur.
 - **Quand une correction change ce qui est imprimé** (nom, âge, joueurs, durée), la fiche le signale et propose de réimprimer les étiquettes du jeu en un geste.
 - **Une fiche peut renvoyer à sa page BoardGameGeek** : coller le numéro ou l'adresse de la page, puis vérifier d'un clic que c'est le bon jeu. Le catalogue gagne la colonne « Fiche BoardGameGeek ».
 - **Un fichier de catalogue plus ancien qu'une correction le dit à l'import** : quelles fiches, ce qui valait avant et ce que le fichier a mis à la place, avec un lien vers chaque fiche.
+- **La fiche d'un jeu qui n'a plus aucune boîte s'ouvre normalement** (par exemple quand un import a fait passer toutes ses boîtes sous un autre nom) : elle le signale et propose d'ajouter un exemplaire. Elle affichait une erreur.
 - **Les lettres de classement d'un jeu s'effacent depuis sa fiche**, toutes les trois d'un coup.
 
 ## 1.19.1 — 2026-10-13
