@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.22.0 — 2026-10-14
 
 ### BoardGameGeek : poser la clé d'accès — facultatif
 

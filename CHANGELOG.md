@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.22.0 — 2026-10-14
+
+- **La fiche d'un jeu montre les données BoardGameGeek à côté des siennes** : joueurs, âge, durée et auteur, avec « identique » ou « différent » sous chaque case. Le bouton **Récupérer les données BGG** les met à jour.
+- **Reprendre les valeurs BGG** remplit le formulaire avec ces données sans rien enregistrer : vous relisez, puis **Enregistrer la fiche**.
+- **Le lien vers BoardGameGeek se lit enfin** : « Ouvrir *nom du jeu* sur BoardGameGeek », juste sous la case.
+- **Récupérer les données BGG manquantes**, sur la liste des jeux, remplit d'un coup les fiches déjà reliées, par paquets.
+- **Les fiches publiques peuvent renvoyer à BoardGameGeek** : à cocher dans **Identité**. La page « À propos » cite alors BoardGameGeek comme source.
+
 ## 1.21.0 — 2026-10-14
 
 - **Sur ordinateur, la fiche d'un jeu prend toute la largeur de l'écran** : les cases se rangent sur deux colonnes et les boîtes du jeu côte à côte. Sur téléphone, rien ne change.
