@@ -113,9 +113,12 @@ que les archives ne contiennent pas »).
 3. **Redémarrer** et vérifier :
    ```bash
    sudo systemctl restart ludotex
-   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine>/sante
+   curl -s http://127.0.0.1:8000/sante; echo
    ```
-   *À voir :* `200`.
+   *À voir :* `{"statut":"ok","version":"…"}`. La commande interroge
+   l'application sur le serveur même, sans passer par nginx : rien à
+   remplacer. Si elle ne répond rien, attendre quelques secondes (le
+   démarrage) et la relancer.
 4. **Premier essai réel**, dans le navigateur : Administration → **Jeux** →
    un jeu relié à BoardGameGeek → **Récupérer les données BGG**.
    *À voir :* « Données BGG récupérées », puis « BGG : … » sous les cases
