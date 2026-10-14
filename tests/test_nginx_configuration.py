@@ -383,6 +383,88 @@ def test_aucune_procedure_ne_designe_un_dossier_d_installation_de_formation():
 
 
 # ===========================================================================
+# Incident du 2026-10-14 — aucune valeur à remplacer à la main dans une commande
+# qui écrit sur le serveur
+# ===========================================================================
+# `sudo sed -i 's/pret\.example\.fr/<domaine réel>/g'` a été collé tel quel :
+# `server_name <domaine réel>;` installé, lignes HTTPS de certbot perdues, et
+# le contrôle « une ligne : <domaine réel>, exactement » l'a confirmé au lieu
+# de le voir. Désormais la valeur s'écrit une fois dans une variable (étape 0),
+# chaque écriture passe par `valeur_ok`, et le contrôle compte la ligne.
+PROCEDURES = ("docs/deploiement.md", "wiki/Deploiement.md", "docs/notes-de-deploiement.md")
+
+
+def _lignes_de_commandes(document: str) -> list[str]:
+    chemin = RACINE / document
+    if not chemin.exists():
+        return []
+    blocs = re.findall(r"```bash\n(.*?)```", chemin.read_text(encoding="utf-8"), re.DOTALL)
+    # Sans le commentaire de fin de ligne (`   # doit afficher 1`).
+    return [re.sub(r"\s+#\s.*$", "", l.strip()) for bloc in blocs for l in bloc.splitlines()]
+
+
+def _ecritures(document: str) -> list[str]:
+    """Les commandes qui écrivent un domaine ou un chemin dans un fichier nginx, ou lancent certbot."""
+    return [l for l in _lignes_de_commandes(document)
+            if re.search(r"sed -i .s(/[a-z\\.]*example|#/opt/ludotex#)", l) or "certbot --nginx" in l]
+
+
+@pytest.mark.parametrize("document", PROCEDURES)
+def test_aucune_commande_d_ecriture_ne_porte_de_valeur_a_remplacer(document):
+    for ligne in _ecritures(document):
+        if "certbot --nginx" in ligne:
+            valeur = re.search(r"-d (\S+)", ligne).group(1)
+        elif "#/opt/ludotex#" in ligne:
+            valeur = re.search(r"s#/opt/ludotex#([^#]*)#", ligne).group(1)
+        else:
+            valeur = re.search(r"example\\\.fr/([^/]*)/", ligne).group(1)
+        # La valeur vient d'une variable de l'étape 0, jamais d'un texte à
+        # remplacer (`<domaine réel>`, `VOTRE-DOMAINE`, `pret.example.fr`…).
+        assert valeur.strip('"').startswith("$"), (document, ligne)
+        # Et l'écriture d'un domaine ne part qu'après le garde-fou.
+        if "#/opt/ludotex#" not in ligne:
+            assert re.match(r'valeur_ok "\$[A-Z_]+" && sudo ', ligne), (document, ligne)
+
+
+def test_les_procedures_nginx_ecrivent_bien_quelque_chose():
+    # Garde-fou du test précédent : il ne doit pas passer à vide.
+    assert len(_ecritures("docs/deploiement.md")) >= 7
+
+
+@pytest.mark.parametrize("document", PROCEDURES)
+def test_chaque_substitution_de_domaine_est_suivie_d_un_compte(document):
+    lignes = _lignes_de_commandes(document)
+    for i, ligne in enumerate(lignes):
+        trouve = re.search(r'sed -i "s/[a-z\\.]*example\\\.fr/(\$[A-Z_]+)/g" (\S+)', ligne)
+        if trouve:
+            variable, fichier = trouve.groups()
+            assert f'sudo grep -c "server_name {variable};" {fichier}' in lignes[i:i + 5], ligne
+
+
+def _garde_fous() -> set[str]:
+    return {l for d in PROCEDURES for l in _lignes_de_commandes(d) if l.startswith("valeur_ok() {")}
+
+
+def test_un_seul_garde_fou_partout():
+    assert len(_garde_fous()) == 1
+
+
+@pytest.mark.skipif(not __import__("shutil").which("bash"), reason="bash absent")
+@pytest.mark.parametrize("valeur,accepte", [
+    ("ADRESSE-DU-SITE-A-REMPLACER", False), ("ADRESSE-FORMATION-A-REMPLACER", False),
+    ("<domaine réel>", False), ("https://jeux.monasso.fr", False), ("", False),
+    ("jeux.monasso.fr ", False), ("pret.example.fr", False), ("VOTRE-DOMAINE.fr/", False),
+    ("jeux.monasso.fr", True), ("formation.jeux.monasso.fr", True),
+])
+def test_le_garde_fou_refuse_les_exemples_et_accepte_une_adresse(valeur, accepte):
+    import subprocess
+    garde, = _garde_fous()
+    resultat = subprocess.run(["bash", "-c", garde + '\nvaleur_ok "$1"', "_", valeur],
+                              capture_output=True, text=True, timeout=10)
+    assert (resultat.returncode == 0) is accepte, resultat.stderr
+
+
+# ===========================================================================
 # Série « fiche », lot 4 — la CSP des vignettes BGG, administration seulement
 # ===========================================================================
 # La CSP des pages PUBLIQUES, caractère pour caractère : ce lot ne la change pas.

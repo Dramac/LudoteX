@@ -511,9 +511,27 @@ Trois fichiers, trois noms installés — le contrôle de report associe
 tourne sur le code de la production. Ne jamais remplacer `ludotex` par
 `ludotex-formation` dans un chemin : `/opt/ludotex-formation` n'existe pas.
 
+**Les valeurs propres au serveur s'écrivent UNE fois, à l'étape 0**, dans
+des variables que les commandes suivantes réutilisent. Aucune commande qui
+écrit sur le serveur ne porte de valeur à remplacer à la main : un exemple
+recopié tel quel (incident du 2026-10-14 : `server_name <domaine réel>;`
+installé, lignes HTTPS perdues, révélé seulement au rechargement suivant) est
+arrêté par `valeur_ok` avant d'écrire quoi que ce soit. Les variables ne
+vivent que le temps de la session SSH : **après une reconnexion, refaire
+l'étape 0** — sans elle, les commandes d'écriture refusent de partir.
+
 **Production :**
 
 ```bash
+# 0. les valeurs de CE serveur : l'adresse du site telle que le navigateur
+#    l'affiche, sans https:// (remplacer ADRESSE-DU-SITE-A-REMPLACER), et le
+#    dossier d'installation (/opt/ludotex, sauf installation particulière)
+DOMAINE=ADRESSE-DU-SITE-A-REMPLACER
+INSTALL=/opt/ludotex
+valeur_ok() { case "$1" in ""|*" "*|*"<"*|*">"*|*/*|*:*|*example*|*REMPLACER*) echo "STOP : « $1 » n'est pas une adresse de site. Reprendre l'étape 0." >&2; return 1;; esac; }
+valeur_ok "$DOMAINE" && [ -d "$INSTALL/deploy" ] && echo "OK : site $DOMAINE, code dans $INSTALL"
+#    à voir : la ligne « OK : … » avec la bonne adresse. Sinon, ne pas continuer.
+
 # 1. sauvegarder l'existant, HORS /etc/nginx, avant tout
 sudo mkdir -p /root/sauvegarde-nginx
 sudo cp -a /etc/nginx/sites-available/ludotex \
@@ -521,57 +539,69 @@ sudo cp -a /etc/nginx/sites-available/ludotex \
 
 # 2. installer le fichier du dépôt, en substituant les deux valeurs
 #    (mêmes `sed` que deploy/install.sh, étape 7)
-sudo cp /opt/ludotex/deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludotex
-sudo sed -i 's#/opt/ludotex#<chemin d installation>#g' /etc/nginx/sites-available/ludotex
-sudo sed -i 's/pret\.example\.fr/<domaine réel>/g'     /etc/nginx/sites-available/ludotex
+sudo cp "$INSTALL/deploy/nginx-ludotex.conf" /etc/nginx/sites-available/ludotex
+[ -d "$INSTALL/deploy" ] && sudo sed -i "s#/opt/ludotex#$INSTALL#g" /etc/nginx/sites-available/ludotex
+valeur_ok "$DOMAINE" && sudo sed -i "s/pret\.example\.fr/$DOMAINE/g" /etc/nginx/sites-available/ludotex
 sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex   # ne doit RIEN afficher
-sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex   # une ligne : <domaine réel>, exactement
+sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex   # une seule ligne
+sudo grep -c "server_name $DOMAINE;" /etc/nginx/sites-available/ludotex   # doit afficher 1
 
 # 3. tester — SANS recharger (voir l'avertissement ci-dessous)
 sudo nginx -t
 
 # 4. certbot réinstalle les lignes SSL et recharge lui-même.
 #    Répondre 1 (« reinstall this existing certificate »), jamais 2.
-sudo certbot --nginx -d <domaine réel> --redirect
+valeur_ok "$DOMAINE" && sudo certbot --nginx -d "$DOMAINE" --redirect
 
 # 5. confirmer
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+Si le `grep -c` de l'étape 2 n'affiche pas `1`, **ne pas aller plus loin** :
+le site en service n'a encore rien vu (nginx n'a pas rechargé). Reprendre à
+l'étape 0, ou remettre la sauvegarde de l'étape 1 (« En cas de problème »).
+
 **Formation** — les mêmes étapes, écrites en entier parce que les deux
 substitutions ne sont pas celles de la production. Le fichier de la formation
 porte `formation.pret.example.fr` : lui appliquer le `sed` de la production
-(`pret\.example\.fr`) produirait `formation.<domaine de formation>`, un nom
-qui ne désigne rien, et le `grep 'example\.fr'` ne le verrait pas. C'est le
-`grep server_name` qui le voit.
+(`pret\.example\.fr`) produirait `formation.` suivi de l'adresse de
+formation, un nom qui ne désigne rien, et le `grep 'example\.fr'` ne le
+verrait pas. C'est le `grep -c` du `server_name` qui le voit.
 
 ```bash
+# 0. les valeurs de CE serveur : l'adresse du site de FORMATION, en entier,
+#    sans https:// (remplacer ADRESSE-FORMATION-A-REMPLACER) ; le dossier
+#    d'installation est celui de la production (la formation n'a pas le sien)
+DOMAINE_FORMATION=ADRESSE-FORMATION-A-REMPLACER
+INSTALL=/opt/ludotex
+valeur_ok() { case "$1" in ""|*" "*|*"<"*|*">"*|*/*|*:*|*example*|*REMPLACER*) echo "STOP : « $1 » n'est pas une adresse de site. Reprendre l'étape 0." >&2; return 1;; esac; }
+valeur_ok "$DOMAINE_FORMATION" && [ -d "$INSTALL/deploy" ] && echo "OK : site $DOMAINE_FORMATION, code dans $INSTALL"
+
 # 1. sauvegarder l'existant
 sudo mkdir -p /root/sauvegarde-nginx
 sudo cp -a /etc/nginx/sites-available/ludotex-formation \
            /root/sauvegarde-nginx/ludotex-formation.$(date +%Y%m%d-%H%M%S)
 
 # 2. installer — motif `formation\.pret\.example\.fr`, comme deploy/install.sh
-sudo cp /opt/ludotex/deploy/nginx-ludotex-formation.conf /etc/nginx/sites-available/ludotex-formation
-sudo sed -i 's#/opt/ludotex#<chemin d installation>#g'                  /etc/nginx/sites-available/ludotex-formation
-sudo sed -i 's/formation\.pret\.example\.fr/<domaine de formation>/g'  /etc/nginx/sites-available/ludotex-formation
+sudo cp "$INSTALL/deploy/nginx-ludotex-formation.conf" /etc/nginx/sites-available/ludotex-formation
+[ -d "$INSTALL/deploy" ] && sudo sed -i "s#/opt/ludotex#$INSTALL#g" /etc/nginx/sites-available/ludotex-formation
+valeur_ok "$DOMAINE_FORMATION" && sudo sed -i "s/formation\.pret\.example\.fr/$DOMAINE_FORMATION/g" /etc/nginx/sites-available/ludotex-formation
 sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex-formation   # ne doit RIEN afficher
-sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex-formation   # une ligne : <domaine de formation>, exactement
+sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex-formation   # une seule ligne
+sudo grep -c "server_name $DOMAINE_FORMATION;" /etc/nginx/sites-available/ludotex-formation   # doit afficher 1
 
 # 3. tester — SANS recharger
 sudo nginx -t
 
 # 4. certbot — répondre 1
-sudo certbot --nginx -d <domaine de formation> --redirect
+valeur_ok "$DOMAINE_FORMATION" && sudo certbot --nginx -d "$DOMAINE_FORMATION" --redirect
 
 # 5. confirmer
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Le `<chemin d installation>` est le même dans les deux blocs (`/opt/ludotex`
-par défaut : le `sed` ne change alors rien, il reste sans danger). Le
-`<domaine de formation>` est l'adresse du site de formation, en entier, telle
-qu'elle s'affiche dans le navigateur, sans `https://`.
+Le dossier d'installation est le même dans les deux blocs (`/opt/ludotex`
+par défaut : le `sed` du chemin ne change alors rien, il reste sans danger).
 
 **Attrape-tout** — pas de domaine, pas de chemin, pas de certbot : il ne porte
 aucune ligne SSL, et le recharger ne retire rien aux deux autres sites.
@@ -876,12 +906,23 @@ l'`alias` de `location /static/` — sans quoi le CSS et le scanner ne seraient
 pas servis). Ce sont les deux mêmes `sed` que `deploy/install.sh`, étape 7 ; le
 `grep` final est le garde-fou.
 
+Les deux valeurs s'écrivent une fois, en tête, comme au § 8 (« Mettre à
+jour la configuration nginx ») : `valeur_ok` arrête une adresse restée à
+l'exemple avant toute écriture.
+
 ```bash
+# 0. les valeurs de CE serveur (remplacer ADRESSE-DU-SITE-A-REMPLACER : l'adresse
+# du site sans https:// ; INSTALL : le dossier où le code a été récupéré)
+DOMAINE=ADRESSE-DU-SITE-A-REMPLACER
+INSTALL=/opt/ludotex
+valeur_ok() { case "$1" in ""|*" "*|*"<"*|*">"*|*/*|*:*|*example*|*REMPLACER*) echo "STOP : « $1 » n'est pas une adresse de site. Reprendre l'étape 0." >&2; return 1;; esac; }
+valeur_ok "$DOMAINE" && [ -d "$INSTALL/deploy" ] && echo "OK : site $DOMAINE, code dans $INSTALL"
 sudo cp deploy/nginx-ludotex.conf /etc/nginx/sites-available/ludotex
-sudo sed -i 's#/opt/ludotex#VOTRE_CHEMIN_INSTALL#g' /etc/nginx/sites-available/ludotex
-sudo sed -i 's/pret\.example\.fr/VOTRE_SOUS_DOMAINE/g' /etc/nginx/sites-available/ludotex
+[ -d "$INSTALL/deploy" ] && sudo sed -i "s#/opt/ludotex#$INSTALL#g" /etc/nginx/sites-available/ludotex
+valeur_ok "$DOMAINE" && sudo sed -i "s/pret\.example\.fr/$DOMAINE/g" /etc/nginx/sites-available/ludotex
 sudo grep -n 'example\.fr' /etc/nginx/sites-available/ludotex   # ne doit RIEN afficher
-sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex   # une ligne : VOTRE_SOUS_DOMAINE
+sudo grep -n 'server_name' /etc/nginx/sites-available/ludotex   # une seule ligne
+sudo grep -c "server_name $DOMAINE;" /etc/nginx/sites-available/ludotex   # doit afficher 1
 sudo ln -s /etc/nginx/sites-available/ludotex /etc/nginx/sites-enabled/
 # attrape-tout : remplace le site `default` de Debian (deux `default_server`
 # sur le port 80 feraient échouer `nginx -t`) ; aucune valeur à substituer
@@ -900,8 +941,11 @@ HTTPS, voir l'avertissement de « Mettre à jour la configuration nginx ».)
 
 ### H. HTTPS (Let's Encrypt)
 
+Dans la même session que l'annexe G (sinon, refaire ses trois premières
+lignes) :
+
 ```bash
-sudo certbot --nginx -d pret.example.fr
+valeur_ok "$DOMAINE" && sudo certbot --nginx -d "$DOMAINE"
 ```
 
 ### I. Sauvegarde de la base

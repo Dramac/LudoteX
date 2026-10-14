@@ -110,16 +110,19 @@ CSP d'avant.
 
 1. **Après** `sudo ./deploy/update.sh`, reposer le fichier de la production
    en suivant `docs/deploiement.md` § 8, « Mettre à jour la configuration
-   nginx », bloc **Production** (sauvegarde horodatée, copie, deux `sed`,
-   `nginx -t`, `certbot … --redirect` en répondant 1, rechargement).
+   nginx », bloc **Production** (étape 0 : l'adresse du site écrite une
+   fois dans `DOMAINE` ; puis sauvegarde horodatée, copie, deux `sed`,
+   `grep -c` qui doit répondre `1`, `nginx -t`, `certbot … --redirect` en
+   répondant 1, rechargement).
    *À voir :* `nginx -t` répond `syntax is ok` et `test is successful` aux
    étapes 3 et 5.
 2. **Vérifier les en-têtes**, sur une page publique puis sur une page
    d'administration (sans être connecté : elle répond par une redirection,
-   qui porte les mêmes en-têtes) :
+   qui porte les mêmes en-têtes). Dans la même session que l'étape 1
+   (`DOMAINE` y est posée) :
    ```bash
-   curl -sI https://<domaine réel>/ | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
-   curl -sI https://<domaine réel>/admin/jeux | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+   curl -sI "https://$DOMAINE/" | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+   curl -sI "https://$DOMAINE/admin/jeux" | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
    ```
    *À voir :* **cinq lignes pour chacune des deux commandes.** Les quatre
    premières sont identiques. La `Content-Security-Policy` diffère par
