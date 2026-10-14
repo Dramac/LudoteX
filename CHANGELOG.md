@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.20.0 — 2026-10-14
+
+- **La fiche d'un jeu se corrige directement à l'écran**, sans passer par le fichier du catalogue : Administration → Rechercher un jeu → **Modifier la fiche**. Vider une case retire l'information ; une saisie illisible est refusée avec un message sous la case, sans rien perdre de ce qui a été tapé.
+- **Renommer un jeu ne change rien à ses étiquettes ni à ses statistiques**, et le catalogue exporté puis réimporté le reconnaît sous son nouveau nom.
+- **Quand une correction change ce qui est imprimé** (nom, âge, joueurs, durée), la fiche le signale et propose de réimprimer les étiquettes du jeu en un geste.
+- **Une fiche peut renvoyer à sa page BoardGameGeek** : coller le numéro ou l'adresse de la page, puis vérifier d'un clic que c'est le bon jeu. Le catalogue gagne la colonne « Fiche BoardGameGeek ».
+- **Un fichier de catalogue plus ancien qu'une correction le dit à l'import** : quelles fiches, ce qui valait avant et ce que le fichier a mis à la place, avec un lien vers chaque fiche.
+- **Les lettres de classement d'un jeu s'effacent depuis sa fiche**, toutes les trois d'un coup.
+
 ## 1.19.1 — 2026-10-13
 
 - **Un catalogue enregistré au format CSV depuis Excel s'importe désormais tel quel, accents compris.** Il était refusé avec un message incompréhensible dès le premier accent. Le message de fin d'import signale ce cas et invite à vérifier qu'un nom accentué s'affiche correctement.
