@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.23.0 — 2026-10-14
 
 ### Instance de formation : la redémarrer à la main, une dernière fois
 

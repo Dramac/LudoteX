@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.23.0 — 2026-10-14
+
+- **Chercher un jeu sur BoardGameGeek depuis sa fiche** : **Chercher sur BGG** propose jusqu'à cinq jeux, le plus probable en premier, avec leurs joueurs, âge, durée et auteur comparés aux vôtres. **C'est ce jeu** relie le bon, sans copier de numéro.
+- **Chercher un autre nom** quand BoardGameGeek ne connaît pas le nôtre : le nom anglais, le nom d'origine, ou le nom corrigé d'une faute de frappe.
+- **Relier les jeux un par un**, depuis la liste des jeux : après chaque décision, le jeu suivant s'ouvre, avec un lien pour revenir au précédent. **Passer au jeu suivant** saute un jeu sans rien décider.
+- **Ce jeu n'est pas sur BGG** sort un jeu de la liste à relier ; la marque s'annule depuis sa fiche, et le fichier exporté du catalogue la garde (« pas sur BGG »).
+- Un jeu proposé qui est **déjà relié** à un autre de vos jeux le dit, pour éviter les doublons.
+
 ## 1.22.0 — 2026-10-14
 
 - **La fiche d'un jeu montre les données BoardGameGeek à côté des siennes** : joueurs, âge, durée et auteur, avec « identique » ou « différent » sous chaque case. Le bouton **Récupérer les données BGG** les met à jour.
