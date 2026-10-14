@@ -83,6 +83,35 @@ est installée.
 
 ---
 
+## À paraître
+
+### Instance de formation : la redémarrer à la main, une dernière fois
+
+**Ne concerne que les serveurs qui ont un site de formation.** Jusqu'ici,
+`update.sh` croyait à tort que la formation n'était pas installée et ne la
+redémarrait pas : elle continuait de servir l'ancienne version, alors que la
+production passait à la nouvelle. L'étape 6 le signale par une ligne
+« ludotex-formation répond en version …, alors que le dépôt porte la … ».
+
+Le correctif est dans `update.sh`, donc il ne s'applique qu'à la mise à jour
+**suivante** (voir plus haut). Pour celle-ci :
+
+1. Lancer la mise à jour comme d'habitude : `sudo ./deploy/update.sh`.
+2. Redémarrer la formation :
+   ```bash
+   sudo systemctl restart ludotex-formation
+   ```
+3. Vérifier qu'elle répond avec la même version que la production :
+   ```bash
+   curl -s http://127.0.0.1:8000/sante; echo; curl -s http://127.0.0.1:8100/sante; echo
+   ```
+   Les deux lignes doivent porter le même `"version"`. Les ports sont ceux des
+   unités par défaut ; les lire dans `/etc/systemd/system/ludotex*.service` si
+   l'installation les a changés.
+
+Pour revenir en arrière : rien à défaire, un redémarrage ne touche à aucune
+donnée.
+
 ## 1.22.0 — 2026-10-14
 
 ### BoardGameGeek : poser la clé d'accès — facultatif

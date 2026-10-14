@@ -86,7 +86,11 @@ systemctl restart ludotex
 info "ludotex redémarré."
 # Instance de formation : redémarrée seulement si elle a été installée (ses
 # propres bases sont migrées à son démarrage, via son EnvironmentFile dédié).
-if systemctl list-unit-files | grep -q '^ludotex-formation\.service'; then
+# Présence du fichier d'unité, comme à l'étape 6 : l'ancien test
+# « systemctl list-unit-files | grep -q » échouait à coup sûr sous pipefail
+# (grep -q sort au premier résultat, systemctl reçoit SIGPIPE, le tube rend
+# 141), et la formation n'était jamais redémarrée.
+if [[ -f /etc/systemd/system/ludotex-formation.service ]]; then
     systemctl restart ludotex-formation
     info "ludotex-formation redémarré."
 fi
@@ -137,9 +141,7 @@ verifier_instance() {
 }
 
 verifier_instance ludotex
-# Le fichier d'unité plutôt qu'un « systemctl list-unit-files | grep -q » :
-# sous pipefail, un grep qui s'arrête au premier résultat peut faire échouer
-# le tube entier. C'est aussi ce fichier qui donne le port.
+# Même test qu'à l'étape 5 ; c'est aussi ce fichier qui donne le port.
 if [[ -f /etc/systemd/system/ludotex-formation.service ]]; then
     verifier_instance ludotex-formation
 fi

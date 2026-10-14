@@ -101,3 +101,23 @@ def test_la_documentation_annonce_les_ports_a_ouvrir_chez_l_hebergeur():
     doc = (DEPLOY.parent / "docs" / "deploiement.md").read_text(encoding="utf-8")
     prerequis = doc[doc.index("## 0. "):doc.index("## 1. ")]
     assert "ports 80 et 443 ouverts chez l'hébergeur" in prerequis
+
+
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_aucun_tube_vers_grep_q_sous_pipefail(script):
+    """`commande | grep -q` sous `set -o pipefail` : grep sort au premier
+    résultat, la commande reçoit SIGPIPE et le tube rend 141, même quand le
+    motif est trouvé. `update.sh` ne redémarrait ainsi jamais l'instance de
+    formation, restée plusieurs versions en arrière de la production.
+    Capturer la sortie d'abord, ou tester un fichier."""
+    if "pipefail" not in (DEPLOY / script).read_text(encoding="utf-8"):
+        pytest.skip("pas de pipefail dans ce script")
+    fautifs = [f"{script}:{n}: {ligne.strip()}" for n, ligne in _lignes_de_code(script)
+               if re.search(r"\|\s*grep\s+(-\w*q|--quiet)", ligne)]
+    assert not fautifs, "\n".join(fautifs)
+
+
+def test_update_sh_redemarre_la_formation_si_son_unite_existe():
+    texte = (DEPLOY / "update.sh").read_text(encoding="utf-8")
+    assert ("if [[ -f /etc/systemd/system/ludotex-formation.service ]]; then\n"
+            "    systemctl restart ludotex-formation") in texte

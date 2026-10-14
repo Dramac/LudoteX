@@ -131,7 +131,9 @@ info "Python retenu : $PYTHON_BIN ($($PYTHON_BIN --version))"
 # Pare-feu : SSH + web, sans casser une configuration déjà active.
 ufw allow OpenSSH >/dev/null 2>&1 || true
 ufw allow 'Nginx Full' >/dev/null 2>&1 || true
-if ! ufw status | grep -q "Status: active"; then
+# Sortie capturée d'abord : « ufw status | grep -q » peut rendre 141 sous
+# pipefail (voir update.sh, étape 5).
+if ! grep -q "Status: active" <<< "$(ufw status)"; then
     info "Activation du pare-feu (ufw) : SSH + HTTP/HTTPS autorisés."
     ufw --force enable >/dev/null
 else
