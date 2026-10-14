@@ -323,6 +323,31 @@ def test_titre_inconnu_404_propre(client):
         assert "Jeu inconnu" in r.text
 
 
+def test_titre_sans_exemplaire_la_fiche_s_ouvre(client):
+    """
+    Un titre sans aucune boîte (toutes passées sous un autre nom par un import
+    de tableur) : la fiche s'ouvre, sans lien vers une fiche publique qui
+    n'existe pas, et le bouton d'ajout reste là. Elle répondait 500.
+    """
+    _executer("INSERT INTO titres (reference_titre, nom) VALUES ('ORPHELIN', 'Orphelin')")
+    r = client.get("/admin/jeu/ORPHELIN?ok=enregistre&etiquette=1")
+    assert r.status_code == 200
+    assert 'href="/jeu/' not in r.text
+    assert "Voir la fiche publique" not in r.text
+    assert 'action="/admin/jeu/ORPHELIN/exemplaire"' in r.text
+    assert "Ajouter un exemplaire" in r.text
+    assert "n'a plus aucune boîte" in r.text
+    # Rien à réimprimer : le bandeau d'étiquette périmée se tait.
+    assert "Réimprimer les étiquettes de ce jeu" not in r.text
+    assert 'value="Orphelin"' in _champ(r.text, "nom")
+
+
+def test_titre_avec_exemplaire_garde_son_lien_public(client):
+    page = client.get("/admin/jeu/DOBBLE").text
+    assert 'href="/jeu/003"' in page
+    assert "n'a plus aucune boîte" not in page
+
+
 def test_renommer_garde_la_reference(client):
     r = _enregistrer(client, nom="  Catan  ")
     assert r.status_code == 303

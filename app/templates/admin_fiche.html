@@ -11,8 +11,14 @@
 {% else %}
   <section class="carte">
     <h1>{{ titre.nom }}</h1>
-    <p><a class="lien" href="/admin/jeux">← Liste</a> ·
+    {# La fiche publique est celle d'une BOÎTE (/jeu/<id_exemplaire>) : un
+       titre sans exemplaire n'en a pas. Il en naît un quand un import de
+       tableur fait passer toutes ses boîtes sous un autre nom ; sa fiche doit
+       rester ouverte (ne jamais bloquer). #}
+    <p><a class="lien" href="/admin/jeux">← Liste</a>
+       {%- if exemplaires %} ·
        <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a>
+       {%- endif %}
        {%- if lien_bgg %} ·
        {# Lien de VÉRIFICATION, construit à partir du seul identifiant
           (app/bgg.py). Administration seulement : sur une page publique, il
@@ -28,7 +34,7 @@
        lieu. Réimpression en un tap par la route des planches, qui accepte une
        liste de références : tous les exemplaires du jeu d'un coup, au même
        rendu que l'impression en lot. #}
-    {% if etiquette_perimee %}
+    {% if etiquette_perimee and exemplaires %}
     <div class="resultat resultat-attention" role="status">
       <p>L'étiquette déjà imprimée de ce jeu n'est plus à jour : son nom ou son
          code de classement a changé.</p>
@@ -43,6 +49,10 @@
        {% if titre.type_jeu %}{{ titre.type_jeu }} · {% endif %}
        Référence : <code>{{ titre.reference_titre }}</code> ·
        {{ exemplaires | length }} {{ pluriel(exemplaires | length, 'exemplaire', 'exemplaires') }}</p>
+    {% if not exemplaires %}
+    <p class="stats-note">Ce jeu n'a plus aucune boîte : il n'apparaît pas
+       au catalogue public. Ajoutez un exemplaire pour imprimer son étiquette.</p>
+    {% endif %}
 
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/exemplaire">
       <button type="submit" class="bouton-filtrer">➕ Ajouter un exemplaire</button>
