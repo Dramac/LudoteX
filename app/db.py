@@ -127,6 +127,10 @@ _MIGRATIONS_COLONNES = [
     # Année de première parution d'une copie BGG (lot 3) : vide sur les copies
     # d'avant, qui la gagnent à la prochaine récupération.
     ("fiches_bgg", "annee", "INTEGER"),
+    # Adresse de la vignette d'une copie BGG (lot 4) : NULL sur les copies
+    # d'avant, « jamais lue » (`models.SCHEMA_FICHES_BGG`) — aucune vignette ne
+    # s'affiche tant que la récupération par lots ne les a pas complétées.
+    ("fiches_bgg", "vignette", "TEXT"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

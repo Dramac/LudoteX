@@ -16,6 +16,9 @@ pose la marque `titres.bgg_absent` à l'écran comme à l'import, et l'export
 l'écrit dans la colonne : la marque survit à une réinstallation depuis le
 fichier.
 
+Il contrôle aussi l'adresse de la VIGNETTE d'une fiche (`lire_vignette`,
+lot 4) : la liste des hôtes d'images acceptés a son domicile ici.
+
 AUCUN APPEL RÉSEAU, AUCUN JETON. Ce module ne fait que lire une chaîne. Il
 n'importe aucune bibliothèque réseau, et un test le verrouille
 (`tests/test_fiche_jeu.py`) : le seul module qui parle à BGG est
@@ -109,3 +112,59 @@ def lire_identifiant(saisie: str | None) -> int | None:
 def url_fiche(bgg_id: int) -> str:
     """L'adresse de la fiche BGG de l'identifiant `bgg_id`."""
     return URL_FICHE.format(int(bgg_id))
+
+
+# ---------------------------------------------------------------------------
+# Vignette de la boîte (série « fiche », lot 4)
+# ---------------------------------------------------------------------------
+# BGG décrit chaque fiche avec l'adresse d'une petite image de la boîte
+# (`<thumbnail>`, environ 200 × 150). La fiche d'administration l'affiche, le
+# NAVIGATEUR la charge directement chez BGG : LudoteX ne la télécharge, ne la
+# relaie et ne la stocke jamais — seule l'adresse est gardée
+# (`fiches_bgg.vignette`).
+#
+# Une adresse venue de l'extérieur n'entre dans une page qu'après contrôle :
+# `https:` seulement, hôte EXACTEMENT dans cette liste, longueur bornée.
+#
+# CETTE LISTE A UNE COPIE : la Content-Security-Policy des pages
+# d'administration, dans `deploy/nginx-ludotex.conf` (`img-src`). Les deux
+# mondes ne partagent aucun fichier ; `tests/test_nginx_configuration.py`
+# vérifie qu'ils disent la même chose. Ajouter un hôte ici sans le reporter là
+# donnerait des vignettes bloquées en production.
+#
+# Relevé le 2026-10-14 sur les 828 fiches du cache de la collecte : 821
+# vignettes, toutes en `https://cf.geekdo-images.com/…`, 141 caractères au plus.
+HOTES_VIGNETTE = frozenset({"cf.geekdo-images.com"})
+
+# Trois fois la plus longue adresse relevée.
+LONGUEUR_VIGNETTE_MAX = 400
+
+# Les caractères d'une adresse (RFC 3986), sans guillemet, crochet, espace ni
+# caractère de contrôle : rien qui puisse sortir d'un attribut HTML, même si
+# l'échappement de Jinja venait à manquer.
+_CARACTERES_ADRESSE = re.compile(r"[A-Za-z0-9\-._~:/?#@!$&()*+,;=%]+")
+
+
+def lire_vignette(adresse: str | None) -> str:
+    """
+    L'adresse d'une vignette BGG si elle peut entrer dans une page, sinon "".
+
+    Acceptée seulement : `https://<hôte de HOTES_VIGNETTE>/…`, sans port, sans
+    nom d'utilisateur, au plus `LONGUEUR_VIGNETTE_MAX` caractères, espaces
+    autour tolérés. Tout le reste — absence, `http:`, autre hôte, sous-domaine,
+    adresse démesurée — rend "" : « pas de vignette », jamais une erreur.
+    """
+    adresse = (adresse or "").strip()
+    if not adresse or len(adresse) > LONGUEUR_VIGNETTE_MAX:
+        return ""
+    if not _CARACTERES_ADRESSE.fullmatch(adresse):
+        return ""
+    try:
+        morceaux = urlsplit(adresse)
+    except ValueError:
+        return ""
+    if morceaux.scheme != "https" or morceaux.netloc not in HOTES_VIGNETTE:
+        return ""
+    if not morceaux.path.startswith("/"):
+        return ""
+    return adresse

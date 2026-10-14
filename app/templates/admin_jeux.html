@@ -62,9 +62,12 @@
   {% if message_bgg %}<p class="resultat resultat-attention" role="alert">{{ message_bgg }}</p>{% endif %}
   {% if bgg_restantes %}
   {# Compte des FICHES BGG, pas des jeux : deux jeux peuvent partager une
-     fiche, et sa copie sert aux deux. #}
+     fiche, et sa copie sert aux deux. Il couvre aussi les copies d'avant le
+     lot 4, qui n'ont pas encore lu l'image de la boîte
+     (services.ids_bgg_a_recuperer). #}
   <p>{{ bgg_restantes }} {{ pluriel(bgg_restantes, 'fiche BoardGameGeek reliée', 'fiches BoardGameGeek reliées') }}
-     à vos jeux {{ pluriel(bgg_restantes, "n'a", "n'ont") }} pas encore de données BGG.
+     à vos jeux {{ pluriel(bgg_restantes, "n'a", "n'ont") }} pas encore de données BGG,
+     ou pas encore l'image de la boîte.
      Chaque clic en récupère une centaine, en une demi-minute environ ;
      touchez de nouveau le bouton pour continuer.</p>
   <form method="post" action="/admin/jeux/bgg/recuperer">

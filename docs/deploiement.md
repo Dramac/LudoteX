@@ -165,12 +165,18 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
   ```bash
   curl -sI https://jeux.monasso.fr/ | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
   ```
-  Les cinq lignes doivent apparaître. Ouvrir ensuite `/live`, `/scanner`,
+  Les cinq lignes doivent apparaître. Elles apparaissent aussi sur une page
+  d'administration (`curl -sI https://jeux.monasso.fr/admin/jeux`, qui répond
+  par une redirection vers la connexion : les en-têtes y sont quand même),
+  avec **une seule différence attendue** : la Content-Security-Policy y
+  ajoute, dans `img-src`, l'hôte des images de BoardGameGeek (vignettes des
+  boîtes sur la fiche d'un jeu). Ouvrir ensuite `/live`, `/scanner`,
   `/admin/jeton`, `/admin/etiquettes` et `/tournoi/<id>/gerer` dans un
   navigateur, console développeur ouverte (F12 → onglet Console) : aucune
-  ligne « Refused to... » ne doit apparaître (signe que la
-  Content-Security-Policy bloquerait quelque chose que l'application utilise
-  réellement). En cas de souci, voir « En cas de problème » plus bas.
+  ligne « Refused to... » ni « … violates the following Content Security
+  Policy directive » (formulation récente de Chrome) ne doit apparaître
+  (signe que la Content-Security-Policy bloquerait quelque chose que
+  l'application utilise réellement). En cas de souci, voir « En cas de problème » plus bas.
 - **Secrets absents des logs nginx** (SEC-02) — après avoir ouvert le lien
   d'activation bénévole (`?jeton=...`), vérifier qu'il n'apparaît PAS en
   clair dans le journal d'accès du site (un fichier par site, voir « Journaux
@@ -685,7 +691,8 @@ mise à jour ordinaire la met à jour, sans geste nginx.
   réinitialiser qu'en cas de fuite du lien : il faudrait le rediffuser.
 - **Une page semble cassée après une mise à jour de nginx (SEC-01/02/04/
   ROB-03)** : vérifier d'abord la console développeur (F12 → Console) pour
-  une ligne « Refused to... » liée à la Content-Security-Policy. Pour
+  une ligne « Refused to... » (ou « … violates the following Content
+  Security Policy directive ») liée à la Content-Security-Policy. Pour
   revenir en arrière : **restaurer la sauvegarde horodatée** prise juste
   avant l'installation (§ « Mettre à jour la configuration nginx », qui
   impose de la prendre avant tout geste) —

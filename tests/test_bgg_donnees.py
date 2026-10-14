@@ -188,7 +188,10 @@ def _copie(bgg_id):
 def _copie_catane(**changements):
     fiche = {"type": "boardgame", "nom": "CATAN", "nb_joueurs_min": 3,
              "nb_joueurs_max": 4, "age_min": 12, "duree_min": 60,
-             "duree_max": 120, "auteurs": "Klaus Teuber"}
+             "duree_max": 120, "auteurs": "Klaus Teuber",
+             # Lue sans image (lot fiche-4) : une copie complète, que la
+             # récupération par lots ne redemande pas.
+             "vignette": ""}
     fiche.update(changements)
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     _copier({13: fiche})
@@ -238,6 +241,8 @@ def test_lecture_d_un_jeu():
         "auteurs": "Steve Jackson",
         # Première parution (lot fiche-3) : montrée sur les candidats.
         "annee": 2001,
+        # Pas de <thumbnail> dans cette réponse : lue, sans image (lot fiche-4).
+        "vignette": "",
     }
 
 
@@ -407,7 +412,7 @@ def test_deux_titres_partagent_une_copie_et_changer_d_id_ne_detruit_rien(client,
     _copie_catane()
     conn = _conn()
     try:
-        assert services.ids_bgg_sans_copie(conn) == []
+        assert services.ids_bgg_a_recuperer(conn) == []
     finally:
         conn.close()
     faux_bgg(XML_THING)                       # 1927 n'a pas de copie : récupérée

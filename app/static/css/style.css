@@ -597,6 +597,15 @@ summary:focus-visible,
 .candidat-bgg h3 { margin: 0 0 4px; font-size: 1.05rem; }
 .candidat-bgg .stats-note { margin: 0 0 8px; }
 .candidat-valeurs { margin: 0 0 8px; padding-left: 1.2em; }
+/* Vignette de la boîte chez BGG (lot fiche-4) : un cadre de 200 × 150 au
+   plus, qui rétrécit avec la carte (ratio fixe) et ne change pas de taille au
+   chargement ; l'image y tient entière (`contain`). Bloquée ou absente, il
+   reste ce cadre, sans rien pousser hors de l'écran. */
+.vignette-bgg {
+  display: block; width: 200px; max-width: 100%; height: auto;
+  aspect-ratio: 4 / 3; object-fit: contain;
+  margin: 0 0 8px; border: 1px solid var(--bord); border-radius: 4px;
+}
 @media (min-width: 900px) {
   .candidats-bgg { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 }

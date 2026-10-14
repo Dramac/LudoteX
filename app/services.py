@@ -2219,16 +2219,30 @@ CHAMPS_BGG: dict[str, str] = {
 }
 
 _COLONNES_FICHE_BGG = ("type", "nom", "nb_joueurs_min", "nb_joueurs_max",
-                       "age_min", "duree_min", "duree_max", "auteurs", "annee")
+                       "age_min", "duree_min", "duree_max", "auteurs", "annee",
+                       "vignette")
 
 
 def lire_fiche_bgg(conn: sqlite3.Connection, bgg_id: int | None) -> dict | None:
-    """La copie de la fiche BGG `bgg_id`, ou None s'il n'y en a pas."""
+    """
+    La copie de la fiche BGG `bgg_id`, ou None s'il n'y en a pas.
+
+    L'adresse de la vignette repasse par `bgg.lire_vignette` : elle a été
+    contrôlée à la lecture de la réponse, mais une base restaurée d'une
+    archive, ou un hôte retiré depuis de `bgg.HOTES_VIGNETTE`, ne doit rien
+    faire entrer d'autre dans une page. Une copie « jamais lue » (NULL) le
+    reste.
+    """
     if not bgg_id:
         return None
     row = conn.execute("SELECT * FROM fiches_bgg WHERE bgg_id = ?",
                        (bgg_id,)).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    copie = dict(row)
+    if copie.get("vignette") is not None:
+        copie["vignette"] = bgg.lire_vignette(copie["vignette"])
+    return copie
 
 
 def enregistrer_fiches_bgg(conn: sqlite3.Connection,
@@ -2265,12 +2279,25 @@ def enregistrer_fiches_bgg(conn: sqlite3.Connection,
     return trouvees, inconnues
 
 
-def ids_bgg_sans_copie(conn: sqlite3.Connection) -> list[int]:
-    """Les identifiants BGG portés par un titre et dont il n'existe aucune copie."""
+def ids_bgg_a_recuperer(conn: sqlite3.Connection) -> list[int]:
+    """
+    Les identifiants BGG portés par un titre et dont la copie manque, ou reste
+    à compléter — ceux que « Récupérer les données BGG manquantes » demande.
+
+    Deux cas, les fiches sans AUCUNE copie d'abord :
+    - aucune copie ;
+    - une copie trouvée dont la vignette n'a jamais été lue (NULL : copie
+      d'avant le lot 4, `models.SCHEMA_FICHES_BGG`).
+
+    Une copie lue SANS image ('') n'est pas redemandée, ni une fiche inconnue
+    de BGG (`trouve` = 0) : le compte peut tomber à zéro.
+    """
     return [r[0] for r in conn.execute(
-        "SELECT DISTINCT t.bgg_id FROM titres t "
+        "SELECT t.bgg_id FROM titres t "
         "LEFT JOIN fiches_bgg f ON f.bgg_id = t.bgg_id "
-        "WHERE t.bgg_id IS NOT NULL AND f.bgg_id IS NULL ORDER BY t.bgg_id")]
+        "WHERE t.bgg_id IS NOT NULL "
+        "AND (f.bgg_id IS NULL OR (f.trouve = 1 AND f.vignette IS NULL)) "
+        "GROUP BY t.bgg_id ORDER BY MAX(f.bgg_id IS NOT NULL), t.bgg_id")]
 
 
 def copies_bgg_presentes(conn: sqlite3.Connection) -> bool:

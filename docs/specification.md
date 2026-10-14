@@ -159,8 +159,12 @@ le carnet de maintenance (`signalements`, `categories_signalement`), et la
 copie datée des fiches BoardGameGeek (`fiches_bgg`, clé : le numéro BGG, pas
 la référence du titre — deux jeux peuvent partager une fiche). Cette copie
 n'est jamais une donnée du bureau : elle ne remplace aucune valeur, ne part
-pas dans l'export du catalogue, et n'est récupérée que sur demande. Détail
-des colonnes : `app/models.py`, commenté.
+pas dans l'export du catalogue, et n'est récupérée que sur demande. Elle garde
+aussi l'**adresse** de la petite image de la boîte chez BGG (`vignette`) —
+jamais l'image elle-même : c'est le navigateur du bureau qui la charge chez
+BGG, en administration seulement. Trois états : jamais lue (copie d'avant,
+complétée par la récupération des données manquantes), lue sans image, lue
+avec image. Détail des colonnes : `app/models.py`, commenté.
 
 ### 3.3 Règles dérivées
 
@@ -305,8 +309,8 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   quelle personne. `docs/conception-journal.md`.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue
   (création et correction de la fiche d'un jeu, lien vers sa fiche
-  BoardGameGeek et copie de ses données, affichées à côté des nôtres et
-  reprenables avant d'enregistrer ; recherche des jeux restants sur BGG,
+  BoardGameGeek et copie de ses données, affichées à côté des nôtres avec
+  l'image de la boîte, et reprenables avant d'enregistrer ; recherche des jeux restants sur BGG,
   candidats comparés aux nôtres, enchaînement d'un jeu au suivant et marque
   « pas sur BGG » ; import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
   supervision, identité, visibilité des modules, clôture de fin d'événement.
@@ -415,7 +419,11 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
   un clic est borné à 20 s ; la réponse est bornée en temps et en taille avant
   d'être lue. Sans clé, la fonction est
   absente et rien d'autre ne change. Le lien vers BGG sur les fiches publiques
-  est un réglage d'instance, décoché par défaut.
+  est un réglage d'instance, décoché par défaut. **Une seule ressource
+  tierce, en administration seulement** : la vignette d'une boîte, chargée
+  par le navigateur directement chez BGG (sans adresse d'origine :
+  `Referrer-Policy` et `referrerpolicy="no-referrer"`). Aucune page publique
+  ne charge quoi que ce soit d'ailleurs ; la CSP le garantit.
 
 ---
 

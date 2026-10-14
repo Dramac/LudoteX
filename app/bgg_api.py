@@ -72,6 +72,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Callable
 
+from app import bgg
+
 # Adresses de l'API. Deux points d'entrée : `thing`, qui décrit des fiches à
 # partir de leurs identifiants, et `search`, qui cherche des fiches par nom.
 URL_THING = "https://boardgamegeek.com/xmlapi2/thing"
@@ -316,6 +318,11 @@ def lire_fiche(item) -> dict | None:
         # recherche, pour distinguer deux éditions. Jamais comparée à notre
         # année d'édition (`services.CHAMPS_BGG`).
         "annee": _entier(item.find("yearpublished")),
+        # Adresse de la petite image de la boîte (lot 4), contrôlée par
+        # `bgg.lire_vignette` : "" quand BGG n'en donne pas ou qu'elle est
+        # refusée — jamais None, qui veut dire « jamais lue » en base. La
+        # grande image (`<image>`) n'est pas lue.
+        "vignette": bgg.lire_vignette(item.findtext("thumbnail")),
     }
 
 

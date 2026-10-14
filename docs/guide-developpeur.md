@@ -54,7 +54,8 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 - `prets` (historique complet, jamais purgé) : `date_retour IS NULL` ⇒ sorti.
 - `pochettes` : occupation du moment des numéros (recyclés, sans plafond).
 - Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches
-  BoardGameGeek, clé `bgg_id` (jamais `reference_titre`), hors export CSV.
+  BoardGameGeek, clé `bgg_id` (jamais `reference_titre`), hors export CSV ;
+  elle garde l'adresse de la vignette de la boîte, jamais l'image.
 
 **État déduit, pas stocké** : un exemplaire est *sorti* s'il a un prêt non clos.
 
@@ -197,8 +198,9 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   jeux garde sa pause de 5 s ; une recherche simultanée peut retarder d'un
   créneau (3 s) le dernier appel qu'il lance, soit 43 s au pire au lieu de
   40 — encore sous les 60 s de nginx (chaque contrôle de la borne compte le
-  temps réellement écoulé, attentes comprises). Le moteur (`app/bgg_recherche.py`, sans
-  import réseau, le réseau lui est passé) essaie les variantes du nom et
+  temps réellement écoulé, attentes comprises). Le moteur (`app/bgg_recherche.py`,
+  qui n'importe aucune bibliothèque réseau : il appelle `bgg_api` par
+  défaut, et les tests lui passent un double) essaie les variantes du nom et
   s'arrête à la première égalité, garde cinq candidats, lit leurs fiches en un
   appel `thing` avec `stats=1` (la popularité départage des homonymes), puis
   les classe. Un clic est borné à `BORNE_CLIC_S` (20 s) par une échéance
@@ -211,6 +213,30 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   la page ne lit que leur copie en base, la recharger ne relance rien. La
   fixture autouse `_cadence_bgg_simulee` de `tests/conftest.py` pose une
   horloge simulée : aucun test n'attend les 3 s pour de vrai.
+- **Vignettes BGG : une liste d'hôtes, deux copies** (série « fiche », lot
+  4). L'adresse de l'image d'une boîte (`<thumbnail>`) est gardée dans
+  `fiches_bgg.vignette` après contrôle par `bgg.lire_vignette` (`https:`,
+  hôte exactement dans `bgg.HOTES_VIGNETTE`, longueur bornée), et
+  recontrôlée à la lecture (`services.lire_fiche_bgg`). Le navigateur la
+  charge chez BGG : aucune image n'est téléchargée ni stockée. Pour qu'elle
+  s'affiche en production, la CSP doit autoriser ces hôtes dans `img-src` :
+  c'est la `location /admin/` de `deploy/nginx-ludotex.conf` qui le fait,
+  **et elle seule** (pages publiques et tableau de bord gardent la CSP stricte
+  du niveau `server` ; la formation n'a ni clé BGG ni copie). La liste vit
+  donc à deux endroits qui ne partagent aucun fichier ;
+  `tests/test_nginx_configuration.py` vérifie qu'ils disent la même chose.
+  Ajouter un hôte = les deux fichiers, plus le geste nginx sur le serveur.
+  La colonne a trois états (NULL jamais lue, '' lue sans image, adresse) :
+  `services.ids_bgg_a_recuperer` redemande les seules copies jamais lues.
+- **`add_header` de nginx n'est pas cumulatif.** Une `location` qui déclare
+  un seul `add_header` perd **tous** ceux du niveau `server` : HSTS,
+  X-Frame-Options, nosniff, Referrer-Policy et CSP. C'est pourquoi
+  `/static/` et les pages d'erreur n'en déclarent aucun, et pourquoi la
+  `location /admin/` de la production, qui élargit `img-src`, **recopie les
+  cinq**. Le test cité au point précédent refuse toute `location` qui pose
+  des en-têtes sans les recopier tous, à la seule différence d'`img-src` :
+  modifier un en-tête du niveau `server` sans le reporter dans `/admin/` le
+  fait échouer.
 - **Le `.env` local atteint les tests.** `app/environnement.py` charge le
   `.env` de la racine dès l'import : un `BGG_TOKEN` posé là pour un essai
   réel rendait les boutons BGG actifs dans les tests, et un test a appelé BGG

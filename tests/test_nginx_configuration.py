@@ -18,7 +18,10 @@ lot. Ce fichier verrouille ce qui peut l'être sur le TEXTE des fichiers :
   n'hérite pas du cache d'un an et ne pose aucun `add_header` ;
 - page 413 (lot-17-pré-production) : le même motif pour un envoi au-delà de
   `client_max_body_size`, au lieu de la 413 brute de nginx ;
-- `SEC-14` (volet nginx) : un débit devant `/admin`, pas devant le prêt.
+- `SEC-14` (volet nginx) : un débit devant `/admin`, pas devant le prêt ;
+- vignettes BGG (série « fiche », lot 4) : `img-src` élargi dans la seule
+  `location /admin/` de la production, aux hôtes de `app/bgg.py`, les quatre
+  autres en-têtes recopiés, la CSP publique inchangée.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from app import bgg
 from tests.test_neutralisation import _motif, _noms_bannis
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -54,6 +58,33 @@ def _directives(texte: str) -> list[str]:
         if ligne:
             lignes.append(ligne)
     return lignes
+
+
+def _niveau_server(texte: str) -> list[str]:
+    """Les directives posées directement dans le bloc `server`, hors `location`."""
+    lignes, profondeur = [], 0
+    for ligne in _directives(texte):
+        if ligne.endswith("{"):
+            profondeur += 1
+        elif ligne == "}":
+            profondeur -= 1
+        elif profondeur == 1:
+            lignes.append(ligne)
+    return lignes
+
+
+def _locations(texte: str) -> dict[str, list[str]]:
+    """Chaque `location` du fichier (sans imbrication) : {en-tête: directives}."""
+    blocs, courante = {}, None
+    for ligne in _directives(texte):
+        if ligne.startswith("location ") and ligne.endswith(" {"):
+            courante = ligne[: -len(" {")]
+            blocs[courante] = []
+        elif ligne == "}":
+            courante = None
+        elif courante is not None:
+            blocs[courante].append(ligne)
+    return blocs
 
 
 def _bloc_location(texte: str, entete: str) -> list[str]:
@@ -148,7 +179,9 @@ def test_la_page_est_servie_hors_du_cache_long_et_garde_les_en_tetes(nom, page):
     # perdre les cinq en-têtes SEC-01, add_header n'étant pas cumulatif).
     assert not any(l.startswith(("expires", "add_header")) for l in location)
     # Les en-têtes SEC-01 du niveau server valent aussi pour une réponse 502.
-    en_tetes = [l for l in _directives(_texte(nom)) if l.startswith("add_header")]
+    # (Niveau `server` seulement : la `location /admin/` de la production
+    # porte sa propre copie depuis le lot fiche-4, voir plus bas.)
+    en_tetes = [l for l in _niveau_server(_texte(nom)) if l.startswith("add_header")]
     assert len(en_tetes) == 5 and all(l.endswith(" always;") for l in en_tetes)
 
 
@@ -347,3 +380,83 @@ def test_aucune_procedure_ne_designe_un_dossier_d_installation_de_formation():
             blocs = re.findall(r"```bash\n(.*?)```", chemin.read_text(encoding="utf-8"), re.DOTALL)
             assert blocs, document
             assert not any("/opt/ludotex-formation" in bloc for bloc in blocs), document
+
+
+# ===========================================================================
+# Série « fiche », lot 4 — la CSP des vignettes BGG, administration seulement
+# ===========================================================================
+# La CSP des pages PUBLIQUES, caractère pour caractère : ce lot ne la change pas.
+CSP_PUBLIQUE = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                "font-src 'self'; connect-src 'self'; object-src 'none'; "
+                "base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+
+
+def _en_tetes(directives: list[str]) -> dict[str, str]:
+    """{nom: valeur} des `add_header … always;` d'une liste de directives."""
+    en_tetes = {}
+    for ligne in directives:
+        if ligne.startswith("add_header "):
+            trouve = re.fullmatch(r'add_header (\S+) "(.*)" always;', ligne)
+            assert trouve, f"add_header sans guillemets ou sans always : {ligne}"
+            assert trouve.group(1) not in en_tetes, f"en-tête posé deux fois : {ligne}"
+            en_tetes[trouve.group(1)] = trouve.group(2)
+    return en_tetes
+
+
+def _directives_csp(valeur: str) -> dict[str, str]:
+    return {d.split(" ", 1)[0]: d for d in (p.strip() for p in valeur.split(";")) if d}
+
+
+@pytest.mark.parametrize("nom", SITES)
+def test_la_csp_des_pages_publiques_n_a_pas_bouge(nom):
+    en_tetes = _en_tetes(_niveau_server(_texte(nom)))
+    assert en_tetes == {
+        "Strict-Transport-Security": "max-age=31536000",
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "Content-Security-Policy": CSP_PUBLIQUE,
+    }
+
+
+@pytest.mark.parametrize("nom", SITES)
+def test_une_location_qui_pose_des_en_tetes_les_recopie_tous(nom):
+    # add_header n'est pas cumulatif : une `location` qui en déclare un perd
+    # ceux du `server`. Elle doit donc porter les cinq, mêmes valeurs, à la
+    # seule différence d'img-src.
+    serveur = _en_tetes(_niveau_server(_texte(nom)))
+    for entete, directives in _locations(_texte(nom)).items():
+        propres = _en_tetes(directives)
+        if not propres:
+            continue
+        assert propres.keys() == serveur.keys(), entete
+        for nom_en_tete, valeur in serveur.items():
+            if nom_en_tete != "Content-Security-Policy":
+                assert propres[nom_en_tete] == valeur, (entete, nom_en_tete)
+        publique = _directives_csp(serveur["Content-Security-Policy"])
+        locale = _directives_csp(propres["Content-Security-Policy"])
+        assert locale.keys() == publique.keys(), entete
+        assert {k: v for k, v in locale.items() if k != "img-src"} == \
+               {k: v for k, v in publique.items() if k != "img-src"}, entete
+
+
+def test_seule_l_administration_de_la_production_charge_les_vignettes():
+    blocs = {e: _en_tetes(d) for e, d in _locations(_texte("nginx-ludotex.conf")).items()}
+    assert [e for e, en_tetes in blocs.items() if en_tetes] == ["location /admin/"]
+    # Le tableau de bord n'affiche aucune vignette : CSP stricte du `server`.
+    assert blocs["location = /admin"] == {}
+
+
+def test_la_formation_ne_charge_aucune_vignette():
+    # Pas de clé BGG, copie vidée à chaque réinitialisation : aucune adresse
+    # d'image à afficher, donc aucune porte ouverte.
+    blocs = _locations(_texte("nginx-ludotex-formation.conf"))
+    assert all(not _en_tetes(d) for d in blocs.values())
+
+
+def test_les_hotes_d_img_src_sont_exactement_ceux_du_code():
+    en_tetes = _en_tetes(_bloc_location(_texte("nginx-ludotex.conf"), "location /admin/"))
+    img_src = _directives_csp(en_tetes["Content-Security-Policy"])["img-src"].split()[1:]
+    assert img_src[:2] == ["'self'", "data:"]
+    assert sorted(img_src[2:]) == sorted(f"https://{hote}" for hote in bgg.HOTES_VIGNETTE)

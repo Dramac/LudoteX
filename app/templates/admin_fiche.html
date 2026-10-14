@@ -5,6 +5,22 @@
    colonnes de champs, les boîtes en grille), inchangé sur téléphone. #}
 {% block conteneur_extra %}contenu-large{% endblock %}
 
+{# Vignette de la boîte chez BGG (lot fiche-4) : chargée par le NAVIGATEUR,
+   directement chez BGG — LudoteX ne la télécharge ni ne la stocke, seule
+   l'adresse est en base, contrôlée (bgg.lire_vignette). Administration
+   seulement. Taille posée (200 × 150, celle des vignettes BGG) : la carte ne
+   saute pas au chargement. Si l'image ne vient pas (configuration du serveur
+   pas encore posée, réseau de salle, image retirée chez BGG), il reste un
+   cadre de cette taille et son texte : le nom BGG est écrit juste à côté,
+   rien ne dépend de l'image. #}
+{% macro vignette_bgg(copie) %}
+  {%- if copie.vignette %}
+  <img class="vignette-bgg" src="{{ copie.vignette }}" width="200" height="150"
+       loading="lazy" decoding="async" referrerpolicy="no-referrer"
+       alt="Boîte de {{ copie.nom or ('la fiche n° ' ~ copie.bgg_id) }}">
+  {%- endif %}
+{%- endmacro %}
+
 {% block contenu %}
 {% if titre is none %}
   <section class="carte">
@@ -120,6 +136,7 @@
       {% for c in relier.candidats %}{% set f = c.copie %}
       <li class="candidat-bgg">
         <h3><cite>{{ f.nom or ("Fiche n° " ~ f.bgg_id) }}</cite>{% if f.annee %} ({{ f.annee }}){% endif %}</h3>
+        {{ vignette_bgg(f) }}
         <p class="stats-note">{% if f.type == "boardgameexpansion" %}Extension{% else %}Jeu{% endif %}
            · fiche n° {{ f.bgg_id }}</p>
         {% if c.indications %}
@@ -172,6 +189,7 @@
         {%- elif copie_bgg %} BoardGameGeek ne connaissait aucune fiche à ce numéro le {{ date_copie_bgg }}.
         {%- else %} Aucune donnée BGG n'a encore été récupérée pour ce jeu.
         {%- endif %}</p>
+      {% if copie_bgg and copie_bgg.trouve %}{{ vignette_bgg(copie_bgg) }}{% endif %}
       <div class="actions-bgg">
         {% if bgg_disponible %}
         <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/recuperer">

@@ -83,6 +83,68 @@ est installée.
 
 ---
 
+## À paraître
+
+### Vignettes BoardGameGeek en administration : reposer la configuration nginx — facultatif
+
+**Avant tout : relire les conditions d'utilisation de BoardGameGeek sur les
+images.** Celles lues le 2026-10-09 (usage non commercial, source nommée,
+données non modifiables) ne disent rien des images des boîtes, et elles n'ont
+pas pu être relues depuis. Si elles interdisent d'afficher les vignettes, ne
+pas faire ce geste : l'application les laisse alors bloquées, sans autre effet.
+
+**Ce geste est facultatif.** La fiche d'un jeu affiche désormais la petite
+image de la boîte, chargée par le navigateur directement chez BGG. Sans ce
+geste, la Content-Security-Policy actuelle la bloque : la fiche s'affiche
+avec un cadre vide à la place de l'image, et rien d'autre ne change. Le
+contrôle de report de fin d'`update.sh` signale l'écart tant que le fichier
+n'est pas reposé (cinq lignes `add_header` « dépôt seul », dans `ludotex`).
+
+**Production seulement.** Le fichier de la formation ne change que par un
+commentaire : rien à y faire (le contrôle de report ne le signale pas).
+
+Seule la `location /admin/` change : elle reçoit sa propre copie des cinq
+en-têtes de sécurité, dont une CSP qui ajoute `https://cf.geekdo-images.com`
+à `img-src`. Les pages publiques et le tableau de bord (`/admin`) gardent la
+CSP d'avant.
+
+1. **Après** `sudo ./deploy/update.sh`, reposer le fichier de la production
+   en suivant `docs/deploiement.md` § 8, « Mettre à jour la configuration
+   nginx », bloc **Production** (sauvegarde horodatée, copie, deux `sed`,
+   `nginx -t`, `certbot … --redirect` en répondant 1, rechargement).
+   *À voir :* `nginx -t` répond `syntax is ok` et `test is successful` aux
+   étapes 3 et 5.
+2. **Vérifier les en-têtes**, sur une page publique puis sur une page
+   d'administration (sans être connecté : elle répond par une redirection,
+   qui porte les mêmes en-têtes) :
+   ```bash
+   curl -sI https://<domaine réel>/ | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+   curl -sI https://<domaine réel>/admin/jeux | grep -iE 'strict-transport|frame-options|content-type-options|referrer-policy|content-security-policy'
+   ```
+   *À voir :* **cinq lignes pour chacune des deux commandes.** Les quatre
+   premières sont identiques. La `Content-Security-Policy` diffère par
+   `img-src` seulement : `img-src 'self' data:;` sur la page publique,
+   `img-src 'self' data: https://cf.geekdo-images.com;` sur l'administration.
+   **S'il manque une ligne à la seconde commande, revenir en arrière tout de
+   suite** (étape 4) : l'administration aurait perdu un en-tête de sécurité.
+3. **Vérifier à l'écran** : ouvrir la fiche d'un jeu relié à BGG dont les
+   données ont été récupérées depuis cette version (liste des jeux, bouton
+   **Récupérer les données BGG manquantes**, jusqu'à ce que le compte tombe à
+   zéro). L'image de la boîte s'affiche dans le bloc « Données BGG du … ».
+   Console du navigateur (F12) : aucune erreur qui cite
+   `cf.geekdo-images.com` et la Content-Security-Policy (Chrome l'écrit
+   « Loading the image '…' violates the following Content Security Policy
+   directive », d'autres navigateurs « Refused to load the image »).
+4. **Revenir en arrière** : restaurer la sauvegarde prise à l'étape 1, comme
+   décrit dans `docs/deploiement.md` § 9 (« Une page semble cassée après une
+   mise à jour de nginx ») :
+   ```bash
+   ls -l /root/sauvegarde-nginx/
+   sudo cp -a /root/sauvegarde-nginx/ludotex.<horodatage> /etc/nginx/sites-available/ludotex
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   Les vignettes redeviennent des cadres vides ; rien d'autre ne change.
+
 ## 1.23.0 — 2026-10-14
 
 ### Instance de formation : la redémarrer à la main, une dernière fois

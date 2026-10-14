@@ -200,7 +200,9 @@ livré, par module :
   figée au renommage, avertissement quand un import défait une correction),
   **données BoardGameGeek** (seul appel sortant, jeton facultatif en `.env`,
   copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
-  des cases, reprise sans enregistrer, lien public réglable et décoché par
+  des cases, **vignette de la boîte** chargée par le navigateur chez BGG en
+  administration seulement (CSP élargie dans la seule `location /admin/`),
+  reprise sans enregistrer, lien public réglable et décoché par
   défaut ; **relier les jeux un par un** : recherche bornée et cadencée,
   candidats comparés, enchaînement au jeu suivant, marque « pas sur BGG »
   portée par l'export), étiquettes en lot, import/export

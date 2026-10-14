@@ -305,7 +305,7 @@ def liste_jeux(request: Request, q: str | None = None,
     try:
         jeux = services.lister_catalogue(conn, q=q, sans_bgg=filtre_bgg,
                                          pas_sur_bgg=filtre_absents)
-        restantes = len(services.ids_bgg_sans_copie(conn)) if disponible else 0
+        restantes = len(services.ids_bgg_a_recuperer(conn)) if disponible else 0
         relier = {"restants": services.compter_a_relier(conn),
                   "premier": services.jeu_suivant_a_relier(conn),
                   "marques": services.compter_pas_sur_bgg(conn),
@@ -331,19 +331,20 @@ def jeux_recuperer_bgg(request: Request):
     « Récupérer les données BGG manquantes » : UN LOT BORNÉ par clic.
 
     Pas de tâche de fond, pas de minuteur : chaque clic traite les
-    identifiants sans copie par appels de 20, tant que la borne de temps du
-    client le permet (`bgg_api.BORNE_LOT_S`, au plus 40 s, loin des 60 s de
-    nginx), puis revient à la liste avec « N récupérées, M restantes ». Le
-    bouton se représente tant qu'il en reste.
+    identifiants sans copie complète par appels de 20, tant que la borne de
+    temps du client le permet (`bgg_api.BORNE_LOT_S`, au plus 40 s, loin des
+    60 s de nginx), puis revient à la liste avec « N récupérées, M
+    restantes ». Le bouton se représente tant qu'il en reste.
 
     La route `def` tourne dans le groupe de fils d'uvicorn : l'unique worker
     continue de servir les autres requêtes pendant le lot. Aucune transaction
     n'est ouverte pendant les appels : la base n'est écrite qu'à la fin, en
     une transaction courte.
 
-    Reprenable : seules les fiches SANS copie sont demandées ; un clic après
-    une coupure reprend là où on en était. Un refus de BGG (202, 429, panne…)
-    arrête le lot, et ce qui a été obtenu avant est enregistré.
+    Reprenable : seules les fiches sans copie, ou dont la copie n'a pas encore
+    lu la vignette (`services.ids_bgg_a_recuperer`), sont demandées ; un
+    clic après une coupure reprend là où on en était. Un refus de BGG (202,
+    429, panne…) arrête le lot, et ce qui a été obtenu avant est enregistré.
     """
     if (garde := _garde(request)):
         return garde
@@ -351,7 +352,7 @@ def jeux_recuperer_bgg(request: Request):
         return RedirectResponse("/admin/jeux?bgg_echec=sans_jeton", status_code=303)
     conn = get_connection()
     try:
-        ids = services.ids_bgg_sans_copie(conn)
+        ids = services.ids_bgg_a_recuperer(conn)
     finally:
         conn.close()
     fiches, echec = bgg_api.recuperer_lot(ids)

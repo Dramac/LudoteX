@@ -341,7 +341,18 @@ CREATE TABLE IF NOT EXISTS appareils (
 # DONNÉES PERSONNELLES : `auteurs` nomme les auteurs d'un jeu édité, imprimés
 # sur la boîte — exactement ce que porte déjà `titres.auteur`. Ce n'est pas une
 # porte nouvelle : rien de ce que tape le bureau n'y entre, et aucune autre
-# donnée de BGG n'est gardée (ni éditeurs, ni descriptif, ni image).
+# donnée de BGG n'est gardée (ni éditeurs, ni descriptif, ni image). `vignette`
+# (lot 4) est l'ADRESSE d'une photo de boîte chez BGG, jamais l'image : LudoteX
+# ne la télécharge pas, le navigateur du bureau la charge chez BGG.
+#
+# `vignette` a TROIS ÉTATS, que la récupération par lots distingue
+# (`services.ids_bgg_a_recuperer`) :
+#   NULL      jamais lue — copie d'avant le lot 4, ou fiche inconnue de BGG
+#             (`trouve` = 0, rien à lire). Une copie trouvée dans cet état est
+#             redemandée par « Récupérer les données BGG manquantes ».
+#   ''        lue, sans image : BGG n'en donne pas, ou son adresse a été
+#             refusée (`bgg.lire_vignette`). Jamais redemandée.
+#   adresse   lue, avec image : `https://` sur un hôte de `bgg.HOTES_VIGNETTE`.
 #
 # `trouve` vaut 0 quand BGG a répondu sans connaître cet identifiant : la
 # récupération par lots ne le redemande pas à chaque clic, et la fiche le dit.
@@ -360,6 +371,7 @@ CREATE TABLE IF NOT EXISTS fiches_bgg (
     duree_max       INTEGER,                     -- maxplaytime, repli sur playingtime
     auteurs         TEXT,                        -- auteurs joints par des virgules
     annee           INTEGER,                     -- première parution chez BGG (lot 3)
+    vignette        TEXT,                        -- adresse de l'image de la boîte (lot 4) : NULL, '' ou adresse
     recupere_le     TEXT NOT NULL                -- UTC ISO, date de la copie
 );
 """
