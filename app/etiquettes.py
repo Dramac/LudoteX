@@ -134,17 +134,21 @@ def charger_logo(chemin: Path | None = None) -> Image.Image:
 # ---------------------------------------------------------------------------
 # Helpers Pillow (préfixe _ = usage interne)
 # ---------------------------------------------------------------------------
+# La police est VERSIONNÉE avec le code, et non cherchée sur la machine. Une
+# Debian minimale n'en installe aucune : `_police` retombait alors sur la police
+# bitmap de Pillow, de taille fixe, et toute l'étiquette sortait en texte
+# minuscule — sans erreur, ni en test (les tests de taille s'ignorent sans
+# TrueType). Versionnée, elle donne aussi le même rendu sur le Mac et au serveur.
+_POLICE = Path(__file__).resolve().parent / "polices" / "DejaVuSans.ttf"
+
+
 def _police(taille: int):
-    """Charge une police TrueType (DejaVu/Arial) ou, à défaut, la police Pillow."""
-    for chemin in (
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/Library/Fonts/Arial.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ):
-        if Path(chemin).exists():
-            return ImageFont.truetype(chemin, taille)
-    return ImageFont.load_default()
+    """Charge la police DejaVu versionnée ; à défaut, la police Pillow à la taille demandée."""
+    if _POLICE.exists():
+        return ImageFont.truetype(str(_POLICE), taille)
+    # Dernier recours : depuis Pillow 10.1, la police par défaut est vectorielle
+    # et suit la taille demandée (sans `size`, elle reste bitmap et minuscule).
+    return ImageFont.load_default(size=taille)
 
 
 def _police_encre(draw, texte, largeur_max, hauteur_max,

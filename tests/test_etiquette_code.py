@@ -23,10 +23,14 @@ Ce que ce fichier vérifie, et pourquoi c'est ce qui compte :
 6. **Le défaut d'une base vierge est « affiché »**, et l'aller-retour du
    formulaire rend la case dans l'état où le bureau l'a laissée.
 
-Aucun rendu n'est comparé à une image de référence : `_police` retombe sur
-DejaVu, Arial ou la police Pillow selon la machine, et un fichier témoin serait
-vert ici, rouge ailleurs. Les critères retenus (égalité de deux rendus entre
-eux, largeur, présence de pixels noirs) ne dépendent pas de la police installée.
+Aucun rendu n'est comparé à une image de référence : le rendu exact dépend
+encore de la version de FreeType, et un fichier témoin serait vert ici, rouge
+ailleurs. Les critères retenus (égalité de deux rendus entre eux, largeur,
+présence de pixels noirs) ne dépendent pas de la machine.
+
+7. **La police voyage avec le code.** Une Debian minimale n'en installe aucune ;
+   cherchée sur le système, elle manquait au serveur et l'étiquette sortait en
+   police bitmap minuscule, sans qu'aucun test ne le voie.
 """
 
 import pytest
@@ -174,12 +178,16 @@ def test_toutes_les_formes_de_code_sortent_a_la_meme_taille(code):
     `_police_encre` réduit la police plutôt que de couper la chaîne — et toutes
     sortent à la MÊME hauteur d'encre, parce que c'est la hauteur du cadre qui
     limite, pas la largeur du texte. Un parc homogène, quel que soit le code.
+
+    Tolérance d'un pixel : en DejaVu, plus large qu'Arial, `A0001` touche la
+    largeur de sa case et cède un cran de police (33 px d'encre contre 34).
+    L'œil ne le voit pas ; une police qui céderait vraiment le verrait.
     """
     case_code, _ = _cases_du_cadre(_etiquette(code))
     reference, _ = _cases_du_cadre(_etiquette("001"))
 
     assert _pixels_noirs(case_code) > 0
-    assert _hauteur_encre(case_code) == _hauteur_encre(reference)
+    assert abs(_hauteur_encre(case_code) - _hauteur_encre(reference)) <= 1
 
 
 @pytest.mark.parametrize("code", ["001", "00472", "A0001", "E018"])
@@ -384,3 +392,24 @@ def test_le_script_lit_le_reglage_et_sait_le_forcer(client, tmp_path):
 
     # Le forçage n'a rien écrit : le réglage du bureau est intact.
     assert lire_reglage_code() is True
+
+
+# ---------------------------------------------------------------------------
+# 7. La police voyage avec le code
+# ---------------------------------------------------------------------------
+def test_police_versionnee_quelle_que_soit_la_machine():
+    """La police de l'étiquette est celle du dépôt, à la taille demandée.
+
+    Régression : sur un serveur sans paquet de polices, `_police` rendait la
+    police bitmap de Pillow, qui ignore la taille — tout le texte sortait
+    minuscule. Ce test ne s'ignore pas : il ne dépend pas du système.
+    """
+    from PIL import ImageFont
+
+    from app import etiquettes
+
+    assert etiquettes._POLICE.is_file()
+    police = etiquettes._police(40)
+    assert isinstance(police, ImageFont.FreeTypeFont)
+    assert police.path == str(etiquettes._POLICE)
+    assert police.size == 40
