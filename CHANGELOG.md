@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.20.1 — 2026-10-14
+
+- **Les étiquettes impriment de nouveau leur texte à la bonne taille.** Sur certains serveurs, le nom du jeu, le code de la boîte et le code de classement sortaient en tout petits caractères. Les étiquettes concernées sont à réimprimer.
+
 ## 1.20.0 — 2026-10-14
 
 - **La fiche d'un jeu se corrige directement à l'écran**, sans passer par le fichier du catalogue : Administration → Rechercher un jeu → **Modifier la fiche**. Vider une case retire l'information ; une saisie illisible est refusée avec un message sous la case, sans rien perdre de ce qui a été tapé.
