@@ -6,6 +6,11 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.21.0 — 2026-10-14
+
+- **Sur ordinateur, la fiche d'un jeu prend toute la largeur de l'écran** : les cases se rangent sur deux colonnes et les boîtes du jeu côte à côte. Sur téléphone, rien ne change.
+- **La liste des jeux retrouve ceux qui n'ont pas encore de fiche BoardGameGeek** : sur l'écran « Rechercher un jeu », cocher **Seulement les jeux sans fiche BoardGameGeek**. Le compte dit combien il en reste.
+
 ## 1.20.1 — 2026-10-14
 
 - **Les étiquettes impriment de nouveau leur texte à la bonne taille.** Sur certains serveurs, le nom du jeu, le code de la boîte et le code de classement sortaient en tout petits caractères. Les étiquettes concernées sont à réimprimer.
