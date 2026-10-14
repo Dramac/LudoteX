@@ -24,12 +24,13 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 
-from app import (admin_auth, auth, bgg, carnet, classement, envois, exports,
-                 formation, journal, logo, sauvegarde, services, supervision)
+from app import (admin_auth, auth, bgg, bgg_api, carnet, classement, envois,
+                 exports, formation, journal, logo, sauvegarde, services,
+                 supervision)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -273,7 +274,8 @@ def logout(request: Request):
 # ---------------------------------------------------------------------------
 @router.get("/jeux")
 def liste_jeux(request: Request, q: str | None = None,
-               sans_bgg: str | None = None):
+               sans_bgg: str | None = None, bgg_lot: str = "",
+               bgg_inconnues: str = "", bgg_echec: str = ""):
     """
     Liste/recherche des jeux pour atteindre une fiche (réimpression incluse).
 
@@ -281,37 +283,108 @@ def liste_jeux(request: Request, q: str | None = None,
     l'association manuelle, une fois la première passe automatique faite.
     Toute valeur non vide coche la case — un paramètre d'URL inattendu ne
     donne jamais d'erreur.
+
+    `bgg_lot`, `bgg_inconnues`, `bgg_echec` : le compte rendu du dernier clic
+    sur « Récupérer les données BGG manquantes » — deux NOMBRES et un CODE
+    fermé, jamais un texte libre. Le nombre de fiches restantes, lui, est
+    recompté ici à chaque affichage.
     """
     if (garde := _garde(request)):
         return garde
     q = (q or "").strip() or None
     filtre_bgg = bool((sans_bgg or "").strip())
+    disponible = bgg_api.disponible()
     conn = get_connection()
     try:
         jeux = services.lister_catalogue(conn, q=q, sans_bgg=filtre_bgg)
+        restantes = len(services.ids_bgg_sans_copie(conn)) if disponible else 0
     finally:
         conn.close()
+    lot = None
+    if bgg_lot.isdigit():
+        lot = {"recuperees": int(bgg_lot),
+               "inconnues": int(bgg_inconnues) if bgg_inconnues.isdigit() else 0}
     return templates.TemplateResponse(
-        request, "admin_jeux.html", {"jeux": jeux, "q": q, "sans_bgg": filtre_bgg}
+        request, "admin_jeux.html",
+        {"jeux": jeux, "q": q, "sans_bgg": filtre_bgg,
+         "bgg_disponible": disponible, "bgg_restantes": restantes,
+         "bgg_lot": lot, "message_bgg": MESSAGES_BGG_FICHE.get(bgg_echec)},
     )
+
+
+@router.post("/jeux/bgg/recuperer")
+def jeux_recuperer_bgg(request: Request):
+    """
+    « Récupérer les données BGG manquantes » : UN LOT BORNÉ par clic.
+
+    Pas de tâche de fond, pas de minuteur : chaque clic traite les
+    identifiants sans copie par appels de 20, tant que la borne de temps du
+    client le permet (`bgg_api.BORNE_LOT_S`, au plus 40 s, loin des 60 s de
+    nginx), puis revient à la liste avec « N récupérées, M restantes ». Le
+    bouton se représente tant qu'il en reste.
+
+    La route `def` tourne dans le groupe de fils d'uvicorn : l'unique worker
+    continue de servir les autres requêtes pendant le lot. Aucune transaction
+    n'est ouverte pendant les appels : la base n'est écrite qu'à la fin, en
+    une transaction courte.
+
+    Reprenable : seules les fiches SANS copie sont demandées ; un clic après
+    une coupure reprend là où on en était. Un refus de BGG (202, 429, panne…)
+    arrête le lot, et ce qui a été obtenu avant est enregistré.
+    """
+    if (garde := _garde(request)):
+        return garde
+    if not bgg_api.disponible():
+        return RedirectResponse("/admin/jeux?bgg_echec=sans_jeton", status_code=303)
+    conn = get_connection()
+    try:
+        ids = services.ids_bgg_sans_copie(conn)
+    finally:
+        conn.close()
+    fiches, echec = bgg_api.recuperer_lot(ids)
+    inconnues = 0
+    if fiches:
+        conn = get_connection()
+        try:
+            _, inconnues = services.enregistrer_fiches_bgg(conn, fiches)
+        finally:
+            conn.close()
+    restantes = len(ids) - len(fiches)
+    journal.journaliser(
+        request, "admin", "bgg_lot_recupere",
+        objet=f"{len(fiches)} récupérées, {restantes} restantes",
+        ok=echec is None, detail=echec.code if echec else None,
+    )
+    url = f"/admin/jeux?bgg_lot={len(fiches)}&bgg_inconnues={inconnues}"
+    if echec is not None:
+        url += f"&bgg_echec={echec.code}"
+    return RedirectResponse(url, status_code=303)
 
 
 @router.get("/jeu/{reference_titre}")
 def fiche_admin(request: Request, reference_titre: str, ok: str = "",
-                etiquette: str = ""):
+                etiquette: str = "", bgg_echec: str = "",
+                reprise: str = Query("", alias="bgg")):
     """
     Fiche admin d'un jeu : l'éditeur de ses champs, ses lettres de
     classement, ses exemplaires + l'étiquette de chacun.
 
-    `ok` et `etiquette` viennent de la redirection qui suit un enregistrement :
-    des CODES FERMÉS (`MESSAGES_FICHE`), jamais un texte libre dans l'URL. Un
-    code inconnu n'affiche rien.
+    `ok`, `etiquette` et `bgg_echec` viennent de la redirection qui suit un
+    enregistrement ou une récupération BGG : des CODES FERMÉS
+    (`MESSAGES_FICHE`, `MESSAGES_BGG_FICHE`), jamais un texte libre dans
+    l'URL. Un code inconnu n'affiche rien.
+
+    `?bgg=reprendre` : « Reprendre les valeurs BGG ». Une simple navigation,
+    qui réaffiche le formulaire avec les valeurs de la copie BGG à la place
+    des nôtres — RIEN n'est écrit, rien n'est journalisé.
     """
     if (garde := _garde(request)):
         return garde
     return _rendre_fiche(request, reference_titre,
                          message=MESSAGES_FICHE.get(ok),
-                         etiquette_perimee=(etiquette == "1"))
+                         etiquette_perimee=(etiquette == "1"),
+                         bgg_echec=bgg_echec,
+                         reprendre=(reprise == "reprendre"))
 
 
 # Ce que dit chaque position du code de classement (app/classement.py).
@@ -322,17 +395,38 @@ MESSAGES_FICHE = {
     "enregistre": "Fiche enregistrée.",
     "inchange": "Rien n'a changé : la fiche est telle qu'elle était.",
     "lettres": "Les trois lettres de classement sont effacées.",
+    "bgg_recupere": "Données BGG récupérées : elles s'affichent sous les cases.",
+    "enregistre_bgg": ("Fiche enregistrée, et données BGG récupérées : elles "
+                       "s'affichent sous les cases."),
+}
+
+# Ce qui empêche d'avoir la copie d'une fiche BGG, par code. Affiché en
+# avertissement, jamais comme une erreur : la fiche, elle, est toujours
+# ouverte et, après un enregistrement, toujours enregistrée.
+MESSAGES_BGG_FICHE = {
+    **bgg_api.MESSAGES_ECHEC,
+    "inconnu": ("BoardGameGeek ne connaît aucune fiche à ce numéro. Vérifiez "
+                "le numéro dans la case « Fiche BoardGameGeek » : c'est celui "
+                "de l'adresse de la page du jeu sur boardgamegeek.com."),
 }
 
 
 def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
-                  etiquette_perimee=False, saisie=None, erreurs=None):
+                  etiquette_perimee=False, saisie=None, erreurs=None,
+                  bgg_echec="", reprendre=False):
     """
     Rend la fiche d'administration d'un jeu.
 
     `saisie` : le formulaire tel que reçu, réaffiché après un refus — rien de
     ce que le bureau a tapé ne se perd. Sans refus, l'éditeur est pré-rempli
     avec les valeurs de la base.
+
+    `reprendre` : les valeurs de la copie BGG remplacent les nôtres dans le
+    formulaire, pour les seuls champs de `services.CHAMPS_BGG`. Rien n'est
+    écrit.
+
+    AUCUN APPEL RÉSEAU ICI : seule la copie en base est lue. Une panne de BGG
+    ne peut pas empêcher d'ouvrir une fiche.
     """
     conn = get_connection()
     try:
@@ -342,6 +436,7 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         # (§4.c) : mêmes emplacements actifs que partout ailleurs.
         emplacements_locaux = services.emplacements_actifs(conn)
         categories = services.lister_categories(conn)
+        copie_bgg = services.lire_fiche_bgg(conn, titre["bgg_id"]) if titre else None
     finally:
         conn.close()
     contexte = {"titre": titre, "exemplaires": exemplaires,
@@ -351,14 +446,32 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
             saisie = {c: ("" if titre[c] is None else str(titre[c]))
                       for c in services.CHAMPS_FICHE}
             saisie["bgg"] = "" if titre["bgg_id"] is None else str(titre["bgg_id"])
+        repris: set = set()
+        message_reprise = None
+        if reprendre and copie_bgg and copie_bgg["trouve"]:
+            saisie, repris = services.reprendre_valeurs_bgg(saisie, copie_bgg)
+            message_reprise = (
+                "Valeurs BGG reprises dans le formulaire : rien n'est encore "
+                "enregistré. Relisez les cases marquées « repris de BGG », puis "
+                "touchez « Enregistrer la fiche »." if repris else
+                "Les valeurs BGG sont déjà celles de la fiche : rien à reprendre.")
         contexte.update({
             "valeurs": saisie,
             "erreurs": erreurs or {},
             "categories": categories,
             "types_jeu": services.TYPES_JEU,
             "message": message,
+            "message_reprise": message_reprise,
+            "message_bgg": MESSAGES_BGG_FICHE.get(bgg_echec),
             "etiquette_perimee": etiquette_perimee,
             "lien_bgg": bgg.url_fiche(titre["bgg_id"]) if titre["bgg_id"] else None,
+            # Copie BGG : affichée seulement si elle existe ; boutons offerts
+            # seulement si l'instance a un jeton (bgg_api.disponible).
+            "copie_bgg": copie_bgg,
+            "date_copie_bgg": (services.format_local(copie_bgg["recupere_le"]).split(" ")[0]
+                               if copie_bgg else None),
+            "bgg_disponible": bgg_api.disponible(),
+            "indications_bgg": services.comparer_avec_bgg(saisie, copie_bgg, repris),
             # Lettres en base, avec leur libellé quand la lettre est dans sa
             # liste (sinon « hors liste ») : affichées, jamais saisissables.
             "lettres": [
@@ -391,10 +504,13 @@ def _etiquette_change(avant: dict, apres: dict) -> bool:
     return texte_imprime(avant, format_code) != texte_imprime(apres, format_code)
 
 
-def _vers_fiche(reference_titre: str, ok: str, etiquette: bool) -> RedirectResponse:
+def _vers_fiche(reference_titre: str, ok: str, etiquette: bool,
+                bgg_echec: str = "") -> RedirectResponse:
     url = f"/admin/jeu/{quote(reference_titre)}?ok={ok}"
     if etiquette:
         url += "&etiquette=1"
+    if bgg_echec:
+        url += f"&bgg_echec={bgg_echec}"
     return RedirectResponse(url, status_code=303)
 
 
@@ -455,8 +571,88 @@ def fiche_modifier(
         return _vers_fiche(reference_titre, "inchange", False)
     journal.journaliser(request, "catalogue", "jeu_modifie",
                         objet=valeurs["nom"], ref=reference_titre)
-    return _vers_fiche(reference_titre, "enregistre",
-                       _etiquette_change(resultat["avant"], resultat["apres"]))
+    etiquette = _etiquette_change(resultat["avant"], resultat["apres"])
+    # Un identifiant BGG NOUVEAU ou CHANGÉ, sans copie : on va la chercher
+    # dans la foulée — un clic de moins sur chacun des jeux reliés à la main.
+    # La fiche est DÉJÀ enregistrée (transaction close) : un échec de BGG ne
+    # peut plus rien empêcher, il est seulement dit, et le bouton reste là.
+    nouvel_id = valeurs["bgg_id"]
+    if "bgg_id" in resultat["changes"] and nouvel_id and bgg_api.disponible():
+        conn = get_connection()
+        try:
+            deja_copiee = services.lire_fiche_bgg(conn, nouvel_id) is not None
+        finally:
+            conn.close()
+        if not deja_copiee:
+            echec = _recuperer_copie_bgg(request, valeurs["nom"],
+                                         reference_titre, nouvel_id)
+            if echec is None:
+                return _vers_fiche(reference_titre, "enregistre_bgg", etiquette)
+            return _vers_fiche(reference_titre, "enregistre", etiquette,
+                               bgg_echec=echec)
+    return _vers_fiche(reference_titre, "enregistre", etiquette)
+
+
+def _recuperer_copie_bgg(request: Request, nom: str, reference_titre: str,
+                         bgg_id: int) -> str | None:
+    """
+    Récupère et enregistre la copie de la fiche BGG `bgg_id` (un appel).
+
+    Returns:
+        None si la copie est faite ; sinon le code de ce qui l'a empêchée
+        (`MESSAGES_BGG_FICHE`) : « inconnu » quand BGG a répondu sans
+        connaître ce numéro (la copie le note), ou le code de l'échec.
+        Journalisé dans les deux cas.
+    """
+    try:
+        fiches = bgg_api.recuperer([bgg_id])
+    except bgg_api.EchecBGG as echec:
+        journal.journaliser(request, "catalogue", "bgg_fiche_recuperee",
+                            objet=nom, ref=reference_titre, ok=False,
+                            detail=echec.code)
+        return echec.code
+    conn = get_connection()
+    try:
+        trouvees, _ = services.enregistrer_fiches_bgg(conn, fiches)
+    finally:
+        conn.close()
+    if not trouvees:
+        journal.journaliser(request, "catalogue", "bgg_fiche_recuperee",
+                            objet=nom, ref=reference_titre, ok=False,
+                            detail="inconnu")
+        return "inconnu"
+    journal.journaliser(request, "catalogue", "bgg_fiche_recuperee",
+                        objet=nom, ref=reference_titre)
+    return None
+
+
+@router.post("/jeu/{reference_titre}/bgg/recuperer")
+def fiche_recuperer_bgg(request: Request, reference_titre: str):
+    """
+    « Récupérer les données BGG » : va chercher la fiche BGG du titre, en
+    garde une copie datée, puis revient à la fiche avec un message par code.
+    Ne modifie AUCUNE valeur du titre.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        titre = services.get_titre(conn, reference_titre)
+    finally:
+        conn.close()
+    if titre is None:
+        return _rendre_fiche(request, reference_titre)
+    if not titre["bgg_id"]:
+        # Bouton absent sans identifiant ; une requête forgée revient
+        # simplement à la fiche.
+        return _vers_fiche(reference_titre, "", False)
+    if not bgg_api.disponible():
+        return _vers_fiche(reference_titre, "", False, bgg_echec="sans_jeton")
+    echec = _recuperer_copie_bgg(request, titre["nom"], reference_titre,
+                                 titre["bgg_id"])
+    if echec is None:
+        return _vers_fiche(reference_titre, "bgg_recupere", False)
+    return _vers_fiche(reference_titre, "", False, bgg_echec=echec)
 
 
 @router.post("/jeu/{reference_titre}/lettres/effacer")
@@ -1652,6 +1848,7 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
                                or services.COULEUR_ASSOCIATION_DEFAUT),
          "couleur_par_defaut": services.COULEUR_ASSOCIATION_DEFAUT,
          "couleur_lisible": couleur_lisible,
+         "bgg_lien_public": bool(saisies.get("bgg_lien_public")),
          "suggestions_couleur": suggestions_couleur,
          "nom_par_defaut": NOM_ASSOCIATION,
          "depot_par_defaut": DEPOT_URL,
@@ -1694,6 +1891,7 @@ def identite_formulaire(request: Request):
             "depot_url": services.lire_parametre(
                 conn, services.CLE_ASSOCIATION_DEPOT),
             "couleur": services.lire_couleur_association(conn),
+            "bgg_lien_public": services.lire_bgg_lien_public(conn),
         }
     finally:
         conn.close()
@@ -1708,6 +1906,7 @@ def identite_enregistrer(
     contact: str = Form(""),
     depot_url: str = Form(""),
     couleur: str = Form(""),
+    bgg_lien_public: str = Form(""),
     logo_fichier: UploadFile | None = File(None),
 ):
     """
@@ -1771,6 +1970,8 @@ def identite_enregistrer(
     saisie_contact = services.normaliser_contact_association(contact)
     saisie_depot = services.normaliser_depot_url(depot_url)
     saisie_couleur = services.normaliser_couleur_association(couleur)
+    # Case à cocher : un navigateur n'envoie rien quand elle est décochée.
+    saisie_bgg_public = bool(bgg_lien_public.strip())
 
     # Une saisie non vide qui ressort normalisée à None a été REFUSÉE ; une
     # saisie vide, elle, veut simplement dire « efface ».
@@ -1812,7 +2013,8 @@ def identite_enregistrer(
              "presentation": saisie_presentation or None,
              "contact": contact.strip() or None,
              "depot_url": depot_url.strip() or None,
-             "couleur": couleur.strip() or None},
+             "couleur": couleur.strip() or None,
+             "bgg_lien_public": saisie_bgg_public},
             ("erreur", " ".join(m for _, _, m in refus)),
             status_code=400,
         )
@@ -1827,6 +2029,8 @@ def identite_enregistrer(
             conn, services.CLE_ASSOCIATION_CONTACT)
         depot_precedent = services.lire_parametre(conn, services.CLE_ASSOCIATION_DEPOT)
         couleur_precedente = services.lire_couleur_association(conn)
+        bgg_public_precedent = services.lire_bgg_lien_public(conn)
+        services.ecrire_bgg_lien_public(conn, saisie_bgg_public)
         services.ecrire_parametre(
             conn, services.CLE_ASSOCIATION_NOM, saisie_nom or None)
         services.ecrire_parametre(
@@ -1871,6 +2075,12 @@ def identite_enregistrer(
             objet=saisie_couleur or "effacée",
         )
 
+    if saisie_bgg_public != bgg_public_precedent:
+        journal.journaliser(
+            request, "admin", "bgg_lien_public_modifie",
+            objet="affiché" if saisie_bgg_public else "masqué",
+        )
+
     # Écrit APRÈS les quatre valeurs texte, et seulement si aucun refus n'a
     # eu lieu plus haut : à ce point, le fichier a déjà passé tous les
     # contrôles, il ne reste que l'écriture (atomique, voir app/logo.py).
@@ -1897,16 +2107,21 @@ def identite_enregistrer(
         "Couleur enregistrée." if saisie_couleur
         else "Couleur effacée — le thème par défaut est de nouveau appliqué.")
     partie_logo = " Logo déposé." if contenu_logo is not None else ""
+    partie_bgg = (" Lien BoardGameGeek affiché sur les fiches publiques."
+                  if saisie_bgg_public else
+                  " Lien BoardGameGeek retiré des fiches publiques."
+                  if bgg_public_precedent else "")
     return _page_identite(
         request,
         {"nom": saisie_nom or None,
          "presentation": saisie_presentation or None,
          "contact": saisie_contact,
          "depot_url": saisie_depot,
-         "couleur": saisie_couleur},
+         "couleur": saisie_couleur,
+         "bgg_lien_public": saisie_bgg_public},
         ("succes", f"{partie_nom} {partie_presentation} "
                    f"{partie_contact} {partie_depot} {partie_couleur}"
-                   f"{partie_logo}"),
+                   f"{partie_logo}{partie_bgg}"),
     )
 
 
@@ -1946,6 +2161,7 @@ def identite_logo_retirer(request: Request):
             "depot_url": services.lire_parametre(
                 conn, services.CLE_ASSOCIATION_DEPOT),
             "couleur": services.lire_couleur_association(conn),
+            "bgg_lien_public": services.lire_bgg_lien_public(conn),
         }
     finally:
         conn.close()

@@ -53,6 +53,8 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 - `exemplaires` (PK `id_exemplaire`, FK → titres).
 - `prets` (historique complet, jamais purgé) : `date_retour IS NULL` ⇒ sorti.
 - `pochettes` : occupation du moment des numéros (recyclés, sans plafond).
+- Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches
+  BoardGameGeek, clé `bgg_id` (jamais `reference_titre`), hors export CSV.
 
 **État déduit, pas stocké** : un exemplaire est *sorti* s'il a un prêt non clos.
 
@@ -170,6 +172,25 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   Toutes les autres sont écrasées, case vide comprise ; celles que l'écran
   corrige sont listées par `services.CHAMPS_FICHE`, et un import qui en défait
   une le dit (`import_csv.corrections_defaites`, colonne `modifie_le`).
+- **Un seul module parle au réseau : `app/bgg_api.py`** (client de l'API de
+  BoardGameGeek). `app/bgg.py`, lui, ne fait que lire un identifiant : un test
+  par AST verrouille l'un et l'autre. Trois règles tiennent le reste :
+  **jamais d'appel à l'affichage** (la route lit la copie `fiches_bgg` ; seul
+  un bouton d'administration appelle BGG), **jamais d'appel sous
+  transaction** (la base est écrite après, en une transaction courte), et
+  **le jeton lu au seul `bgg_api._jeton`**, à chaque appel, envoyé en en-tête
+  et nulle part ailleurs — les erreurs de `urllib` sont remplacées par
+  `EchecBGG` sans chaînage, pour qu'aucune trace ne transporte la requête.
+  Un lot (`recuperer_lot`) ne lance un appel que s'il peut finir avant
+  `BORNE_LOT_S` (40 s), sous les 60 s du `proxy_read_timeout` par défaut de
+  nginx : en changeant le délai ou la pause, refaire ce calcul.
+- **Le `.env` local atteint les tests.** `app/environnement.py` charge le
+  `.env` de la racine dès l'import : un `BGG_TOKEN` posé là pour un essai
+  réel rendait les boutons BGG actifs dans les tests, et un test a appelé BGG
+  pour de vrai pendant l'écriture du lot fiche-2. D'où la fixture autouse
+  `_aucun_reseau` de `tests/conftest.py` : elle retire `BGG_TOKEN` et fait
+  échouer toute connexion vers une autre machine que la boucle locale. Un
+  test qui veut un jeton en pose un, factice (`tests/test_bgg_donnees.py`).
 - Planche PDF : passer un **PNG** à reportlab (pas l'objet PIL) pour préserver la
   couleur sans dépendre du codec JPEG.
 - QR : l'URL encodée est **définitive** — ne tirer les étiquettes qu'une fois le

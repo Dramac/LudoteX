@@ -1,0 +1,14 @@
+powered-by-bgg.png — logo « Powered by BGG »
+
+Ce fichier n'est PAS couvert par la licence GPLv3 de LudoteX. C'est une marque
+de BoardGameGeek, LLC, fournie par BoardGameGeek aux utilisateurs de son API
+XML. Les conditions d'utilisation de l'API demandent de l'afficher, avec un
+lien vers boardgamegeek.com, dans tout usage public de ses données. LudoteX
+l'affiche à cette seule fin, sur la page « À propos », quand une instance
+utilise BoardGameGeek.
+
+Il n'est ni modifié, ni recoloré : les règles de couleur de LudoteX (aucune
+couleur en dur, thème réglable) ne s'y appliquent pas. Quiconque reprend
+LudoteX et retire l'usage de BoardGameGeek peut supprimer ce fichier ; quiconque
+le redistribue reste soumis aux conditions de BoardGameGeek :
+https://boardgamegeek.com/xmlapi/termsofuse (adresse que porte chaque réponse de l'API)

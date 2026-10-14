@@ -79,8 +79,70 @@ est installée.
 | Le **résultat** de la dernière sauvegarde automatique | un minuteur actif peut lancer un script qui échoue : la preuve est une sauvegarde de routine de moins de 14 heures, à vérifier selon `docs/deploiement.md` § 7 |
 | Le jeton bénévole, les données de démonstration de la formation | ce sont des données, pas de la configuration du serveur |
 | `FORMATION_URL` dans le `.env` de production | clé facultative, propre à une instance ; son absence masque seulement un lien |
+| `BGG_TOKEN` | clé facultative, et **à ne pas** poser sur la formation ; son absence retire seulement la récupération des données BoardGameGeek. La signaler pousserait à la recopier partout |
 
 ---
+
+## À paraître
+
+### BoardGameGeek : poser la clé d'accès — facultatif
+
+**Ce geste est facultatif** : sans clé, la récupération des données
+BoardGameGeek (BGG) n'est simplement pas offerte, et tout le reste fonctionne
+comme avant. Le contrôle de report ne le signale pas. **Production seulement** :
+ne pas poser la clé dans `/etc/ludotex-formation.env`.
+
+La clé est délivrée par BGG sur demande, pour un usage non commercial. C'est un
+secret : ni courriel, ni chat, ni capture d'écran. La conserver avec le reste du
+`.env` dans le gestionnaire de mots de passe (`docs/deploiement.md` § 7, « Ce
+que les archives ne contiennent pas »).
+
+1. **Le serveur joint-il BGG ?** (aucune clé n'est envoyée) :
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' 'https://boardgamegeek.com/xmlapi2/thing?id=13'
+   ```
+   *À voir :* `401` — BGG répond, et refuse faute de clé : c'est le résultat
+   attendu. `000` : le serveur ne sort pas vers Internet (pare-feu de
+   l'hébergeur) ; s'arrêter là. `403` : BGG bloque l'adresse de ce serveur ;
+   la clé n'y changera rien.
+2. **Poser la clé**, sur une ligne à elle, sans guillemets ni espace :
+   ```bash
+   sudo -u pretjeux nano /opt/ludotex/.env
+   ```
+   Ajouter `BGG_TOKEN=` suivi de la clé, enregistrer.
+3. **Redémarrer** et vérifier :
+   ```bash
+   sudo systemctl restart ludotex
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domaine>/sante
+   ```
+   *À voir :* `200`.
+4. **Premier essai réel**, dans le navigateur : Administration → **Jeux** →
+   un jeu relié à BoardGameGeek → **Récupérer les données BGG**.
+   *À voir :* « Données BGG récupérées », puis « BGG : … » sous les cases
+   joueurs, âge, durée et auteur.
+   Si un message s'affiche à la place :
+   - « BoardGameGeek refuse la clé d'accès de ce site » — la clé est mal
+     recopiée (espace, guillemets, ligne coupée) ou n'est plus valable :
+     revoir l'étape 2, puis redémarrer ;
+   - « BoardGameGeek refuse les demandes venant de ce serveur » — blocage de
+     l'adresse du serveur par BGG ; rien à corriger ici, réessayer plus tard
+     ou écrire à BGG ;
+   - « BoardGameGeek demande d'attendre » — réessayer dans quelques minutes ;
+   - « BoardGameGeek ne répond pas » — refaire l'étape 1.
+5. **Les jeux déjà reliés** : Administration → **Jeux** → **Récupérer les
+   données BGG manquantes**, à toucher de nouveau jusqu'à « 0 restante »
+   (une centaine de fiches par clic, une demi-minute chacun). Hors événement
+   de préférence : le site reste utilisable, mais autant ne pas solliciter
+   BGG un jour d'affluence.
+6. **Le lien sur les fiches publiques**, si l'association le souhaite :
+   **Identité de l'association** → cocher **Afficher le lien BoardGameGeek
+   sur les fiches publiques** → **Enregistrer**. La page « À propos » porte
+   alors la mention « Powered by BGG ».
+
+**Retour en arrière** : retirer la ligne `BGG_TOKEN=` du `.env` et redémarrer.
+Les boutons disparaissent ; les données déjà récupérées restent affichées
+(elles ne sont jamais recopiées sur nos fiches sans un enregistrement), et la
+mention BGG reste sur « À propos » tant qu'il en existe.
 
 ## 1.19.1 — 2026-10-13
 

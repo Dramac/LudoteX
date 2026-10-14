@@ -22,6 +22,36 @@
      {%- if sans_bgg %} sans fiche BoardGameGeek{% endif %}</p>
 </section>
 
+{# Récupération des copies BGG manquantes : UN LOT BORNÉ par clic, sans tâche
+   de fond (routes/admin.py::jeux_recuperer_bgg). Seulement si l'instance a
+   une clé d'accès BGG ; le bloc disparaît quand il ne reste rien à faire. #}
+{% if bgg_disponible and (bgg_restantes or bgg_lot or message_bgg) %}
+<section class="carte">
+  <h2>Données BoardGameGeek</h2>
+  {% if bgg_lot %}
+  <p class="resultat resultat-ok" role="status">{{ bgg_lot.recuperees }}
+     {{ pluriel(bgg_lot.recuperees, 'fiche récupérée', 'fiches récupérées') }}
+     {%- if bgg_lot.inconnues %} (dont {{ bgg_lot.inconnues }}
+     {{ pluriel(bgg_lot.inconnues, 'inconnue', 'inconnues') }} de BoardGameGeek){% endif %},
+     {{ bgg_restantes }} {{ pluriel(bgg_restantes, 'restante', 'restantes') }}.</p>
+  {% endif %}
+  {% if message_bgg %}<p class="resultat resultat-attention" role="alert">{{ message_bgg }}</p>{% endif %}
+  {% if bgg_restantes %}
+  {# Compte des FICHES BGG, pas des jeux : deux jeux peuvent partager une
+     fiche, et sa copie sert aux deux. #}
+  <p>{{ bgg_restantes }} {{ pluriel(bgg_restantes, 'fiche BoardGameGeek reliée', 'fiches BoardGameGeek reliées') }}
+     à vos jeux {{ pluriel(bgg_restantes, "n'a", "n'ont") }} pas encore de données BGG.
+     Chaque clic en récupère une centaine, en une demi-minute environ ;
+     touchez de nouveau le bouton pour continuer.</p>
+  <form method="post" action="/admin/jeux/bgg/recuperer">
+    <button type="submit" class="bouton-filtrer">Récupérer les données BGG manquantes</button>
+  </form>
+  {% else %}
+  <p>Tous les jeux reliés à BoardGameGeek ont leurs données BGG.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <ul class="catalogue-liste catalogue-grille">
   {% for jeu in jeux %}
     <li class="jeu">

@@ -1,6 +1,9 @@
 """
 Fixtures PARTAGÉES par toute la suite de tests.
 
+`_aucun_reseau` (autouse) : aucun test ne parle au réseau, et le jeton
+BoardGameGeek d'un `.env` local n'atteint aucun test (voir la fixture).
+
 `_reinitialiser_limite_debit` (autouse) : `app.auth._tentatives` est un
 dictionnaire GLOBAL au process (fenêtre glissante de limitation de débit par
 IP, voir app/auth.py::trop_de_tentatives) — volontairement en mémoire, pensé
@@ -32,12 +35,58 @@ décrire une situation réelle. On ne neutralise volontairement pas le seuil
 régression sur le comportement lui-même.
 """
 
+import ipaddress
+import socket
 import sqlite3
 from datetime import datetime, timedelta
 
 import pytest
 
 from app import auth
+
+
+class ConnexionReseauInterdite(RuntimeError):
+    """Un test a tenté une vraie connexion réseau (voir `_aucun_reseau`)."""
+
+
+@pytest.fixture(autouse=True)
+def _aucun_reseau(monkeypatch):
+    """
+    AUCUN TEST NE TOUCHE LE RÉSEAU (lot fiche-2, client BoardGameGeek).
+
+    - `BGG_TOKEN` est retiré de l'environnement : le `.env` local d'un
+      développeur le porte, et chaque test qui ouvrirait une fiche reliée
+      appellerait BGG pour de vrai (constaté en écrivant le lot). Un test qui
+      veut un jeton le pose lui-même, factice.
+    - Toute connexion IP vers une autre machine LÈVE
+      `ConnexionReseauInterdite`, qui n'est pas une `OSError` : le client BGG
+      ne la rattrape pas en « panne », le test échoue bruyamment. La boucle
+      locale reste permise (les tests du lanceur interrogent un serveur
+      qu'ils démarrent sur 127.0.0.1), comme les sockets non IP.
+    """
+    monkeypatch.delenv("BGG_TOKEN", raising=False)
+    connecter = socket.socket.connect
+    connecter_ex = socket.socket.connect_ex
+
+    def _locale(adresse) -> bool:
+        hote = adresse[0] if isinstance(adresse, tuple) and adresse else ""
+        if hote == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(hote).is_loopback
+        except ValueError:
+            return False
+
+    def _filtre(origine):
+        def connexion(self, adresse, *args, **kwargs):
+            if (self.family in (socket.AF_INET, socket.AF_INET6)
+                    and not _locale(adresse)):
+                raise ConnexionReseauInterdite(f"connexion vers {adresse!r} refusée en test")
+            return origine(self, adresse, *args, **kwargs)
+        return connexion
+
+    monkeypatch.setattr(socket.socket, "connect", _filtre(connecter))
+    monkeypatch.setattr(socket.socket, "connect_ex", _filtre(connecter_ex))
 
 
 @pytest.fixture(autouse=True)

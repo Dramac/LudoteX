@@ -20,6 +20,7 @@ docs/conception-signalements.md) :
     pochettes               occupation du moment des numéros de pochette (recyclés).
     parametres              réglages persistants (clé/valeur).
     appareils               registre des appareils ayant activé un accès en écriture.
+    fiches_bgg              copie datée des fiches BoardGameGeek reliées aux titres.
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -314,6 +315,46 @@ CREATE TABLE IF NOT EXISTS appareils (
 # ---------------------------------------------------------------------------
 # Index — accélèrent les requêtes les plus fréquentes.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# fiches_bgg — copie datée de ce que BoardGameGeek dit d'une fiche (série
+# « fiche », lot 2). Récupérée SUR DEMANDE (app/bgg_api.py), jamais à
+# l'affichage : ouvrir une page ne provoque aucun appel réseau.
+# ---------------------------------------------------------------------------
+# CLÉ : l'identifiant BGG, PAS `reference_titre`. Deux titres peuvent partager
+# une fiche BGG (Dobble et Dobble Kids, première passe d'association), et
+# changer l'identifiant d'un titre ne doit rien détruire : la copie de l'ancien
+# reste là, inoffensive, et resservira s'il revient.
+#
+# C'est une COPIE, pas une donnée du bureau : elle n'entre pas dans l'export
+# CSV du catalogue, et l'import ne la touche pas. Elle vit dans la base de
+# prêt, donc part dans les sauvegardes ; une archive d'avant, qui ne l'a pas,
+# la gagne vide à la restauration (`init_db` rejoué).
+#
+# DONNÉES PERSONNELLES : `auteurs` nomme les auteurs d'un jeu édité, imprimés
+# sur la boîte — exactement ce que porte déjà `titres.auteur`. Ce n'est pas une
+# porte nouvelle : rien de ce que tape le bureau n'y entre, et aucune autre
+# donnée de BGG n'est gardée (ni éditeurs, ni descriptif, ni image).
+#
+# `trouve` vaut 0 quand BGG a répondu sans connaître cet identifiant : la
+# récupération par lots ne le redemande pas à chaque clic, et la fiche le dit.
+# Les autres colonnes sont alors NULL. Une valeur que BGG note 0 (« non
+# renseigné ») est stockée NULL.
+SCHEMA_FICHES_BGG = """
+CREATE TABLE IF NOT EXISTS fiches_bgg (
+    bgg_id          INTEGER PRIMARY KEY,         -- identifiant de la fiche chez BGG
+    trouve          INTEGER NOT NULL DEFAULT 1,  -- 0 : BGG ne connaît pas cet identifiant
+    type            TEXT,                        -- "boardgame" ou "boardgameexpansion"
+    nom             TEXT,                        -- nom principal chez BGG (souvent anglais)
+    nb_joueurs_min  INTEGER,
+    nb_joueurs_max  INTEGER,
+    age_min         INTEGER,
+    duree_min       INTEGER,                     -- minplaytime, repli sur playingtime
+    duree_max       INTEGER,                     -- maxplaytime, repli sur playingtime
+    auteurs         TEXT,                        -- auteurs joints par des virgules
+    recupere_le     TEXT NOT NULL                -- UTC ISO, date de la copie
+);
+"""
+
 SCHEMA_INDEXES = """
 -- État d'un exemplaire : retrouver vite son éventuel prêt non clos.
 -- idx_prets_retour_null porte la même expression que idx_prets_un_seul_ouvert
@@ -392,5 +433,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_POCHETTES,
     SCHEMA_PARAMETRES,
     SCHEMA_APPAREILS,
+    SCHEMA_FICHES_BGG,
     SCHEMA_INDEXES,
 )

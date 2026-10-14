@@ -227,8 +227,9 @@ def test_bgg_l_adresse_du_lien_se_construit_du_seul_identifiant():
 
 def test_bgg_aucun_appel_reseau_possible():
     """
-    Garde-fou du lot : le module de la fiche BGG n'importe AUCUNE bibliothèque
-    réseau. La recherche en ligne, si elle vient, sera un autre lot.
+    Garde-fou : le module de l'identifiant BGG n'importe AUCUNE bibliothèque
+    réseau. L'appel à BGG (lot fiche-2) vit dans son propre module,
+    `app/bgg_api.py` ; `app/bgg.py` reste une lecture de chaîne.
     """
     arbre = ast.parse(Path("app/bgg.py").read_text(encoding="utf-8"))
     modules = set()
@@ -245,10 +246,25 @@ def test_bgg_aucun_appel_reseau_possible():
     assert modules <= {"__future__", "re", "urllib.parse"}, modules
 
 
-def test_le_jeton_bgg_n_est_lu_nulle_part():
-    for dossier in ("app", "scripts"):
-        for fichier in Path(dossier).rglob("*.py"):
-            assert "BGG_TOKEN" not in fichier.read_text(encoding="utf-8"), fichier
+def test_le_jeton_bgg_est_lu_a_un_seul_endroit():
+    """
+    Intention d'origine (lot fiche-1 : « le jeton n'est lu nulle part »),
+    réécrite au lot fiche-2, qui l'introduit : le jeton est lu à UN SEUL
+    endroit, `bgg_api._jeton`, par une seule lecture d'environnement. Qu'il
+    n'apparaisse ensuite ni dans une page, ni dans une URL, ni dans le
+    journal est vérifié par tests/test_bgg_donnees.py.
+    """
+    porteurs = [fichier for dossier in ("app", "scripts")
+                for fichier in Path(dossier).rglob("*.py")
+                if "BGG_TOKEN" in fichier.read_text(encoding="utf-8")]
+    assert porteurs == [Path("app/bgg_api.py")], porteurs
+    arbre = ast.parse(Path("app/bgg_api.py").read_text(encoding="utf-8"))
+    lectures = [n for n in ast.walk(arbre)
+                if isinstance(n, ast.Constant) and n.value == "BGG_TOKEN"]
+    assert len(lectures) == 1
+    fonctions = [f.name for f in ast.walk(arbre) if isinstance(f, ast.FunctionDef)
+                 and any(n in lectures for n in ast.walk(f))]
+    assert fonctions == ["_jeton"]
 
 
 # ===========================================================================
@@ -286,7 +302,7 @@ def test_migration_une_base_ancienne_gagne_deux_colonnes_vides(tmp_path, monkeyp
 
 def test_base_d_avant_aucun_lien_aucun_avertissement(client, tmp_path):
     page = client.get("/admin/jeu/CATANE").text
-    assert "Voir sur BoardGameGeek" not in page
+    assert "sur BoardGameGeek<span" not in page   # aucun lien (lot fiche-2 : sous la case)
     assert "n'est plus à jour" not in page
     res = _importer(_exporter(tmp_path / "export.csv"))
     assert res["corrections_defaites"] == [] and res["bgg_refusees"] == 0
@@ -535,11 +551,14 @@ def test_bgg_coller_une_adresse_pose_le_lien(client, _journal_isole):
     page = client.get("/admin/jeu/CATANE").text
     lien = re.search(r'<a [^>]*href="https://boardgamegeek.com/boardgame/13"[^>]*>', page).group(0)
     assert 'target="_blank"' in lien and 'rel="noopener noreferrer"' in lien
-    assert "Voir sur BoardGameGeek" in page
+    # Lot fiche-2 : le lien vit sous la case, et dit ce qu'il ouvre. Sans
+    # copie BGG, le nom n'est pas connu : il cite le numéro.
+    assert "Ouvrir la fiche n° 13 sur BoardGameGeek" in page
     assert 'value="13"' in _champ(page, "bgg")
 
 
-def test_bgg_jamais_sur_la_fiche_publique(client):
+def test_bgg_pas_sur_la_fiche_publique_par_defaut(client):
+    """Le lien public est un réglage d'instance, décoché par défaut (lot fiche-2)."""
     _enregistrer(client, bgg="13")
     assert "boardgamegeek" not in client.get("/jeu/001").text.lower()
 
@@ -559,7 +578,7 @@ def test_bgg_vider_retire_le_lien(client):
     _enregistrer(client, bgg="13")
     _enregistrer(client, bgg="")
     assert _titre()["bgg_id"] is None
-    assert "Voir sur BoardGameGeek" not in client.get("/admin/jeu/CATANE").text
+    assert "sur BoardGameGeek<span" not in client.get("/admin/jeu/CATANE").text
 
 
 def test_export_porte_la_fiche_bgg_en_fin_de_ligne(client):

@@ -16,7 +16,14 @@
      types_jeu   — les types proposés (services.TYPES_JEU) ;
      type_vide   — propose « non renseigné » (éditeur : une case vidée efface
                    la valeur) ;
-     focus       — champ qui prend le focus quand il n'y a aucune erreur.
+     focus       — champ qui prend le focus quand il n'y a aucune erreur ;
+     bgg         — dict champ -> {"texte", "etat"} : ce que dit la copie
+                   BoardGameGeek (services.comparer_avec_bgg), affiché sous
+                   la case et relié à elle par `aria-describedby`, EN PLUS du
+                   message d'erreur. Vide par défaut : l'écran de création
+                   n'en montre rien. L'état se lit en toutes lettres
+                   (« identique », « différent »…), la couleur grise n'est
+                   qu'un habillage.
 
    Un type venu du tableur, hors de la liste, reste proposé et sélectionné :
    un simple enregistrement ne doit pas l'écraser.
@@ -25,15 +32,29 @@
    saisie illisible (« 10 ans ») et le dit sur le champ ; la route refuse
    aussi, avec son propre message, ce qui lui parviendrait quand même. #}
 {% macro champs_jeu(valeurs, erreurs, categories=(), types_jeu=("Jeu", "Extension"),
-                    type_vide=False, focus="") -%}
+                    type_vide=False, focus="", bgg={}) -%}
 {%- set ordre = ["nom", "type_jeu", "categorie", "nb_joueurs_min", "nb_joueurs_max",
                  "duree_min", "age_min", "editeur", "auteur", "annee_edition",
                  "descriptif", "bgg"] -%}
 {%- set fautifs = ordre | select("in", erreurs) | list -%}
 {%- set premier = fautifs[0] if fautifs else focus -%}
 {%- macro attributs(champ) -%}
-  {%- if champ in erreurs %} aria-invalid="true" aria-describedby="{{ champ }}-erreur"{% endif -%}
+  {%- set decrit = [] -%}
+  {%- if champ in erreurs %}{% set _ = decrit.append(champ ~ "-erreur") %}{% endif -%}
+  {%- if champ in bgg %}{% set _ = decrit.append(champ ~ "-bgg") %}{% endif -%}
+  {%- if champ in erreurs %} aria-invalid="true"{% endif -%}
+  {%- if decrit %} aria-describedby="{{ decrit | join(' ') }}"{% endif -%}
   {%- if champ == premier %} autofocus{% endif -%}
+{%- endmacro -%}
+{%- macro indication(champ) -%}
+  {%- if champ in bgg %}{% set i = bgg[champ] %}
+      <p class="indication-bgg" id="{{ champ }}-bgg">BGG : {{ i.texte }}
+        {%- if i.etat == "identique" %} — identique
+        {%- elif i.etat == "different" %} — <strong>différent</strong>
+        {%- elif i.etat == "vide" %} — la case est vide
+        {%- elif i.etat == "repris" %} — <strong>repris de BGG</strong>, pas encore enregistré
+        {%- endif %}</p>
+  {%- endif -%}
 {%- endmacro -%}
 {%- macro erreur(champ) -%}
   {%- if champ in erreurs %}
@@ -77,24 +98,28 @@
       <input type="number" id="nb_joueurs_min" name="nb_joueurs_min" min="1" max="999"
              value="{{ valeurs.get('nb_joueurs_min', '') }}"{{ attributs('nb_joueurs_min') }}>
       {{- erreur("nb_joueurs_min") }}
+      {{- indication("nb_joueurs_min") }}
     </div>
     <div class="champ">
       <label for="nb_joueurs_max">Joueurs maximum</label>
       <input type="number" id="nb_joueurs_max" name="nb_joueurs_max" min="1" max="999"
              value="{{ valeurs.get('nb_joueurs_max', '') }}"{{ attributs('nb_joueurs_max') }}>
       {{- erreur("nb_joueurs_max") }}
+      {{- indication("nb_joueurs_max") }}
     </div>
     <div class="champ">
       <label for="duree_min">Durée (minutes)</label>
       <input type="number" id="duree_min" name="duree_min" min="1" max="9999"
              value="{{ valeurs.get('duree_min', '') }}"{{ attributs('duree_min') }}>
       {{- erreur("duree_min") }}
+      {{- indication("duree_min") }}
     </div>
     <div class="champ">
       <label for="age_min">Âge minimum</label>
       <input type="number" id="age_min" name="age_min" min="0" max="99"
              value="{{ valeurs.get('age_min', '') }}"{{ attributs('age_min') }}>
       {{- erreur("age_min") }}
+      {{- indication("age_min") }}
     </div>
     <div class="champ">
       <label for="editeur">Éditeur</label>
@@ -107,6 +132,7 @@
       <input type="text" id="auteur" name="auteur" maxlength="200"
              value="{{ valeurs.get('auteur', '') }}"{{ attributs('auteur') }}>
       {{- erreur("auteur") }}
+      {{- indication("auteur") }}
     </div>
     <div class="champ">
       <label for="annee_edition">Année d'édition</label>

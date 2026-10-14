@@ -143,6 +143,20 @@ ACTIONS = {
     # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
     # message affiché au bureau, pas ici.
     "import_corrections_defaites",
+    # Copie d'une fiche BoardGameGeek récupérée (série « fiche », lot 2), par
+    # le bouton de la fiche ou dans la foulée d'un identifiant enregistré.
+    # `objet` = le nom du jeu, `ref` = sa référence. Un échec part en
+    # `ok=False`, avec en `detail` le CODE fermé de l'issue
+    # (`bgg_api.MESSAGES_ECHEC`) — jamais le jeton, jamais la réponse de BGG.
+    "bgg_fiche_recuperee",
+    # Un lot de copies BGG récupéré depuis la liste des jeux. `objet` porte
+    # les NOMBRES (« 100 récupérées, 242 restantes »), rien d'autre ; un arrêt
+    # sur échec part en `ok=False` avec le code de l'issue en `detail`.
+    "bgg_lot_recupere",
+    # Réglage « lien BoardGameGeek sur les fiches publiques » de
+    # /admin/identite. `objet` = « affiché » ou « masqué ». Écrit au
+    # changement seulement.
+    "bgg_lien_public_modifie",
     # --- Priorité 2 — tournois, programme, planning (§2.2) -----------------
     "tournoi_cree",
     "tournoi_modifie",

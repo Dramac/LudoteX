@@ -210,15 +210,17 @@ def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None
     Returns:
         Un dict des colonnes (id_exemplaire, reference_titre, nom, categorie,
         nb_joueurs_min/max, duree_min, age_min, editeur, auteur, annee_edition,
-        descriptif, et les trois lettres du code de classement — l'étiquette
-        de réimpression en dépend), ou ``None`` si l'exemplaire est inconnu.
+        descriptif, les trois lettres du code de classement — l'étiquette
+        de réimpression en dépend — et l'identifiant BoardGameGeek, pour le
+        lien public quand l'instance l'a choisi), ou ``None`` si l'exemplaire
+        est inconnu.
     """
     row = conn.execute(
         """
         SELECT e.id_exemplaire, t.reference_titre, t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
                t.editeur, t.auteur, t.annee_edition, t.descriptif,
-               t.lettre_public, t.lettre_jeu, t.lettre_materiel
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel, t.bgg_id
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         WHERE e.id_exemplaire = ?
@@ -2157,6 +2159,189 @@ def effacer_lettres(conn: sqlite3.Connection, reference_titre: str) -> dict | No
                 (reference_titre,))
     apres = dict(avant, **{c: None for c in classement.COLONNES_LETTRES})
     return {"efface": efface, "avant": avant, "apres": apres if efface else avant}
+
+
+# ===========================================================================
+# COPIE DES FICHES BOARDGAMEGEEK (série « fiche », lot 2)
+#
+# Ce que BGG dit d'une fiche est récupéré SUR DEMANDE par `app/bgg_api.py`
+# (seul module réseau), puis gardé ici, daté, dans `fiches_bgg`. Aucune
+# fonction de cette section ne parle au réseau : la route appelle le client,
+# puis transmet le résultat. Afficher la fiche d'un jeu ne lit que la copie.
+#
+# La copie ne remplace JAMAIS nos valeurs : la boîte en main fait foi (une
+# réédition peut différer de BGG). Elle s'affiche à côté (« BGG : 3 ») et peut
+# être reprise dans le formulaire, qui n'est enregistré que par le chemin
+# habituel (`modifier_titre`).
+# ===========================================================================
+# Nos champs que la copie BGG éclaire, et la colonne de `fiches_bgg` qui leur
+# répond. Ni le nom (anglais chez BGG), ni l'année (BGG donne la première
+# parution, nous l'année de notre édition), ni le descriptif (anglais, parfois
+# sous licence Wikipédia), ni l'éditeur : BGG liste tous les éditeurs et
+# distributeurs du monde (médiane 3, jusqu'à 277 par fiche), le nôtre est celui
+# de notre boîte. L'auteur, lui, est le même partout.
+CHAMPS_BGG: dict[str, str] = {
+    "nb_joueurs_min": "nb_joueurs_min",
+    "nb_joueurs_max": "nb_joueurs_max",
+    "duree_min": "duree_min",
+    "age_min": "age_min",
+    "auteur": "auteurs",
+}
+
+_COLONNES_FICHE_BGG = ("type", "nom", "nb_joueurs_min", "nb_joueurs_max",
+                       "age_min", "duree_min", "duree_max", "auteurs")
+
+
+def lire_fiche_bgg(conn: sqlite3.Connection, bgg_id: int | None) -> dict | None:
+    """La copie de la fiche BGG `bgg_id`, ou None s'il n'y en a pas."""
+    if not bgg_id:
+        return None
+    row = conn.execute("SELECT * FROM fiches_bgg WHERE bgg_id = ?",
+                       (bgg_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def enregistrer_fiches_bgg(conn: sqlite3.Connection,
+                           fiches: dict[int, dict | None]) -> tuple[int, int]:
+    """
+    Écrit (ou remplace) la copie de chaque fiche, datée de maintenant.
+
+    Args:
+        fiches: {identifiant: fiche lue par `bgg_api`, ou None quand BGG ne
+            connaît pas cet identifiant — la copie le note alors (`trouve` = 0).
+
+    Returns:
+        (fiches trouvées, identifiants inconnus de BGG).
+    """
+    quand = maintenant()
+    trouvees = inconnues = 0
+    with transaction(conn):
+        for bgg_id, fiche in fiches.items():
+            valeurs = {c: (fiche or {}).get(c) for c in _COLONNES_FICHE_BGG}
+            conn.execute(
+                "INSERT INTO fiches_bgg (bgg_id, trouve, recupere_le, "
+                f"{', '.join(_COLONNES_FICHE_BGG)}) VALUES (:bgg_id, :trouve, "
+                f":recupere_le, {', '.join(':' + c for c in _COLONNES_FICHE_BGG)}) "
+                "ON CONFLICT(bgg_id) DO UPDATE SET trouve = excluded.trouve, "
+                "recupere_le = excluded.recupere_le, "
+                + ", ".join(f"{c} = excluded.{c}" for c in _COLONNES_FICHE_BGG),
+                {**valeurs, "bgg_id": int(bgg_id), "trouve": 1 if fiche else 0,
+                 "recupere_le": quand},
+            )
+            if fiche:
+                trouvees += 1
+            else:
+                inconnues += 1
+    return trouvees, inconnues
+
+
+def ids_bgg_sans_copie(conn: sqlite3.Connection) -> list[int]:
+    """Les identifiants BGG portés par un titre et dont il n'existe aucune copie."""
+    return [r[0] for r in conn.execute(
+        "SELECT DISTINCT t.bgg_id FROM titres t "
+        "LEFT JOIN fiches_bgg f ON f.bgg_id = t.bgg_id "
+        "WHERE t.bgg_id IS NOT NULL AND f.bgg_id IS NULL ORDER BY t.bgg_id")]
+
+
+def copies_bgg_presentes(conn: sqlite3.Connection) -> bool:
+    """True si au moins une copie de fiche BGG est en base."""
+    return conn.execute("SELECT 1 FROM fiches_bgg LIMIT 1").fetchone() is not None
+
+
+def texte_bgg(champ: str, copie: dict) -> str | None:
+    """Ce que dit BGG pour notre `champ`, prêt à afficher, ou None s'il se tait."""
+    if champ == "duree_min":
+        bas, haut = copie.get("duree_min"), copie.get("duree_max")
+        if bas and haut and haut != bas:
+            return f"{bas} à {haut}"
+        return str(bas or haut) if (bas or haut) else None
+    valeur = copie.get(CHAMPS_BGG[champ])
+    return None if valeur in (None, "") else str(valeur)
+
+
+def valeur_bgg(champ: str, copie: dict) -> str | None:
+    """
+    La valeur BGG que « Reprendre les valeurs BGG » mettrait dans la case.
+
+    Pour la durée, notre `duree_min` est la BORNE BASSE d'une plage
+    (`models.SCHEMA_TITRES`) : on reprend la durée minimale de BGG, déjà
+    repliée sur sa durée moyenne quand la plage manque (`bgg_api.lire_fiche`).
+    """
+    valeur = copie.get(CHAMPS_BGG[champ])
+    return None if valeur in (None, "") else str(valeur)
+
+
+def comparer_avec_bgg(valeurs: dict, copie: dict | None,
+                      repris: frozenset | set = frozenset()) -> dict[str, dict]:
+    """
+    Les indications « BGG : … » à afficher sous les cases de l'éditeur.
+
+    Args:
+        valeurs: le formulaire tel qu'affiché (chaînes).
+        copie: la copie de la fiche BGG, ou None.
+        repris: les champs que la reprise vient de remplir.
+
+    Returns:
+        {champ: {"texte": "3" ou "30 à 45", "etat": "identique" | "different"
+        | "vide" | "repris"}} — seulement pour les champs où BGG dit quelque
+        chose. L'état se lit en toutes lettres à l'écran, pas seulement en
+        couleur.
+    """
+    if not copie or not copie.get("trouve"):
+        return {}
+    indications = {}
+    for champ in CHAMPS_BGG:
+        texte = texte_bgg(champ, copie)
+        if texte is None:
+            continue
+        nous = (valeurs.get(champ) or "").strip()
+        if champ in repris:
+            etat = "repris"
+        elif not nous:
+            etat = "vide"
+        elif nous.casefold() == (valeur_bgg(champ, copie) or "").casefold():
+            etat = "identique"
+        else:
+            etat = "different"
+        indications[champ] = {"texte": texte, "etat": etat}
+    return indications
+
+
+def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None) -> tuple[dict, set]:
+    """
+    Le formulaire avec les valeurs BGG À LA PLACE des nôtres, sans rien écrire.
+
+    Seuls les champs de `CHAMPS_BGG` changent. Une valeur BGG absente ne vide
+    JAMAIS notre case. Returns: (formulaire, champs effectivement changés).
+    """
+    nouvelles = dict(valeurs)
+    repris: set[str] = set()
+    if not copie or not copie.get("trouve"):
+        return nouvelles, repris
+    for champ in CHAMPS_BGG:
+        valeur = valeur_bgg(champ, copie)
+        if valeur is None or (valeurs.get(champ) or "").strip() == valeur:
+            continue
+        nouvelles[champ] = valeur
+        repris.add(champ)
+    return nouvelles, repris
+
+
+# ---------------------------------------------------------------------------
+# Le lien BGG sur les fiches PUBLIQUES — réglage d'instance (/admin/identite)
+# ---------------------------------------------------------------------------
+# Défaut : ABSENT, donc décoché. Une instance qui n'a rien demandé ne publie
+# aucun lien vers BGG, et une base d'avant se comporte comme avant. LudoteX
+# n'est pas lié à BGG : chaque instance choisit.
+CLE_BGG_LIEN_PUBLIC = "bgg_lien_public"
+
+
+def lire_bgg_lien_public(conn: sqlite3.Connection) -> bool:
+    return lire_parametre(conn, CLE_BGG_LIEN_PUBLIC) == "1"
+
+
+def ecrire_bgg_lien_public(conn: sqlite3.Connection, afficher: bool) -> None:
+    ecrire_parametre(conn, CLE_BGG_LIEN_PUBLIC, "1" if afficher else None)
 
 
 def titres_pour_etiquettes(conn: sqlite3.Connection,

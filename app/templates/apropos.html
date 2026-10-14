@@ -96,6 +96,18 @@
   <p>Ce site-ci est déployé et exploité par <strong>{{ nom_association }}</strong>,
      seule responsable de son contenu et des données qui y circulent : l'auteur
      du logiciel n'intervient pas dans son exploitation.</p>
+  {# Mention exigée par les conditions d'utilisation de BoardGameGeek pour
+     tout usage public de ses données. Affichée dès que l'instance UTILISE BGG
+     (clé d'accès, lien public, ou copies en base : routes/catalogue.py). Le
+     logo est servi par l'application (la CSP refuse les images d'ailleurs). #}
+  {% if mention_bgg %}
+  <p>Certaines informations sur les jeux (nombre de joueurs, âge, durée,
+     auteurs) peuvent provenir de <strong>BoardGameGeek</strong>, relues par
+     l'association. Ce site n'est pas lié à BoardGameGeek.</p>
+  <p class="mention-bgg"><a href="https://boardgamegeek.com" target="_blank" rel="noopener noreferrer"><img
+     src="/static/img/powered-by-bgg.png" width="736" height="216"
+     alt="Powered by BGG — BoardGameGeek (s'ouvre dans un nouvel onglet)"></a></p>
+  {% endif %}
 
   <h2>Licence et code source</h2>
   <p>Le code de cette application est disponible sur

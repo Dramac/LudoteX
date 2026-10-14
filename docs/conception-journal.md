@@ -79,6 +79,9 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Création d'une fiche de jeu, ajout d'exemplaire | `POST /admin/jeu-nouveau`, `.../exemplaire` |
 | Fiche d'un jeu corrigée (au changement seulement ; nom et référence, jamais les valeurs), lettres de classement effacées | `POST /admin/jeu/{ref}/modifier`, `.../lettres/effacer` |
 | Import qui défait des corrections faites à l'écran (le **nombre** de fiches, jamais les valeurs) | `POST /admin/donnees/import` |
+| Copie d'une fiche BoardGameGeek récupérée, par le bouton ou dans la foulée d'un identifiant enregistré (`bgg_fiche_recuperee` : nom et référence ; en échec, le **code** de l'issue, jamais le jeton ni la réponse) | `POST /admin/jeu/{ref}/bgg/recuperer`, `.../modifier` |
+| Lot de copies BoardGameGeek (`bgg_lot_recupere` : les **nombres** récupérées / restantes ; en échec, le code de l'issue) | `POST /admin/jeux/bgg/recuperer` |
+| Lien BoardGameGeek sur les fiches publiques affiché / masqué (`bgg_lien_public_modifie`, au changement seulement) | `POST /admin/identite` |
 
 La connexion admin **échouée** mérite une mention particulière : c'est aujourd'hui le
 seul signal d'une tentative d'intrusion, et il n'est visible nulle part (le compteur de

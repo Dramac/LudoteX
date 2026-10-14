@@ -100,7 +100,7 @@ avec son propre schéma, ses migrations et son initialisation :
 
 | Base | Schéma | Tables |
 | --- | --- | --- |
-| Prêt | `app/models.py` | `titres`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement` |
+| Prêt | `app/models.py` | `titres`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg` |
 | Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme` |
 | Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
 
@@ -197,8 +197,11 @@ livré, par module :
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
   appareils, création et **correction de la fiche d'un jeu** (référence
-  figée au renommage, lien de vérification BoardGameGeek, avertissement
-  quand un import défait une correction), étiquettes en lot, import/export
+  figée au renommage, avertissement quand un import défait une correction),
+  **données BoardGameGeek** (seul appel sortant, jeton facultatif en `.env`,
+  copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
+  des cases, reprise sans enregistrer, lien public réglable et décoché par
+  défaut), étiquettes en lot, import/export
   du catalogue,
   **sauvegarde et restauration des trois bases**, archives du serveur
   téléchargeables (routine et filets, distingués par leur nom), supervision à

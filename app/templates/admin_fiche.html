@@ -21,17 +21,17 @@
     <p><a class="lien" href="/admin/jeux">← Liste</a>
        {%- if exemplaires %} ·
        <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a>
-       {%- endif %}
-       {%- if lien_bgg %} ·
-       {# Lien de VÉRIFICATION, construit à partir du seul identifiant
-          (app/bgg.py). Administration seulement : sur une page publique, il
-          engagerait la mention « Powered by BGG » (série « fiche », lot 2). #}
-       <a class="lien" href="{{ lien_bgg }}" target="_blank" rel="noopener noreferrer">Voir sur BoardGameGeek<span class="sr-only"> (s'ouvre dans un nouvel onglet)</span></a>
        {%- endif %}</p>
+    {# Le lien vers BoardGameGeek n'est plus ici : il vit sous la case « Fiche
+       BoardGameGeek », avec le nom du jeu chez BGG. Un seul lien, à côté de
+       ce qu'il vérifie. #}
 
-    {# Après un enregistrement : un message choisi par CODE (MESSAGES_FICHE de
-       app/routes/admin.py), jamais un texte libre venu de l'URL. #}
+    {# Après un enregistrement : un message choisi par CODE (MESSAGES_FICHE et
+       MESSAGES_BGG_FICHE de app/routes/admin.py), jamais un texte libre venu
+       de l'URL. Un échec de BGG est un avertissement : la fiche, elle, est
+       ouverte et, s'il suit un enregistrement, enregistrée. #}
     {% if message %}<p class="resultat resultat-ok" role="status">{{ message }}</p>{% endif %}
+    {% if message_bgg %}<p class="resultat resultat-attention" role="alert">{{ message_bgg }}</p>{% endif %}
     {# L'étiquette déjà collée ne dit plus la même chose que la fiche. Rien
        n'est mémorisé : l'annonce vaut pour l'enregistrement qui vient d'avoir
        lieu. Réimpression en un tap par la route des planches, qui accepte une
@@ -62,8 +62,35 @@
     </form>
   </section>
 
-  <section class="carte">
+  <section class="carte" id="modifier">
     <h2>Modifier la fiche</h2>
+    {# Copie BoardGameGeek : lue en base, JAMAIS récupérée à l'affichage. Le
+       bouton qui va la chercher n'existe que si l'instance a une clé d'accès
+       (formulaire séparé : il n'enregistre rien de la fiche). « Reprendre »
+       est une simple navigation (GET) : rien n'est écrit. #}
+    {% if titre.bgg_id and (copie_bgg or bgg_disponible) %}
+    <div class="bloc-bgg">
+      <p class="stats-note">
+        {%- if copie_bgg and copie_bgg.trouve %} Données BGG du {{ date_copie_bgg }}.
+        {%- elif copie_bgg %} BoardGameGeek ne connaissait aucune fiche à ce numéro le {{ date_copie_bgg }}.
+        {%- else %} Aucune donnée BGG n'a encore été récupérée pour ce jeu.
+        {%- endif %}</p>
+      <div class="actions-bgg">
+        {% if bgg_disponible %}
+        <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/recuperer">
+          <button type="submit" class="bouton-filtrer">Récupérer les données BGG</button>
+        </form>
+        {% endif %}
+        {% if copie_bgg and copie_bgg.trouve %}
+        <form method="get" action="/admin/jeu/{{ titre.reference_titre }}#modifier">
+          <input type="hidden" name="bgg" value="reprendre">
+          <button type="submit" class="bouton-filtrer">Reprendre les valeurs BGG</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% if message_reprise %}<p class="resultat resultat-info" role="status">{{ message_reprise }}</p>{% endif %}
     {% if erreurs %}
     <p class="resultat resultat-attention" role="alert">La fiche n'est pas
        enregistrée : {{ erreurs | length }} {{ pluriel(erreurs | length, 'case est', 'cases sont') }}
@@ -72,7 +99,7 @@
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/modifier"
           class="recherche-form form-2col">
       {{ champs_jeu(valeurs, erreurs, categories=categories, types_jeu=types_jeu,
-                    type_vide=True) }}
+                    type_vide=True, bgg=indications_bgg) }}
       <div class="champ champ-large">
         <label for="bgg">Fiche BoardGameGeek</label>
         {# Le focus va ici quand ce champ est le seul refusé : il vient en
@@ -87,6 +114,15 @@
         <p class="stats-note" id="bgg-aide">Collez le numéro de la fiche, ou
            l'adresse de sa page sur boardgamegeek.com. Videz la case pour
            retirer le lien.</p>
+        {# Lien de VÉRIFICATION, construit à partir du seul identifiant
+           ENREGISTRÉ (app/bgg.py), pas de la saisie en cours : rien de ce
+           que le bureau a collé n'est recopié dans la page. #}
+        {%- if lien_bgg %}
+        <p><a class="lien" href="{{ lien_bgg }}" target="_blank" rel="noopener noreferrer">
+          {%- if copie_bgg and copie_bgg.nom %}Ouvrir <cite>{{ copie_bgg.nom }}</cite> sur BoardGameGeek
+          {%- else %}Ouvrir la fiche n° {{ titre.bgg_id }} sur BoardGameGeek{% endif -%}
+          <span class="sr-only"> (s'ouvre dans un nouvel onglet)</span></a></p>
+        {%- endif %}
       </div>
       <p class="stats-note champ-large">Le nom peut changer, la référence
          <code>{{ titre.reference_titre }}</code> jamais : les étiquettes et

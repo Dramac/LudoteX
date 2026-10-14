@@ -108,7 +108,7 @@ cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 | `nom` | nom affiché du jeu |
 | `categorie` | catégorie pour le filtrage public |
 | *(champs facultatifs)* | joueurs, durée, âge, éditeur, auteur, descriptif… — tous nullables |
-| `bgg_id` | numéro de la fiche du jeu sur BoardGameGeek, s'il est connu ; sert un lien de vérification dans l'administration, jamais un appel réseau |
+| `bgg_id` | numéro de la fiche du jeu sur BoardGameGeek, s'il est connu ; sert un lien de vérification, et désigne la copie des données BGG (`fiches_bgg`, ci-dessous) |
 | `modifie_le` | date de la dernière correction faite à l'écran ; l'import s'en sert pour signaler qu'un fichier plus ancien la défait |
 
 **`exemplaires`** — les boîtes physiques, niveau « unité prêtable ».
@@ -154,7 +154,11 @@ cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 
 La base de prêt porte aussi les réglages (`parametres`), le registre des
 appareils autorisés à écrire (`appareils`), les emplacements de rangement et
-le carnet de maintenance (`signalements`, `categories_signalement`). Détail
+le carnet de maintenance (`signalements`, `categories_signalement`), et la
+copie datée des fiches BoardGameGeek (`fiches_bgg`, clé : le numéro BGG, pas
+la référence du titre — deux jeux peuvent partager une fiche). Cette copie
+n'est jamais une donnée du bureau : elle ne remplace aucune valeur, ne part
+pas dans l'export du catalogue, et n'est récupérée que sur demande. Détail
 des colonnes : `app/models.py`, commenté.
 
 ### 3.3 Règles dérivées
@@ -300,7 +304,8 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   quelle personne. `docs/conception-journal.md`.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue
   (création et correction de la fiche d'un jeu, lien vers sa fiche
-  BoardGameGeek, import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
+  BoardGameGeek et copie de ses données, affichées à côté des nôtres et
+  reprenables avant d'enregistrer, import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
   supervision, identité, visibilité des modules, clôture de fin d'événement.
 - **Mode formation** — une seconde instance du même code, sur ses propres
   bases, pour s'entraîner sur de vraies boîtes sans rien inscrire pour de bon.
@@ -395,6 +400,15 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
 - **Registre des appareils** — chaque appareil autorisé reçoit un
   identifiant tiré au hasard, qui dit « c'est le même téléphone », jamais
   « c'est le téléphone de quelqu'un ». Le bureau peut lui donner un libellé.
+- **Un seul appel sortant, facultatif** — l'API de BoardGameGeek, et
+  seulement si l'instance a reçu une clé d'accès (`BGG_TOKEN`, dans le
+  fichier d'environnement, jamais en base ni à l'écran). L'appel part d'un
+  bouton d'administration, jamais de l'affichage d'une page : une panne de
+  BGG n'empêche d'ouvrir ni d'enregistrer quoi que ce soit. Rien de ce que tape
+  le bureau n'est transmis, seulement des numéros de fiche ; la réponse est
+  bornée en temps et en taille avant d'être lue. Sans clé, la fonction est
+  absente et rien d'autre ne change. Le lien vers BGG sur les fiches publiques
+  est un réglage d'instance, décoché par défaut.
 
 ---
 

@@ -580,6 +580,17 @@ summary:focus-visible,
 .histo-barre { height: 16px; background: var(--primaire-clair); border-radius: 4px; min-width: 2px; }
 .histo-val { font-size: 0.85rem; font-weight: 600; }
 .stats-note { color: #6b7075; font-size: 0.8rem; }
+/* Fiche d'un jeu : ce que dit la copie BoardGameGeek sous une case
+   (« BGG : 3 — différent », lot fiche-2). Le TEXTE porte le sens, y compris
+   l'écart (« identique », « différent ») ; le gris n'est qu'un habillage —
+   --gris fait 6,3:1 sur le blanc de la carte. */
+.indication-bgg { color: var(--gris); font-size: 0.85rem; margin: 4px 0 0; }
+.bloc-bgg { margin: 0 0 16px; }
+.actions-bgg { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.actions-bgg form { margin: 0; }
+/* Logo « Powered by BGG » de la page « À propos » : une marque de BGG,
+   affichée telle quelle (voir img/powered-by-bgg.NOTICE.txt). */
+.mention-bgg img { display: block; height: 48px; width: auto; max-width: 100%; }
 /* Rappel du nom de l'événement sous un titre de page (accueil, programme,
    tournois). C'est un RAPPEL, pas le sujet de la page : il ne concurrence
    jamais le <h1> qui le précède. Plus lisible que .stats-note, qui est réservée

@@ -53,6 +53,14 @@
       <p class="descriptif">{{ info.descriptif }}</p>
     {% endif %}
 
+    {# Lien vers la fiche BoardGameGeek du jeu : seulement si l'instance l'a
+       choisi (« Identité de l'association », décoché par défaut). Un simple
+       lien : le serveur n'appelle pas BGG pour afficher cette page. La
+       mention « Powered by BGG » est sur la page « À propos ». #}
+    {% if lien_bgg %}
+      <p><a class="lien" href="{{ lien_bgg }}" target="_blank" rel="noopener noreferrer">Voir ce jeu sur BoardGameGeek<span class="sr-only"> (site en anglais, s'ouvre dans un nouvel onglet)</span></a></p>
+    {% endif %}
+
     {# Sorties de page : la fiche est la cible des 703 QR, c'était jusqu'ici
        un cul-de-sac (aucun lien de retour, aucun rebond). Point 3 de A1 :
        quand ce jeu est tout sorti, le rebond de catégorie devient le lien

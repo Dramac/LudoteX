@@ -16,7 +16,7 @@ Les routes ne contiennent PAS de logique métier ni de SQL.
 
 from fastapi import APIRouter, Request
 
-from app import services
+from app import bgg, bgg_api, services
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -136,12 +136,20 @@ def apropos(request: Request):
     presentation = None
     contact = None
     depot_url = DEPOT_URL
+    # Mention « Powered by BGG » (conditions d'utilisation de BoardGameGeek) :
+    # dès que l'instance UTILISE BGG — jeton configuré, lien public coché, ou
+    # copies déjà en base. Ce dernier cas compte : une valeur reprise de BGG
+    # finit sur la fiche publique et sur l'étiquette, même une fois le jeton
+    # retiré. Aucun appel réseau : trois lectures locales.
+    mention_bgg = bgg_api.disponible()
     try:
         conn = get_connection()
         try:
             presentation = services.lire_presentation_association(conn)
             contact = services.lire_contact_association(conn)
             depot_url = services.lire_depot_url(conn)
+            mention_bgg = (mention_bgg or services.lire_bgg_lien_public(conn)
+                           or services.copies_bgg_presentes(conn))
         finally:
             conn.close()
     except Exception:  # noqa: BLE001 - repli volontairement total, voir docstring
@@ -154,7 +162,8 @@ def apropos(request: Request):
          "presentation": services.paragraphes(presentation),
          "contact": contact,
          "depot_url": depot_url,
-         "lien_versions": services.lien_journal_versions(depot_url)},
+         "lien_versions": services.lien_journal_versions(depot_url),
+         "mention_bgg": mention_bgg},
     )
 
 
@@ -179,8 +188,14 @@ def fiche(request: Request, id_exemplaire: str):
         info = services.info_exemplaire(conn, id_exemplaire)
         total = disponible = 0
         emplacement = None
+        lien_bgg = None
         if info is not None:
             total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
+            # Lien vers la fiche BoardGameGeek : seulement si l'instance l'a
+            # choisi (/admin/identite, décoché par défaut). Un simple lien,
+            # construit du seul identifiant : aucun appel réseau.
+            if info["bgg_id"] and services.lire_bgg_lien_public(conn):
+                lien_bgg = bgg.url_fiche(info["bgg_id"])
             # Emplacement de rangement (docs/conception-rangement.md §7) :
             # seulement si le réglage de visibilité l'autorise pour ce
             # visiteur ET qu'un emplacement est effectivement renseigné
@@ -194,7 +209,8 @@ def fiche(request: Request, id_exemplaire: str):
         request,
         "fiche.html",
         {"id_exemplaire": id_exemplaire, "info": info,
-         "total": total, "disponible": disponible, "emplacement": emplacement},
+         "total": total, "disponible": disponible, "emplacement": emplacement,
+         "lien_bgg": lien_bgg},
         status_code=200 if info else 404,
     )
 

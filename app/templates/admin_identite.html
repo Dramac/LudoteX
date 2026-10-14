@@ -185,6 +185,24 @@
       {% endif %}
     </div>
 
+    <div class="champ">
+      {# Décochée par défaut : une instance qui n'a rien demandé ne publie
+         aucun lien vers BoardGameGeek, site sans lien avec LudoteX. #}
+      <label class="case" for="bgg_lien_public">
+        <input type="checkbox" id="bgg_lien_public" name="bgg_lien_public" value="1"
+               aria-describedby="bgg_lien_public-aide"
+               {%- if bgg_lien_public %} checked{% endif %}>
+        Afficher le lien BoardGameGeek sur les fiches publiques
+      </label>
+      <small class="stats-note" id="bgg_lien_public-aide">
+        Cochée, la fiche publique d'un jeu relié à BoardGameGeek (le site de
+        référence des jeux de société, en anglais) porte un lien « Voir ce jeu
+        sur BoardGameGeek ». La page « À propos » mentionne alors
+        BoardGameGeek comme source, avec son logo, comme ses conditions
+        d'utilisation le demandent. Décochée, rien n'est affiché au public.
+      </small>
+    </div>
+
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>
 </section>

@@ -335,8 +335,13 @@ def _date_locale_dans(minutes: int) -> str | None:
 # Base de PRÊT
 # ---------------------------------------------------------------------------
 def _vider_base_pret(conn: sqlite3.Connection) -> None:
-    """Supprime toutes les lignes des 4 tables de la base de prêt (schéma conservé)."""
-    for table in ("prets", "pochettes", "exemplaires", "titres"):
+    """
+    Supprime toutes les lignes des tables du catalogue et des prêts de la base
+    de prêt (schéma conservé). `fiches_bgg` en fait partie : une instance de
+    formation n'a pas de jeton BGG et n'en remplit aucune, mais une copie
+    venue d'ailleurs n'a rien à faire dans un catalogue jetable.
+    """
+    for table in ("prets", "pochettes", "exemplaires", "titres", "fiches_bgg"):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
 
