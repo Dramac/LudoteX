@@ -89,6 +89,9 @@ stables :
   d'un **même jeu** : trois boîtes de Catan partagent la référence `CATAN`.
   Elle est dérivée du nom du jeu, par la même règle à l'import et dans
   l'administration. Elle sert à agréger les statistiques par titre (§7).
+  Elle est **fixée à la création** : corriger le nom d'un jeu depuis sa fiche
+  d'administration ne la change pas, et l'import retrouve ce jeu sous son
+  nouveau nom plutôt que d'en créer un second.
 
 À l'import, seuls le code d'exemplaire et le nom du jeu sont exigés ; les
 autres colonnes reconnues sont facultatives, et leurs intitulés tolérés sont
@@ -105,6 +108,8 @@ cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 | `nom` | nom affiché du jeu |
 | `categorie` | catégorie pour le filtrage public |
 | *(champs facultatifs)* | joueurs, durée, âge, éditeur, auteur, descriptif… — tous nullables |
+| `bgg_id` | numéro de la fiche du jeu sur BoardGameGeek, s'il est connu ; sert un lien de vérification dans l'administration, jamais un appel réseau |
+| `modifie_le` | date de la dernière correction faite à l'écran ; l'import s'en sert pour signaler qu'un fichier plus ancien la défait |
 
 **`exemplaires`** — les boîtes physiques, niveau « unité prêtable ».
 
@@ -293,8 +298,9 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   `docs/conception-signalements.md`.
 - **Journal d'activité** — qui a fait quoi, à quel appareil près, jamais à
   quelle personne. `docs/conception-journal.md`.
-- **Administration** — mot de passe distinct du jeton bénévole : catalogue et
-  étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
+- **Administration** — mot de passe distinct du jeton bénévole : catalogue
+  (création et correction de la fiche d'un jeu, lien vers sa fiche
+  BoardGameGeek, import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
   supervision, identité, visibilité des modules, clôture de fin d'événement.
 - **Mode formation** — une seconde instance du même code, sur ses propres
   bases, pour s'entraîner sur de vraies boîtes sans rien inscrire pour de bon.

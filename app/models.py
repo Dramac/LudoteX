@@ -81,7 +81,18 @@ CREATE TABLE IF NOT EXISTS titres (
     -- classification automatique, jamais effacées par un import (COALESCE).
     lettre_public    TEXT,                        -- 1 : public (E, T, I, X — catégories de l'As d'Or)
     lettre_jeu       TEXT,                        -- 2 : façon de jouer (liste non arrêtée)
-    lettre_materiel  TEXT                         -- 3 : matériel dominant (liste non arrêtée)
+    lettre_materiel  TEXT,                        -- 3 : matériel dominant (liste non arrêtée)
+
+    -- Fiche BoardGameGeek (app/bgg.py) : l'identifiant seul, entier > 0, ou
+    -- NULL. Saisi sur la fiche d'administration ou dans la colonne CSV
+    -- « Fiche BoardGameGeek » ; comme les lettres, jamais effacé par un
+    -- import (COALESCE) : il ne vient pas du tableur du bureau.
+    bgg_id           INTEGER,
+    -- Date ISO de la dernière correction faite À L'ÉCRAN (fiche
+    -- d'administration) sur une colonne que l'import écrase, ou NULL. Sert à
+    -- dire, à l'import, qu'un fichier plus ancien défait une correction.
+    -- Remise à NULL quand un import a effectivement écrasé la correction.
+    modifie_le       TEXT
 );
 """
 

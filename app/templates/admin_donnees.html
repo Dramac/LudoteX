@@ -37,6 +37,36 @@
       {{ message[1] }}
     </p>
   {% endif %}
+  {# Fiches corrigées à l'écran que l'import vient de défaire : l'import
+     s'est fait (ni blocage, ni confirmation), on dit lesquelles, ce qui a
+     changé, et on donne le lien vers chaque fiche — l'action de rattrapage. #}
+  {% if corrections_total %}
+    {% macro valeur(v) %}{% if v is none or v == "" %}(vide){% else %}« {{ v | string | truncate(longueur_valeur, True, "…", 0) }} »{% endif %}{% endmacro %}
+    <div class="resultat resultat-attention" role="status">
+      <p><strong>{{ corrections_total }} {{ pluriel(corrections_total, 'fiche corrigée', 'fiches corrigées') }}
+         à l'écran {{ pluriel(corrections_total, 'a été remplacée', 'ont été remplacées') }}
+         par ce fichier.</strong> Il est sans doute plus ancien que la correction.
+         Ouvrez chaque fiche pour vérifier, et corrigez-la de nouveau si besoin.</p>
+      <ul class="resultat-liste">
+        {% for f in corrections %}
+        <li><a class="lien" href="/admin/jeu/{{ f.reference_titre | urlencode }}">{{ f.nom }}</a>
+          <ul>
+            {% for libelle, avant, fichier in f.ecarts %}
+            <li>{{ libelle }} : {{ valeur(avant) }} → {{ valeur(fichier) }}</li>
+            {% endfor %}
+          </ul>
+          {% if not f.ecrase %}<p>Des boîtes de ce jeu sont passées sous le nom
+             du fichier ; la fiche elle-même n'a pas changé.</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% if corrections_total > corrections | length %}
+      <p>… et {{ corrections_total - corrections | length }} autres
+         {{ pluriel(corrections_total - corrections | length, 'fiche', 'fiches') }} :
+         ce fichier est probablement le mauvais.</p>
+      {% endif %}
+    </div>
+  {% endif %}
   {% if manques %}
     <p class="stats-note">
       🗄️ Il reste {{ manques }} {{ pluriel(manques, 'boîte', 'boîtes') }} sans emplacement —

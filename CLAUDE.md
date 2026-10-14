@@ -196,7 +196,10 @@ livré, par module :
 - **Journal d'activité** — socle à vocabulaire fermé, écran `/admin/journal`,
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
-  appareils, fiches et étiquettes en lot, import/export du catalogue,
+  appareils, création et **correction de la fiche d'un jeu** (référence
+  figée au renommage, lien de vérification BoardGameGeek, avertissement
+  quand un import défait une correction), étiquettes en lot, import/export
+  du catalogue,
   **sauvegarde et restauration des trois bases**, archives du serveur
   téléchargeables (routine et filets, distingués par leur nom), supervision à
   seuils qui ne rassure pas à tort, identité,

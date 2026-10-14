@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_champs_jeu.html" import champs_jeu %}
 {% block titre %}{{ titre.nom if titre else "Jeu inconnu" }} — Administration — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
@@ -11,7 +12,33 @@
   <section class="carte">
     <h1>{{ titre.nom }}</h1>
     <p><a class="lien" href="/admin/jeux">← Liste</a> ·
-       <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a></p>
+       <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a>
+       {%- if lien_bgg %} ·
+       {# Lien de VÉRIFICATION, construit à partir du seul identifiant
+          (app/bgg.py). Administration seulement : sur une page publique, il
+          engagerait la mention « Powered by BGG » (série « fiche », lot 2). #}
+       <a class="lien" href="{{ lien_bgg }}" target="_blank" rel="noopener noreferrer">Voir sur BoardGameGeek<span class="sr-only"> (s'ouvre dans un nouvel onglet)</span></a>
+       {%- endif %}</p>
+
+    {# Après un enregistrement : un message choisi par CODE (MESSAGES_FICHE de
+       app/routes/admin.py), jamais un texte libre venu de l'URL. #}
+    {% if message %}<p class="resultat resultat-ok" role="status">{{ message }}</p>{% endif %}
+    {# L'étiquette déjà collée ne dit plus la même chose que la fiche. Rien
+       n'est mémorisé : l'annonce vaut pour l'enregistrement qui vient d'avoir
+       lieu. Réimpression en un tap par la route des planches, qui accepte une
+       liste de références : tous les exemplaires du jeu d'un coup, au même
+       rendu que l'impression en lot. #}
+    {% if etiquette_perimee %}
+    <div class="resultat resultat-attention" role="status">
+      <p>L'étiquette déjà imprimée de ce jeu n'est plus à jour : son nom ou son
+         code de classement a changé.</p>
+      <form method="post" action="/admin/etiquettes/pdf">
+        <input type="hidden" name="references" value="{{ titre.reference_titre }}">
+        <button type="submit" class="bouton-filtrer">🖨️ Réimprimer les étiquettes de ce jeu</button>
+      </form>
+    </div>
+    {% endif %}
+
     <p class="dispo-titre">
        {% if titre.type_jeu %}{{ titre.type_jeu }} · {% endif %}
        Référence : <code>{{ titre.reference_titre }}</code> ·
@@ -21,6 +48,58 @@
       <button type="submit" class="bouton-filtrer">➕ Ajouter un exemplaire</button>
     </form>
   </section>
+
+  <section class="carte">
+    <h2>Modifier la fiche</h2>
+    {% if erreurs %}
+    <p class="resultat resultat-attention" role="alert">La fiche n'est pas
+       enregistrée : {{ erreurs | length }} {{ pluriel(erreurs | length, 'case est', 'cases sont') }}
+       à corriger, le message est sous chacune. Le reste de votre saisie est conservé.</p>
+    {% endif %}
+    <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/modifier"
+          class="recherche-form form-2col">
+      {{ champs_jeu(valeurs, erreurs, categories=categories, types_jeu=types_jeu,
+                    type_vide=True) }}
+      <div class="champ champ-large">
+        <label for="bgg">Fiche BoardGameGeek</label>
+        {# Le focus va ici quand ce champ est le seul refusé : il vient en
+           dernier dans l'ordre du formulaire (_champs_jeu.html). #}
+        <input type="text" id="bgg" name="bgg" value="{{ valeurs.bgg }}" inputmode="url"
+               aria-describedby="{% if 'bgg' in erreurs %}bgg-erreur {% endif %}bgg-aide"
+               {%- if 'bgg' in erreurs %} aria-invalid="true"{% endif %}
+               {%- if erreurs and erreurs | length == 1 and 'bgg' in erreurs %} autofocus{% endif %}>
+        {%- if 'bgg' in erreurs %}
+        <p class="resultat resultat-attention" id="bgg-erreur">{{ erreurs.bgg }}</p>
+        {%- endif %}
+        <p class="stats-note" id="bgg-aide">Collez le numéro de la fiche, ou
+           l'adresse de sa page sur boardgamegeek.com. Videz la case pour
+           retirer le lien.</p>
+      </div>
+      <p class="stats-note champ-large">Le nom peut changer, la référence
+         <code>{{ titre.reference_titre }}</code> jamais : les étiquettes et
+         les statistiques restent rattachées à ce jeu.</p>
+      <div class="champ-large"><button type="submit" class="bouton-filtrer">Enregistrer la fiche</button></div>
+    </form>
+  </section>
+
+  {# Lettres de classement : affichées, jamais saisies ici — elles viendront
+     de la classification. On peut seulement les effacer, les TROIS d'un coup
+     (jamais de lettres partielles, app/classement.py). #}
+  {% if lettres %}
+  <section class="carte">
+    <h2>Lettres de classement</h2>
+    <ul>
+      {% for position, lettre, libelle in lettres %}
+      <li>{{ position }} : <strong>{{ lettre }}</strong> — {{ libelle }}</li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/lettres/effacer">
+      <button type="submit" class="bouton-filtrer">🗑️ Effacer les trois lettres</button>
+    </form>
+    <p class="stats-note">Les trois lettres disparaissent ensemble, de la fiche
+       et des prochaines étiquettes imprimées.</p>
+  </section>
+  {% endif %}
 
   {% for ex in exemplaires %}
     <section class="carte etiquette-bloc">

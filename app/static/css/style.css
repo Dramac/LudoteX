@@ -343,6 +343,9 @@ summary:focus-visible,
    proches de ceux du prêt et du retour affaiblirait la distinction. */
 .pochette-num--transfert { color: var(--primaire-lisible); }
 .resultat-consigne { margin: 0; font-weight: 600; }
+/* Une liste détaillée dans un message (fiches qu'un import a défaites, lot
+   fiche-1) : alignée à gauche, une liste centrée ne se lit pas. */
+.resultat-liste { text-align: left; }
 
 /* Code personnel (fiche D4, docs/audit-ux-2026-07-18.md) : code de
    désinscription tournoi, code de modification planning — même besoin

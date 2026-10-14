@@ -131,6 +131,18 @@ ACTIONS = {
     "formation_reinitialisee",
     "jeu_cree",
     "exemplaire_ajoute",
+    # Fiche d'un jeu corrigée à l'écran (série « fiche », lot 1) : `objet` =
+    # le nom du jeu, `ref` = sa référence. Écrit seulement si une valeur a
+    # réellement changé. Jamais les valeurs elles-mêmes : un descriptif n'a
+    # rien à faire dans le journal.
+    "jeu_modifie",
+    # Les trois lettres de classement d'un titre effacées d'un coup. Même
+    # `objet` et `ref` que ci-dessus.
+    "lettres_effacees",
+    # Un import a défait des corrections faites à l'écran. `objet` porte le
+    # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
+    # message affiché au bureau, pas ici.
+    "import_corrections_defaites",
     # --- Priorité 2 — tournois, programme, planning (§2.2) -----------------
     "tournoi_cree",
     "tournoi_modifie",

@@ -702,8 +702,16 @@ def test_export_lettres_imprimables_seulement(client, listes_remplies):
     assert lignes[0]["Lettres classement"] == "TPC"
 
 
-def test_la_colonne_d_export_est_en_fin_d_en_tete():
-    assert services.EN_TETES_CATALOGUE[-1] == "Lettres classement"
+def test_la_colonne_d_export_s_ajoute_sans_decaler_les_anciennes():
+    """
+    Ajoutée en fin au lot classement-1, juste après la dernière colonne
+    d'alors : elle n'a décalé aucune colonne d'un tableur existant. Les
+    colonnes venues depuis (« Fiche BoardGameGeek », lot fiche-1) s'ajoutent
+    après elle, sans la décaler à son tour.
+    """
+    entetes = services.EN_TETES_CATALOGUE
+    assert (entetes.index("Lettres classement")
+            == entetes.index("Emplacement local") + 1)
 
 
 def test_export_puis_import_sans_perte(client, tmp_path, listes_remplies,

@@ -77,6 +77,8 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Purge RGPD d'une édition du planning | `POST /planning/admin/{ev}/purger` |
 | Réinitialisation des données de formation | `POST /admin/formation/reinitialiser` |
 | Création d'une fiche de jeu, ajout d'exemplaire | `POST /admin/jeu-nouveau`, `.../exemplaire` |
+| Fiche d'un jeu corrigée (au changement seulement ; nom et référence, jamais les valeurs), lettres de classement effacées | `POST /admin/jeu/{ref}/modifier`, `.../lettres/effacer` |
+| Import qui défait des corrections faites à l'écran (le **nombre** de fiches, jamais les valeurs) | `POST /admin/donnees/import` |
 
 La connexion admin **échouée** mérite une mention particulière : c'est aujourd'hui le
 seul signal d'une tentative d'intrusion, et il n'est visible nulle part (le compteur de

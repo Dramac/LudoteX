@@ -278,6 +278,25 @@ CLASSEMENT_TAILLE_MIN = 6   # plancher de sécurité : jamais atteint au catalog
 MARGE_INTERIEURE = 11       # marge entre un code et les traits de sa case, px
 
 
+def texte_imprime(ex: dict, format_code: str = FORMAT_DEFAUT) -> tuple[str, str]:
+    """
+    Ce que l'étiquette d'un exemplaire imprime À PARTIR DE SON TITRE : le nom,
+    et le code de classement dans le format réglé.
+
+    Le reste de l'étiquette ne dépend pas du titre : le QR et le code de la
+    boîte viennent de `id_exemplaire`, qui ne change jamais ; le logo et la
+    gommette sont les mêmes pour tous. Sert à la fiche d'administration
+    (`app/routes/admin.py`) : une correction qui change ce couple rend
+    l'étiquette déjà collée périmée, et la fiche le dit. Comparer ce qui
+    S'IMPRIME, et non les colonnes : en format lisible, passer un âge de vide
+    à 0 ne change rien à l'étiquette (`classement._connu`).
+
+    TENIR ALIGNÉ avec `image_etiquette` : si elle lit un jour un autre champ du
+    titre, il entre ici. `tests/test_fiche_jeu.py` le vérifie sur les images.
+    """
+    return (ex.get("nom") or "", code_classement(ex, format_code))
+
+
 def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
                     box: int = 8, *, afficher_code: bool = True,
                     format_code: str = FORMAT_DEFAUT) -> Image.Image:

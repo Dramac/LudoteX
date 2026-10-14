@@ -113,6 +113,11 @@ _MIGRATIONS_COLONNES = [
     ("titres", "lettre_public", "TEXT"),
     ("titres", "lettre_jeu", "TEXT"),
     ("titres", "lettre_materiel", "TEXT"),
+    # Fiche d'un jeu corrigée à l'écran (série « fiche », lot 1) : vides sur
+    # une base existante, qui se comporte donc exactement comme avant — aucun
+    # lien BGG, aucun avertissement d'import.
+    ("titres", "bgg_id", "INTEGER"),
+    ("titres", "modifie_le", "TEXT"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

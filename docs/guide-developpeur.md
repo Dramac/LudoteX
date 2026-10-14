@@ -42,7 +42,8 @@ pour le scanner caméra. Servi par **uvicorn**.
 - `id_exemplaire` (TEXT) : une boîte physique, encodée dans le QR
   (`/jeu/<id_exemplaire>`). Stockée en TEXT pour préserver les zéros de tête.
 - `reference_titre` : regroupe les exemplaires d'un même jeu (stats). Générée
-  comme slug normalisé du nom à l'import.
+  comme slug normalisé du nom à la création ou au premier import, puis
+  **figée** : un jeu renommé à l'écran la garde (voir § 10, ré-import).
 
 Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer.
 
@@ -151,6 +152,24 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   imprime sans elle, en silence (`tests/test_classement.py` les espionne).
   Les listes se remplissent dans les tests par `monkeypatch.setattr` — d'où
   `classement._listes()`, qui les relit à chaque appel.
+- **Un jeu renommé à l'écran garde sa référence ; l'import doit le
+  retrouver.** `reference_titre` est le slug du nom *d'origine*. Si l'import
+  recalculait le slug du nom du fichier, « Catane » corrigé en « Catan »,
+  exporté puis ré-importé, créerait un titre `CATAN`, y déplacerait les
+  boîtes et laisserait `CATANE` vide, avec sa fiche BoardGameGeek, ses lettres
+  et sa correction. D'où `scripts/import_csv.py::resoudre_reference`, qui lit
+  l'état de la base **avant** d'écrire (simulation comprise) : une boîte déjà
+  connue dont le nom a le même slug que le nom actuel de son titre y reste ;
+  un nouveau nom qui ne désigne qu'un titre existant le rejoint ; sinon, le
+  slug comme avant. La propriété « exporter puis ré-importer ne change rien »
+  est verrouillée par `tests/test_fiche_jeu.py` ; toute colonne ajoutée à
+  `titres` doit la tenir (une valeur que l'export écrit, l'import doit la
+  relire à l'identique — d'où les bornes de `services.BORNES_FICHE`).
+- **Colonnes de `titres` que l'import n'écrase pas** : les trois lettres et
+  `bgg_id` (`COALESCE`), parce qu'elles ne viennent pas du tableur du bureau.
+  Toutes les autres sont écrasées, case vide comprise ; celles que l'écran
+  corrige sont listées par `services.CHAMPS_FICHE`, et un import qui en défait
+  une le dit (`import_csv.corrections_defaites`, colonne `modifie_le`).
 - Planche PDF : passer un **PNG** à reportlab (pas l'objet PIL) pour préserver la
   couleur sans dépendre du codec JPEG.
 - QR : l'URL encodée est **définitive** — ne tirer les étiquettes qu'une fois le

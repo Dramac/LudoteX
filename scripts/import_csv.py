@@ -8,7 +8,9 @@ Principes (voir docs/specification.md §3.1) :
 - Deux clés stables :
     * id_exemplaire  <- « Code jeu » (TEXT, zéros de tête préservés).
     * reference_titre <- slug normalisé du nom -> REGROUPE les exemplaires
-      d'un même jeu (ex. les 4 « Dobble » partagent une référence).
+      d'un même jeu (ex. les 4 « Dobble » partagent une référence). Un titre
+      RENOMMÉ À L'ÉCRAN garde sa référence : l'import le retrouve par le nom
+      qu'il porte aujourd'hui (voir `resoudre_reference`).
 - Les colonnes d'état du CSV (Suspendu, Prêt en cours, Réserv Active, Sur
   place, Manque) sont IGNORÉES : l'état d'un exemplaire est déduit des prêts.
 - Idempotent : relançable sans créer de doublons (UPSERT sur les deux clés).
@@ -27,20 +29,29 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import sqlite3
 import sys
 import unicodedata
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Permet « python scripts/import_csv.py » comme « python -m scripts.import_csv ».
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import db as _db  # noqa: E402
 from app.db import get_connection, init_db  # noqa: E402
 # slug_titre est PARTAGÉ avec l'app (création de jeu via l'admin) pour produire
-# exactement les mêmes références de regroupement. obtenir_ou_creer_emplacement_
-# rangement sert à résoudre/créer tolérament l'« Emplacement local » du CSV
+# exactement les mêmes références de regroupement ; nettoyer_nom, avec
+# l'éditeur de la fiche, pour qu'un nom corrigé à l'écran se reconnaisse dans
+# l'export qui le porte. obtenir_ou_creer_emplacement_rangement sert à
+# résoudre/créer tolérament l'« Emplacement local » du CSV
 # (docs/conception-rangement.md §4.b, étape 7) sans dupliquer sa logique.
-from app.services import obtenir_ou_creer_emplacement_rangement, slug_titre  # noqa: E402
+# CHAMPS_FICHE : les colonnes que l'écran corrige et que l'import écrase.
+from app.services import (CHAMPS_FICHE, nettoyer_nom,  # noqa: E402
+                          obtenir_ou_creer_emplacement_rangement, slug_titre)
+# L'identifiant BoardGameGeek se lit au même domicile qu'à l'écran.
+from app.bgg import lire_identifiant as lire_bgg_id  # noqa: E402
 # Les lettres du code de classement se valident au domicile de leurs listes.
 from app.classement import COLONNES_LETTRES, lire_saisie  # noqa: E402
 # L'export du catalogue neutralise les formules par une apostrophe (SEC-06) :
@@ -105,6 +116,8 @@ COLONNES = {
     # découpée en trois lettres. Ni « classification » (déjà pris par
     # `categorie` ci-dessus) ni « classement » seul (trop vague).
     "lettres_classement":    ["lettres classement"],
+    # Fiche BoardGameGeek (app/bgg.py) : le numéro, ou l'adresse de la page.
+    "bgg_id":                ["fiche boardgamegeek"],
 }
 
 # Mois français (abrégés ou complets, sans accents) -> numéro, pour parser les
@@ -146,11 +159,6 @@ def construire_index_colonnes(entetes: list[str]) -> dict[str, str | None]:
 # ---------------------------------------------------------------------------
 # Nettoyage et parsing des valeurs
 # ---------------------------------------------------------------------------
-def nettoyer_nom(valeur: str) -> str:
-    """Espaces superflus réduits ; le reste est conservé tel quel."""
-    return re.sub(r"\s+", " ", (valeur or "").strip())
-
-
 def _entiers(valeur: str) -> list[int]:
     """Tous les entiers présents dans une chaîne, dans l'ordre."""
     return [int(n) for n in re.findall(r"\d+", valeur or "")]
@@ -306,7 +314,97 @@ def lire_csv(
     return lignes, index
 
 
-def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
+# ---------------------------------------------------------------------------
+# Ce que la base contient déjà — lu AVANT d'écrire, simulation comprise
+# ---------------------------------------------------------------------------
+@dataclass
+class EtatBase:
+    """
+    L'état de la base dont l'import a besoin avant d'écrire.
+
+    - `exemplaires` : id_exemplaire -> reference_titre ;
+    - `titres` : reference_titre -> la ligne du titre (dict), réduite aux
+      colonnes utiles (nom, `CHAMPS_FICHE`, `modifie_le`).
+
+    Lu par `lire_etat_base`, en simulation comme en import réel : la
+    simulation annonce ainsi exactement ce que l'import fera.
+    """
+    exemplaires: dict[str, str] = field(default_factory=dict)
+    titres: dict[str, dict] = field(default_factory=dict)
+    # slug du nom ACTUEL -> références des titres qui portent ce nom.
+    _par_slug: dict[str, list[str]] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self):
+        par_slug: dict[str, list[str]] = defaultdict(list)
+        for ref, titre in self.titres.items():
+            par_slug[slug_titre(titre["nom"] or "")].append(ref)
+        self._par_slug = dict(par_slug)
+
+    def titres_au_nom(self, nom: str) -> list[str]:
+        """Les titres dont le nom ACTUEL a le même slug que `nom`."""
+        return self._par_slug.get(slug_titre(nom), [])
+
+
+def lire_etat_base(conn: sqlite3.Connection | None) -> EtatBase:
+    """
+    L'état utile de la base, ou un état vide si elle n'existe pas encore
+    (premier import, simulation sur une installation neuve). Lecture seule.
+    """
+    if conn is None:
+        return EtatBase()
+    colonnes = ", ".join(dict.fromkeys(("reference_titre", "nom", *CHAMPS_FICHE,
+                                        "modifie_le")))
+    try:
+        titres = {r["reference_titre"]: dict(r)
+                  for r in conn.execute(f"SELECT {colonnes} FROM titres")}
+        exemplaires = {r[0]: r[1] for r in conn.execute(
+            "SELECT id_exemplaire, reference_titre FROM exemplaires")}
+    except sqlite3.OperationalError:
+        # Tables absentes (base jamais initialisée) : rien à retrouver.
+        return EtatBase()
+    return EtatBase(exemplaires=exemplaires, titres=titres)
+
+
+def resoudre_reference(id_exemplaire: str, nom: str, base: EtatBase | None) -> str:
+    """
+    La référence du titre auquel rattacher une ligne du fichier.
+
+    Sans titre renommé à l'écran, c'est toujours `slug_titre(nom)` — la règle
+    d'avant, inchangée. Un titre RENOMMÉ à l'écran garde, lui, la référence
+    tirée de son ANCIEN nom (« Catane » corrigé en « Catan » reste `CATANE`) :
+    recalculer le slug du nom du fichier créerait un second titre `CATAN`, y
+    déplacerait les exemplaires et laisserait `CATANE` vide, avec sa fiche
+    BoardGameGeek, ses lettres et sa correction. D'où, dans l'ordre :
+
+    1. La boîte est déjà en base, et le nom du fichier a le même slug que le
+       nom ACTUEL de son titre : elle reste dans ce titre. C'est l'aller-retour
+       export → import d'un jeu renommé. (« Même slug » plutôt que « même
+       nom » : c'est la règle de regroupement de toujours, et une casse
+       corrigée dans le tableur ne scinde pas un titre.)
+    2. Le slug du nom désigne un titre existant : ce titre (règle d'avant).
+    3. Un seul titre porte aujourd'hui ce nom (au slug près) : ce titre. C'est
+       le nouvel exemplaire ajouté dans le tableur sous le nom corrigé.
+    4. Sinon : le slug du nom — un nouveau titre, comme avant.
+
+    Un nom qui DIFFÈRE dans le fichier (au slug près) de celui de la base reste
+    un geste volontaire : la boîte change de titre, comme avant.
+    """
+    ref = slug_titre(nom)
+    if base is None:
+        return ref
+    actuelle = base.exemplaires.get(id_exemplaire)
+    if actuelle in base.titres and slug_titre(base.titres[actuelle]["nom"] or "") == ref:
+        return actuelle
+    if ref in base.titres:
+        return ref
+    candidats = base.titres_au_nom(nom)
+    if len(candidats) == 1:
+        return candidats[0]
+    return ref
+
+
+def construire_donnees(lignes: list[dict], index: dict[str, str | None],
+                       base: EtatBase | None = None):
     """
     Transforme les lignes CSV en :
       - exemplaires : liste de dicts {id_exemplaire, reference_titre,
@@ -319,10 +417,15 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
       - groupes     : reference_titre -> liste d'id_exemplaire (pour le rapport)
       - lettres_refusees : nombre de lignes dont la case « Lettres classement »
         est remplie mais invalide (la ligne s'importe, sans ses lettres)
+      - bgg_refusees : même chose pour la case « Fiche BoardGameGeek »
     Lève une erreur si les colonnes clés (Code jeu, Nom jeu) sont absentes.
 
-    Pure (aucun accès base) : utilisable en toute sécurité par le mode
-    --dry-run. La résolution/création de l'emplacement local (qui ÉCRIT en
+    `base` : l'état de la base (`lire_etat_base`), qui sert à retrouver un
+    titre renommé à l'écran (`resoudre_reference`). None : la règle d'avant,
+    référence = slug du nom.
+
+    Pure (aucun accès base, l'état est passé en argument) : utilisable en
+    toute sécurité par le mode --dry-run. La résolution/création de l'emplacement local (qui ÉCRIT en
     base si le nom est inconnu) est déléguée à `importer`, seule fonction qui
     ouvre une connexion.
     """
@@ -343,6 +446,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
     ignores: list[str] = []
     vus: set[str] = set()
     lettres_refusees = 0
+    bgg_refusees = 0
 
     for ligne in lignes:
         id_ex = (val(ligne, "id_exemplaire") or "").strip()
@@ -355,7 +459,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
             continue
         vus.add(id_ex)
 
-        ref = slug_titre(nom)
+        ref = resoudre_reference(id_ex, nom, base)
         exemplaires.append({
             "id_exemplaire": id_ex,
             "reference_titre": ref,
@@ -373,6 +477,12 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         if saisie and triplet is None:
             lettres_refusees += 1
         lettres = dict(zip(COLONNES_LETTRES, triplet or (None, None, None)))
+        # Fiche BoardGameGeek : même règle que les lettres — case vide neutre,
+        # case illisible neutre mais comptée.
+        saisie_bgg = (val(ligne, "bgg_id") or "").strip()
+        bgg_id = lire_bgg_id(saisie_bgg) if saisie_bgg else None
+        if saisie_bgg and bgg_id is None:
+            bgg_refusees += 1
         champs = {
             "reference_titre": ref,
             "nom": nom,
@@ -387,6 +497,7 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
             "annee_edition": parse_annee(val(ligne, "annee")),
             "descriptif": _ou_none(val(ligne, "descriptif")),
             "date_achat": parse_date_achat(val(ligne, "date_achat")),
+            "bgg_id": bgg_id,
             **lettres,
         }
         # Agrégation au niveau titre : on conserve la 1re valeur non vide
@@ -409,7 +520,59 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None]):
         if da and (titres[ref].get("date_achat") is None or da > titres[ref]["date_achat"]):
             titres[ref]["date_achat"] = da
 
-    return exemplaires, titres, groupes, ignores, lettres_refusees
+    return exemplaires, titres, groupes, ignores, lettres_refusees, bgg_refusees
+
+
+# ---------------------------------------------------------------------------
+# Corrections faites à l'écran que le fichier défait
+# ---------------------------------------------------------------------------
+def corrections_defaites(titres: dict[str, dict], exemplaires: list[dict],
+                         base: EtatBase) -> list[dict]:
+    """
+    Les fiches corrigées à l'écran (`modifie_le` posé) dont le fichier porte une
+    valeur DIFFÉRENTE de celle de la base, sur une colonne que l'import écrase.
+
+    Relevé AVANT l'écriture : l'import se fait quand même — ni blocage ni
+    confirmation —, mais le message de fin le dit, fiche par fiche, avec la
+    valeur d'avant et celle du fichier. Un fichier identique à la base (l'export
+    fait après la correction) ne relève rien.
+
+    Deux cas :
+    - le titre reçoit du fichier une autre valeur : écart sur ce champ ;
+    - une boîte quitte un titre corrigé parce que le fichier lui donne un autre
+      nom : écart sur le nom.
+
+    Returns:
+        Liste triée par nom de {"reference_titre", "nom", "ecrase" (True si
+        l'import écrit sur la fiche), "ecarts": [(libellé, avant, fichier)]}.
+    """
+    ecarts: dict[str, dict] = {}
+
+    def noter(ref, champ, avant, fichier, ecrase):
+        fiche = ecarts.setdefault(ref, {
+            "reference_titre": ref, "nom": base.titres[ref]["nom"],
+            "ecrase": False, "ecarts": {}})
+        fiche["ecrase"] = fiche["ecrase"] or ecrase
+        fiche["ecarts"].setdefault(champ, (CHAMPS_FICHE[champ], avant, fichier))
+
+    for ref, champs in titres.items():
+        actuel = base.titres.get(ref)
+        if not actuel or not actuel.get("modifie_le"):
+            continue
+        for champ in CHAMPS_FICHE:
+            if champs.get(champ) != actuel.get(champ):
+                noter(ref, champ, actuel.get(champ), champs.get(champ), True)
+    for ex in exemplaires:
+        ancienne = base.exemplaires.get(ex["id_exemplaire"])
+        actuel = base.titres.get(ancienne) if ancienne else None
+        if (actuel and actuel.get("modifie_le")
+                and ex["reference_titre"] != ancienne):
+            noter(ancienne, "nom", actuel["nom"],
+                  titres[ex["reference_titre"]]["nom"], False)
+
+    return sorted(
+        ({**f, "ecarts": list(f["ecarts"].values())} for f in ecarts.values()),
+        key=lambda f: (f["nom"] or "").lower())
 
 
 # ---------------------------------------------------------------------------
@@ -452,8 +615,19 @@ def importer(chemin: Path, dry_run: bool = False,
         les lettres de classement ont été refusées).
     """
     lignes, index = lire_csv(chemin, max_lignes=max_lignes)
-    exemplaires, titres, groupes, ignores, lettres_refusees = construire_donnees(
-        lignes, index)
+    # L'état de la base est lu dans les DEUX modes : la simulation doit
+    # rattacher chaque ligne au même titre que l'import réel. Une simulation
+    # sur une installation neuve ne crée pas le fichier de base pour autant.
+    base = EtatBase()
+    if not dry_run or _db.get_database_path().exists():
+        conn = get_connection()
+        try:
+            base = lire_etat_base(conn)
+        finally:
+            conn.close()
+    (exemplaires, titres, groupes, ignores, lettres_refusees,
+     bgg_refusees) = construire_donnees(lignes, index, base)
+    defaites = corrections_defaites(titres, exemplaires, base)
     emplacements_locaux_crees: list[str] = []
 
     if not dry_run:
@@ -466,11 +640,11 @@ def importer(chemin: Path, dry_run: bool = False,
                 INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
                     nb_joueurs_min, nb_joueurs_max, duree_min, age_min,
                     editeur, auteur, annee_edition, descriptif, date_achat,
-                    lettre_public, lettre_jeu, lettre_materiel)
+                    lettre_public, lettre_jeu, lettre_materiel, bgg_id)
                 VALUES (:reference_titre, :nom, :type_jeu, :categorie,
                     :nb_joueurs_min, :nb_joueurs_max, :duree_min, :age_min,
                     :editeur, :auteur, :annee_edition, :descriptif, :date_achat,
-                    :lettre_public, :lettre_jeu, :lettre_materiel)
+                    :lettre_public, :lettre_jeu, :lettre_materiel, :bgg_id)
                 ON CONFLICT(reference_titre) DO UPDATE SET
                     nom=excluded.nom, type_jeu=excluded.type_jeu,
                     categorie=excluded.categorie,
@@ -494,9 +668,21 @@ def importer(chemin: Path, dry_run: bool = False,
                                            titres.lettre_public),
                     lettre_jeu=COALESCE(excluded.lettre_jeu, titres.lettre_jeu),
                     lettre_materiel=COALESCE(excluded.lettre_materiel,
-                                             titres.lettre_materiel)
+                                             titres.lettre_materiel),
+                    -- Même exception pour la fiche BoardGameGeek : elle se
+                    -- saisit à l'écran, un vieux fichier ne l'efface pas.
+                    bgg_id=COALESCE(excluded.bgg_id, titres.bgg_id)
                 """,
                 list(titres.values()),
+            )
+            # Une correction faite à l'écran, écrasée par ce fichier : la
+            # fiche n'a plus rien à protéger, le tableur fait de nouveau foi.
+            # `modifie_le` repart à vide — sinon chaque ré-import du même
+            # fichier redirait le même écart, et le bureau apprendrait à ne
+            # plus lire l'avertissement (arbitrage du lot fiche-1).
+            conn.executemany(
+                "UPDATE titres SET modifie_le = NULL WHERE reference_titre = ?",
+                [(f["reference_titre"],) for f in defaites if f["ecrase"]],
             )
 
             # Résolution des emplacements locaux (nom -> id), création
@@ -552,6 +738,10 @@ def importer(chemin: Path, dry_run: bool = False,
         "titres_data": titres,
         "emplacements_locaux_crees": emplacements_locaux_crees,
         "lettres_refusees": lettres_refusees,
+        "bgg_refusees": bgg_refusees,
+        # Fiches corrigées à l'écran que ce fichier défait (voir
+        # `corrections_defaites`), relevées avant l'écriture.
+        "corrections_defaites": defaites,
         # True : le fichier n'était pas de l'UTF-8, il a été lu comme un CSV
         # d'Excel. À dire à l'utilisateur (voir `detecter_encodage`).
         "encodage_repli": detecter_encodage(chemin) == ENCODAGE_EXCEL,
@@ -585,6 +775,14 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
         print(f"Lettres de classement non reconnues : {res['lettres_refusees']} "
               "ligne(s), importées sans leurs lettres (attendu tant que les "
               "listes de lettres ne sont pas complètes)")
+    if res.get("bgg_refusees"):
+        print(f"Fiches BoardGameGeek non reconnues : {res['bgg_refusees']} "
+              "ligne(s), importées sans leur fiche BoardGameGeek")
+    for fiche in res.get("corrections_defaites") or []:
+        print(f"Correction faite à l'écran défaite : {fiche['nom']} "
+              f"[{fiche['reference_titre']}]")
+        for libelle, avant, fichier in fiche["ecarts"]:
+            print(f"    {libelle} : {avant!r} -> {fichier!r}")
 
     # Taux de remplissage par colonne optionnelle
     champs = ["categorie", "nb_joueurs_min", "duree_min", "age_min",

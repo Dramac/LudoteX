@@ -49,7 +49,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from app import classement
+from app import bgg, classement
 
 # Fuseau de l'événement (saisies « 20h », « 2h du matin » = heure locale FR).
 # Les horodatages sont STOCKÉS en UTC ; on convertit aux frontières (filtre,
@@ -958,10 +958,13 @@ def _date_fr(iso: str | None) -> str:
 # « Lettres classement » (app/classement.py), ajoutée en fin pour ne décaler
 # aucune colonne d'un tableur existant : les trois lettres d'un titre, remplie
 # seulement quand elles sont imprimables — l'export dit ce que l'étiquette dit.
+# « Fiche BoardGameGeek » (app/bgg.py), même règle : en fin, le numéro seul.
+# Une colonne nouvelle s'ajoute TOUJOURS en fin de liste.
 EN_TETES_CATALOGUE = [
     "Code jeu", "Nom jeu", "Type", "Type jeu", "Nb joueurs", "Age joueurs",
     "Temps jeu", "Marque", "Auteur", "Année édition", "Date achat", "Descriptif",
     "Emplacement événement", "Emplacement local", "Lettres classement",
+    "Fiche BoardGameGeek",
 ]
 
 
@@ -989,7 +992,7 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
                t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
                t.editeur, t.auteur, t.annee_edition, t.descriptif, t.date_achat,
-               t.lettre_public, t.lettre_jeu, t.lettre_materiel
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel, t.bgg_id
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         LEFT JOIN emplacements_rangement er ON er.id_emplacement = e.emplacement_local_id
@@ -1014,6 +1017,7 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
             "Emplacement événement": r["emplacement_evenement"] or "",
             "Emplacement local": r["emplacement_local_nom"] or "",
             "Lettres classement": classement.lettres_imprimables(dict(r)),
+            "Fiche BoardGameGeek": str(r["bgg_id"]) if r["bgg_id"] is not None else "",
         })
     return EN_TETES_CATALOGUE, lignes
 
@@ -1745,6 +1749,18 @@ def slug_titre(nom: str) -> str:
     return base.strip("_")
 
 
+def nettoyer_nom(valeur: str | None) -> str:
+    """
+    Nom d'un jeu sans espaces superflus (bords et intérieur) ; le reste tel quel.
+
+    PARTAGÉE avec scripts/import_csv.py, comme `slug_titre` : l'import nettoie
+    ainsi chaque nom du fichier, l'éditeur de la fiche ainsi chaque nom saisi.
+    Les deux doivent produire la même chaîne, sans quoi un nom corrigé à
+    l'écran ne se reconnaîtrait plus dans l'export qui le porte.
+    """
+    return re.sub(r"\s+", " ", (valeur or "").strip())
+
+
 def prochain_id_exemplaire(conn: sqlite3.Connection,
                            prefixe: str = PREFIXE_ID_ADMIN) -> str:
     """
@@ -1899,6 +1915,241 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
         }
         for r in rows
     ]
+
+
+# ===========================================================================
+# FICHE D'UN JEU — correction à l'écran (série « fiche », lot 1)
+#
+# La fiche d'administration (/admin/jeu/<référence>) corrige les champs d'un
+# titre existant. Trois règles tiennent tout le reste :
+#
+# - LE NOM CHANGE, LA RÉFÉRENCE JAMAIS. `reference_titre` est une clé stable :
+#   elle n'est ni recalculée, ni modifiable. Le ré-import qui suit retrouve le
+#   titre par la règle de `scripts/import_csv.py::resoudre_reference`.
+# - UNE CASE VIDÉE EFFACE LA VALEUR. C'est le seul moyen de retirer une donnée
+#   fausse ; une saisie illisible, elle, est REFUSÉE et jamais transformée en
+#   vide sans le dire.
+# - UN ENREGISTREMENT SANS CHANGEMENT N'ÉCRIT RIEN.
+# ===========================================================================
+# Les colonnes de `titres` que l'éditeur corrige ET que l'import écrase, avec
+# leur libellé (celui de l'écran, repris dans le message d'import qui signale
+# une correction défaite). La date d'achat n'y est pas : elle s'agrège depuis
+# les exemplaires à l'import, l'écran ne la corrige pas.
+CHAMPS_FICHE: dict[str, str] = {
+    "nom": "Nom du jeu",
+    "type_jeu": "Type",
+    "categorie": "Catégorie",
+    "nb_joueurs_min": "Joueurs minimum",
+    "nb_joueurs_max": "Joueurs maximum",
+    "duree_min": "Durée (minutes)",
+    "age_min": "Âge minimum",
+    "editeur": "Éditeur",
+    "auteur": "Auteur",
+    "annee_edition": "Année d'édition",
+    "descriptif": "Descriptif",
+}
+
+# Les deux types que proposent les écrans. La base peut en porter un autre,
+# venu du tableur : il reste alors proposé et sélectionné (voir
+# `lire_saisie_fiche`), jamais écrasé par un simple enregistrement.
+TYPES_JEU = ("Jeu", "Extension")
+
+# Bornes des champs numériques, (min, max). Celles de l'année sont celles que
+# l'import sait relire (`scripts/import_csv.py::parse_annee` ne reconnaît que
+# 19xx et 20xx) : une année acceptée ici et perdue au ré-import suivant ferait
+# mentir l'aller-retour export → import. Zéro joueur ou zéro minute ne disent
+# rien : la case vide est là pour « je ne sais pas ». Un âge de 0, lui, a un
+# sens (« dès la naissance ») et l'écran de création l'accepte déjà.
+BORNES_FICHE: dict[str, tuple[int, int]] = {
+    "nb_joueurs_min": (1, 999),
+    "nb_joueurs_max": (1, 999),
+    "duree_min": (1, 9999),
+    "age_min": (0, 99),
+    "annee_edition": (1900, 2099),
+}
+
+# Longueurs maximales. Le plus long descriptif du catalogue réel fait
+# 1 759 caractères (mesuré au lot fiche-1) : 5 000 laissent de la marge, et
+# arrêtent un collage accidentel de toute une page.
+LONGUEUR_NOM_JEU = 200
+LONGUEUR_TEXTE_FICHE = 200
+LONGUEUR_DESCRIPTIF = 5000
+
+
+def _lire_entier_fiche(saisie: str, champ: str) -> tuple[int | None, str | None]:
+    """(valeur, None) pour une saisie lisible ou vide, (None, message) sinon."""
+    valeur = (saisie or "").strip()
+    if not valeur:
+        return None, None
+    bas, haut = BORNES_FICHE[champ]
+    if not re.fullmatch(r"-?[0-9]+", valeur):
+        return None, (f"« {valeur[:40]} » n'est pas un nombre : tapez seulement "
+                      "des chiffres, ou videz la case pour effacer la valeur.")
+    nombre = int(valeur)
+    if not bas <= nombre <= haut:
+        return None, (f"Tapez un nombre entre {bas} et {haut}, ou videz la case "
+                      "si vous ne savez pas.")
+    return nombre, None
+
+
+def _lire_texte_fiche(saisie: str, longueur: int) -> tuple[str | None, str | None]:
+    valeur = (saisie or "").strip()
+    if len(valeur) > longueur:
+        return None, (f"Ce texte fait {len(valeur)} caractères : {longueur} au "
+                      "plus.")
+    return (valeur or None), None
+
+
+def lire_saisie_fiche(saisie: dict, type_actuel: str | None = None
+                      ) -> tuple[dict, dict[str, str]]:
+    """
+    Lit le formulaire de la fiche d'un jeu.
+
+    Args:
+        saisie: les champs du formulaire, tels que reçus (chaînes) — les clés
+            de `CHAMPS_FICHE`, plus `bgg` (numéro ou adresse BoardGameGeek).
+        type_actuel: le type en base, accepté même hors de `TYPES_JEU`.
+
+    Returns:
+        (valeurs, erreurs). `valeurs` porte une valeur par colonne de
+        `CHAMPS_FICHE`, plus `bgg_id` ; une case vide vaut None. `erreurs`
+        associe à chaque champ refusé un message à afficher sous le champ ;
+        vide si tout est lisible. Dès qu'il y a une erreur, l'appelant
+        n'écrit RIEN et réaffiche la saisie telle quelle.
+    """
+    def champ(nom):
+        return saisie.get(nom) or ""
+
+    valeurs: dict = {}
+    erreurs: dict[str, str] = {}
+
+    nom = nettoyer_nom(champ("nom"))
+    if not nom:
+        erreurs["nom"] = "Le nom est obligatoire."
+    elif len(nom) > LONGUEUR_NOM_JEU:
+        erreurs["nom"] = f"Ce nom fait {len(nom)} caractères : {LONGUEUR_NOM_JEU} au plus."
+    valeurs["nom"] = nom
+
+    type_jeu = champ("type_jeu").strip()
+    if type_jeu and type_jeu not in TYPES_JEU and type_jeu != type_actuel:
+        erreurs["type_jeu"] = "Choisissez un type dans la liste."
+    valeurs["type_jeu"] = type_jeu or None
+
+    for nom_champ in ("categorie", "editeur", "auteur"):
+        valeurs[nom_champ], erreur = _lire_texte_fiche(champ(nom_champ),
+                                                       LONGUEUR_TEXTE_FICHE)
+        if erreur:
+            erreurs[nom_champ] = erreur
+
+    # Un descriptif tapé dans un navigateur arrive en fins de ligne Windows
+    # (\r\n) : normalisées, pour que le ré-import du fichier exporté relise
+    # exactement la même chaîne.
+    descriptif = champ("descriptif").replace("\r\n", "\n").replace("\r", "\n")
+    valeurs["descriptif"], erreur = _lire_texte_fiche(descriptif, LONGUEUR_DESCRIPTIF)
+    if erreur:
+        erreurs["descriptif"] = erreur
+
+    for nom_champ in BORNES_FICHE:
+        valeurs[nom_champ], erreur = _lire_entier_fiche(champ(nom_champ), nom_champ)
+        if erreur:
+            erreurs[nom_champ] = erreur
+
+    # Les deux bornes de joueurs voyagent ensemble. Une borne seule ne
+    # survivrait pas à l'aller-retour export → import (l'export écrit « 2 »,
+    # l'import relit « 2 joueurs exactement ») : on demande l'autre.
+    jmin, jmax = valeurs["nb_joueurs_min"], valeurs["nb_joueurs_max"]
+    if "nb_joueurs_min" not in erreurs and "nb_joueurs_max" not in erreurs:
+        if jmin is not None and jmax is not None and jmin > jmax:
+            erreurs["nb_joueurs_max"] = (
+                f"Le maximum ({jmax}) est plus petit que le minimum ({jmin}).")
+        elif jmin is not None and jmax is None:
+            erreurs["nb_joueurs_max"] = (
+                "Indiquez aussi le maximum : le même nombre si le jeu se joue "
+                "à un nombre fixe de joueurs, ou videz les deux cases.")
+        elif jmax is not None and jmin is None:
+            erreurs["nb_joueurs_min"] = (
+                "Indiquez aussi le minimum : le même nombre si le jeu se joue "
+                "à un nombre fixe de joueurs, ou videz les deux cases.")
+
+    bgg_saisie = champ("bgg").strip()
+    valeurs["bgg_id"] = bgg.lire_identifiant(bgg_saisie) if bgg_saisie else None
+    if bgg_saisie and valeurs["bgg_id"] is None:
+        erreurs["bgg"] = ("Collez le numéro de la fiche, ou l'adresse de sa page "
+                          "(boardgamegeek.com/boardgame/…).")
+
+    return valeurs, erreurs
+
+
+def modifier_titre(conn: sqlite3.Connection, reference_titre: str,
+                   valeurs: dict) -> dict | None:
+    """
+    Écrit les corrections de la fiche d'un jeu — seulement ce qui a changé.
+
+    `reference_titre` ne bouge jamais, même quand le nom change. `modifie_le`
+    est posé quand une colonne de `CHAMPS_FICHE` a réellement changé : ce sont
+    celles que l'import écrase, et la date sert à dire qu'un fichier plus ancien
+    les défait. Un identifiant BGG seul ne la pose pas : l'import ne l'efface
+    jamais (`COALESCE`), il n'y a rien à protéger, et la poser ferait signaler
+    à tort, au ré-import suivant, des écarts que l'écran n'a pas créés.
+
+    Args:
+        valeurs: lues par `lire_saisie_fiche`, sans erreur.
+
+    Returns:
+        None si le titre est inconnu ; sinon {"changes": colonnes modifiées
+        (liste vide si rien n'a changé — rien n'est alors écrit), "avant": le
+        titre avant, "apres": le titre après}.
+    """
+    colonnes = (*CHAMPS_FICHE, "bgg_id")
+    with transaction(conn):
+        avant = get_titre(conn, reference_titre)
+        if avant is None:
+            return None
+        changes = [c for c in colonnes if avant.get(c) != valeurs.get(c)]
+        if changes:
+            # Noms de colonnes tirés de `colonnes`, jamais de la requête.
+            affectations = [f"{c} = :{c}" for c in changes]
+            parametres = {c: valeurs.get(c) for c in changes}
+            if any(c in CHAMPS_FICHE for c in changes):
+                affectations.append("modifie_le = :modifie_le")
+                parametres["modifie_le"] = maintenant()
+            conn.execute(
+                f"UPDATE titres SET {', '.join(affectations)} "
+                "WHERE reference_titre = :reference_titre",
+                {**parametres, "reference_titre": reference_titre},
+            )
+    apres = dict(avant, **{c: valeurs.get(c) for c in changes})
+    return {"changes": changes, "avant": avant, "apres": apres}
+
+
+def effacer_lettres(conn: sqlite3.Connection, reference_titre: str) -> dict | None:
+    """
+    Efface les TROIS lettres de classement d'un titre, d'un coup.
+
+    Jamais une seule : la règle « jamais de lettres partielles »
+    (app/classement.py) vaut en base comme à l'impression. Aucune saisie de
+    lettre n'existe à l'écran — elles viendront de la classification.
+
+    Les lettres ne sont pas une colonne que l'import écrase : `modifie_le`
+    n'est donc pas posé.
+
+    Returns:
+        None si le titre est inconnu ; sinon {"efface": bool (False si le
+        titre n'en portait aucune — rien n'est alors écrit), "avant": le
+        titre avant, "apres": le titre après}.
+    """
+    with transaction(conn):
+        avant = get_titre(conn, reference_titre)
+        if avant is None:
+            return None
+        efface = any(avant.get(c) is not None for c in classement.COLONNES_LETTRES)
+        if efface:
+            conn.execute(
+                "UPDATE titres SET lettre_public = NULL, lettre_jeu = NULL, "
+                "lettre_materiel = NULL WHERE reference_titre = ?",
+                (reference_titre,))
+    apres = dict(avant, **{c: None for c in classement.COLONNES_LETTRES})
+    return {"efface": efface, "avant": avant, "apres": apres if efface else avant}
 
 
 def titres_pour_etiquettes(conn: sqlite3.Connection,

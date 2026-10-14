@@ -28,12 +28,13 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 
-from app import (admin_auth, auth, carnet, classement, envois, exports,
+from app import (admin_auth, auth, bgg, carnet, classement, envois, exports,
                  formation, journal, logo, sauvegarde, services, supervision)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
-from app.etiquettes import charger_logo, image_etiquette, planche_pdf, url_fiche
+from app.etiquettes import (charger_logo, image_etiquette, planche_pdf,
+                            texte_imprime, url_fiche)
 from app.templating import templates
 from app.tournoi import programme as programme_services
 from app.tournoi.db import get_connection as get_tournoi_connection
@@ -287,10 +288,43 @@ def liste_jeux(request: Request, q: str | None = None):
 
 
 @router.get("/jeu/{reference_titre}")
-def fiche_admin(request: Request, reference_titre: str):
-    """Fiche admin d'un jeu : ses exemplaires + l'étiquette de chacun."""
+def fiche_admin(request: Request, reference_titre: str, ok: str = "",
+                etiquette: str = ""):
+    """
+    Fiche admin d'un jeu : l'éditeur de ses champs, ses lettres de
+    classement, ses exemplaires + l'étiquette de chacun.
+
+    `ok` et `etiquette` viennent de la redirection qui suit un enregistrement :
+    des CODES FERMÉS (`MESSAGES_FICHE`), jamais un texte libre dans l'URL. Un
+    code inconnu n'affiche rien.
+    """
     if (garde := _garde(request)):
         return garde
+    return _rendre_fiche(request, reference_titre,
+                         message=MESSAGES_FICHE.get(ok),
+                         etiquette_perimee=(etiquette == "1"))
+
+
+# Ce que dit chaque position du code de classement (app/classement.py).
+POSITIONS_LETTRES = ("Public", "Façon de jouer", "Matériel")
+
+# Messages qui suivent un enregistrement sur la fiche d'un jeu, par code.
+MESSAGES_FICHE = {
+    "enregistre": "Fiche enregistrée.",
+    "inchange": "Rien n'a changé : la fiche est telle qu'elle était.",
+    "lettres": "Les trois lettres de classement sont effacées.",
+}
+
+
+def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
+                  etiquette_perimee=False, saisie=None, erreurs=None):
+    """
+    Rend la fiche d'administration d'un jeu.
+
+    `saisie` : le formulaire tel que reçu, réaffiché après un refus — rien de
+    ce que le bureau a tapé ne se perd. Sans refus, l'éditeur est pré-rempli
+    avec les valeurs de la base.
+    """
     conn = get_connection()
     try:
         titre = services.get_titre(conn, reference_titre)
@@ -298,13 +332,142 @@ def fiche_admin(request: Request, reference_titre: str):
         # Menu déroulant de l'édition « emplacement local » par exemplaire
         # (§4.c) : mêmes emplacements actifs que partout ailleurs.
         emplacements_locaux = services.emplacements_actifs(conn)
+        categories = services.lister_categories(conn)
     finally:
         conn.close()
+    contexte = {"titre": titre, "exemplaires": exemplaires,
+                "emplacements_locaux": emplacements_locaux}
+    if titre:
+        if saisie is None:
+            saisie = {c: ("" if titre[c] is None else str(titre[c]))
+                      for c in services.CHAMPS_FICHE}
+            saisie["bgg"] = "" if titre["bgg_id"] is None else str(titre["bgg_id"])
+        contexte.update({
+            "valeurs": saisie,
+            "erreurs": erreurs or {},
+            "categories": categories,
+            "types_jeu": services.TYPES_JEU,
+            "message": message,
+            "etiquette_perimee": etiquette_perimee,
+            "lien_bgg": bgg.url_fiche(titre["bgg_id"]) if titre["bgg_id"] else None,
+            # Lettres en base, avec leur libellé quand la lettre est dans sa
+            # liste (sinon « hors liste ») : affichées, jamais saisissables.
+            "lettres": [
+                (position, lettre, liste.get(lettre, "hors liste"))
+                for position, lettre, liste in zip(
+                    POSITIONS_LETTRES,
+                    (titre[c] for c in classement.COLONNES_LETTRES),
+                    (classement.LETTRES_PUBLIC, classement.LETTRES_JEU,
+                     classement.LETTRES_MATERIEL))
+                if lettre is not None
+            ],
+        })
     return templates.TemplateResponse(
-        request, "admin_fiche.html",
-        {"titre": titre, "exemplaires": exemplaires, "emplacements_locaux": emplacements_locaux},
-        status_code=200 if titre else 404,
+        request, "admin_fiche.html", contexte,
+        status_code=(400 if erreurs else 200) if titre else 404,
     )
+
+
+def _etiquette_change(avant: dict, apres: dict) -> bool:
+    """
+    True si l'étiquette d'un exemplaire de ce titre ne s'imprime plus pareil :
+    on compare ce qui S'IMPRIME (`etiquettes.texte_imprime`), dans le format
+    réglé, et non les colonnes.
+    """
+    conn = get_connection()
+    try:
+        format_code = services.lire_etiquette_format(conn)
+    finally:
+        conn.close()
+    return texte_imprime(avant, format_code) != texte_imprime(apres, format_code)
+
+
+def _vers_fiche(reference_titre: str, ok: str, etiquette: bool) -> RedirectResponse:
+    url = f"/admin/jeu/{quote(reference_titre)}?ok={ok}"
+    if etiquette:
+        url += "&etiquette=1"
+    return RedirectResponse(url, status_code=303)
+
+
+@router.post("/jeu/{reference_titre}/modifier")
+def fiche_modifier(
+    request: Request,
+    reference_titre: str,
+    nom: str = Form(""),
+    type_jeu: str = Form(""),
+    categorie: str = Form(""),
+    nb_joueurs_min: str = Form(""),
+    nb_joueurs_max: str = Form(""),
+    duree_min: str = Form(""),
+    age_min: str = Form(""),
+    editeur: str = Form(""),
+    auteur: str = Form(""),
+    annee_edition: str = Form(""),
+    descriptif: str = Form(""),
+    # Champ « bgg » du formulaire, lu sous un autre nom pour ne pas masquer le
+    # module `app.bgg`.
+    fiche_bgg: str = Form("", alias="bgg"),
+):
+    """
+    Enregistre les corrections de la fiche d'un jeu, puis REDIRIGE (303).
+
+    La route lit le formulaire et transmet : la lecture des champs est
+    `services.lire_saisie_fiche`, l'écriture `services.modifier_titre`. Un
+    refus réaffiche la fiche avec TOUTES les saisies et un message sous chaque
+    champ fautif ; rien n'est écrit.
+    """
+    if (garde := _garde(request)):
+        return garde
+    saisie = {
+        "nom": nom, "type_jeu": type_jeu, "categorie": categorie,
+        "nb_joueurs_min": nb_joueurs_min, "nb_joueurs_max": nb_joueurs_max,
+        "duree_min": duree_min, "age_min": age_min, "editeur": editeur,
+        "auteur": auteur, "annee_edition": annee_edition,
+        "descriptif": descriptif, "bgg": fiche_bgg,
+    }
+    conn = get_connection()
+    try:
+        titre = services.get_titre(conn, reference_titre)
+    finally:
+        conn.close()
+    if titre is None:
+        return _rendre_fiche(request, reference_titre)
+    valeurs, erreurs = services.lire_saisie_fiche(saisie, titre["type_jeu"])
+    if erreurs:
+        return _rendre_fiche(request, reference_titre, saisie=saisie, erreurs=erreurs)
+    conn = get_connection()
+    try:
+        resultat = services.modifier_titre(conn, reference_titre, valeurs)
+    finally:
+        conn.close()
+    if resultat is None:                 # titre supprimé entre-temps
+        return _rendre_fiche(request, reference_titre)
+    if not resultat["changes"]:
+        return _vers_fiche(reference_titre, "inchange", False)
+    journal.journaliser(request, "catalogue", "jeu_modifie",
+                        objet=valeurs["nom"], ref=reference_titre)
+    return _vers_fiche(reference_titre, "enregistre",
+                       _etiquette_change(resultat["avant"], resultat["apres"]))
+
+
+@router.post("/jeu/{reference_titre}/lettres/effacer")
+def fiche_effacer_lettres(request: Request, reference_titre: str):
+    """Efface les trois lettres de classement du titre, d'un coup."""
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        resultat = services.effacer_lettres(conn, reference_titre)
+    finally:
+        conn.close()
+    if resultat is None:
+        return _rendre_fiche(request, reference_titre)
+    if not resultat["efface"]:
+        return _vers_fiche(reference_titre, "inchange", False)
+    journal.journaliser(request, "catalogue", "lettres_effacees",
+                        objet=resultat["avant"]["nom"], ref=reference_titre)
+    return _vers_fiche(reference_titre, "lettres",
+                       _etiquette_change(resultat["avant"], resultat["apres"]))
 
 
 @router.post("/jeu/{reference_titre}/exemplaire")
@@ -599,9 +762,17 @@ def etiquettes_pdf(
 # ---------------------------------------------------------------------------
 # Base de données : import d'un catalogue CSV, export CSV / Excel
 # ---------------------------------------------------------------------------
+# Plafond d'affichage des fiches défaites par un import. Au-delà, la page
+# deviendrait illisible sur un téléphone ; un tel nombre veut dire « mauvais
+# fichier », et le total le dit. Chaque valeur est coupée au même titre : un
+# descriptif entier n'apprendrait rien de plus.
+CORRECTIONS_AFFICHEES = 20
+LONGUEUR_VALEUR_AFFICHEE = 80
+
+
 def _page_donnees(
     request: Request, message: tuple | None = None, status_code: int = 200,
-    manques: int | None = None,
+    manques: int | None = None, corrections: list | None = None,
 ):
     """
     Rend la page « Données & sauvegarde » avec les compteurs actuels.
@@ -616,6 +787,11 @@ def _page_donnees(
     ex. un nom d'emplacement créé à la volée) pour que le lien vers la page
     des manques reste un vrai lien HTML construit côté serveur, jamais une
     valeur utilisateur injectée non échappée dans le gabarit.
+
+    `corrections` : les fiches corrigées à l'écran que l'import vient de
+    défaire (`import_csv.corrections_defaites`). Passées à part pour la même
+    raison : chaque fiche porte un lien vers elle, construit ici. L'affichage
+    est borné à `CORRECTIONS_AFFICHEES` fiches ; le total, lui, est exact.
     """
     conn = get_connection()
     try:
@@ -626,6 +802,9 @@ def _page_donnees(
     return templates.TemplateResponse(
         request, "admin_donnees.html",
         {"nb_titres": nb_titres, "nb_ex": nb_ex, "message": message, "manques": manques,
+         "corrections": (corrections or [])[:CORRECTIONS_AFFICHEES],
+         "corrections_total": len(corrections or []),
+         "longueur_valeur": LONGUEUR_VALEUR_AFFICHEE,
          "archives": _archives_du_serveur()},
         status_code=status_code,
     )
@@ -692,6 +871,7 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         tmp.write(contenu)
         chemin = Path(tmp.name)
     manques = None
+    corrections = []
     refus_detail = None
     try:
         res = import_csv.importer(chemin,
@@ -719,11 +899,19 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         # Fichier lu dans l'encodage d'Excel faute d'être de l'UTF-8 : le cas
         # courant passe sans geste, mais ce repli ne se vérifie pas (voir
         # `import_csv.detecter_encodage`). On le dit, avec quoi regarder.
+        # Fiche BoardGameGeek : même règle que les lettres, sans l'excuse
+        # d'une liste incomplète — une case illisible est une faute de frappe.
+        bgg_refusees = res.get("bgg_refusees") or 0
+        if bgg_refusees:
+            texte += (f" Fiche BoardGameGeek non reconnue sur {bgg_refusees} "
+                      "ligne(s) : ces jeux sont importés sans elle. Mettez le "
+                      "numéro de la fiche ou l'adresse de sa page.")
         if res.get("encodage_repli"):
             texte += (" Ce fichier a été lu comme un CSV enregistré par Excel : "
                       "vérifiez dans le catalogue qu'un nom accentué s'affiche "
                       "correctement.")
         message = ("succes", texte)
+        corrections = res.get("corrections_defaites") or []
         # §4.d : lien direct vers la page des manques s'il en reste.
         conn = get_connection()
         try:
@@ -753,7 +941,11 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         ok=(message[0] == "succes"),
         detail=None if message[0] == "succes" else (refus_detail or message[1]),
     )
-    return _page_donnees(request, message, manques=manques)
+    if corrections:
+        journal.journaliser(request, "admin", "import_corrections_defaites",
+                            objet=str(len(corrections)))
+    return _page_donnees(request, message, manques=manques,
+                         corrections=corrections)
 
 
 @router.get("/donnees/export.csv")
@@ -940,12 +1132,24 @@ def _int_ou_none(v: str) -> int | None:
     return int(v) if v.isdigit() else None
 
 
+def _contexte_creation(valeurs: dict | None = None, erreurs: dict | None = None) -> dict:
+    """Contexte de l'écran de création : saisie réaffichée après un refus."""
+    conn = get_connection()
+    try:
+        categories = services.lister_categories(conn)
+    finally:
+        conn.close()
+    return {"valeurs": valeurs or {}, "erreurs": erreurs or {},
+            "categories": categories}
+
+
 @router.get("/jeu-nouveau")
 def nouveau_formulaire(request: Request):
     """Formulaire de création d'un jeu."""
     if (garde := _garde(request)):
         return garde
-    return templates.TemplateResponse(request, "admin_jeu_nouveau.html", {"erreur": None})
+    return templates.TemplateResponse(request, "admin_jeu_nouveau.html",
+                                      _contexte_creation())
 
 
 @router.post("/jeu-nouveau")
@@ -967,9 +1171,15 @@ def nouveau_creer(
     if (garde := _garde(request)):
         return garde
     if not nom.strip():
+        saisie = {"nom": nom, "type_jeu": type_jeu, "categorie": categorie,
+                  "nb_joueurs_min": nb_joueurs_min, "nb_joueurs_max": nb_joueurs_max,
+                  "duree_min": duree_min, "age_min": age_min, "editeur": editeur,
+                  "auteur": auteur, "annee_edition": annee_edition,
+                  "descriptif": descriptif}
         return templates.TemplateResponse(
             request, "admin_jeu_nouveau.html",
-            {"erreur": "Le nom est obligatoire."}, status_code=400,
+            _contexte_creation(saisie, {"nom": "Le nom est obligatoire."}),
+            status_code=400,
         )
     conn = get_connection()
     try:
