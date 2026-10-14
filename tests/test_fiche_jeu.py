@@ -959,3 +959,42 @@ def test_la_fiche_s_elargit_sur_grand_ecran(client):
     bloc = css[css.index(".exemplaires-grille {") - 200:css.index(".exemplaires-grille {")]
     assert "@media (min-width: 900px)" in bloc
 
+
+def test_la_liste_des_jeux_filtre_ceux_sans_fiche_bgg(client):
+    """
+    Liste de travail de l'association manuelle : la case ne garde que les
+    jeux sans identifiant BGG, se rouvre cochée, et le compte le dit.
+    """
+    _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
+    tous = client.get("/admin/jeux").text
+    assert "/admin/jeu/CATANE" in tous and "/admin/jeu/DOBBLE" in tous
+    assert 'id="sans-bgg"' in tous and "checked" not in _case_sans_bgg(tous)
+
+    filtre = client.get("/admin/jeux?sans_bgg=1").text
+    assert "/admin/jeu/CATANE" not in filtre
+    assert "/admin/jeu/DOBBLE" in filtre
+    assert "checked" in _case_sans_bgg(filtre)
+    assert "1 jeu sans fiche BoardGameGeek" in filtre
+
+    # Combinable avec la recherche par nom.
+    assert "/admin/jeu/DOBBLE" not in client.get("/admin/jeux?sans_bgg=1&q=cat").text
+
+
+def test_le_filtre_bgg_n_atteint_pas_le_catalogue_public(anonyme):
+    """Le catalogue public ignore le paramètre : il ne parle jamais de BGG."""
+    _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
+    page = anonyme.get("/catalogue?sans_bgg=1").text
+    assert "Catane" in page
+    assert "BoardGameGeek" not in page
+
+
+def test_le_filtre_bgg_exige_la_session(anonyme):
+    r = anonyme.get("/admin/jeux?sans_bgg=1", follow_redirects=False)
+    assert r.status_code in (302, 303, 401, 403)
+    assert "Dobble" not in r.text
+
+
+def _case_sans_bgg(page):
+    debut = page.index('id="sans-bgg"')
+    return page[debut:page.index(">", debut)]
+

@@ -272,18 +272,27 @@ def logout(request: Request):
 # Catalogue admin : rechercher un jeu, voir sa fiche, (ré)imprimer les étiquettes
 # ---------------------------------------------------------------------------
 @router.get("/jeux")
-def liste_jeux(request: Request, q: str | None = None):
-    """Liste/recherche des jeux pour atteindre une fiche (réimpression incluse)."""
+def liste_jeux(request: Request, q: str | None = None,
+               sans_bgg: str | None = None):
+    """
+    Liste/recherche des jeux pour atteindre une fiche (réimpression incluse).
+
+    `sans_bgg` (case « sans fiche BoardGameGeek ») : la liste de travail de
+    l'association manuelle, une fois la première passe automatique faite.
+    Toute valeur non vide coche la case — un paramètre d'URL inattendu ne
+    donne jamais d'erreur.
+    """
     if (garde := _garde(request)):
         return garde
     q = (q or "").strip() or None
+    filtre_bgg = bool((sans_bgg or "").strip())
     conn = get_connection()
     try:
-        jeux = services.lister_catalogue(conn, q=q)
+        jeux = services.lister_catalogue(conn, q=q, sans_bgg=filtre_bgg)
     finally:
         conn.close()
     return templates.TemplateResponse(
-        request, "admin_jeux.html", {"jeux": jeux, "q": q}
+        request, "admin_jeux.html", {"jeux": jeux, "q": q, "sans_bgg": filtre_bgg}
     )
 
 

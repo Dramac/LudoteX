@@ -513,7 +513,8 @@ def max_joueurs(conn: sqlite3.Connection) -> int:
 def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
                      q: str | None = None, age: int | None = None,
                      joueurs: int | None = None,
-                     dispo_seulement: bool = False) -> list[dict]:
+                     dispo_seulement: bool = False,
+                     sans_bgg: bool = False) -> list[dict]:
     """
     Construit le catalogue AU NIVEAU TITRE, avec disponibilité et filtres.
 
@@ -531,6 +532,9 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         q         : sous-chaîne dans le nom (LIKE, insensible à la casse ASCII).
         age       : jeux accessibles dès cet âge (`age_min <= age`).
         joueurs   : jeux jouables à ce nombre EXACT (`min <= joueurs <= max`).
+        sans_bgg  : jeux qui n'ont pas encore de fiche BoardGameGeek
+                    (`bgg_id IS NULL`). Administration seulement : le
+                    catalogue public ne parle jamais de BGG.
     Les jeux dont l'information filtrée est absente (âge/joueurs NULL) sont
     naturellement exclus quand le filtre correspondant est actif (comparaison
     avec NULL = faux).
@@ -545,6 +549,7 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
         categorie, q, age, joueurs: filtres optionnels (voir ci-dessus).
         dispo_seulement: si True, ne garde que les titres ayant au moins un
             exemplaire disponible.
+        sans_bgg: si True, ne garde que les titres sans fiche BoardGameGeek.
 
     Returns:
         Liste de dicts {reference_titre, nom, categorie, id_repr, total,
@@ -576,6 +581,8 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
     if joueurs is not None:
         conditions.append("t.nb_joueurs_min <= ? AND t.nb_joueurs_max >= ?")
         params.extend([joueurs, joueurs])
+    if sans_bgg:
+        conditions.append("t.bgg_id IS NULL")
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY t.reference_titre, t.nom, t.categorie"

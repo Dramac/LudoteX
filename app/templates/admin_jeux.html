@@ -11,9 +11,15 @@
       <label for="q">Rechercher un jeu</label>
       <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
     </div>
+    <label class="case" for="sans-bgg">
+      <input type="checkbox" id="sans-bgg" name="sans_bgg" value="1"
+             {% if sans_bgg %}checked{% endif %}>
+      Seulement les jeux sans fiche BoardGameGeek
+    </label>
     <div><button type="submit" class="bouton-filtrer">Rechercher</button></div>
   </form>
-  <p class="catalogue-compte">{{ jeux | length }} {{ pluriel(jeux | length, 'jeu', 'jeux') }}</p>
+  <p class="catalogue-compte">{{ jeux | length }} {{ pluriel(jeux | length, 'jeu', 'jeux') }}
+     {%- if sans_bgg %} sans fiche BoardGameGeek{% endif %}</p>
 </section>
 
 <ul class="catalogue-liste catalogue-grille">
