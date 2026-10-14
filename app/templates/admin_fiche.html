@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% from "_champs_jeu.html" import champs_jeu %}
 {% block titre %}{{ titre.nom if titre else "Jeu inconnu" }} — Administration — {{ nom_association }}{% endblock %}
+{# Écran de saisie : large sur ordinateur (le formulaire passe en deux
+   colonnes de champs, les boîtes en grille), inchangé sur téléphone. #}
+{% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
 {% if titre is none %}
@@ -111,6 +114,7 @@
   </section>
   {% endif %}
 
+  <div class="exemplaires-grille">
   {% for ex in exemplaires %}
     <section class="carte etiquette-bloc">
       <div class="etiquette-entete">
@@ -158,5 +162,6 @@
       </div>
     </section>
   {% endfor %}
+  </div>
 {% endif %}
 {% endblock %}

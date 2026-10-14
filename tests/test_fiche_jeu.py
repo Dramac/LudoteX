@@ -942,3 +942,20 @@ def test_l_editeur_ne_touche_pas_aux_lettres(client):
     _poser_lettres()
     _enregistrer(client, nom="Catan", age_min="12")
     assert _lettres() == ("T", "P", "C")
+
+
+def test_la_fiche_s_elargit_sur_grand_ecran(client):
+    """
+    Retour de Simon (2026-10-14) : l'éditeur était à la largeur d'un
+    téléphone. La page passe en conteneur large ; le formulaire prend ses deux
+    colonnes de champs et les boîtes leur grille, toutes deux réservées aux
+    écrans d'au moins 900px par la feuille de style.
+    """
+    page = client.get("/admin/jeu/CATANE").text
+    assert re.search(r'<main class="contenu contenu-large"', page)
+    assert "form-2col" in page
+    assert 'class="exemplaires-grille"' in page
+    css = Path("app/static/css/style.css").read_text(encoding="utf-8")
+    bloc = css[css.index(".exemplaires-grille {") - 200:css.index(".exemplaires-grille {")]
+    assert "@media (min-width: 900px)" in bloc
+

@@ -842,6 +842,15 @@ summary:focus-visible,
   .catalogue-grille .jeu { margin-bottom: 0; }
 }
 
+/* 3e. Boîtes d'un jeu sur sa fiche d'administration (/admin/jeu/<réf>) :
+   en grille sur grand écran, autant de colonnes que la largeur en tient
+   (l'aperçu d'étiquette plafonne à 360px). Sous 900px, rien ne change :
+   la grille ne s'applique pas, les cartes s'empilent. */
+@media (min-width: 900px) {
+  .exemplaires-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; align-items: start; }
+  .exemplaires-grille > .carte { margin: 0; }
+}
+
 /* Légende des états de fonctionnalités */
 .fonct-legende { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 20px; }
 .fonct-legende dt { font-weight: 700; white-space: nowrap; }
