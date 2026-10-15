@@ -6,6 +6,12 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.24.0 — 2026-10-15
+
+- **Après « C'est ce jeu », vous restez sur le jeu** : les cases vides de sa fiche se remplissent avec les valeurs de BoardGameGeek, marquées « repris de BGG ». Rien n'est enregistré : gardez-les ou corrigez-les. Une case déjà remplie garde votre valeur.
+- **Enregistrer et passer au jeu suivant** : un seul bouton pour enregistrer la fiche et ouvrir le jeu suivant à relier. Vous avancez quand vous le décidez, y compris après « Ce jeu n'est pas sur BGG ».
+- **La petite image de la boîte** s'affiche sur la fiche d'un jeu relié et sous chaque jeu proposé par **Chercher sur BGG** : le bon jeu se reconnaît d'un coup d'œil, la boîte en main. En administration seulement.
+
 ## 1.23.0 — 2026-10-14
 
 - **Chercher un jeu sur BoardGameGeek depuis sa fiche** : **Chercher sur BGG** propose jusqu'à cinq jeux, le plus probable en premier, avec leurs joueurs, âge, durée et auteur comparés aux vôtres. **C'est ce jeu** relie le bon, sans copier de numéro.

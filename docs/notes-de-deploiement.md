@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.24.0 — 2026-10-15
 
 ### Vignettes BoardGameGeek en administration : reposer la configuration nginx — facultatif
 
