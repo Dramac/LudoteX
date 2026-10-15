@@ -10,6 +10,7 @@ vers l'utilisateur.
 
 - **Après « C'est ce jeu », vous restez sur le jeu** : les cases vides de sa fiche se remplissent avec les valeurs de BoardGameGeek, marquées « repris de BGG ». Rien n'est enregistré : gardez-les ou corrigez-les. Une case déjà remplie garde votre valeur.
 - **Enregistrer et passer au jeu suivant** : un seul bouton pour enregistrer la fiche et ouvrir le jeu suivant à relier. Vous avancez quand vous le décidez, y compris après « Ce jeu n'est pas sur BGG ».
+- **Deux boutons qui ne se confondent plus** sur la fiche d'un jeu : **Interroger BoardGameGeek** met à jour les lignes « BGG : » sous les cases, **Copier les valeurs BGG dans les cases** les met dans le formulaire. Une phrase sous les boutons le rappelle.
 - **La petite image de la boîte** s'affiche sur la fiche d'un jeu relié et sous chaque jeu proposé par **Chercher sur BGG** : le bon jeu se reconnaît d'un coup d'œil, la boîte en main. En administration seulement.
 
 ## 1.23.0 — 2026-10-14

@@ -232,7 +232,7 @@ def test_le_bouton_d_une_fiche_complete_sa_copie(client, faux_bgg):
     _copier({13: {"nom": "CATAN"}})
     faux_bgg(_xml(_item(13, "CATAN", VIGNETTE)))
     r = client.post("/admin/jeu/CATANE/bgg/recuperer", follow_redirects=False)
-    assert _ou(r) == "/admin/jeu/CATANE?ok=bgg_recupere"
+    assert _ou(r) == "/admin/jeu/CATANE?ok=bgg_recupere&bgg=completer#modifier"
     assert _vignette_en_base(13) == VIGNETTE
 
 

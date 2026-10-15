@@ -684,7 +684,8 @@ def test_c_est_ce_jeu(admin, bgg_interdit, _journal_isole):
     # On RESTE sur le jeu, au formulaire : relier n'est que la moitié du travail.
     assert _ou(reponse) == "/admin/jeu/BAZAR?bgg=completer&enchainer=1#modifier"
     page = _texte(admin.get(_ou(reponse)).text)
-    assert "Ce jeu est relié à BoardGameGeek. Ses valeurs remplissent" in page
+    assert ("Ce jeu est relié à BoardGameGeek. Les valeurs de BoardGameGeek "
+            "remplissent les cases qui étaient vides") in page
     assert "Enregistrer et passer au jeu suivant" in page
     ligne, = _journal(_journal_isole, "bgg_relie")
     assert ligne["objet"] == "Bazar bizarre" and ligne["ref"] == "BAZAR"
@@ -792,6 +793,50 @@ def test_corriger_le_numero_propose_les_valeurs_du_bon_jeu(admin, bgg_interdit):
     assert _ou(reponse) == "/admin/jeu/BAZAR?ok=enregistre&bgg=completer&enchainer=1#modifier"
     from tests.test_bgg_donnees import _formulaire_affiche
     assert _formulaire_affiche(admin.get(_ou(reponse)).text)["age_min"] == "5"
+
+
+def test_les_deux_boutons_bgg_gardent_l_enchainement(admin, faux_bgg):
+    """« Interroger BoardGameGeek » et « Copier les valeurs BGG dans les
+    cases » rechargent la fiche : le travail un par un continue, et après
+    une interrogation les cases vides restent proposées."""
+    _relier_bazar(admin)
+    page = admin.get("/admin/jeu/BAZAR?bgg=completer&enchainer=1").text
+    for action in ("/admin/jeu/BAZAR/bgg/recuperer", "/admin/jeu/BAZAR#modifier"):
+        debut = page.index(f'action="{action}"')
+        formulaire = page[debut:page.index("</form>", debut)]
+        assert 'name="enchainer" value="1"' in formulaire, action
+    # Interroger : nouvelle copie, cases vides proposées, enchaînement gardé.
+    _executer("UPDATE titres SET age_min = NULL WHERE reference_titre = 'BAZAR'")
+    faux_bgg(XML_THING_BAZAR)
+    reponse = admin.post("/admin/jeu/BAZAR/bgg/recuperer", data={"enchainer": "1"},
+                         follow_redirects=False)
+    assert _ou(reponse) == ("/admin/jeu/BAZAR?ok=bgg_recupere&bgg=completer"
+                            "&enchainer=1#modifier")
+    page = admin.get(_ou(reponse)).text
+    from tests.test_bgg_donnees import _formulaire_affiche
+    assert _formulaire_affiche(page)["age_min"] == "8"
+    assert "Enregistrer et passer au jeu suivant" in page
+    texte = _texte(page)
+    # Le message du haut dit ce qui s'est passé : pas de « Ce jeu est relié ».
+    assert "Ce jeu est relié" not in texte
+    assert "Les valeurs de BoardGameGeek remplissent les cases qui étaient vides" in texte
+    # Copier dans les cases : enchaînement gardé aussi.
+    page = admin.get("/admin/jeu/BAZAR?bgg=reprendre&enchainer=1").text
+    assert "Enregistrer et passer au jeu suivant" in page
+
+
+def test_les_deux_boutons_bgg_disent_ou_va_l_action(admin, monkeypatch):
+    monkeypatch.setenv("BGG_TOKEN", JETON)
+    _copies_bazar()
+    _executer("UPDATE titres SET bgg_id = 83195 WHERE reference_titre = 'BAZAR'")
+    texte = _texte(admin.get("/admin/jeu/BAZAR").text)
+    assert "Interroger BoardGameGeek" in texte
+    assert "Copier les valeurs BGG dans les cases" in texte
+    assert ("« Interroger BoardGameGeek » met à jour les lignes « BGG : » sous les "
+            "cases, sans toucher à vos valeurs.") in texte
+    assert "rien n'est enregistré avant « Enregistrer la fiche »" in texte
+    for ancien in ("Récupérer les données BGG", "Reprendre les valeurs BGG"):
+        assert ancien not in texte
 
 
 def test_un_refus_garde_l_enchainement(admin):

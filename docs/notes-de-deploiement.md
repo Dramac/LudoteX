@@ -214,7 +214,8 @@ que les archives ne contiennent pas »).
    remplacer. Si elle ne répond rien, attendre quelques secondes (le
    démarrage) et la relancer.
 4. **Premier essai réel**, dans le navigateur : Administration → **Jeux** →
-   un jeu relié à BoardGameGeek → **Récupérer les données BGG**.
+   un jeu relié à BoardGameGeek → **Interroger BoardGameGeek** (avant la
+   1.24.0 : **Récupérer les données BGG**).
    *À voir :* « Données BGG récupérées », puis « BGG : … » sous les cases
    joueurs, âge, durée et auteur.
    Si un message s'affiche à la place :

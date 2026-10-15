@@ -390,7 +390,7 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
     (`MESSAGES_FICHE`, `MESSAGES_BGG_FICHE`), jamais un texte libre dans
     l'URL. Un code inconnu n'affiche rien.
 
-    `?bgg=reprendre` : « Reprendre les valeurs BGG ». Une simple navigation,
+    `?bgg=reprendre` : « Copier les valeurs BGG dans les cases ». Une simple navigation,
     qui réaffiche le formulaire avec les valeurs de la copie BGG à la place
     des nôtres — RIEN n'est écrit, rien n'est journalisé. `?bgg=completer` :
     la même chose pour les seules cases vides, là où mènent une liaison
@@ -446,15 +446,19 @@ MESSAGES_FAIT = {
     "inchange": "La fiche « {nom} » est restée telle qu'elle était.",
 }
 
-# Le message qui suit une liaison, au-dessus du formulaire pré-rempli.
-MESSAGE_COMPLETE = ("Ce jeu est relié à BoardGameGeek. Ses valeurs remplissent "
-                    "les cases qui étaient vides, marquées « repris de BGG » : "
-                    "rien n'est encore enregistré. Gardez-les ou corrigez-les, "
-                    "puis enregistrez.")
-MESSAGE_RIEN_A_COMPLETER = ("Ce jeu est relié à BoardGameGeek. Aucune case vide "
-                            "à remplir : ses valeurs s'affichent sous les cases, "
-                            "et « Reprendre les valeurs BGG » les reprend toutes.")
+# Le message au-dessus du formulaire pré-rempli (`?bgg=completer`). Après
+# « C'est ce jeu », aucun autre message ne l'annonce : il commence alors par
+# MESSAGE_RELIE. Après « Interroger BoardGameGeek » ou un enregistrement, le
+# message du haut a déjà dit ce qui s'est passé.
 MESSAGE_RELIE = "Ce jeu est relié à BoardGameGeek."
+MESSAGE_COMPLETE = ("Les valeurs de BoardGameGeek remplissent les cases qui "
+                    "étaient vides, marquées « repris de BGG » : rien n'est "
+                    "encore enregistré. Gardez-les ou corrigez-les, puis "
+                    "enregistrez.")
+MESSAGE_RIEN_A_COMPLETER = ("Aucune case vide à remplir : les valeurs de "
+                            "BoardGameGeek s'affichent sous les cases, et "
+                            "« Copier les valeurs BGG dans les cases » les "
+                            "reprend toutes.")
 
 # Issue d'une recherche sans candidat à montrer, par code. Les échecs du
 # client BGG gardent leurs messages (`bgg_api.MESSAGES_ECHEC`).
@@ -587,9 +591,11 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
             if copie_bgg and copie_bgg["trouve"]:
                 saisie, repris = services.reprendre_valeurs_bgg(
                     saisie, copie_bgg, seulement_vides=True)
-            message_reprise = (MESSAGE_COMPLETE if repris else
-                               MESSAGE_RIEN_A_COMPLETER if copie_bgg and copie_bgg["trouve"]
-                               else MESSAGE_RELIE)
+            corps = (MESSAGE_COMPLETE if repris else
+                     MESSAGE_RIEN_A_COMPLETER if copie_bgg and copie_bgg["trouve"]
+                     else "")
+            message_reprise = (" ".join(filter(None, (MESSAGE_RELIE, corps)))
+                               if message is None else corps or None)
         contexte.update({
             "valeurs": saisie,
             "erreurs": erreurs or {},
@@ -795,11 +801,14 @@ def _recuperer_copie_bgg(request: Request, nom: str, reference_titre: str,
 
 
 @router.post("/jeu/{reference_titre}/bgg/recuperer")
-def fiche_recuperer_bgg(request: Request, reference_titre: str):
+def fiche_recuperer_bgg(request: Request, reference_titre: str,
+                        enchainer: str = Form("")):
     """
-    « Récupérer les données BGG » : va chercher la fiche BGG du titre, en
+    « Interroger BoardGameGeek » : va chercher la fiche BGG du titre, en
     garde une copie datée, puis revient à la fiche avec un message par code.
-    Ne modifie AUCUNE valeur du titre.
+    Ne modifie AUCUNE valeur du titre : les valeurs fraîches remplissent les
+    cases vides du formulaire (`?bgg=completer`), sans rien écrire, comme
+    après une liaison. `enchainer` : le travail un par un continue.
     """
     if (garde := _garde(request)):
         return garde
@@ -816,11 +825,13 @@ def fiche_recuperer_bgg(request: Request, reference_titre: str):
         return _vers_fiche(reference_titre, "", False)
     if not bgg_api.disponible():
         return _vers_fiche(reference_titre, "", False, bgg_echec="sans_jeton")
+    chaine = bool(enchainer.strip())
     echec = _recuperer_copie_bgg(request, titre["nom"], reference_titre,
                                  titre["bgg_id"])
     if echec is None:
-        return _vers_fiche(reference_titre, "bgg_recupere", False)
-    return _vers_fiche(reference_titre, "", False, bgg_echec=echec)
+        return _vers_fiche(reference_titre, "bgg_recupere", False,
+                           completer=True, enchainer=chaine)
+    return _vers_fiche(reference_titre, "", False, bgg_echec=echec, enchainer=chaine)
 
 
 # ---------------------------------------------------------------------------

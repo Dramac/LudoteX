@@ -181,8 +181,11 @@
     <h2>Modifier la fiche</h2>
     {# Copie BoardGameGeek : lue en base, JAMAIS récupérée à l'affichage. Le
        bouton qui va la chercher n'existe que si l'instance a une clé d'accès
-       (formulaire séparé : il n'enregistre rien de la fiche). « Reprendre »
-       est une simple navigation (GET) : rien n'est écrit. #}
+       (formulaire séparé : il n'enregistre rien de la fiche). « Copier… dans
+       les cases » est une simple navigation (GET) : rien n'est écrit.
+       Les deux libellés disent OÙ va l'action — chez BoardGameGeek, ou dans
+       nos cases : « Récupérer » et « Reprendre » se confondaient. Tous deux
+       gardent le travail un par un (`enchainer`). #}
     {% if titre.bgg_id and (copie_bgg or bgg_disponible) %}
     <div class="bloc-bgg">
       <p class="stats-note">
@@ -194,16 +197,26 @@
       <div class="actions-bgg">
         {% if bgg_disponible %}
         <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/recuperer">
-          <button type="submit" class="bouton-filtrer">Récupérer les données BGG</button>
+          {% if enchainer %}<input type="hidden" name="enchainer" value="1">{% endif %}
+          <button type="submit" class="bouton-filtrer">Interroger BoardGameGeek</button>
         </form>
         {% endif %}
         {% if copie_bgg and copie_bgg.trouve %}
         <form method="get" action="/admin/jeu/{{ titre.reference_titre }}#modifier">
           <input type="hidden" name="bgg" value="reprendre">
-          <button type="submit" class="bouton-filtrer">Reprendre les valeurs BGG</button>
+          {% if enchainer %}<input type="hidden" name="enchainer" value="1">{% endif %}
+          <button type="submit" class="bouton-filtrer">Copier les valeurs BGG dans les cases</button>
         </form>
         {% endif %}
       </div>
+      <p class="stats-note">
+        {%- if bgg_disponible %} « Interroger BoardGameGeek » met à jour les
+        lignes « BGG : » sous les cases, sans toucher à vos valeurs.{% endif %}
+        {%- if copie_bgg and copie_bgg.trouve %} « Copier les valeurs BGG dans
+        les cases » remplace vos valeurs par celles de BoardGameGeek ; rien
+        n'est enregistré avant « Enregistrer la fiche ».{% endif %}
+        Enregistrez d'abord ce que vous venez de taper : ces boutons
+        rechargent la fiche.</p>
     </div>
     {% endif %}
     {% if message_reprise %}<p class="resultat resultat-info" role="status">{{ message_reprise }}</p>{% endif %}

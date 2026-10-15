@@ -529,7 +529,7 @@ def test_sans_copie_rien_de_bgg_sous_les_cases(client):
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     page = client.get("/admin/jeu/CATANE").text
     assert "indication-bgg" not in page
-    assert "Reprendre les valeurs BGG" not in page
+    assert "Copier les valeurs BGG dans les cases" not in page
 
 
 def test_l_indication_est_reliee_a_sa_case_en_plus_de_l_erreur(client):
@@ -615,18 +615,18 @@ def test_reprise_puis_enregistrement_par_le_chemin_habituel(client, _journal_iso
 def test_boutons_selon_jeton_et_copie(client, monkeypatch):
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     page = client.get("/admin/jeu/CATANE").text
-    assert "Récupérer les données BGG" not in page        # ni jeton, ni copie
+    assert "Interroger BoardGameGeek" not in page        # ni jeton, ni copie
     monkeypatch.setenv("BGG_TOKEN", JETON)
     page = client.get("/admin/jeu/CATANE").text
-    assert "Récupérer les données BGG" in page
+    assert "Interroger BoardGameGeek" in page
     assert "Aucune donnée BGG n'a encore été récupérée" in page.replace("&#39;", "'")
-    assert "Reprendre les valeurs BGG" not in page
-    assert client.get("/admin/jeu/DOBBLE").text.count("Récupérer les données BGG") == 0
+    assert "Copier les valeurs BGG dans les cases" not in page
+    assert client.get("/admin/jeu/DOBBLE").text.count("Interroger BoardGameGeek") == 0
     _copie_catane()
     monkeypatch.delenv("BGG_TOKEN")
     page = client.get("/admin/jeu/CATANE").text
     # Sans jeton, la copie reste lisible et reprenable : rien n'y est réseau.
-    assert "Reprendre les valeurs BGG" in page and "Récupérer les données BGG" not in page
+    assert "Copier les valeurs BGG dans les cases" in page and "Interroger BoardGameGeek" not in page
 
 
 # ===========================================================================
@@ -637,7 +637,7 @@ def test_bouton_recuperer(client, faux_bgg, _journal_isole):
     avant = _instantane()
     faux_bgg(_xml_catane())
     r = client.post("/admin/jeu/CATANE/bgg/recuperer", follow_redirects=False)
-    assert r.headers["location"] == "/admin/jeu/CATANE?ok=bgg_recupere"
+    assert r.headers["location"] == "/admin/jeu/CATANE?ok=bgg_recupere&bgg=completer#modifier"
     assert _instantane() == avant                # aucune valeur du titre ne change
     assert _copie(13)["age_min"] == 12
     ligne, = _journal(_journal_isole, "bgg_fiche_recuperee")
@@ -655,7 +655,7 @@ def test_bouton_recuperer_identifiant_inconnu(client, faux_bgg, _journal_isole):
     page = client.get(r.headers["location"]).text.replace("&#39;", "'")
     assert "ne connaît aucune fiche à ce numéro" in page
     assert "BoardGameGeek ne connaissait aucune fiche à ce numéro le" in page
-    assert "Reprendre les valeurs BGG" not in page
+    assert "Copier les valeurs BGG dans les cases" not in page
     assert _journal(_journal_isole, "bgg_fiche_recuperee")[0]["detail"] == "inconnu"
 
 
@@ -699,7 +699,7 @@ def test_un_echec_de_bgg_n_empeche_jamais_l_enregistrement(client, faux_bgg, rep
     page = client.get(r.headers["location"]).text
     assert "Fiche enregistrée." in page
     assert bgg_api.MESSAGES_ECHEC[code].replace("'", "&#39;") in page
-    assert "Récupérer les données BGG" in page      # le bouton reste là
+    assert "Interroger BoardGameGeek" in page      # le bouton reste là
     assert JETON not in page and JETON not in r.headers["location"]
 
 
@@ -957,7 +957,8 @@ def test_formation_sans_jeton_n_offre_rien(client, monkeypatch):
     for url in ("/admin/jeu/CATANE", "/admin/jeux"):
         page = client.get(url)
         assert page.status_code == 200
-        assert "Récupérer les données BGG" not in page.text
+        assert "Récupérer les données BGG" not in page.text   # ni la liste…
+        assert "Interroger BoardGameGeek" not in page.text    # …ni la fiche
 
 
 def test_la_reinitialisation_de_formation_vide_les_copies(bases):

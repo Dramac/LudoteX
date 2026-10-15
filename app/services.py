@@ -2318,7 +2318,7 @@ def texte_bgg(champ: str, copie: dict) -> str | None:
 
 def valeur_bgg(champ: str, copie: dict) -> str | None:
     """
-    La valeur BGG que « Reprendre les valeurs BGG » mettrait dans la case.
+    La valeur BGG que « Copier les valeurs BGG dans les cases » mettrait dans la case.
 
     Pour la durée, notre `duree_min` est la BORNE BASSE d'une plage
     (`models.SCHEMA_TITRES`) : on reprend la durée minimale de BGG, déjà
@@ -2373,7 +2373,7 @@ def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None, *,
     JAMAIS notre case. `seulement_vides` : les cases déjà remplies gardent
     notre valeur — c'est le pré-remplissage qui suit une liaison, où une
     valeur corrigée par l'expérience ne doit pas tomber sur un enregistrement
-    trop rapide ; « Reprendre les valeurs BGG », geste volontaire, remplace
+    trop rapide ; « Copier les valeurs BGG dans les cases », geste volontaire, remplace
     tout. Returns: (formulaire, champs effectivement changés).
     """
     nouvelles = dict(valeurs)
