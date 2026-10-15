@@ -100,7 +100,7 @@
     <p class="stats-note">{{ relier.restants }} {{ pluriel(relier.restants, 'jeu', 'jeux') }}
        à relier{% if exemplaires %}, celui-ci compris{% endif %}.</p>
     {% if relier.suivant %}
-    <p><a class="lien" href="/admin/jeu/{{ relier.suivant.reference_titre }}#relier-bgg">Passer au jeu suivant :
+    <p><a class="lien" href="/admin/jeu/{{ relier.suivant.reference_titre }}?enchainer=1#relier-bgg">Passer au jeu suivant :
        « {{ relier.suivant.nom }} »</a></p>
     {% elif exemplaires %}
     <p class="stats-note">C'est le dernier jeu à relier.</p>
@@ -170,8 +170,9 @@
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/bgg/absent">
       <button type="submit" class="bouton-filtrer">Ce jeu n'est pas sur BGG</button>
     </form>
-    <p class="stats-note">Après « C'est ce jeu » ou « Ce jeu n'est pas sur BGG »,
-       le jeu suivant s'ouvre.</p>
+    <p class="stats-note">Après « C'est ce jeu », les cases vides de la fiche
+       se remplissent avec les valeurs de BoardGameGeek : relisez-les, puis
+       enregistrez.</p>
     {% endif %}
   </section>
   {% endif %}
@@ -213,6 +214,7 @@
     {% endif %}
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/modifier"
           class="recherche-form form-2col">
+      {% if enchainer %}<input type="hidden" name="enchainer" value="1">{% endif %}
       {{ champs_jeu(valeurs, erreurs, categories=categories, types_jeu=types_jeu,
                     type_vide=True, bgg=indications_bgg) }}
       <div class="champ champ-large">
@@ -242,8 +244,25 @@
       <p class="stats-note champ-large">Le nom peut changer, la référence
          <code>{{ titre.reference_titre }}</code> jamais : les étiquettes et
          les statistiques restent rattachées à ce jeu.</p>
-      <div class="champ-large"><button type="submit" class="bouton-filtrer">Enregistrer la fiche</button></div>
+      {# Liste à relier : on avance quand on le décide. « Enregistrer et
+         passer » vient en premier, c'est le geste de la série (et celui de la
+         touche Entrée) ; il reste sur la fiche s'il y a une étiquette à
+         réimprimer ou des données BGG qui viennent d'arriver. #}
+      <div class="champ-large actions-bgg">
+        {% if enchainer %}
+        <button type="submit" name="suite" value="suivant" class="bouton-filtrer">
+          {%- if suivant %}Enregistrer et passer au jeu suivant{% else %}Enregistrer et revenir à la liste{% endif -%}
+        </button>
+        {% endif %}
+        <button type="submit" class="bouton-filtrer">Enregistrer la fiche</button>
+      </div>
     </form>
+    {# Le lien pour avancer sans enregistrer : l'encadré « Relier à
+       BoardGameGeek » le porte déjà pour un jeu encore à relier. #}
+    {% if enchainer and suivant and not (relier and not relier.marque) %}
+    <p><a class="lien" href="/admin/jeu/{{ suivant.reference_titre }}?enchainer=1#relier-bgg">Passer au jeu suivant
+       sans enregistrer : « {{ suivant.nom }} »</a></p>
+    {% endif %}
   </section>
 
   {# Lettres de classement : affichées, jamais saisies ici — elles viendront

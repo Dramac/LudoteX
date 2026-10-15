@@ -676,7 +676,9 @@ def test_identifiant_nouveau_recupere_a_l_enregistrement(client, faux_bgg, _jour
     r = client.post("/admin/jeu/CATANE/modifier",
                     data=_formulaire("CATANE", bgg="https://boardgamegeek.com/boardgame/13/catan"),
                     follow_redirects=False)
-    assert r.headers["location"] == "/admin/jeu/CATANE?ok=enregistre_bgg"
+    # Copie obtenue : ses valeurs remplissent les cases vides, comme après
+    # « C'est ce jeu », sans rien écrire de plus.
+    assert r.headers["location"] == "/admin/jeu/CATANE?ok=enregistre_bgg&bgg=completer#modifier"
     assert len(faux.requetes) == 1
     assert _titre()["bgg_id"] == 13 and _copie(13)["nom"] == "CATAN"
     assert len(_journal(_journal_isole, "bgg_fiche_recuperee")) == 1

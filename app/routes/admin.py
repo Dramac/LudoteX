@@ -286,8 +286,8 @@ def liste_jeux(request: Request, q: str | None = None,
     donne jamais d'erreur. Les jeux marqués « pas sur BGG » n'y sont pas ;
     `pas_sur_bgg` les montre, pour revenir sur une marque (lot fiche-3).
 
-    `fait` et `precedent` : on arrive ici après « C'est ce jeu » ou « Ce jeu
-    n'est pas sur BGG » quand il ne reste plus aucun jeu à relier (voir
+    `fait` et `precedent` : on arrive ici après « Enregistrer et passer au
+    jeu suivant » quand il ne reste plus aucun jeu à relier (voir
     `_vers_jeu_suivant`).
 
     `bgg_lot`, `bgg_inconnues`, `bgg_echec` : le compte rendu du dernier clic
@@ -380,7 +380,7 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                 etiquette: str = "", bgg_echec: str = "",
                 reprise: str = Query("", alias="bgg"),
                 candidats: str = "", recherche: str = "",
-                fait: str = "", precedent: str = ""):
+                fait: str = "", precedent: str = "", enchainer: str = ""):
     """
     Fiche admin d'un jeu : l'éditeur de ses champs, ses lettres de
     classement, ses exemplaires + l'étiquette de chacun.
@@ -392,7 +392,9 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
 
     `?bgg=reprendre` : « Reprendre les valeurs BGG ». Une simple navigation,
     qui réaffiche le formulaire avec les valeurs de la copie BGG à la place
-    des nôtres — RIEN n'est écrit, rien n'est journalisé.
+    des nôtres — RIEN n'est écrit, rien n'est journalisé. `?bgg=completer` :
+    la même chose pour les seules cases vides, là où mènent une liaison
+    (« C'est ce jeu ») et un identifiant BGG nouveau enregistré.
 
     `candidats` : les IDENTIFIANTS des candidats d'une recherche BGG, dans
     leur ordre (« 83195,118705 »), posés par `fiche_chercher_bgg`. La page ne
@@ -401,7 +403,11 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
     (« aucun », ou un échec de `bgg_api.MESSAGES_ECHEC`).
 
     `fait` et `precedent` : on arrive ici, jeu suivant de la liste à relier,
-    après une décision sur le jeu `precedent` (`MESSAGES_FAIT`).
+    après « Enregistrer et passer au jeu suivant » sur le jeu `precedent`
+    (`MESSAGES_FAIT`).
+
+    `enchainer` : on travaille la liste à relier, un jeu après l'autre. Le
+    formulaire offre alors « Enregistrer et passer au jeu suivant ».
     """
     if (garde := _garde(request)):
         return garde
@@ -409,9 +415,10 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                          message=MESSAGES_FICHE.get(ok),
                          etiquette_perimee=(etiquette == "1"),
                          bgg_echec=bgg_echec,
-                         reprendre=(reprise == "reprendre"),
+                         reprise=reprise,
                          candidats=_lire_candidats(candidats),
-                         recherche=recherche, fait=fait, precedent=precedent)
+                         recherche=recherche, fait=fait, precedent=precedent,
+                         enchainer=bool(enchainer.strip()))
 
 
 # Ce que dit chaque position du code de classement (app/classement.py).
@@ -435,10 +442,19 @@ MESSAGES_FICHE = {
 # Ce qui vient d'être décidé sur le jeu précédent de la liste à relier, par
 # code. `{nom}` est lu EN BASE à partir de la référence, jamais dans l'URL.
 MESSAGES_FAIT = {
-    "relie": "« {nom} » est relié à BoardGameGeek.",
-    "absent": ("« {nom} » est marqué « pas sur BGG » : il ne figure plus parmi "
-               "les jeux à relier."),
+    "enregistre": "La fiche « {nom} » est enregistrée.",
+    "inchange": "La fiche « {nom} » est restée telle qu'elle était.",
 }
+
+# Le message qui suit une liaison, au-dessus du formulaire pré-rempli.
+MESSAGE_COMPLETE = ("Ce jeu est relié à BoardGameGeek. Ses valeurs remplissent "
+                    "les cases qui étaient vides, marquées « repris de BGG » : "
+                    "rien n'est encore enregistré. Gardez-les ou corrigez-les, "
+                    "puis enregistrez.")
+MESSAGE_RIEN_A_COMPLETER = ("Ce jeu est relié à BoardGameGeek. Aucune case vide "
+                            "à remplir : ses valeurs s'affichent sous les cases, "
+                            "et « Reprendre les valeurs BGG » les reprend toutes.")
+MESSAGE_RELIE = "Ce jeu est relié à BoardGameGeek."
 
 # Issue d'une recherche sans candidat à montrer, par code. Les échecs du
 # client BGG gardent leurs messages (`bgg_api.MESSAGES_ECHEC`).
@@ -514,8 +530,8 @@ def _contexte_relier(conn, titre: dict, candidats: list[int], recherche: str,
 
 def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                   etiquette_perimee=False, saisie=None, erreurs=None,
-                  bgg_echec="", reprendre=False, candidats=(), recherche="",
-                  fait="", precedent=""):
+                  bgg_echec="", reprise="", candidats=(), recherche="",
+                  fait="", precedent="", enchainer=False):
     """
     Rend la fiche d'administration d'un jeu.
 
@@ -523,9 +539,12 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
     ce que le bureau a tapé ne se perd. Sans refus, l'éditeur est pré-rempli
     avec les valeurs de la base.
 
-    `reprendre` : les valeurs de la copie BGG remplacent les nôtres dans le
-    formulaire, pour les seuls champs de `services.CHAMPS_BGG`. Rien n'est
-    écrit.
+    `reprise` : « reprendre », les valeurs de la copie BGG remplacent les
+    nôtres dans le formulaire, pour les seuls champs de `services.CHAMPS_BGG` ;
+    « completer », elles ne remplissent que les cases vides. Rien n'est écrit.
+
+    `enchainer` : le formulaire offre « Enregistrer et passer au jeu suivant »
+    (liste à relier, `_vers_jeu_suivant`).
 
     AUCUN APPEL RÉSEAU ICI : seule la copie en base est lue. Une panne de BGG
     ne peut pas empêcher d'ouvrir une fiche.
@@ -541,6 +560,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         copie_bgg = services.lire_fiche_bgg(conn, titre["bgg_id"]) if titre else None
         relier = (_contexte_relier(conn, titre, list(candidats), recherche, fait,
                                    precedent) if titre else None)
+        suivant = (services.jeu_suivant_a_relier(conn, reference_titre)
+                   if titre and enchainer else None)
     finally:
         conn.close()
     contexte = {"titre": titre, "exemplaires": exemplaires,
@@ -553,13 +574,22 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                              else bgg.PAS_SUR_BGG if titre["bgg_absent"] else "")
         repris: set = set()
         message_reprise = None
-        if reprendre and copie_bgg and copie_bgg["trouve"]:
+        if reprise == "reprendre" and copie_bgg and copie_bgg["trouve"]:
             saisie, repris = services.reprendre_valeurs_bgg(saisie, copie_bgg)
             message_reprise = (
                 "Valeurs BGG reprises dans le formulaire : rien n'est encore "
                 "enregistré. Relisez les cases marquées « repris de BGG », puis "
                 "touchez « Enregistrer la fiche »." if repris else
                 "Les valeurs BGG sont déjà celles de la fiche : rien à reprendre.")
+        elif reprise == "completer" and titre["bgg_id"]:
+            # Après une liaison : BGG SUGGÈRE, dans les seules cases vides.
+            # Une case déjà remplie garde notre valeur, BGG s'affiche dessous.
+            if copie_bgg and copie_bgg["trouve"]:
+                saisie, repris = services.reprendre_valeurs_bgg(
+                    saisie, copie_bgg, seulement_vides=True)
+            message_reprise = (MESSAGE_COMPLETE if repris else
+                               MESSAGE_RIEN_A_COMPLETER if copie_bgg and copie_bgg["trouve"]
+                               else MESSAGE_RELIE)
         contexte.update({
             "valeurs": saisie,
             "erreurs": erreurs or {},
@@ -578,6 +608,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
             "bgg_disponible": bgg_api.disponible(),
             "indications_bgg": services.comparer_avec_bgg(saisie, copie_bgg, repris),
             "relier": relier,
+            "enchainer": enchainer,
+            "suivant": suivant,
             "champs_fiche": services.CHAMPS_FICHE,
             # Lettres en base, avec leur libellé quand la lettre est dans sa
             # liste (sinon « hors liste ») : affichées, jamais saisissables.
@@ -612,12 +644,19 @@ def _etiquette_change(avant: dict, apres: dict) -> bool:
 
 
 def _vers_fiche(reference_titre: str, ok: str, etiquette: bool,
-                bgg_echec: str = "") -> RedirectResponse:
+                bgg_echec: str = "", *, completer: bool = False,
+                enchainer: bool = False) -> RedirectResponse:
     url = f"/admin/jeu/{quote(reference_titre)}?ok={ok}"
     if etiquette:
         url += "&etiquette=1"
     if bgg_echec:
         url += f"&bgg_echec={bgg_echec}"
+    if completer:
+        url += "&bgg=completer"
+    if enchainer:
+        url += "&enchainer=1"
+    if completer:
+        url += "#modifier"
     return RedirectResponse(url, status_code=303)
 
 
@@ -639,9 +678,17 @@ def fiche_modifier(
     # Champ « bgg » du formulaire, lu sous un autre nom pour ne pas masquer le
     # module `app.bgg`.
     fiche_bgg: str = Form("", alias="bgg"),
+    enchainer: str = Form(""),
+    suite: str = Form(""),
 ):
     """
     Enregistre les corrections de la fiche d'un jeu, puis REDIRIGE (303).
+
+    `enchainer` (champ caché) : on travaille la liste à relier. `suite` vaut
+    « suivant » pour « Enregistrer et passer au jeu suivant » : la fiche
+    enregistrée, le jeu suivant s'ouvre — SAUF s'il y a quelque chose à
+    voir ici : une étiquette à réimprimer, ou des données BGG qui viennent
+    d'arriver. On reste alors sur la fiche, le bouton toujours là.
 
     La route lit le formulaire et transmet : la lecture des champs est
     `services.lire_saisie_fiche`, l'écriture `services.modifier_titre`. Un
@@ -650,6 +697,8 @@ def fiche_modifier(
     """
     if (garde := _garde(request)):
         return garde
+    chaine = bool(enchainer.strip())
+    avancer = chaine and suite == "suivant"
     saisie = {
         "nom": nom, "type_jeu": type_jeu, "categorie": categorie,
         "nb_joueurs_min": nb_joueurs_min, "nb_joueurs_max": nb_joueurs_max,
@@ -666,7 +715,8 @@ def fiche_modifier(
         return _rendre_fiche(request, reference_titre)
     valeurs, erreurs = services.lire_saisie_fiche(saisie, titre["type_jeu"])
     if erreurs:
-        return _rendre_fiche(request, reference_titre, saisie=saisie, erreurs=erreurs)
+        return _rendre_fiche(request, reference_titre, saisie=saisie, erreurs=erreurs,
+                             enchainer=chaine)
     conn = get_connection()
     try:
         resultat = services.modifier_titre(conn, reference_titre, valeurs)
@@ -675,7 +725,9 @@ def fiche_modifier(
     if resultat is None:                 # titre supprimé entre-temps
         return _rendre_fiche(request, reference_titre)
     if not resultat["changes"]:
-        return _vers_fiche(reference_titre, "inchange", False)
+        if avancer:
+            return _vers_jeu_suivant(reference_titre, "inchange")
+        return _vers_fiche(reference_titre, "inchange", False, enchainer=chaine)
     journal.journaliser(request, "catalogue", "jeu_modifie",
                         objet=valeurs["nom"], ref=reference_titre)
     etiquette = _etiquette_change(resultat["avant"], resultat["apres"])
@@ -683,21 +735,30 @@ def fiche_modifier(
     # dans la foulée — un clic de moins sur chacun des jeux reliés à la main.
     # La fiche est DÉJÀ enregistrée (transaction close) : un échec de BGG ne
     # peut plus rien empêcher, il est seulement dit, et le bouton reste là.
+    # Copie obtenue, ou déjà là (un candidat d'une recherche) : ses valeurs
+    # remplissent les cases vides, comme après « C'est ce jeu », et on reste
+    # sur la fiche pour les relire.
     nouvel_id = valeurs["bgg_id"]
-    if "bgg_id" in resultat["changes"] and nouvel_id and bgg_api.disponible():
+    if "bgg_id" in resultat["changes"] and nouvel_id:
         conn = get_connection()
         try:
-            deja_copiee = services.lire_fiche_bgg(conn, nouvel_id) is not None
+            copie = services.lire_fiche_bgg(conn, nouvel_id)
         finally:
             conn.close()
-        if not deja_copiee:
+        if copie is None and bgg_api.disponible():
             echec = _recuperer_copie_bgg(request, valeurs["nom"],
                                          reference_titre, nouvel_id)
             if echec is None:
-                return _vers_fiche(reference_titre, "enregistre_bgg", etiquette)
+                return _vers_fiche(reference_titre, "enregistre_bgg", etiquette,
+                                   completer=True, enchainer=chaine)
             return _vers_fiche(reference_titre, "enregistre", etiquette,
-                               bgg_echec=echec)
-    return _vers_fiche(reference_titre, "enregistre", etiquette)
+                               bgg_echec=echec, enchainer=chaine)
+        if copie is not None and copie["trouve"]:
+            return _vers_fiche(reference_titre, "enregistre", etiquette,
+                               completer=True, enchainer=chaine)
+    if avancer and not etiquette:
+        return _vers_jeu_suivant(reference_titre, "enregistre")
+    return _vers_fiche(reference_titre, "enregistre", etiquette, enchainer=chaine)
 
 
 def _recuperer_copie_bgg(request: Request, nom: str, reference_titre: str,
@@ -771,14 +832,14 @@ def _ancre_relier(url: str) -> RedirectResponse:
 
 def _vers_jeu_suivant(reference_titre: str, fait: str) -> RedirectResponse:
     """
-    Après une décision sur `reference_titre` : le jeu SUIVANT à relier, avec
-    un message par code et un lien de retour. Plus aucun : la liste des jeux,
-    qui le dit.
+    Après « Enregistrer et passer au jeu suivant » sur `reference_titre` : le
+    jeu SUIVANT à relier, avec un message par code et un lien de retour. Plus
+    aucun : la liste des jeux, qui le dit.
 
-    REDIRECTION DIRECTE, pas un bouton « Suivant » sur la fiche traitée
-    (arbitrage du lot) : c'est la vitesse que le bureau demande, sur plus de
-    deux cents jeux. Le lien de retour couvre le besoin de revoir le jeu
-    traité (comparer ses valeurs avec BGG, annuler).
+    On n'y arrive QUE par ce bouton. « C'est ce jeu » et « Ce jeu n'est pas
+    sur BGG » restent sur le jeu : relier n'est que la moitié du travail, il
+    reste à remplir la fiche (retour du bureau, après le lot fiche-3, où la
+    décision ouvrait directement le jeu suivant et obligeait à revenir).
     """
     conn = get_connection()
     try:
@@ -788,7 +849,8 @@ def _vers_jeu_suivant(reference_titre: str, fait: str) -> RedirectResponse:
     retour = f"fait={fait}&precedent={quote(reference_titre)}"
     if suivant is None:
         return RedirectResponse(f"/admin/jeux?sans_bgg=1&{retour}", status_code=303)
-    return _ancre_relier(f"/admin/jeu/{quote(suivant['reference_titre'])}?{retour}")
+    return _ancre_relier(f"/admin/jeu/{quote(suivant['reference_titre'])}"
+                         f"?{retour}&enchainer=1")
 
 
 def _titre_ou_rien(reference_titre: str) -> dict | None:
@@ -848,9 +910,11 @@ def fiche_chercher_bgg(request: Request, reference_titre: str,
 def fiche_relier_bgg(request: Request, reference_titre: str,
                      bgg_id: str = Form("")):
     """
-    « C'est ce jeu » : relie le titre à la fiche BGG choisie, puis passe au
-    jeu suivant. AUCUN APPEL RÉSEAU : la copie est déjà en base (la recherche
-    l'y a mise).
+    « C'est ce jeu » : relie le titre à la fiche BGG choisie, puis RESTE sur
+    le jeu, au formulaire, ses cases vides remplies par BGG (`?bgg=completer`,
+    rien d'écrit) : on garde ou on corrige, puis « Enregistrer et passer au
+    jeu suivant ». AUCUN APPEL RÉSEAU : la copie est déjà en base (la
+    recherche l'y a mise).
 
     Écrit par `services.modifier_titre`, seul chemin d'écriture de
     l'identifiant : la marque « pas sur BGG » tombe, `modifie_le` ne bouge
@@ -871,14 +935,16 @@ def fiche_relier_bgg(request: Request, reference_titre: str,
     if resultat["changes"]:
         journal.journaliser(request, "catalogue", "bgg_relie",
                             objet=resultat["apres"]["nom"], ref=reference_titre)
-    return _vers_jeu_suivant(reference_titre, "relie")
+    return RedirectResponse(f"/admin/jeu/{quote(reference_titre)}"
+                            "?bgg=completer&enchainer=1#modifier", status_code=303)
 
 
 @router.post("/jeu/{reference_titre}/bgg/absent")
 def fiche_marquer_absent_bgg(request: Request, reference_titre: str):
     """
-    « Ce jeu n'est pas sur BGG » : pose la marque, puis passe au jeu suivant.
-    Aucun appel à BGG : marche sans clé d'accès, et pendant une panne.
+    « Ce jeu n'est pas sur BGG » : pose la marque, et RESTE sur le jeu — sa
+    fiche se remplit alors à la main. Aucun appel à BGG : marche sans clé
+    d'accès, et pendant une panne.
     """
     if (garde := _garde(request)):
         return garde
@@ -896,7 +962,7 @@ def fiche_marquer_absent_bgg(request: Request, reference_titre: str):
     if resultat["changes"]:
         journal.journaliser(request, "catalogue", "bgg_absent_marque",
                             objet=resultat["apres"]["nom"], ref=reference_titre)
-    return _vers_jeu_suivant(reference_titre, "absent")
+    return _ancre_relier(f"/admin/jeu/{quote(reference_titre)}?enchainer=1")
 
 
 @router.post("/jeu/{reference_titre}/bgg/present")

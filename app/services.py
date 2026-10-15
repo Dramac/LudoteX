@@ -2364,12 +2364,17 @@ def comparer_avec_bgg(valeurs: dict, copie: dict | None,
     return indications
 
 
-def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None) -> tuple[dict, set]:
+def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None, *,
+                          seulement_vides: bool = False) -> tuple[dict, set]:
     """
     Le formulaire avec les valeurs BGG À LA PLACE des nôtres, sans rien écrire.
 
     Seuls les champs de `CHAMPS_BGG` changent. Une valeur BGG absente ne vide
-    JAMAIS notre case. Returns: (formulaire, champs effectivement changés).
+    JAMAIS notre case. `seulement_vides` : les cases déjà remplies gardent
+    notre valeur — c'est le pré-remplissage qui suit une liaison, où une
+    valeur corrigée par l'expérience ne doit pas tomber sur un enregistrement
+    trop rapide ; « Reprendre les valeurs BGG », geste volontaire, remplace
+    tout. Returns: (formulaire, champs effectivement changés).
     """
     nouvelles = dict(valeurs)
     repris: set[str] = set()
@@ -2377,7 +2382,8 @@ def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None) -> tuple[dict, set]
         return nouvelles, repris
     for champ in CHAMPS_BGG:
         valeur = valeur_bgg(champ, copie)
-        if valeur is None or (valeurs.get(champ) or "").strip() == valeur:
+        nous = (valeurs.get(champ) or "").strip()
+        if valeur is None or nous == valeur or (seulement_vides and nous):
             continue
         nouvelles[champ] = valeur
         repris.add(champ)

@@ -29,7 +29,7 @@
   {% endif %}
   {% if relier.premier %}
   <p>{{ relier.restants }} {{ pluriel(relier.restants, 'jeu', 'jeux') }} à relier à BoardGameGeek.
-     <a class="lien" href="/admin/jeu/{{ relier.premier.reference_titre }}#relier-bgg">Relier les jeux un par un</a></p>
+     <a class="lien" href="/admin/jeu/{{ relier.premier.reference_titre }}?enchainer=1#relier-bgg">Relier les jeux un par un</a></p>
   {% elif not relier.fait %}
   <p class="stats-note">Tous les jeux sont reliés à BoardGameGeek, ou marqués « pas sur BGG ».</p>
   {% endif %}

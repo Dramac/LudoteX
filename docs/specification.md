@@ -311,7 +311,8 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   (création et correction de la fiche d'un jeu, lien vers sa fiche
   BoardGameGeek et copie de ses données, affichées à côté des nôtres avec
   l'image de la boîte, et reprenables avant d'enregistrer ; recherche des jeux restants sur BGG,
-  candidats comparés aux nôtres, enchaînement d'un jeu au suivant et marque
+  candidats comparés aux nôtres, cases vides pré-remplies après liaison,
+  enchaînement d'un jeu au suivant à l'enregistrement et marque
   « pas sur BGG » ; import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
   supervision, identité, visibilité des modules, clôture de fin d'événement.
 - **Mode formation** — une seconde instance du même code, sur ses propres

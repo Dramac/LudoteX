@@ -598,7 +598,7 @@ def test_aucun_candidat(admin, faux_bgg):
     reponse = admin.post("/admin/jeu/AZUL/bgg/chercher", data={"nom": "Azul"},
                          follow_redirects=False)
     assert "recherche=aucun" in _ou(reponse)
-    page = admin.get(_ou(reponse)).text
+    page = admin.get(_ou(reponse)).text.replace("&#39;", "'")
     assert "BoardGameGeek ne trouve aucun jeu sous ce nom" in page
     assert "« Chercher un autre nom »" in page and "« Ce jeu n'est pas sur BGG »" in page
     assert 'role="status">BoardGameGeek ne trouve' in page
@@ -681,13 +681,150 @@ def test_c_est_ce_jeu(admin, bgg_interdit, _journal_isole):
     assert apres["modifie_le"] == avant["modifie_le"] is None
     assert apres["reference_titre"] == "BAZAR"
     assert services.lire_fiche_bgg(_conn(), 83195)["trouve"] == 1
-    # Le jeu suivant après « Bazar bizarre » : Catane.
-    assert _ou(reponse) == "/admin/jeu/CATANE?fait=relie&precedent=BAZAR#relier-bgg"
-    page = admin.get(_ou(reponse)).text
-    assert "« Bazar bizarre » est relié à BoardGameGeek." in page
-    assert '<a class="lien" href="/admin/jeu/BAZAR">Revenir à « Bazar bizarre »</a>' in page
+    # On RESTE sur le jeu, au formulaire : relier n'est que la moitié du travail.
+    assert _ou(reponse) == "/admin/jeu/BAZAR?bgg=completer&enchainer=1#modifier"
+    page = _texte(admin.get(_ou(reponse)).text)
+    assert "Ce jeu est relié à BoardGameGeek. Ses valeurs remplissent" in page
+    assert "Enregistrer et passer au jeu suivant" in page
     ligne, = _journal(_journal_isole, "bgg_relie")
     assert ligne["objet"] == "Bazar bizarre" and ligne["ref"] == "BAZAR"
+
+
+def _relier_bazar(admin):
+    _copies_bazar()
+    reponse = admin.post("/admin/jeu/BAZAR/bgg/relier", data={"bgg_id": "83195"},
+                         follow_redirects=False)
+    return admin.get(_ou(reponse)).text
+
+
+def test_apres_liaison_bgg_suggere_dans_les_seules_cases_vides(admin):
+    # Notre durée, corrigée par l'expérience, et un âge jamais saisi.
+    _executer("UPDATE titres SET duree_min = 30, age_min = NULL WHERE reference_titre = 'BAZAR'")
+    page = _relier_bazar(admin)
+    from tests.test_bgg_donnees import _formulaire_affiche
+    formulaire = _formulaire_affiche(page)
+    assert formulaire["age_min"] == "8"                  # case vide : BGG suggère
+    assert formulaire["auteur"] == "Jacques Zeimet"
+    assert formulaire["duree_min"] == "30"               # case remplie : la nôtre reste
+    texte = _texte(page)
+    assert "repris de BGG" in texte
+    assert "différent" in texte
+    # Rien n'est écrit tant qu'on n'a pas enregistré.
+    titre = _titre("BAZAR")
+    assert titre["age_min"] is None and titre["auteur"] is None and titre["duree_min"] == 30
+    # « Reprendre les valeurs BGG » reste le geste qui remplace tout.
+    tout = _formulaire_affiche(admin.get("/admin/jeu/BAZAR?bgg=reprendre").text)
+    assert tout["duree_min"] == "20"
+
+
+def test_apres_liaison_rien_a_completer(admin):
+    _executer("UPDATE titres SET auteur = 'Jacques Zeimet' WHERE reference_titre = 'BAZAR'")
+    page = _texte(_relier_bazar(admin))
+    assert "Ce jeu est relié à BoardGameGeek. Aucune case vide à remplir" in page
+
+
+def test_completer_ne_fait_rien_sur_un_jeu_non_relie(admin):
+    _copies_bazar()
+    page = admin.get("/admin/jeu/BAZAR?bgg=completer").text
+    assert "Ce jeu est relié" not in page and "repris de BGG" not in page
+
+
+def test_enregistrer_et_passer_au_jeu_suivant(admin):
+    _relier_bazar(admin)
+    reponse = admin.post("/admin/jeu/BAZAR/modifier",
+                         data=_formulaire("BAZAR", auteur="Jacques Zeimet",
+                                          enchainer="1", suite="suivant"),
+                         follow_redirects=False)
+    assert _titre("BAZAR")["auteur"] == "Jacques Zeimet"
+    # Bazar relié, le suivant à relier est Catane.
+    assert _ou(reponse) == ("/admin/jeu/CATANE?fait=enregistre&precedent=BAZAR"
+                            "&enchainer=1#relier-bgg")
+    page = admin.get(_ou(reponse)).text
+    assert 'role="status">La fiche « Bazar bizarre » est enregistrée.' in page
+    assert '<a class="lien" href="/admin/jeu/BAZAR">Revenir à « Bazar bizarre »</a>' in page
+
+
+def test_enregistrer_et_passer_sans_changement_passe_quand_meme(admin):
+    _relier_bazar(admin)
+    avant = _titre("BAZAR")
+    reponse = admin.post("/admin/jeu/BAZAR/modifier",
+                         data=_formulaire("BAZAR", enchainer="1", suite="suivant"),
+                         follow_redirects=False)
+    assert _ou(reponse).startswith("/admin/jeu/CATANE?fait=inchange&precedent=BAZAR")
+    assert _titre("BAZAR") == avant
+
+
+def test_enregistrer_la_fiche_reste_sur_le_jeu_et_garde_l_enchainement(admin):
+    _relier_bazar(admin)
+    reponse = admin.post("/admin/jeu/BAZAR/modifier",
+                         data=_formulaire("BAZAR", auteur="Jacques Zeimet", enchainer="1"),
+                         follow_redirects=False)
+    assert _ou(reponse) == "/admin/jeu/BAZAR?ok=enregistre&enchainer=1"
+    page = admin.get(_ou(reponse)).text
+    assert "Enregistrer et passer au jeu suivant" in page
+    # Le jeu est relié : l'encadré n'est plus là, le lien pour avancer passe
+    # sous le formulaire.
+    assert 'id="relier-bgg"' not in page
+    assert "Passer au jeu suivant\n       sans enregistrer : « Catane »" in page
+
+
+def test_une_etiquette_a_reimprimer_arrete_l_enchainement(admin):
+    _relier_bazar(admin)
+    reponse = admin.post("/admin/jeu/BAZAR/modifier",
+                         data=_formulaire("BAZAR", nom="Bazar Bizarre", enchainer="1",
+                                          suite="suivant"),
+                         follow_redirects=False)
+    assert _ou(reponse) == "/admin/jeu/BAZAR?ok=enregistre&etiquette=1&enchainer=1"
+    assert _titre("BAZAR")["nom"] == "Bazar Bizarre"
+
+
+def test_corriger_le_numero_propose_les_valeurs_du_bon_jeu(admin, bgg_interdit):
+    """Mauvais candidat choisi, puis le bon numéro collé dans la case : sa
+    copie est déjà là (la recherche l'a gardée), ses valeurs se proposent
+    dans les cases vides, sans appel à BGG."""
+    _relier_bazar(admin)
+    _executer("UPDATE titres SET age_min = NULL WHERE reference_titre = 'BAZAR'")
+    reponse = admin.post("/admin/jeu/BAZAR/modifier",
+                         data=_formulaire("BAZAR", bgg="244702", enchainer="1",
+                                          suite="suivant"),
+                         follow_redirects=False)
+    assert _titre("BAZAR")["bgg_id"] == 244702
+    assert _ou(reponse) == "/admin/jeu/BAZAR?ok=enregistre&bgg=completer&enchainer=1#modifier"
+    from tests.test_bgg_donnees import _formulaire_affiche
+    assert _formulaire_affiche(admin.get(_ou(reponse)).text)["age_min"] == "5"
+
+
+def test_un_refus_garde_l_enchainement(admin):
+    _relier_bazar(admin)
+    reponse = admin.post("/admin/jeu/BAZAR/modifier",
+                         data=_formulaire("BAZAR", age_min="douze", enchainer="1",
+                                          suite="suivant"),
+                         follow_redirects=False)
+    assert reponse.status_code == 400
+    assert 'name="enchainer" value="1"' in reponse.text
+    assert "Enregistrer et passer au jeu suivant" in reponse.text
+
+
+def test_hors_enchainement_un_seul_bouton(admin):
+    page = admin.get("/admin/jeu/CATANE").text
+    assert "Enregistrer la fiche" in page
+    assert "Enregistrer et passer" not in page and 'name="enchainer"' not in page
+    # Un `suite` forgé sans `enchainer` n'avance pas.
+    reponse = admin.post("/admin/jeu/CATANE/modifier",
+                         data=_formulaire("CATANE", suite="suivant"), follow_redirects=False)
+    assert _ou(reponse) == "/admin/jeu/CATANE?ok=inchange"
+
+
+def test_completer_seulement_les_cases_vides():
+    copie = {"trouve": 1, "nb_joueurs_min": 2, "nb_joueurs_max": 8, "duree_min": 20,
+             "age_min": 8, "auteurs": "Jacques Zeimet"}
+    nous = {"nb_joueurs_min": "2", "nb_joueurs_max": "", "duree_min": "30",
+            "age_min": " ", "auteur": ""}
+    form, repris = services.reprendre_valeurs_bgg(nous, copie, seulement_vides=True)
+    assert repris == {"nb_joueurs_max", "age_min", "auteur"}
+    assert form["duree_min"] == "30" and form["nb_joueurs_max"] == "8"
+    form, repris = services.reprendre_valeurs_bgg(nous, copie)
+    assert form["duree_min"] == "20" and "duree_min" in repris
 
 
 def test_c_est_ce_jeu_garde_modifie_le(admin):
@@ -752,9 +889,17 @@ def test_un_seul_jeu_restant_ne_boucle_pas_sur_lui_meme(admin):
     page = admin.get("/admin/jeu/DOBBLE").text
     assert "C'est le dernier jeu à relier." in page
     assert "Passer au jeu suivant" not in page
-    # La décision sur le dernier mène à la liste, qui dit que c'est fini.
-    reponse = admin.post("/admin/jeu/DOBBLE/bgg/absent", follow_redirects=False)
-    assert _ou(reponse) == "/admin/jeux?sans_bgg=1&fait=absent&precedent=DOBBLE"
+    # Le dernier marqué, le bouton du formulaire mène à la liste, qui dit
+    # que c'est fini.
+    admin.post("/admin/jeu/DOBBLE/bgg/absent")
+    page = admin.get("/admin/jeu/DOBBLE?enchainer=1").text
+    assert "Enregistrer et revenir à la liste" in page
+    assert "Passer au jeu suivant" not in page
+    reponse = admin.post("/admin/jeu/DOBBLE/modifier",
+                         data=_formulaire("DOBBLE", bgg="pas sur BGG", enchainer="1",
+                                          suite="suivant"),
+                         follow_redirects=False)
+    assert _ou(reponse) == "/admin/jeux?sans_bgg=1&fait=inchange&precedent=DOBBLE"
     liste = admin.get(_ou(reponse)).text
     assert "Il ne reste plus aucun jeu à relier." in liste
     assert "Revenir à « Dobble »" in liste
@@ -784,7 +929,8 @@ def test_titre_sans_exemplaire_s_ouvre_avec_son_bloc(admin):
 def test_passer_mene_au_suivant_sans_rien_ecrire(admin):
     avant = _instantane()
     page = admin.get("/admin/jeu/AZUL").text
-    assert '<a class="lien" href="/admin/jeu/BAZAR#relier-bgg">Passer au jeu suivant' in page
+    assert ('<a class="lien" href="/admin/jeu/BAZAR?enchainer=1#relier-bgg">'
+            'Passer au jeu suivant') in page
     assert "4 jeux à relier, celui-ci compris." in _texte(page)
     assert _instantane() == avant
 
@@ -792,7 +938,8 @@ def test_passer_mene_au_suivant_sans_rien_ecrire(admin):
 def test_point_d_entree_et_compteur_sur_la_liste(admin):
     page = admin.get("/admin/jeux").text
     assert "4 jeux à relier à BoardGameGeek." in page
-    assert '<a class="lien" href="/admin/jeu/AZUL#relier-bgg">Relier les jeux un par un</a>' in page
+    assert ('<a class="lien" href="/admin/jeu/AZUL?enchainer=1#relier-bgg">'
+            'Relier les jeux un par un</a>') in page
 
 
 def test_liste_quand_tout_est_relie(admin):
@@ -803,9 +950,9 @@ def test_liste_quand_tout_est_relie(admin):
 
 
 def test_message_fait_avec_precedent_inconnu_ou_code_inconnu(admin):
-    for url in ("/admin/jeu/AZUL?fait=relie&precedent=INCONNU",
+    for url in ("/admin/jeu/AZUL?fait=enregistre&precedent=INCONNU",
                 "/admin/jeu/AZUL?fait=pirate&precedent=BAZAR",
-                "/admin/jeux?fait=relie&precedent=%3Cscript%3E"):
+                "/admin/jeux?fait=enregistre&precedent=%3Cscript%3E"):
         page = admin.get(url)
         assert page.status_code == 200
         assert "Revenir à" not in page.text
@@ -814,12 +961,16 @@ def test_message_fait_avec_precedent_inconnu_ou_code_inconnu(admin):
 # ===========================================================================
 # 6. « CE JEU N'EST PAS SUR BGG »
 # ===========================================================================
-def test_marquer_sort_le_jeu_de_la_liste_et_ouvre_le_suivant(admin, _journal_isole):
+def test_marquer_sort_le_jeu_de_la_liste_et_reste_sur_le_jeu(admin, _journal_isole):
     reponse = admin.post("/admin/jeu/AZUL/bgg/absent", follow_redirects=False)
     assert _titre("AZUL")["bgg_absent"] == 1
-    assert _ou(reponse) == "/admin/jeu/BAZAR?fait=absent&precedent=AZUL#relier-bgg"
+    # On reste sur le jeu : sa fiche se remplit alors à la main.
+    assert _ou(reponse) == "/admin/jeu/AZUL?enchainer=1#relier-bgg"
     page = admin.get(_ou(reponse)).text
-    assert "« Azul » est marqué « pas sur BGG »" in page
+    assert "Ce jeu est marqué « pas sur BGG »" in page
+    assert "Enregistrer et passer au jeu suivant" in page
+    assert ('<a class="lien" href="/admin/jeu/BAZAR?enchainer=1#relier-bgg">Passer au jeu suivant\n'
+            '       sans enregistrer : « Bazar bizarre »</a>') in page
     liste = admin.get("/admin/jeux?sans_bgg=1").text
     assert 'href="/admin/jeu/AZUL"' not in liste
     assert "3 jeux sans fiche BoardGameGeek" in liste
@@ -1006,6 +1157,11 @@ def test_formation_sans_jeton_marquer_et_enchainer_marchent(admin, monkeypatch):
     assert "Ce jeu n&#39;est pas sur BGG" in page or "Ce jeu n'est pas sur BGG" in page
     assert "Passer au jeu suivant" in page
     reponse = admin.post("/admin/jeu/AZUL/bgg/absent", follow_redirects=False)
+    assert _ou(reponse) == "/admin/jeu/AZUL?enchainer=1#relier-bgg"
+    reponse = admin.post("/admin/jeu/AZUL/modifier",
+                         data=_formulaire("AZUL", bgg="pas sur BGG", enchainer="1",
+                                          suite="suivant"),
+                         follow_redirects=False)
     assert "/admin/jeu/BAZAR" in _ou(reponse)
     admin.post("/admin/jeu/AZUL/bgg/present")
     assert _titre("AZUL")["bgg_absent"] == 0
@@ -1016,12 +1172,17 @@ def test_aucun_appel_reseau_a_l_affichage_des_pages_nouvelles(admin, bgg_interdi
     admin.post("/admin/jeu/AZUL/bgg/absent")
     for url in ("/admin/jeu/BAZAR", "/admin/jeu/BAZAR?candidats=83195,118705",
                 "/admin/jeu/BAZAR?recherche=aucun", "/admin/jeu/AZUL",
-                "/admin/jeu/BAZAR?fait=absent&precedent=AZUL",
+                "/admin/jeu/BAZAR?fait=enregistre&precedent=AZUL&enchainer=1",
+                "/admin/jeu/AZUL?enchainer=1",
                 "/admin/jeux", "/admin/jeux?sans_bgg=1", "/admin/jeux?pas_sur_bgg=1",
-                "/admin/jeux?sans_bgg=1&fait=relie&precedent=AZUL"):
+                "/admin/jeux?sans_bgg=1&fait=enregistre&precedent=AZUL"):
         assert admin.get(url).status_code == 200, url
     # Décisions et enchaînement : aucun appel non plus.
     assert admin.post("/admin/jeu/BAZAR/bgg/relier", data={"bgg_id": "83195"},
+                      follow_redirects=False).status_code == 303
+    assert admin.get("/admin/jeu/BAZAR?bgg=completer&enchainer=1").status_code == 200
+    assert admin.post("/admin/jeu/BAZAR/modifier",
+                      data=_formulaire("BAZAR", enchainer="1", suite="suivant"),
                       follow_redirects=False).status_code == 303
     assert admin.post("/admin/jeu/AZUL/bgg/present").status_code == 200
 
@@ -1088,8 +1249,8 @@ def test_hierarchie_des_titres_continue(admin):
 
 def test_messages_annonces(admin):
     _copies_bazar()
-    page = admin.get("/admin/jeu/BAZAR?candidats=83195&fait=relie&precedent=AZUL").text
-    assert 'role="status">« Azul » est relié' in page
+    page = admin.get("/admin/jeu/BAZAR?candidats=83195&fait=enregistre&precedent=AZUL").text
+    assert 'role="status">La fiche « Azul » est enregistrée.' in page
     assert re.search(r'role="status">1\s+jeu trouvé sur BoardGameGeek', page)
 
 
