@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.27.0 — 2026-10-21
+
+- **Rechercher un jeu par catégories, dans l'administration** : l'écran **Rechercher un jeu** a maintenant les mêmes cases **Catégories** que le catalogue. Cochez-en une ou plusieurs : la liste garde les jeux qui les portent toutes. Les cases se combinent avec un début de nom et avec **Seulement les jeux sans fiche BoardGameGeek**.
+
 ## 1.26.1 — 2026-10-21
 
 - **Ranger les jeux : un refus se voit comme un refus.** « Emplacement requis » ou une catégorie qui n'existe plus s'affichent maintenant en orange, comme un avertissement, et non plus en vert comme une réussite. Quand rien n'a été modifié, le message est en bleu.
