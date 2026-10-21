@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.25.1 — 2026-10-21
+
+- **Page « À propos » : les nouveautés se lisent enfin proprement.** Les mots mis en valeur s'affichent en gras, au lieu d'être entourés d'astérisques.
+
 ## 1.25.0 — 2026-10-21
 
 - **Plusieurs catégories par jeu** : dans la colonne « Type jeu » du fichier, ou dans la case **Catégorie** d'une fiche, séparez-les par une virgule, par exemple « Cartes, Ambiance ».
