@@ -4,8 +4,13 @@ Fixtures PARTAGÉES par toute la suite de tests.
 `_aucun_reseau` (autouse) : aucun test ne parle au réseau, et le jeton
 BoardGameGeek d'un `.env` local n'atteint aucun test (voir la fixture).
 
-`_cadence_bgg_simulee` (autouse) : la cadence des appels BoardGameGeek tourne
-sur une horloge simulée — aucun test n'attend les 3 s entre deux appels.
+`_cadence_bgg_simulee` (autouse) : la cadence des appels BoardGameGeek (API
+et images) tourne sur une horloge simulée — aucun test n'attend les 3 s entre
+deux appels.
+
+`fausses_images` (sur demande) : un faux serveur d'images BoardGameGeek à la
+place de `bgg_api._ouvrir_image` (série « images ») ; sans lui, une copie
+d'image tentée par un test tombe sur `_aucun_reseau`.
 
 `_reinitialiser_limite_debit` (autouse) : `app.auth._tentatives` est un
 dictionnaire GLOBAL au process (fenêtre glissante de limitation de débit par
@@ -38,9 +43,12 @@ décrire une situation réelle. On ne neutralise volontairement pas le seuil
 régression sur le comportement lui-même.
 """
 
+import io
 import ipaddress
 import socket
 import sqlite3
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 
 import pytest
@@ -120,7 +128,89 @@ def _cadence_bgg_simulee(monkeypatch):
     horloge = HorlogeSimulee()
     cadence = bgg_api.Cadence(bgg_api.INTERVALLE_APPELS_S, horloge, horloge.dormir)
     monkeypatch.setattr(bgg_api, "CADENCE", cadence)
+    # La cadence des images (série « images ») sur la MÊME horloge : un lot
+    # qui enchaîne fiches et images se mesure d'un seul temps.
+    monkeypatch.setattr(bgg_api, "CADENCE_IMAGES", bgg_api.Cadence(
+        bgg_api.INTERVALLE_IMAGES_S, horloge, horloge.dormir))
     return horloge
+
+
+class FausseReponseImage:
+    def __init__(self, corps: bytes, status: int = 200, annonce: str | None = None):
+        self._corps = io.BytesIO(corps)
+        self.status = status
+        self.headers = {} if annonce is None else {"Content-Length": annonce}
+        self.lectures = 0
+
+    def read(self, n=-1):
+        self.lectures += 1
+        return self._corps.read(n)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FauxServeurImages:
+    """
+    Double de `bgg_api._ouvrir_image`. Réponse par adresse (`reponses`), sinon
+    `defaut` : des octets (200), un entier (statut en HTTPError), une
+    exception, ou une `FausseReponseImage`. Chaque appel avance l'horloge
+    simulée de `duree`.
+    """
+
+    def __init__(self, horloge, reponses, defaut, duree):
+        self.horloge = horloge
+        self.reponses = dict(reponses)
+        self.defaut = defaut
+        self.duree = duree
+        self.requetes: list[urllib.request.Request] = []
+        self.instants: list[float] = []
+        self.delais: list[float] = []
+
+    def __call__(self, requete, delai):
+        self.requetes.append(requete)
+        self.instants.append(self.horloge())
+        self.delais.append(delai)
+        self.horloge.t += self.duree
+        reponse = self.reponses.get(requete.full_url, self.defaut)
+        if isinstance(reponse, BaseException):
+            raise reponse
+        if isinstance(reponse, int):
+            raise urllib.error.HTTPError(requete.full_url, reponse, "refus", {},
+                                         io.BytesIO(b""))
+        if hasattr(reponse, "read"):          # une FausseReponseImage toute faite
+            return reponse
+        return FausseReponseImage(reponse)
+
+    def adresses(self):
+        return [r.full_url for r in self.requetes]
+
+
+def _jpeg_minimal() -> bytes:
+    from PIL import Image
+    sortie = io.BytesIO()
+    Image.new("RGB", (150, 150), (200, 40, 40)).save(sortie, format="JPEG")
+    return sortie.getvalue()
+
+
+@pytest.fixture
+def fausses_images(monkeypatch, _cadence_bgg_simulee):
+    """
+    Faux serveur d'images BGG (série « images ») : remplace
+    `bgg_api._ouvrir_image`. `fausses_images(reponses={adresse: …},
+    defaut=<un JPEG 150 × 150>, duree=0.2)`.
+    """
+    def installer(reponses=None, defaut=None, duree=0.2):
+        if defaut is None:
+            defaut = _jpeg_minimal()
+        from app import bgg_api
+        faux = FauxServeurImages(_cadence_bgg_simulee, reponses or {}, defaut, duree)
+        monkeypatch.setattr(bgg_api, "_ouvrir_image", faux)
+        return faux
+    return installer
 
 
 @pytest.fixture(autouse=True)

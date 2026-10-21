@@ -150,8 +150,12 @@ ACTIONS = {
     # (`bgg_api.MESSAGES_ECHEC`) — jamais le jeton, jamais la réponse de BGG.
     "bgg_fiche_recuperee",
     # Un lot de copies BGG récupéré depuis la liste des jeux. `objet` porte
-    # les NOMBRES (« 100 récupérées, 242 restantes »), rien d'autre ; un arrêt
-    # sur échec part en `ok=False` avec le code de l'issue en `detail`.
+    # les NOMBRES (« 100 récupérées, 85 images copiées, 242 restantes »), rien
+    # d'autre — jamais l'adresse d'une image. Un arrêt sur échec part en
+    # `ok=False` avec le code de l'issue en `detail` : celui de l'API
+    # (`bgg_api.MESSAGES_ECHEC`), ou, pour la copie des images de boîte,
+    # `image_` suivi du code d'arrêt de `vignettes.copier_lot` (« image_panne »,
+    # « image_bloque », « image_attendre », « image_disque »).
     "bgg_lot_recupere",
     # Réglage « lien BoardGameGeek sur les fiches publiques » de
     # /admin/identite. `objet` = « affiché » ou « masqué ». Écrit au

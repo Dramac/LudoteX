@@ -104,7 +104,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app import db as pret_db
-from app import services
+from app import services, vignettes
 from app.planning import db as planning_db
 from app.planning import demo as planning_demo
 from app.planning import services as planning_services
@@ -339,7 +339,8 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
     Supprime toutes les lignes des tables du catalogue et des prêts de la base
     de prêt (schéma conservé). `fiches_bgg` en fait partie : une instance de
     formation n'a pas de jeton BGG et n'en remplit aucune, mais une copie
-    venue d'ailleurs n'a rien à faire dans un catalogue jetable.
+    venue d'ailleurs n'a rien à faire dans un catalogue jetable. Les copies
+    d'images de boîte (`app/vignettes.py`) partent avec elle.
 
     Ordre des clés étrangères (`PRAGMA foreign_keys` est actif).
     `titres_categories` n'est pas dans la liste : sa clé vers `titres` est en
@@ -351,6 +352,9 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
                   "fiches_bgg"):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
+    # Les copies d'images de boîte suivent `fiches_bgg` (série « images ») :
+    # le dossier est celui de CETTE instance, à côté de sa base.
+    vignettes.vider()
 
 
 def _creer_jeux_fictifs(conn: sqlite3.Connection, noms: list[str]) -> list[str]:

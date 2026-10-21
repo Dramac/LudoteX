@@ -22,12 +22,24 @@ Les gabarits ajoutent `?v={{ logo_v() }}` — la date de modification du fichier
 servi, motif d'`asset_v` (voir app/logo.py::version_servie) : l'URL change
 quand l'image change, ce qui autorise un cache long sans jamais laisser un
 navigateur sur une image périmée.
+
+VIGNETTES BOARDGAMEGEEK (série « images », lot 1)
+-------------------------------------------------
+`/image/bgg/<numéro>.webp` sert la copie locale de l'image d'une boîte
+(`app/vignettes.py`). Le numéro est un ENTIER validé ; le fichier servi est
+celui que `vignettes.chemin_servi` calcule de cet entier et de l'adresse en
+base — aucun chemin construit depuis le texte de l'URL. Réservée pour
+l'instant à la SESSION D'ADMINISTRATION : aucune page publique n'affiche
+d'image, aucune copie n'est lisible sans mot de passe.
 """
 
-from fastapi import APIRouter
+import re
+
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
-from app import logo
+from app import admin_auth, logo, services, vignettes
+from app.db import get_connection
 
 router = APIRouter(prefix="/image", tags=["identite"])
 
@@ -83,3 +95,44 @@ def image_favicon_192():
 def image_favicon_512():
     """Icône d'écran d'accueil haute densité, 512 x 512."""
     return _servir(logo.NOM_FAVICON_512)
+
+
+# Un numéro de fiche BGG : chiffres seulement, sans zéro de tête, dix au plus.
+_NUMERO_BGG = re.compile(r"[1-9][0-9]{0,9}")
+
+# Réservée à l'administration : jamais dans un cache partagé. L'URL porte
+# l'empreinte de l'adresse (`vignettes.url`), donc un jour suffit sans risque
+# de garder une image périmée.
+CACHE_VIGNETTE = "private, max-age=86400"
+
+
+@router.get("/bgg/{numero}.webp")
+def image_vignette_bgg(request: Request, numero: str):
+    """
+    La copie locale de la vignette de la fiche BGG `numero`, ou un 404 nu.
+
+    404 aussi SANS SESSION D'ADMINISTRATION, et non une redirection vers la
+    connexion : cette adresse est demandée par une balise `<img>`, et un
+    refus ne doit pas dire si la copie existe. Le lot 2 de la série
+    « images » ouvrira cette route au public quand la case d'affichage sera
+    cochée.
+    """
+    if not admin_auth.admin_connecte(request):
+        return Response(status_code=404)
+    if not _NUMERO_BGG.fullmatch(numero):
+        return Response(status_code=404)
+    bgg_id = int(numero)
+    conn = get_connection()
+    try:
+        copie = services.lire_fiche_bgg(conn, bgg_id)
+    finally:
+        conn.close()
+    chemin = vignettes.chemin_servi(bgg_id, (copie or {}).get("vignette"))
+    if chemin is None:
+        return Response(status_code=404)
+    try:
+        octets = chemin.read_bytes()
+    except OSError:
+        return Response(status_code=404)
+    return Response(content=octets, media_type="image/webp",
+                    headers={"Cache-Control": CACHE_VIGNETTE})

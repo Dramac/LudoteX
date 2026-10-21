@@ -397,9 +397,10 @@ CREATE TABLE IF NOT EXISTS appareils (
 # DONNÉES PERSONNELLES : `auteurs` nomme les auteurs d'un jeu édité, imprimés
 # sur la boîte — exactement ce que porte déjà `titres.auteur`. Ce n'est pas une
 # porte nouvelle : rien de ce que tape le bureau n'y entre, et aucune autre
-# donnée de BGG n'est gardée (ni éditeurs, ni descriptif, ni image). `vignette`
-# (lot 4) est l'ADRESSE d'une photo de boîte chez BGG, jamais l'image : LudoteX
-# ne la télécharge pas, le navigateur du bureau la charge chez BGG.
+# donnée de BGG n'est gardée en base (ni éditeurs, ni descriptif, ni image).
+# `vignette` (lot 4) est l'ADRESSE d'une photo de boîte chez BGG, jamais
+# l'image. Depuis la série « images », le serveur en garde une COPIE en
+# fichier, hors de la base et de la sauvegarde (`app/vignettes.py`).
 #
 # `vignette` a TROIS ÉTATS, que la récupération par lots distingue
 # (`services.ids_bgg_a_recuperer`) :

@@ -169,8 +169,9 @@ Depuis un navigateur, en remplaçant par le vrai domaine :
   d'administration (`curl -sI https://jeux.monasso.fr/admin/jeux`, qui répond
   par une redirection vers la connexion : les en-têtes y sont quand même),
   avec **une seule différence attendue** : la Content-Security-Policy y
-  ajoute, dans `img-src`, l'hôte des images de BoardGameGeek (vignettes des
-  boîtes sur la fiche d'un jeu). Ouvrir ensuite `/live`, `/scanner`,
+  ajoute, dans `img-src`, l'hôte des images de BoardGameGeek (images des
+  boîtes proposées par « Chercher sur BGG » ; celle d'un jeu déjà relié est
+  une copie servie par le site lui-même). Ouvrir ensuite `/live`, `/scanner`,
   `/admin/jeton`, `/admin/etiquettes` et `/tournoi/<id>/gerer` dans un
   navigateur, console développeur ouverte (F12 → onglet Console) : aucune
   ligne « Refused to... » ni « … violates the following Content Security

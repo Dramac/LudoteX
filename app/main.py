@@ -24,6 +24,7 @@ CARTE DES URL
     /acces?jeton=...  -> active l'accès bénévole (pose le cookie)
     /image/logo.png   -> logo (déposé en admin, sinon identité LudoteX) [public]
     /image/favicon-*  -> icônes d'onglet / écran d'accueil                [public]
+    /image/bgg/<n>.webp -> image de boîte copiée de BGG                 [admin]
     /sante            -> point de santé (supervision)
 
 Lancement (développement) :

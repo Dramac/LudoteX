@@ -118,10 +118,11 @@ def url_fiche(bgg_id: int) -> str:
 # Vignette de la boîte (série « fiche », lot 4)
 # ---------------------------------------------------------------------------
 # BGG décrit chaque fiche avec l'adresse d'une petite image de la boîte
-# (`<thumbnail>`, environ 200 × 150). La fiche d'administration l'affiche, le
-# NAVIGATEUR la charge directement chez BGG : LudoteX ne la télécharge, ne la
-# relaie et ne la stocke jamais — seule l'adresse est gardée
-# (`fiches_bgg.vignette`).
+# (`<thumbnail>`, environ 200 × 150). Seule l'adresse est gardée en base
+# (`fiches_bgg.vignette`). Deux usages : le serveur télécharge l'image d'un jeu
+# relié et en garde une copie (`bgg_api.telecharger_vignette`,
+# `app/vignettes.py`, série « images ») ; les candidats de « Chercher sur
+# BGG », pas encore reliés, sont chargés par le NAVIGATEUR directement chez BGG.
 #
 # Une adresse venue de l'extérieur n'entre dans une page qu'après contrôle :
 # `https:` seulement, hôte EXACTEMENT dans cette liste, longueur bornée.

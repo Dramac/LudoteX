@@ -176,11 +176,17 @@ copie datée des fiches BoardGameGeek (`fiches_bgg`, clé : le numéro BGG, pas
 la référence du titre — deux jeux peuvent partager une fiche). Cette copie
 n'est jamais une donnée du bureau : elle ne remplace aucune valeur, ne part
 pas dans l'export du catalogue, et n'est récupérée que sur demande. Elle garde
-aussi l'**adresse** de la petite image de la boîte chez BGG (`vignette`) —
-jamais l'image elle-même : c'est le navigateur du bureau qui la charge chez
-BGG, en administration seulement. Trois états : jamais lue (copie d'avant,
-complétée par la récupération des données manquantes), lue sans image, lue
-avec image. Détail des colonnes : `app/models.py`, commenté.
+aussi l'**adresse** de la petite image de la boîte chez BGG (`vignette`).
+Trois états : jamais lue (copie d'avant, complétée par la récupération des
+données manquantes), lue sans image, lue avec image. Détail des colonnes :
+`app/models.py`, commenté.
+
+L'image elle-même n'est jamais en base : le serveur en garde une **copie**,
+contrôlée et réencodée, dans un dossier à côté de la base (`app/vignettes.py`),
+un fichier par fiche et par adresse. C'est le fichier qui dit qu'une copie
+existe ; les copies sont un cache, hors de la sauvegarde, que la récupération
+des données manquantes reconstruit. Une copie qu'aucun jeu ne porte plus est
+supprimée.
 
 ### 3.3 Règles dérivées
 
@@ -330,7 +336,7 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue
   (création et correction de la fiche d'un jeu, lien vers sa fiche
   BoardGameGeek et copie de ses données, affichées à côté des nôtres avec
-  l'image de la boîte, et reprenables avant d'enregistrer ; recherche des jeux restants sur BGG,
+  l'image de la boîte copiée sur le serveur, et reprenables avant d'enregistrer ; recherche des jeux restants sur BGG,
   candidats comparés aux nôtres, cases vides pré-remplies après liaison,
   enchaînement d'un jeu au suivant à l'enregistrement et marque
   « pas sur BGG » ; import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
@@ -428,11 +434,15 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
 - **Registre des appareils** — chaque appareil autorisé reçoit un
   identifiant tiré au hasard, qui dit « c'est le même téléphone », jamais
   « c'est le téléphone de quelqu'un ». Le bureau peut lui donner un libellé.
-- **Un seul appel sortant, facultatif** — l'API de BoardGameGeek, et
-  seulement si l'instance a reçu une clé d'accès (`BGG_TOKEN`, dans le
-  fichier d'environnement, jamais en base ni à l'écran). L'appel part d'un
-  bouton d'administration, jamais de l'affichage d'une page : une panne de
-  BGG n'empêche d'ouvrir ni d'enregistrer quoi que ce soit. Partent des
+- **Un seul site appelé, facultatif** — BoardGameGeek, et seulement si
+  l'instance a reçu une clé d'accès (`BGG_TOKEN`, dans le fichier
+  d'environnement, jamais en base ni à l'écran). Deux hôtes : l'API, et le
+  serveur de ses images (`cf.geekdo-images.com`), d'où le serveur copie
+  l'image de la boîte des jeux reliés — sans la clé, sans suivre aucune
+  redirection, poids borné, image contrôlée et réencodée avant d'être
+  écrite. L'appel part d'un bouton d'administration, jamais de l'affichage
+  d'une page : une panne de BGG n'empêche d'ouvrir ni d'enregistrer quoi
+  que ce soit. Partent des
   numéros de fiche et, pour « Chercher sur BGG », un nom de jeu — celui de la
   fiche, ou celui que le bureau retape —, en paramètre encodé vers l'adresse
   fixe de BGG ; ce nom n'est gardé nulle part, ni en base, ni au journal, ni
@@ -441,10 +451,13 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
   d'être lue. Sans clé, la fonction est
   absente et rien d'autre ne change. Le lien vers BGG sur les fiches publiques
   est un réglage d'instance, décoché par défaut. **Une seule ressource
-  tierce, en administration seulement** : la vignette d'une boîte, chargée
-  par le navigateur directement chez BGG (sans adresse d'origine :
-  `Referrer-Policy` et `referrerpolicy="no-referrer"`). Aucune page publique
-  ne charge quoi que ce soit d'ailleurs ; la CSP le garantit.
+  tierce, en administration seulement** : l'image de la boîte des
+  **candidats** de « Chercher sur BGG », pas encore reliés, chargée par le
+  navigateur directement chez BGG (sans adresse d'origine :
+  `Referrer-Policy` et `referrerpolicy="no-referrer"`). L'image d'un jeu
+  relié, elle, est la copie servie par notre serveur, et seulement à une
+  session d'administration. Aucune page publique ne charge quoi que ce soit
+  d'ailleurs ; la CSP le garantit.
 
 ---
 

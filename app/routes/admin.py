@@ -30,7 +30,7 @@ from fastapi.routing import APIRoute
 
 from app import (admin_auth, auth, bgg, bgg_api, bgg_recherche, carnet,
                  categories_jeu, classement, envois, exports, formation, journal, logo,
-                 sauvegarde, services, supervision)
+                 sauvegarde, services, supervision, vignettes)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -277,6 +277,8 @@ def liste_jeux(request: Request, q: str | None = None,
                categorie: list[str] = Query(default=[]),
                sans_bgg: str | None = None, pas_sur_bgg: str | None = None,
                bgg_lot: str = "", bgg_inconnues: str = "", bgg_echec: str = "",
+               bgg_images: str = "", bgg_images_refusees: str = "",
+               bgg_images_echec: str = "",
                fait: str = "", precedent: str = ""):
     """
     Liste/recherche des jeux pour atteindre une fiche (réimpression incluse).
@@ -297,8 +299,10 @@ def liste_jeux(request: Request, q: str | None = None,
 
     `bgg_lot`, `bgg_inconnues`, `bgg_echec` : le compte rendu du dernier clic
     sur « Récupérer les données BGG manquantes » — deux NOMBRES et un CODE
-    fermé, jamais un texte libre. Le nombre de fiches restantes, lui, est
-    recompté ici à chaque affichage.
+    fermé, jamais un texte libre. `bgg_images`, `bgg_images_refusees`,
+    `bgg_images_echec` : la même chose pour les images de boîte copiées dans
+    le même clic (série « images »). Le nombre de fiches restantes, lui, est
+    recompté ici à chaque affichage (`_bgg_restantes`).
     """
     if (garde := _garde(request)):
         return garde
@@ -312,7 +316,7 @@ def liste_jeux(request: Request, q: str | None = None,
         cles = categories_jeu.cles_du_filtre(categorie, vocabulaire)
         jeux = services.lister_catalogue(conn, cles, q=q, sans_bgg=filtre_bgg,
                                          pas_sur_bgg=filtre_absents)
-        restantes = len(services.ids_bgg_a_recuperer(conn)) if disponible else 0
+        restantes = _bgg_restantes(conn) if disponible else 0
         relier = {"restants": services.compter_a_relier(conn),
                   "premier": services.jeu_suivant_a_relier(conn),
                   "marques": services.compter_pas_sur_bgg(conn),
@@ -322,7 +326,10 @@ def liste_jeux(request: Request, q: str | None = None,
     lot = None
     if bgg_lot.isdigit():
         lot = {"recuperees": int(bgg_lot),
-               "inconnues": int(bgg_inconnues) if bgg_inconnues.isdigit() else 0}
+               "inconnues": int(bgg_inconnues) if bgg_inconnues.isdigit() else 0,
+               "images": int(bgg_images) if bgg_images.isdigit() else 0,
+               "images_refusees": (int(bgg_images_refusees)
+                                   if bgg_images_refusees.isdigit() else 0)}
     return templates.TemplateResponse(
         request, "admin_jeux.html",
         {"jeux": jeux, "q": q, "sans_bgg": filtre_bgg,
@@ -330,8 +337,36 @@ def liste_jeux(request: Request, q: str | None = None,
          "nb_categories": len(cles),
          "pas_sur_bgg": filtre_absents, "relier": relier,
          "bgg_disponible": disponible, "bgg_restantes": restantes,
-         "bgg_lot": lot, "message_bgg": MESSAGES_BGG_FICHE.get(bgg_echec)},
+         "bgg_lot": lot, "message_bgg": MESSAGES_BGG_FICHE.get(bgg_echec),
+         "message_images": MESSAGES_IMAGES_LOT.get(bgg_images_echec)},
     )
+
+
+def _bgg_restantes(conn) -> int:
+    """
+    Le nombre de fiches BGG à compléter : sans copie des données, ou dont
+    l'image de la boîte reste à copier sur notre serveur. Une fiche qui
+    manque des deux ne compte qu'une fois.
+    """
+    images = {i for i, _ in vignettes.a_copier(services.vignettes_bgg_attendues(conn))}
+    return len(set(services.ids_bgg_a_recuperer(conn)) | images)
+
+
+# Ce qui a arrêté la copie des images dans un clic du lot, par code
+# (`vignettes.copier_lot`). Les fiches récupérées restent récupérées, les
+# images copiées restent copiées : on dit seulement pourquoi le reste attend.
+MESSAGES_IMAGES_LOT = {
+    "panne": ("Les images de BoardGameGeek ne répondent pas pour le moment. "
+              "Rien n'est perdu : réessayez plus tard."),
+    "bloque": ("Le site d'images de BoardGameGeek refuse les demandes venant de "
+               "ce serveur. Réessayez plus tard ; si cela dure, prévenez la "
+               "personne qui administre le serveur."),
+    "attendre": ("Le site d'images de BoardGameGeek demande d'attendre. Rien "
+                 "n'est perdu : réessayez dans quelques minutes."),
+    "disque": ("Les images n'ont pas pu être enregistrées sur le serveur (disque "
+               "plein, ou dossier protégé). Prévenez la personne qui administre "
+               "le serveur ; les jeux s'affichent sans image en attendant."),
+}
 
 
 @router.post("/jeux/bgg/recuperer")
@@ -354,33 +389,65 @@ def jeux_recuperer_bgg(request: Request):
     lu la vignette (`services.ids_bgg_a_recuperer`), sont demandées ; un
     clic après une coupure reprend là où on en était. Un refus de BGG (202,
     429, panne…) arrête le lot, et ce qui a été obtenu avant est enregistré.
+
+    IMAGES DE BOÎTE (série « images ») : dans le même clic, APRÈS les fiches
+    (une image ne se copie que si sa fiche a donné son adresse), et dans le
+    temps qui reste sous la même borne, le serveur copie les images qui
+    manquent (`vignettes.copier_lot`). Le ménage des copies que plus aucun
+    titre ne porte se fait au même moment. Toutes les attentes du clic —
+    pauses, créneaux, téléchargements — se mesurent sur l'horloge de
+    `bgg_api.CADENCE` : l'échéance des images est le début du clic plus
+    `BORNE_LOT_S`, quel que soit le temps pris par les fiches.
     """
     if (garde := _garde(request)):
         return garde
     if not bgg_api.disponible():
         return RedirectResponse("/admin/jeux?bgg_echec=sans_jeton", status_code=303)
+    horloge = bgg_api.CADENCE.horloge
+    debut = horloge()
     conn = get_connection()
     try:
         ids = services.ids_bgg_a_recuperer(conn)
     finally:
         conn.close()
-    fiches, echec = bgg_api.recuperer_lot(ids)
+    fiches, echec = bgg_api.recuperer_lot(ids, horloge=horloge,
+                                          dormir=bgg_api.CADENCE.dormir)
     inconnues = 0
-    if fiches:
-        conn = get_connection()
-        try:
+    conn = get_connection()
+    try:
+        if fiches:
             _, inconnues = services.enregistrer_fiches_bgg(conn, fiches)
-        finally:
-            conn.close()
-    restantes = len(ids) - len(fiches)
+        attendues = services.vignettes_bgg_attendues(conn)
+    finally:
+        conn.close()
+    vignettes.menage(attendues)
+    reste = max(0.0, bgg_api.BORNE_LOT_S - (horloge() - debut))
+    images = vignettes.copier_lot(
+        vignettes.a_copier(attendues),
+        fin=bgg_api.CADENCE_IMAGES.horloge() + reste)
+    conn = get_connection()
+    try:
+        restantes = _bgg_restantes(conn)
+    finally:
+        conn.close()
     journal.journaliser(
         request, "admin", "bgg_lot_recupere",
-        objet=f"{len(fiches)} récupérées, {restantes} restantes",
-        ok=echec is None, detail=echec.code if echec else None,
+        objet=(f"{len(fiches)} récupérées, "
+               + (f"{images['copiees']} images copiées, " if images["copiees"] else "")
+               + f"{restantes} restantes"),
+        ok=echec is None and images["arret"] is None,
+        detail=(echec.code if echec else
+                f"image_{images['arret']}" if images["arret"] else None),
     )
     url = f"/admin/jeux?bgg_lot={len(fiches)}&bgg_inconnues={inconnues}"
+    if images["copiees"]:
+        url += f"&bgg_images={images['copiees']}"
+    if images["refusees"]:
+        url += f"&bgg_images_refusees={images['refusees']}"
     if echec is not None:
         url += f"&bgg_echec={echec.code}"
+    if images["arret"]:
+        url += f"&bgg_images_echec={images['arret']}"
     return RedirectResponse(url, status_code=303)
 
 
@@ -579,6 +646,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         conn.close()
     contexte = {"titre": titre, "exemplaires": exemplaires,
                 "emplacements_locaux": emplacements_locaux}
+    vignette_locale = (vignettes.url(copie_bgg["bgg_id"], copie_bgg.get("vignette"))
+                       if copie_bgg and copie_bgg["trouve"] else None)
     if titre:
         if saisie is None:
             saisie = {c: ("" if titre[c] is None else str(titre[c]))
@@ -623,6 +692,14 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
             # Copie BGG : affichée seulement si elle existe ; boutons offerts
             # seulement si l'instance a un jeton (bgg_api.disponible).
             "copie_bgg": copie_bgg,
+            # La COPIE LOCALE de l'image de la boîte (série « images ») :
+            # son adresse de service, ou None. Pas de repli sur l'adresse
+            # BGG : la copie est la règle, une fiche qui n'en a pas encore
+            # le dit en une phrase (`vignette_a_copier`) au lieu d'envoyer le
+            # navigateur chez BGG.
+            "vignette_locale": vignette_locale,
+            "vignette_a_copier": bool(copie_bgg and copie_bgg.get("vignette")
+                                      and vignette_locale is None),
             "date_copie_bgg": (services.format_local(copie_bgg["recupere_le"]).split(" ")[0]
                                if copie_bgg else None),
             "bgg_disponible": bgg_api.disponible(),
@@ -773,6 +850,10 @@ def fiche_modifier(
     # remplissent les cases vides, comme après « C'est ce jeu », et on reste
     # sur la fiche pour les relire.
     nouvel_id = valeurs["bgg_id"]
+    if "bgg_id" in resultat["changes"]:
+        # Délié, ou relié ailleurs : la copie de l'image de l'ancienne fiche
+        # part si plus aucun titre ne la porte (série « images »).
+        _menage_vignettes()
     if "bgg_id" in resultat["changes"] and nouvel_id:
         conn = get_connection()
         try:
@@ -788,6 +869,9 @@ def fiche_modifier(
             return _vers_fiche(reference_titre, "enregistre", etiquette,
                                bgg_echec=echec, enchainer=chaine)
         if copie is not None and copie["trouve"]:
+            # Fiche déjà copiée (un candidat, ou un autre titre) : son image
+            # l'est peut-être, sinon c'est le moment.
+            _copier_vignette(nouvel_id)
             return _vers_fiche(reference_titre, "enregistre", etiquette,
                                completer=True, enchainer=chaine)
     if avancer and not etiquette:
@@ -825,7 +909,48 @@ def _recuperer_copie_bgg(request: Request, nom: str, reference_titre: str,
         return "inconnu"
     journal.journaliser(request, "catalogue", "bgg_fiche_recuperee",
                         objet=nom, ref=reference_titre)
+    # Geste explicite sur UNE fiche : une image notée « refusée » est
+    # retentée (elle a pu revenir chez BGG).
+    _copier_vignette(bgg_id, reessayer=True)
     return None
+
+
+def _copier_vignette(bgg_id: int, *, reessayer: bool = False) -> None:
+    """
+    Copie sur notre serveur l'image de la boîte de la fiche `bgg_id`, si sa
+    copie manque — UN téléchargement, borné à `bgg_api.DELAI_IMAGE_S`.
+
+    Appelée après une liaison ou une récupération de fiche. Sans clé BGG :
+    rien. Un échec (BGG, contrôle, disque) n'est NI DIT NI BLOQUANT : la
+    liaison est déjà enregistrée, la fiche s'affiche sans image, et
+    « Récupérer les données BGG manquantes » la rattrapera.
+    """
+    if not bgg_api.disponible():
+        return
+    conn = get_connection()
+    try:
+        copie = services.lire_fiche_bgg(conn, bgg_id)
+    finally:
+        conn.close()
+    adresse = (copie or {}).get("vignette")
+    if not adresse or not copie["trouve"]:
+        return
+    if reessayer:
+        vignettes.oublier_refus(bgg_id, adresse)
+    a_faire = vignettes.a_copier({bgg_id: adresse})
+    if a_faire:
+        vignettes.copier_lot(a_faire, fin=bgg_api.CADENCE_IMAGES.horloge()
+                             + bgg_api.DELAI_IMAGE_S)
+
+
+def _menage_vignettes() -> None:
+    """Supprime les copies d'images qu'aucun titre ne porte plus. Ne lève pas."""
+    conn = get_connection()
+    try:
+        attendues = services.vignettes_bgg_attendues(conn)
+    finally:
+        conn.close()
+    vignettes.menage(attendues)
 
 
 @router.post("/jeu/{reference_titre}/bgg/recuperer")
@@ -952,8 +1077,9 @@ def fiche_relier_bgg(request: Request, reference_titre: str,
     « C'est ce jeu » : relie le titre à la fiche BGG choisie, puis RESTE sur
     le jeu, au formulaire, ses cases vides remplies par BGG (`?bgg=completer`,
     rien d'écrit) : on garde ou on corrige, puis « Enregistrer et passer au
-    jeu suivant ». AUCUN APPEL RÉSEAU : la copie est déjà en base (la
-    recherche l'y a mise).
+    jeu suivant ». AUCUN APPEL À L'API : la copie est déjà en base (la
+    recherche l'y a mise). Seule l'image de la boîte est téléchargée, une
+    fois, si elle manque (`_copier_vignette`, série « images »).
 
     Écrit par `services.modifier_titre`, seul chemin d'écriture de
     l'identifiant : la marque « pas sur BGG » tombe, `modifie_le` ne bouge
@@ -974,6 +1100,9 @@ def fiche_relier_bgg(request: Request, reference_titre: str,
     if resultat["changes"]:
         journal.journaliser(request, "catalogue", "bgg_relie",
                             objet=resultat["apres"]["nom"], ref=reference_titre)
+        # L'image de la boîte, dans le même geste si BGG répond vite ; sinon
+        # le lot de la liste des jeux la rattrapera. Jamais bloquant.
+        _copier_vignette(identifiant)
     return RedirectResponse(f"/admin/jeu/{quote(reference_titre)}"
                             "?bgg=completer&enchainer=1#modifier", status_code=303)
 

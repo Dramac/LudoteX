@@ -40,7 +40,10 @@ bandeau porte le nom de l'association, pas celui du logiciel.
 
 CE QUE LE DÉPÔT D'UN FICHIER FAIT SUBIR À L'IMAGE (et pourquoi)
 ---------------------------------------------------------------
-Un envoi de fichier est une surface d'attaque à lui seul. Dans l'ordre :
+Un envoi de fichier est une surface d'attaque à lui seul. Les points 2 à 4
+sont le contrôle COMMUN d'`app/controle_image.py`, partagé avec les vignettes
+BoardGameGeek (série « images ») ; ce module n'en garde que ses bornes et ses
+messages. Dans l'ordre :
 
 1. **Taille bornée** (`TAILLE_MAX_OCTETS`), vérifiée en lisant AU PLUS cette
    taille + 1 octet — voir `lire_borne`. Rien d'énorme n'est donc chargé en
@@ -70,13 +73,12 @@ from __future__ import annotations
 
 import os
 import tempfile
-from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
-from app import envois
+from app import controle_image, envois
 
 # Dossier des fichiers VERSIONNÉS (identité LudoteX), servi en repli.
 DOSSIER_VERSIONNE = Path(__file__).resolve().parent / "static" / "img"
@@ -247,93 +249,88 @@ def lire_borne(flux: BinaryIO) -> bytes:
         ) from None
 
 
-def _ressemble_a_du_svg(contenu: bytes) -> bool:
+def _refus(refus: controle_image.ImageRefusee) -> LogoRefuse:
     """
-    Reconnaît un SVG (ou un fichier XML quelconque) au début de son contenu.
+    Le refus du contrôle commun (`app/controle_image.py`), dit au bureau.
 
-    Pillow refuserait de toute façon ce fichier — il ne sait pas lire le SVG —
-    mais avec un message qui parlerait d'« image illisible ». Or déposer le
-    logo au format SVG est le geste le plus naturel du monde pour qui vient
-    d'en recevoir un de son graphiste : il mérite une phrase qui dise quoi
-    faire, pas un constat d'échec. D'où cette reconnaissance, dont l'unique
-    rôle est le libellé du refus.
+    Le contrôle est partagé avec les vignettes BGG ; les MOTS restent ceux du
+    logo, et le `detail` du journal aussi. Le SVG mérite une phrase à lui :
+    Pillow ne sait pas le lire, mais déposer le logo au format SVG est le
+    geste le plus naturel du monde pour qui vient d'en recevoir un de son
+    graphiste — il faut dire quoi faire, pas constater un échec.
     """
-    debut = contenu[:512].lstrip().lower()
-    return debut.startswith(b"<?xml") or debut.startswith(b"<svg") or b"<svg" in debut
+    motif = refus.motif
+    if motif == "vide":
+        return LogoRefuse(
+            "logo_vide",
+            "Aucun fichier n'a été reçu, ou il est vide. Choisissez une image "
+            "puis enregistrez de nouveau.",
+        )
+    if motif == "svg":
+        return LogoRefuse(
+            "logo_svg_refuse",
+            "Les images SVG ne sont pas acceptées, pour des raisons de "
+            "sécurité. Exportez votre logo en PNG (fond transparent conservé) "
+            "et déposez ce fichier-là.",
+        )
+    if motif == "pas_une_image":
+        return LogoRefuse(
+            "logo_pas_une_image",
+            "Ce fichier n'est pas une image que l'application sache lire. "
+            "Formats acceptés : PNG, JPEG et WebP.",
+        )
+    if motif == "format_refuse":
+        return LogoRefuse(
+            "logo_format_refuse",
+            f"Format d'image non accepté ({refus.format_reel or 'inconnu'}). "
+            f"Formats acceptés : PNG, JPEG et WebP.",
+        )
+    if motif == "trop_grand":
+        largeur, hauteur = refus.dimensions
+        return LogoRefuse(
+            "logo_trop_grand",
+            f"Cette image est trop grande ({largeur} x {hauteur} pixels ; "
+            f"limite : {DIMENSION_MAX} x {DIMENSION_MAX}). Réduisez-la avant "
+            f"de la déposer — {COTE_LOGO} pixels de côté suffisent largement.",
+        )
+    if motif == "non_decodable":
+        return _refus_non_decodable()
+    return LogoRefuse(
+        "logo_illisible",
+        "Ce fichier semble être une image, mais il est abîmé et n'a pas pu "
+        "être lu. Réexportez-le depuis votre logiciel de dessin.",
+    )
+
+
+def _refus_non_decodable() -> LogoRefuse:
+    return LogoRefuse(
+        "logo_illisible",
+        "Cette image n'a pas pu être décodée en entier. Réexportez-la "
+        "depuis votre logiciel de dessin, puis réessayez.",
+    )
 
 
 def controler(contenu: bytes) -> Image.Image:
     """
     Contrôle un fichier reçu et renvoie l'image décodée, ou lève `LogoRefuse`.
 
-    Ordre volontaire : SVG (pour le message), puis format réel, puis
-    dimensions, puis seulement décodage complet. RIEN N'EST ÉCRIT ICI — c'est
-    ce qui permet à la route d'administration de rassembler tous les refus du
-    formulaire (deux champs d'URL et le fichier) avant de décider d'écrire ou
-    non, sans jamais laisser un logo à moitié remplacé derrière elle.
+    Le contrôle lui-même (SVG, format réel, dimensions, décodage, dans cet
+    ordre) est celui de `app/controle_image.py`, partagé avec les vignettes
+    BGG ; ce module ne garde que ses bornes et ses messages. RIEN N'EST ÉCRIT
+    ICI — c'est ce qui permet à la route d'administration de rassembler tous
+    les refus du formulaire (deux champs d'URL et le fichier) avant de
+    décider d'écrire ou non, sans jamais laisser un logo à moitié remplacé
+    derrière elle.
     """
-    if not contenu:
-        raise LogoRefuse(
-            "logo_vide",
-            "Aucun fichier n'a été reçu, ou il est vide. Choisissez une image "
-            "puis enregistrez de nouveau.",
-        )
-
-    if _ressemble_a_du_svg(contenu):
-        raise LogoRefuse(
-            "logo_svg_refuse",
-            "Les images SVG ne sont pas acceptées, pour des raisons de "
-            "sécurité. Exportez votre logo en PNG (fond transparent conservé) "
-            "et déposez ce fichier-là.",
-        )
-
-    # `verify()` contrôle la cohérence du fichier SANS décoder les pixels, mais
-    # laisse l'objet inutilisable : d'où une seconde ouverture plus bas. C'est
-    # le mode d'emploi de Pillow, pas une maladresse.
     try:
-        sonde = Image.open(BytesIO(contenu))
-        format_reel = sonde.format
-        dimensions = sonde.size
-        sonde.verify()
-    except UnidentifiedImageError:
-        raise LogoRefuse(
-            "logo_pas_une_image",
-            "Ce fichier n'est pas une image que l'application sache lire. "
-            "Formats acceptés : PNG, JPEG et WebP.",
-        ) from None
-    except Exception:  # noqa: BLE001 - fichier tronqué, corrompu, incohérent
-        raise LogoRefuse(
-            "logo_illisible",
-            "Ce fichier semble être une image, mais il est abîmé et n'a pas pu "
-            "être lu. Réexportez-le depuis votre logiciel de dessin.",
-        ) from None
-
-    if format_reel not in FORMATS_ACCEPTES:
-        raise LogoRefuse(
-            "logo_format_refuse",
-            f"Format d'image non accepté ({format_reel or 'inconnu'}). "
-            f"Formats acceptés : PNG, JPEG et WebP.",
-        )
-
-    largeur, hauteur = dimensions
-    if largeur > DIMENSION_MAX or hauteur > DIMENSION_MAX:
-        raise LogoRefuse(
-            "logo_trop_grand",
-            f"Cette image est trop grande ({largeur} x {hauteur} pixels ; "
-            f"limite : {DIMENSION_MAX} x {DIMENSION_MAX}). Réduisez-la avant "
-            f"de la déposer — {COTE_LOGO} pixels de côté suffisent largement.",
-        )
-
+        image = controle_image.controler(
+            contenu, formats=FORMATS_ACCEPTES, dimension_max=DIMENSION_MAX)
+    except controle_image.ImageRefusee as refus:
+        raise _refus(refus) from None
     try:
-        image = Image.open(BytesIO(contenu))
-        image.load()
         return image.convert("RGBA")
-    except Exception:  # noqa: BLE001 - le décodage complet peut encore échouer
-        raise LogoRefuse(
-            "logo_illisible",
-            "Cette image n'a pas pu être décodée en entier. Réexportez-la "
-            "depuis votre logiciel de dessin, puis réessayez.",
-        ) from None
+    except Exception:  # noqa: BLE001 - la conversion décode ce qui restait
+        raise _refus_non_decodable() from None
 
 
 def _reduit(image: Image.Image, cote: int) -> Image.Image:

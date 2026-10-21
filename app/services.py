@@ -2458,6 +2458,25 @@ def ids_bgg_a_recuperer(conn: sqlite3.Connection) -> list[int]:
         "GROUP BY t.bgg_id ORDER BY MAX(f.bgg_id IS NOT NULL), t.bgg_id")]
 
 
+def vignettes_bgg_attendues(conn: sqlite3.Connection) -> dict[int, str]:
+    """
+    {bgg_id: adresse de la vignette} pour chaque fiche BGG trouvée, portée par
+    au moins un titre, dont l'adresse passe `bgg.lire_vignette` — les images
+    dont une copie doit exister sur notre serveur (`app/vignettes.py`, série
+    « images »). Les candidats d'une recherche, que rien ne porte, n'y sont
+    pas : leur image reste chargée chez BGG, en administration seulement.
+    """
+    attendues: dict[int, str] = {}
+    for bgg_id, adresse in conn.execute(
+            "SELECT DISTINCT f.bgg_id, f.vignette FROM fiches_bgg f "
+            "JOIN titres t ON t.bgg_id = f.bgg_id "
+            "WHERE f.trouve = 1 AND f.vignette IS NOT NULL AND f.vignette <> ''"):
+        adresse = bgg.lire_vignette(adresse)
+        if adresse:
+            attendues[int(bgg_id)] = adresse
+    return attendues
+
+
 def copies_bgg_presentes(conn: sqlite3.Connection) -> bool:
     """True si au moins une copie de fiche BGG est en base."""
     return conn.execute("SELECT 1 FROM fiches_bgg LIMIT 1").fetchone() is not None

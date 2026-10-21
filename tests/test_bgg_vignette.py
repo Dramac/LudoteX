@@ -15,9 +15,11 @@ Ce que ce fichier vérifie, et pourquoi :
    lue sans image ne l'est pas, le compte tombe à zéro.
 4. **Les trois chemins qui complètent une copie** : le lot de la liste, le
    bouton d'une fiche, une recherche.
-5. **L'affichage** : bloc « Données BGG du … » et cartes de candidats,
-   attributs `loading`, `referrerpolicy`, `alt`, dimensions ; une adresse
-   mauvaise en base ne sort pas ; ordre de lecture des cartes.
+5. **L'affichage** : bloc « Données BGG du … » (la COPIE LOCALE depuis la
+   série « images », lot 1 : tests/test_bgg_images.py) et cartes de
+   candidats (toujours l'adresse BGG), attributs `loading`,
+   `referrerpolicy`, `alt`, dimensions ; une adresse mauvaise en base ne
+   sort pas ; ordre de lecture des cartes.
 6. **Aucune vignette sur une page publique**, et **aucun appel réseau à
    l'affichage**.
 7. **Une base d'avant** gagne la colonne vide, et rien ne s'affiche.
@@ -31,7 +33,7 @@ import sqlite3
 
 import pytest
 
-from app import bgg, bgg_api, services
+from app import bgg, bgg_api, services, vignettes
 from tests.test_bgg_relier import (XML_SEARCH_BAZAR, _copier, _ou, _texte,  # noqa: F401
                                    admin, bgg_interdit, catalogue, faux_bgg)
 from tests.test_fiche_jeu import (_conn, _executer, anonyme, bases,  # noqa: F401
@@ -86,6 +88,12 @@ def _images(page):
 
 def _vignettes(page):
     return [i for i in _images(page) if 'class="vignette-bgg"' in i]
+
+
+def _jpeg():
+    """Une petite image JPEG, pour les copies locales (série « images »)."""
+    from tests.conftest import _jpeg_minimal
+    return _jpeg_minimal()
 
 
 def _attribut(balise, nom):
@@ -204,7 +212,8 @@ def test_deux_titres_sur_une_fiche_ne_la_comptent_qu_une_fois(bases):
     assert _a_recuperer() == [13]
 
 
-def test_le_lot_complete_les_copies_et_le_compte_tombe_a_zero(admin, faux_bgg, monkeypatch):
+def test_le_lot_complete_les_copies_et_le_compte_tombe_a_zero(admin, faux_bgg, fausses_images,
+                                                              monkeypatch):
     monkeypatch.setattr(bgg_api, "PAUSE_ENTRE_APPELS_S", 0)
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     _executer("UPDATE titres SET bgg_id = 14 WHERE reference_titre = 'DOBBLE'")
@@ -215,25 +224,30 @@ def test_le_lot_complete_les_copies_et_le_compte_tombe_a_zero(admin, faux_bgg, m
 
     # BGG donne une image à l'une, aucune à l'autre.
     faux = faux_bgg(_xml(_item(13, "CATAN", VIGNETTE), _item(14, "Dobble")))
+    images = fausses_images()
     r = admin.post("/admin/jeux/bgg/recuperer", follow_redirects=False)
-    assert _ou(r) == "/admin/jeux?bgg_lot=2&bgg_inconnues=0"
+    # Dans le même clic, l'image de la seule fiche qui en a une est copiée.
+    assert _ou(r) == "/admin/jeux?bgg_lot=2&bgg_inconnues=0&bgg_images=1"
     assert "id=13,14" in faux.requetes[0].full_url
     assert _vignette_en_base(13) == VIGNETTE and _vignette_en_base(14) == ""
+    assert images.adresses() == [VIGNETTE]
     page = _texte(admin.get(_ou(r)).text)
-    assert "2 fiches récupérées, 0 restante." in page
+    assert "2 fiches récupérées, 1 image de boîte copiée, 0 restante." in page
     assert "Tous les jeux reliés à BoardGameGeek ont leurs données BGG." in page
     assert _a_recuperer() == []
     # La copie lue sans image n'est jamais redemandée.
     assert "Données BoardGameGeek" not in admin.get("/admin/jeux").text
 
 
-def test_le_bouton_d_une_fiche_complete_sa_copie(client, faux_bgg):
+def test_le_bouton_d_une_fiche_complete_sa_copie(client, faux_bgg, fausses_images):
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     _copier({13: {"nom": "CATAN"}})
     faux_bgg(_xml(_item(13, "CATAN", VIGNETTE)))
+    fausses_images()
     r = client.post("/admin/jeu/CATANE/bgg/recuperer", follow_redirects=False)
     assert _ou(r) == "/admin/jeu/CATANE?ok=bgg_recupere&bgg=completer#modifier"
     assert _vignette_en_base(13) == VIGNETTE
+    assert vignettes.url(13, VIGNETTE) is not None             # et l'image copiée
 
 
 def test_une_recherche_garde_la_vignette_de_chaque_candidat(admin, faux_bgg):
@@ -252,16 +266,21 @@ def test_une_recherche_garde_la_vignette_de_chaque_candidat(admin, faux_bgg):
 # ===========================================================================
 # 4. L'AFFICHAGE, EN ADMINISTRATION
 # ===========================================================================
-def _relier_catane(vignette):
+def _relier_catane(vignette, *, copiee=True):
+    """Catane reliée à la fiche 13 ; son image copiée si l'adresse le permet."""
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     _copier({13: {"nom": "CATAN", "nb_joueurs_min": 3, "vignette": vignette}})
+    if copiee and bgg.lire_vignette(vignette):
+        vignettes.enregistrer(13, vignette, _jpeg())
 
 
 def test_le_bloc_des_donnees_bgg_montre_la_vignette(client):
     _relier_catane(VIGNETTE)
     page = client.get("/admin/jeu/CATANE").text
     balise, = _vignettes(page)
-    assert _attribut(balise, "src") == VIGNETTE
+    # La copie locale, depuis la série « images » : plus rien chez BGG.
+    assert _attribut(balise, "src") == vignettes.url(13, VIGNETTE)
+    assert "geekdo" not in page
     assert _attribut(balise, "loading") == "lazy"
     assert _attribut(balise, "referrerpolicy") == "no-referrer"
     assert (_attribut(balise, "width"), _attribut(balise, "height")) == ("200", "150")
@@ -276,6 +295,7 @@ def test_le_bloc_des_donnees_bgg_montre_la_vignette(client):
 def test_un_alt_sans_nom_bgg_dit_le_numero(client):
     _executer("UPDATE titres SET bgg_id = 13 WHERE reference_titre = 'CATANE'")
     _copier({13: {"nom": None, "vignette": VIGNETTE}})
+    vignettes.enregistrer(13, VIGNETTE, _jpeg())
     balise, = _vignettes(client.get("/admin/jeu/CATANE").text)
     assert _attribut(balise, "alt") == "Boîte de la fiche n° 13"
 
@@ -356,6 +376,12 @@ def test_aucune_vignette_sur_une_page_publique(anonyme):
         page = anonyme.get(url)
         assert page.status_code == 200, url
         assert "geekdo" not in page.text and "vignette-bgg" not in page.text, url
+        assert "/image/bgg/" not in page.text, url
+    # Et la copie elle-même n'est lisible qu'avec la session d'administration
+    # (série « images », lot 1) : aucune réponse 200 sans elle.
+    assert vignettes.url(13, VIGNETTE) is not None
+    for url in (vignettes.url(13, VIGNETTE), "/image/bgg/13.webp"):
+        assert anonyme.get(url).status_code == 404, url
 
 
 def test_aucun_appel_reseau_pour_afficher_une_vignette(admin, bgg_interdit):

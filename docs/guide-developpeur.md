@@ -55,7 +55,8 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 - `pochettes` : occupation du moment des numéros (recyclés, sans plafond).
 - Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches
   BoardGameGeek, clé `bgg_id` (jamais `reference_titre`), hors export CSV ;
-  elle garde l'adresse de la vignette de la boîte, jamais l'image.
+  elle garde l'adresse de la vignette de la boîte, jamais l'image (sa copie
+  est un fichier, `app/vignettes.py`, voir §10).
 - `categories_jeu` (vocabulaire, `cle` UNIQUE) et `titres_categories`
   (liaison ordonnée par `rang`) : les catégories de jeu en liste. Découpage
   d'une case et clé de rapprochement dans `app/categories_jeu.py`, module pur ;
@@ -213,7 +214,8 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   corrige sont listées par `services.CHAMPS_FICHE`, et un import qui en défait
   une le dit (`import_csv.corrections_defaites`, colonne `modifie_le`).
 - **Un seul module parle au réseau : `app/bgg_api.py`** (client de l'API de
-  BoardGameGeek). `app/bgg.py`, lui, ne fait que lire un identifiant : un test
+  BoardGameGeek, et téléchargement des images de boîte depuis la série
+  « images », voir plus bas). `app/bgg.py`, lui, ne fait que lire un identifiant : un test
   par AST verrouille l'un et l'autre. Trois règles tiennent le reste :
   **jamais d'appel à l'affichage** (la route lit la copie `fiches_bgg` ; seul
   un bouton d'administration appelle BGG), **jamais d'appel sous
@@ -264,6 +266,39 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   Ajouter un hôte = les deux fichiers, plus le geste nginx sur le serveur.
   La colonne a trois états (NULL jamais lue, '' lue sans image, adresse) :
   `services.ids_bgg_a_recuperer` redemande les seules copies jamais lues.
+  Depuis la série « images » (lot 1), la `location /admin/` ne sert plus
+  qu'aux **candidats** de « Chercher sur BGG » : la fiche d'un jeu relié
+  affiche la copie locale (point suivant).
+- **Le second hôte réseau : les images de boîte copiées** (série « images »,
+  lot 1). `bgg_api.telecharger_vignette` télécharge chez
+  `cf.geekdo-images.com` une adresse qui doit passer `bgg.lire_vignette`
+  telle quelle. **Sans le jeton** (images publiques), **sans suivre aucune
+  redirection** (`urlopen` en suit dix par défaut, vers n'importe quel hôte :
+  un ouvreur à part, `_OUVREUR_IMAGES`, les refuse), poids borné
+  (`TAILLE_MAX_IMAGE_OCTETS`, en-tête puis lecture), délai
+  (`DELAI_IMAGE_S`), et sa propre cadence (`CADENCE_IMAGES`, 0,3 s) qui
+  n'emprunte pas les créneaux de l'API. Échec typé `EchecImage`, codes
+  fermés. `app/vignettes.py` (ni réseau, ni base) contrôle l'image, la
+  réencode en WebP sans métadonnées, l'écrit de façon atomique dans
+  `data/vignettes-bgg/` sous le nom `<bgg_id>-<empreinte de l'adresse>.webp`
+  et la sert par `/image/bgg/<n>.webp?v=<empreinte>` (`app/routes/images.py`,
+  **session d'administration exigée**, 404 nu sinon). **Le fichier fait
+  foi** : aucune colonne, les copies sont hors du zip de sauvegarde, et
+  `vignettes.a_copier` croise `services.vignettes_bgg_attendues` avec le
+  dossier. Une image refusée pour de bon laisse une marque vide
+  `<bgg_id>-<empreinte>.refus`, sans quoi le compte ne tomberait jamais à
+  zéro. Le lot de la liste des jeux copie les images **après** les fiches,
+  dans le temps qui reste sous `BORNE_LOT_S` (une seule horloge : celle de
+  `bgg_api.CADENCE`). Ménage (`vignettes.menage`) au lot et à chaque
+  changement d'identifiant ; formation vidée par `vignettes.vider`. En test,
+  la fixture `fausses_images` de `tests/conftest.py` remplace
+  `bgg_api._ouvrir_image` ; sans elle, `_aucun_reseau` fait échouer le test.
+- **Le contrôle d'une image venue d'ailleurs a un seul domicile :
+  `app/controle_image.py`** (format réel par Pillow, SVG refusé, dimensions
+  avant décodage, décodage complet), appelé par le logo et par les
+  vignettes. Il lève `ImageRefusee` avec un motif fermé ; chaque appelant le
+  traduit dans ses mots (le logo garde ses messages et ses `detail` de
+  journal). Un nouveau format accepté se décide chez l'appelant, jamais ici.
 - **`add_header` de nginx n'est pas cumulatif.** Une `location` qui déclare
   un seul `add_header` perd **tous** ceux du niveau `server` : HSTS,
   X-Frame-Options, nosniff, Referrer-Policy et CSP. C'est pourquoi

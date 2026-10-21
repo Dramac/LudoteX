@@ -55,7 +55,7 @@
 {# Récupération des copies BGG manquantes : UN LOT BORNÉ par clic, sans tâche
    de fond (routes/admin.py::jeux_recuperer_bgg). Seulement si l'instance a
    une clé d'accès BGG ; le bloc disparaît quand il ne reste rien à faire. #}
-{% if bgg_disponible and (bgg_restantes or bgg_lot or message_bgg) %}
+{% if bgg_disponible and (bgg_restantes or bgg_lot or message_bgg or message_images) %}
 <section class="carte">
   <h2>Données BoardGameGeek</h2>
   {% if bgg_lot %}
@@ -63,14 +63,21 @@
      {{ pluriel(bgg_lot.recuperees, 'fiche récupérée', 'fiches récupérées') }}
      {%- if bgg_lot.inconnues %} (dont {{ bgg_lot.inconnues }}
      {{ pluriel(bgg_lot.inconnues, 'inconnue', 'inconnues') }} de BoardGameGeek){% endif %},
+     {%- if bgg_lot.images %} {{ bgg_lot.images }} {{ pluriel(bgg_lot.images, 'image de boîte copiée', 'images de boîte copiées') }},{% endif %}
      {{ bgg_restantes }} {{ pluriel(bgg_restantes, 'restante', 'restantes') }}.</p>
+  {% if bgg_lot.images_refusees %}
+  <p class="resultat resultat-info" role="status">{{ bgg_lot.images_refusees }}
+     {{ pluriel(bgg_lot.images_refusees, "image n'a pas pu être copiée", "images n'ont pas pu être copiées") }}
+     (absente de BoardGameGeek, ou fichier refusé) : ces jeux s'affichent sans image.</p>
+  {% endif %}
   {% endif %}
   {% if message_bgg %}<p class="resultat resultat-attention" role="alert">{{ message_bgg }}</p>{% endif %}
+  {% if message_images %}<p class="resultat resultat-attention" role="alert">{{ message_images }}</p>{% endif %}
   {% if bgg_restantes %}
   {# Compte des FICHES BGG, pas des jeux : deux jeux peuvent partager une
      fiche, et sa copie sert aux deux. Il couvre aussi les copies d'avant le
-     lot 4, qui n'ont pas encore lu l'image de la boîte
-     (services.ids_bgg_a_recuperer). #}
+     lot 4, qui n'ont pas encore lu l'image de la boîte, et les images pas
+     encore copiées sur ce serveur (routes/admin.py::_bgg_restantes). #}
   <p>{{ bgg_restantes }} {{ pluriel(bgg_restantes, 'fiche BoardGameGeek reliée', 'fiches BoardGameGeek reliées') }}
      à vos jeux {{ pluriel(bgg_restantes, "n'a", "n'ont") }} pas encore de données BGG,
      ou pas encore l'image de la boîte.

@@ -83,6 +83,39 @@ est installée.
 
 ---
 
+## À paraître
+
+### Images de boîte copiées sur le serveur : rien à faire, deux vérifications — facultatif
+
+Le serveur copie désormais l'image de la boîte des jeux reliés à
+BoardGameGeek, dans `data/vignettes-bgg/` (à côté des bases, créé tout seul
+par l'application, avec ses droits). Aucun fichier de `deploy/` ne change,
+aucune clé d'environnement non plus ; le contrôle de report n'a rien à dire.
+Sans clé BGG (`BGG_TOKEN`), rien n'est copié — la formation n'en a pas.
+
+1. **Le format WebP est-il disponible ?** (Pillow l'embarque quand il est
+   installé par `pip`, ce que fait `update.sh`) :
+   ```bash
+   sudo -u pretjeux /opt/ludotex/.venv/bin/python -c "from PIL import features; print(features.check('webp'))"
+   ```
+   *À voir :* `True`. `False` : aucune image ne pourra être copiée (chacune
+   sera notée « n'a pas pu être copiée ») ; rien d'autre ne casse. Prévenir
+   la personne qui développe.
+2. **La place disque** : environ 7 Ko par image, soit **moins de 10 Mo** pour
+   le parc d'environ 830 fiches (mesuré le 2026-10-21 sur 44 vignettes
+   réelles). Les copies ne partent pas dans le zip de sauvegarde : elles se
+   reconstruisent.
+
+Ensuite, côté bureau : liste des jeux → **Récupérer les données BGG
+manquantes**, jusqu'à ce que le compte tombe à zéro (une centaine d'images par
+clic, une dizaine de clics), hors affluence. Ouvrir la fiche d'un jeu relié :
+l'image s'affiche, servie par le site lui-même.
+
+**Retour en arrière** : supprimer le dossier `data/vignettes-bgg/` ; les fiches
+s'affichent sans image, rien d'autre ne change.
+
+---
+
 ## 1.24.0 — 2026-10-15
 
 ### Vignettes BoardGameGeek en administration : reposer la configuration nginx — facultatif

@@ -40,6 +40,13 @@ temps. `CADENCE` espace TOUS les appels du processus (un seul worker uvicorn,
 `deploy/ludotex.service` : un verrou en mémoire suffit) d'au moins
 `INTERVALLE_APPELS_S`, quel que soit le bouton qui les lance.
 
+L'IMAGE DE LA BOÎTE
+-------------------
+Depuis la série « images » (lot 1), ce module télécharge aussi la vignette
+d'une fiche chez `cf.geekdo-images.com` (`telecharger_vignette`) : un SECOND
+HÔTE, sans jeton, sans redirection suivie, avec sa propre cadence et sa
+propre borne de poids. Section « L'image de la boîte », en fin de module.
+
 LA RÉPONSE, D'ORIGINE EXTÉRIEURE
 --------------------------------
 - Bornée en temps (`DELAI_APPEL_S` au total, lecture comprise) et en taille
@@ -553,3 +560,147 @@ def recuperer_lot(ids: list[int], *,
         except EchecBGG as echec:
             return obtenues, echec
     return obtenues, None
+
+
+# ---------------------------------------------------------------------------
+# L'image de la boîte : un SECOND HÔTE, mêmes précautions (série « images »)
+# ---------------------------------------------------------------------------
+# La copie de la vignette chez nous (`app/vignettes.py`) commence ici : ce
+# module reste le seul à parler au réseau. Ce qui change par rapport à l'API :
+#
+# - l'hôte : celui de l'adresse, qui doit être EXACTEMENT dans
+#   `bgg.HOTES_VIGNETTE`, en `https:` — recontrôlée ici même si l'appelant
+#   l'a déjà fait ;
+# - AUCUN JETON : ce sont des images publiques, et la clé de l'API n'a rien à
+#   faire chez un autre hôte. `_jeton` n'est pas appelé sur ce chemin ;
+# - AUCUNE REDIRECTION SUIVIE. `urllib.request.urlopen` suit par défaut
+#   jusqu'à dix redirections, vers n'importe quel hôte et même en `http:`
+#   (`HTTPRedirectHandler`, lu dans la bibliothèque standard). Un ouvreur à
+#   part la refuse : une réponse 3xx devient un échec « refusee », sans
+#   qu'aucune seconde requête parte ;
+# - une cadence à part (`CADENCE_IMAGES`) : le serveur d'images n'est pas
+#   l'API et ne la ralentit pas, mais c'est le même site. Ses appels sont
+#   espacés de `INTERVALLE_IMAGES_S`, sans emprunter les créneaux de l'API
+#   (une recherche en cours ne retarde pas le lot d'images, et inversement).
+
+# Taille maximale lue pour une image. Sur 44 vignettes réelles téléchargées le
+# 2026-10-21 (24 tirées au hasard, 20 parmi les PNG), la plus lourde fait
+# 18 857 octets ; 256 Kio, c'est plus de treize fois ce maximum. Vérifiée sur
+# l'en-tête `Content-Length` s'il est annoncé, puis à la lecture.
+TAILLE_MAX_IMAGE_OCTETS = 256 * 1024
+
+# Délai TOTAL d'un téléchargement d'image. Mesurés entre 0,05 et 0,30 s le
+# 2026-10-21 ; 10 s couvrent un serveur lent sans figer un clic.
+DELAI_IMAGE_S = 10
+
+# Écart minimal entre deux téléchargements d'image du processus. Un navigateur
+# qui affiche une page de BGG demande des dizaines de vignettes à la fois ;
+# une à la fois, espacées de 0,3 s, reste bien en deçà. Avec des
+# téléchargements de 0,1 à 0,3 s, un lot de `BORNE_LOT_S` copie une centaine
+# d'images (mesuré à l'essai réel du lot images-1).
+INTERVALLE_IMAGES_S = 0.3
+
+# La cadence des images, pour tout le processus (un seul worker uvicorn).
+CADENCE_IMAGES = Cadence(INTERVALLE_IMAGES_S)
+
+# Les issues d'un téléchargement d'image qui n'a pas abouti. Codes FERMÉS,
+# comptés et dits par l'appelant, jamais montrés tels quels :
+# - « absente »   : 404 ou 410, l'image n'est plus chez BGG ;
+# - « refusee »   : adresse hors liste, redirection, réponse trop lourde ;
+# - « bloque »    : 403, le serveur d'images refuse ce serveur-ci ;
+# - « attendre »  : 429, il demande d'attendre ;
+# - « panne »     : réseau coupé, délai dépassé, 5xx, autre statut ;
+# - « trop_long » : le créneau libre n'a pas laissé le temps de télécharger
+#   avant l'échéance du clic ; rien n'est parti.
+ECHECS_IMAGE = ("absente", "refusee", "bloque", "attendre", "panne", "trop_long")
+
+
+class EchecImage(Exception):
+    """
+    Un téléchargement d'image n'a pas abouti. `code` est l'un d'`ECHECS_IMAGE`.
+
+    Cousine d'`EchecBGG`, et non sa sous-classe : ses issues ne sont pas
+    celles de l'API (pas de jeton, une image peut manquer seule), et elles ne
+    sont jamais affichées une à une — la liste des jeux les compte.
+    """
+
+    def __init__(self, code: str):
+        if code not in ECHECS_IMAGE:
+            raise ValueError(code)
+        self.code = code
+        super().__init__(code)
+
+
+class _SansRedirection(urllib.request.HTTPRedirectHandler):
+    """Ne suit aucune redirection : la réponse 3xx remonte en `HTTPError`."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OUVREUR_IMAGES = urllib.request.build_opener(_SansRedirection)
+
+
+def _ouvrir_image(requete: urllib.request.Request, delai: float):
+    """L'ouverture d'une adresse d'image, sans redirection. Remplacée en test."""
+    return _OUVREUR_IMAGES.open(requete, timeout=delai)
+
+
+def telecharger_vignette(adresse: str, *, fin: float | None = None) -> bytes:
+    """
+    Les octets de l'image à `adresse`, ou `EchecImage`.
+
+    `adresse` doit passer `bgg.lire_vignette` TELLE QUELLE (sinon « refusee »,
+    sans appel). `fin` : échéance sur l'horloge de `CADENCE_IMAGES`, comme
+    pour `_appeler`. Les octets rendus ne sont PAS contrôlés comme image :
+    c'est `vignettes.reencoder` qui le fait, avant toute écriture.
+    """
+    if not adresse or bgg.lire_vignette(adresse) != adresse:
+        raise EchecImage("refusee")
+    if not CADENCE_IMAGES.reserver(fin):
+        raise EchecImage("trop_long")
+    delai = DELAI_IMAGE_S
+    if fin is not None:
+        delai = min(DELAI_IMAGE_S, max(fin - CADENCE_IMAGES.horloge(), DUREE_MIN_APPEL_S))
+    requete = urllib.request.Request(adresse, headers={
+        "User-Agent": USER_AGENT,
+        "Accept": "image/webp,image/png,image/jpeg",
+    })
+    limite = time.monotonic() + delai
+    try:
+        with _ouvrir_image(requete, delai) as reponse:
+            if reponse.status != 200:
+                raise EchecImage("panne")
+            annonce = reponse.headers.get("Content-Length", "")
+            if annonce.isdigit() and int(annonce) > TAILLE_MAX_IMAGE_OCTETS:
+                raise EchecImage("refusee")
+            morceaux: list[bytes] = []
+            lus = 0
+            while True:
+                if time.monotonic() > limite:
+                    raise EchecImage("panne")
+                morceau = reponse.read(32 * 1024)
+                if not morceau:
+                    break
+                lus += len(morceau)
+                if lus > TAILLE_MAX_IMAGE_OCTETS:
+                    raise EchecImage("refusee")
+                morceaux.append(morceau)
+            return b"".join(morceaux)
+    except EchecImage:
+        raise
+    except urllib.error.HTTPError as erreur:
+        code = erreur.code
+        erreur.close()
+        if 300 <= code < 400:
+            raise EchecImage("refusee") from None
+        if code in (404, 410):
+            raise EchecImage("absente") from None
+        if code == 403:
+            raise EchecImage("bloque") from None
+        if code == 429:
+            raise EchecImage("attendre") from None
+        raise EchecImage("panne") from None
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError,
+            http.client.HTTPException):
+        raise EchecImage("panne") from None

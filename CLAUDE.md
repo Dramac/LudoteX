@@ -198,10 +198,12 @@ livré, par module :
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
   appareils, création et **correction de la fiche d'un jeu** (référence
   figée au renommage, avertissement quand un import défait une correction),
-  **données BoardGameGeek** (seul appel sortant, jeton facultatif en `.env`,
+  **données BoardGameGeek** (seul site appelé, jeton facultatif en `.env`,
   copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
-  des cases, **vignette de la boîte** chargée par le navigateur chez BGG en
-  administration seulement (CSP élargie dans la seule `location /admin/`),
+  des cases, **image de la boîte copiée sur le serveur** (contrôlée,
+  réencodée en WebP, hors sauvegarde, `app/vignettes.py`) et servie à la
+  seule session d'administration ; les candidats d'une recherche restent
+  chargés chez BGG (CSP élargie dans la seule `location /admin/`),
   reprise sans enregistrer, lien public réglable et décoché par
   défaut ; **relier les jeux un par un** : recherche bornée et cadencée,
   candidats comparés, enchaînement au jeu suivant, marque « pas sur BGG »
