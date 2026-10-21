@@ -560,8 +560,7 @@ def test_ranger_appliquer_filtre_inconnu_refuse(client, parc, monkeypatch):
                           "categorie": "purgee-entre-temps", "tous": "1"})
     assert r.status_code == 303
     assert _emplacements() == avant                     # AUCUNE boîte touchée
-    msg = dict(_params(r.headers["location"]))["msg"]
-    assert msg.startswith("Cette catégorie n'existe plus") and "rien n'a été modifié" in msg
+    assert dict(_params(r.headers["location"]))["msg"] == "categorie_inconnue"
     assert lignes == [("rangement_lot_applique",
                        {"objet": "Table du fond", "ok": False,
                         "detail": "categorie_inconnue"})]

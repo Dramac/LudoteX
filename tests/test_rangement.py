@@ -1619,9 +1619,9 @@ def test_ranger_appliquer_portee_filtre_evenement(client):
         follow_redirects=False,
     )
     assert r.status_code == 303
-    from urllib.parse import unquote_plus
-
-    assert "1 jeu" in unquote_plus(r.headers["location"])
+    # Un code et ses nombres dans l'adresse, le texte composé par la page.
+    assert "msg=applique&titres=1&boites=1" in r.headers["location"]
+    assert "Emplacement appliqué à 1 jeu (1 boîte)." in client.get(r.headers["location"]).text
     assert _emplacement_evenement_001(client) == "Étagère 5"
 
 
@@ -1914,3 +1914,60 @@ def test_d3_libelle_lieu_pour_un_tournoi(client):
     assert "Emplacement / table" not in r.text
     # Le NOM du champ, lui, n'a pas bougé (renommer casserait les données).
     assert 'name="emplacement"' in r.text
+
+
+# ---------------------------------------------------------------------------
+# Issue de « Appliquer » : un CODE dans l'adresse, jamais un texte. Avant, la
+# page affichait le `msg` libre de l'URL, toujours en vert : « Emplacement
+# requis : rien n'a été modifié. » se lisait comme une réussite.
+# ---------------------------------------------------------------------------
+def _message_affiche(page: str):
+    import re
+    m = re.search(r'<p class="resultat resultat-(\w+)"\s+role="(\w+)">(.*?)</p>', page, re.S)
+    return m.groups() if m else None
+
+
+@pytest.mark.parametrize("code, gravite, role", [
+    ("applique", "ok", "status"),
+    ("aucune", "info", "status"),
+    ("emplacement_requis", "attention", "alert"),
+    ("categorie_inconnue", "attention", "alert"),
+])
+def test_ranger_chaque_code_a_sa_gravite(client, code, gravite, role):
+    from app.routes.admin import MESSAGES_RANGER
+    _connecter(client)
+    page = client.get(f"/admin/rangement/ranger?msg={code}").text
+    attendu = MESSAGES_RANGER[code][1].replace("'", "&#39;")
+    assert _message_affiche(page) == (gravite, role, attendu)
+
+
+def test_ranger_refus_d_emplacement_affiche_en_alerte(client):
+    _connecter(client)
+    r = client.post("/admin/rangement/ranger/appliquer",
+                    data={"portee": "filtre", "emplacement_texte": ""})
+    gravite, role, texte = _message_affiche(r.text)
+    assert (gravite, role) == ("attention", "alert")
+    assert texte == "Emplacement requis : rien n&#39;a été modifié."
+    assert "resultat-ok" not in r.text
+
+
+def test_ranger_un_texte_libre_dans_l_adresse_n_est_plus_affiche(client):
+    # Ancienne adresse (texte d'avant ce correctif) ou adresse fabriquée.
+    _connecter(client)
+    page = client.get("/admin/rangement/ranger?msg=Tout+a+%C3%A9t%C3%A9+effac%C3%A9").text
+    assert _message_affiche(page) is None
+    assert "effacé" not in page
+
+
+@pytest.mark.parametrize("nombres", ["", "&titres=x&boites=2", "&titres=0&boites=0",
+                                     "&titres=-3&boites=2"])
+def test_ranger_applique_sans_nombres_valides_reste_generique(client, nombres):
+    _connecter(client)
+    page = client.get(f"/admin/rangement/ranger?msg=applique{nombres}").text
+    assert _message_affiche(page) == ("ok", "status", "Emplacement appliqué.")
+
+
+def test_ranger_applique_accorde_les_nombres(client):
+    _connecter(client)
+    page = client.get("/admin/rangement/ranger?msg=applique&titres=3&boites=5").text
+    assert _message_affiche(page)[2] == "Emplacement appliqué à 3 jeux (5 boîtes)."

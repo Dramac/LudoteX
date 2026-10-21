@@ -387,6 +387,11 @@ le message le dit. Un import a pu la purger entre l'affichage et le clic ; la
 faire retomber à « pas de filtre » appliquait l'emplacement à **tous** les
 titres. Un filtre qui disparaît n'élargit jamais une écriture de masse.
 
+L'issue d'« Appliquer » revient à la vue par un **code** (`MESSAGES_RANGER`,
+`app/routes/admin.py`) et, pour une réussite, ses deux nombres, jamais par un
+texte dans l'adresse. Le code porte une gravité : réussite en vert, rien de
+modifié en bleu, refus en orange annoncé comme une alerte.
+
 ### 13.5 Portée : vue de rangement complète *(décidé — option 2)*
 
 La page évolue d'une simple « page des manques » vers une vue **« Ranger les

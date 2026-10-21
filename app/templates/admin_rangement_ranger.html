@@ -11,7 +11,11 @@
     <a class="lien" href="/admin/rangement">changer</a>
   </p>
 
-  {% if message %}<p class="resultat resultat-ok">{{ message }}</p>{% endif %}
+  {# Issue de « Appliquer » : choisie par CODE (MESSAGES_RANGER de
+     app/routes/admin.py), jamais un texte venu de l'URL. Un refus est une
+     alerte, pas une réussite. #}
+  {% if message %}<p class="resultat resultat-{{ message.gravite }}"
+     role="{{ 'alert' if message.gravite == 'attention' else 'status' }}">{{ message.texte }}</p>{% endif %}
 
   <p class="stats-note">
     Affecte un emplacement à toutes les boîtes d'un jeu en une fois — pratique

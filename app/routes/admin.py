@@ -3993,12 +3993,52 @@ def signalements_export_pdf(request: Request, etat: str = "ouverts",
 # ---------------------------------------------------------------------------
 PAR_PAGE_RANGER = 50  # grain titre : jusqu'à ~600 lignes au total, pagination sobre
 
+# Issue de « Appliquer », par code : (gravité, texte). Le code voyage dans
+# l'URL de retour, jamais le texte : avant, la page affichait tel quel un
+# `msg` libre venu de l'adresse, et toujours en vert, refus compris. La
+# gravité choisit la classe (`resultat-<gravité>`) et le rôle ARIA : un refus
+# est une alerte. « applique » se complète avec les nombres de l'URL
+# (`_message_ranger`), des entiers et rien d'autre.
+MESSAGES_RANGER = {
+    "applique": ("ok", "Emplacement appliqué."),
+    "aucune": ("info", "Aucune boîte modifiée (sélection vide, ou tout était "
+                       "déjà rempli)."),
+    "emplacement_requis": ("attention", "Emplacement requis : rien n'a été "
+                                        "modifié."),
+    "categorie_inconnue": ("attention", "Cette catégorie n'existe plus (un "
+                                        "import a pu la retirer entre-temps) : "
+                                        "rien n'a été modifié. Choisissez à "
+                                        "nouveau le filtre, puis appliquez."),
+}
+
+
+def _message_ranger(code: str | None, titres: int | None,
+                    boites: int | None) -> dict | None:
+    """
+    Le message à afficher pour un code de `MESSAGES_RANGER`, ou None (code
+    absent ou inconnu : une ancienne adresse qui portait un texte libre
+    n'affiche plus rien). {"gravite", "texte"}.
+    """
+    if code not in MESSAGES_RANGER:
+        return None
+    gravite, texte = MESSAGES_RANGER[code]
+    if code == "applique" and titres and boites and titres > 0 and boites > 0:
+        texte = (f"Emplacement appliqué à {titres} "
+                 f"{services.pluriel(titres, 'jeu', 'jeux')} ({boites} "
+                 f"{services.pluriel(boites, 'boîte', 'boîtes')}).")
+    return {"gravite": gravite, "texte": texte}
+
 
 def _url_ranger(
     categorie: str | None, q: str | None, age: int | None, joueurs: int | None,
     tous: bool, page: int, msg: str | None = None,
+    titres: int | None = None, boites: int | None = None,
 ) -> str:
-    """URL de /admin/rangement/ranger avec filtres + interrupteur + page + message."""
+    """
+    URL de /admin/rangement/ranger avec filtres + interrupteur + page, et
+    l'issue de « Appliquer » : `msg` est un CODE de `MESSAGES_RANGER`,
+    `titres` et `boites` ses nombres.
+    """
     from urllib.parse import urlencode
 
     params: dict = {}
@@ -4016,6 +4056,10 @@ def _url_ranger(
         params["page"] = page
     if msg:
         params["msg"] = msg
+        if titres is not None:
+            params["titres"] = titres
+        if boites is not None:
+            params["boites"] = boites
     requete = urlencode(params)
     return "/admin/rangement/ranger" + (f"?{requete}" if requete else "")
 
@@ -4024,7 +4068,7 @@ def _url_ranger(
 def rangement_ranger_jeux(
     request: Request, categorie: str | None = None, q: str | None = None,
     age: str | None = None, joueurs: str | None = None, tous: int = 0, page: int = 1,
-    msg: str | None = None,
+    msg: str | None = None, titres: str | None = None, boites: str | None = None,
 ):
     """
     Vue « Ranger les jeux » : une ligne par titre, avec l'emplacement courant
@@ -4075,7 +4119,8 @@ def rangement_ranger_jeux(
             "page": page, "nb_pages": nb_pages,
             "total_jeux": total_jeux, "total_boites": total_boites, "nb_deja_ranges": nb_deja_ranges,
             "contexte": contexte, "emplacements_locaux": emplacements_locaux,
-            "message": msg,
+            "message": _message_ranger(msg, _entier_ou_none(titres),
+                                       _entier_ou_none(boites)),
             "url_precedente": (
                 _url_ranger(filtre_cat, q, age_i, joueurs_i, tous, page - 1) if page > 1 else None
             ),
@@ -4127,6 +4172,7 @@ def rangement_ranger_appliquer(
     tous_b = tous == "1"
     page_i = _entier_ou_none(page) or 1
 
+    nb_titres = nb_boites = None  # nombres du message « applique » seulement
     conn = get_connection()
     try:
         categories = services.lister_categories_jeu(conn)
@@ -4151,15 +4197,13 @@ def rangement_ranger_appliquer(
             libelle = texte or None
 
         if filtre_perdu:
-            msg = ("Cette catégorie n'existe plus (un import a pu la retirer "
-                   "entre-temps) : rien n'a été modifié. Choisissez à nouveau "
-                   "le filtre, puis appliquez.")
+            msg = "categorie_inconnue"
             journal.journaliser(
                 request, "rangement", "rangement_lot_applique",
                 objet=libelle, ok=False, detail="categorie_inconnue",
             )
         elif not valide:
-            msg = "Emplacement requis : rien n'a été modifié."
+            msg = "emplacement_requis"
             journal.journaliser(
                 request, "rangement", "rangement_lot_applique",
                 objet=libelle, ok=False, detail="emplacement_requis",
@@ -4178,13 +4222,10 @@ def rangement_ranger_appliquer(
                 conn, reference_titres, contexte, valeur, ecraser=(ne_pas_ecraser != "1")
             )
             if resultat["boites"] == 0:
-                msg = "Aucune boîte modifiée (sélection vide, ou tout était déjà rempli)."
+                msg = "aucune"
             else:
-                msg = (
-                    f"Emplacement appliqué à {resultat['titres']} "
-                    f"{'jeu' if resultat['titres'] == 1 else 'jeux'} "
-                    f"({resultat['boites']} {'boîte' if resultat['boites'] == 1 else 'boîtes'})."
-                )
+                msg = "applique"
+                nb_titres, nb_boites = resultat["titres"], resultat["boites"]
             # Une seule ligne pour tout le lot, avec les nombres : c'est
             # l'action massive qui compte (« qui a réaffecté 300 boîtes ? »),
             # pas chacune des boîtes touchées.
@@ -4199,6 +4240,7 @@ def rangement_ranger_appliquer(
         conn.close()
 
     return RedirectResponse(
-        _url_ranger(filtre_cat_brut, q_n, age_i, joueurs_i, tous_b, page_i, msg=msg),
+        _url_ranger(filtre_cat_brut, q_n, age_i, joueurs_i, tous_b, page_i, msg=msg,
+                    titres=nb_titres, boites=nb_boites),
         status_code=303,
     )
