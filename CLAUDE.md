@@ -100,7 +100,7 @@ avec son propre schéma, ses migrations et son initialisation :
 
 | Base | Schéma | Tables |
 | --- | --- | --- |
-| Prêt | `app/models.py` | `titres`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg` |
+| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg` |
 | Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme` |
 | Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
 

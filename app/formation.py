@@ -340,8 +340,15 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
     de prêt (schéma conservé). `fiches_bgg` en fait partie : une instance de
     formation n'a pas de jeton BGG et n'en remplit aucune, mais une copie
     venue d'ailleurs n'a rien à faire dans un catalogue jetable.
+
+    Ordre des clés étrangères (`PRAGMA foreign_keys` est actif).
+    `titres_categories` n'est pas dans la liste : sa clé vers `titres` est en
+    ON DELETE CASCADE (`models.SCHEMA_CATEGORIES_JEU`), vider `titres` la vide.
+    `categories_jeu` vient APRÈS : sa propre clé est sans cascade, une
+    catégorie encore portée ne se supprime pas.
     """
-    for table in ("prets", "pochettes", "exemplaires", "titres", "fiches_bgg"):
+    for table in ("prets", "pochettes", "exemplaires", "titres", "categories_jeu",
+                  "fiches_bgg"):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
 

@@ -401,6 +401,61 @@ def _migrer_titre_live_vers_nom_evenement(conn: sqlite3.Connection) -> str | Non
     return ancien
 
 
+def _migrer_categories_jeu(conn: sqlite3.Connection) -> int:
+    """
+    Rattache à leurs catégories de jeu les titres qui n'en ont aucune dans la
+    liaison mais dont la copie `titres.categorie` n'est pas NULL (série
+    « categories », lot 1). Une copie sans catégorie (« », « , ») devient
+    NULL, la jointure d'une liaison vide. Idempotent PAR CONSTRUCTION : un titre rattaché
+    n'est plus sélectionné, et sa copie, réécrite sous forme canonique, l'est
+    pour de bon. La même règle couvre une base d'avant le lot, une archive
+    d'avant restaurée (`sauvegarde._migrer_bases_restaurees` rejoue
+    `init_db`) et une ligne insérée en SQL brut.
+
+    Graphie retenue : celle d'une catégorie déjà en base, sinon la plus
+    fréquente parmi les titres à rattacher, avec le départage écrit dans
+    `categories_jeu.graphie_majoritaire`. C'est un changement de données
+    visible et voulu : « bluff » et « Bluff » deviennent une seule catégorie,
+    « Cartes,Coopération » s'écrit « Cartes, Coopération ».
+
+    En UNE transaction, via `services.ecrire_categories_titre` (seul chemin
+    d'écriture), qui ne pose jamais `modifie_le` : le prochain import ne
+    signalera donc aucune « correction défaite » que personne n'a faite. Une
+    base neuve ou sans catégorie ne fait rien.
+
+    Returns:
+        Le nombre de titres rattachés (0 dans le cas nominal d'une base à jour).
+    """
+    from app import categories_jeu, services  # différé, comme ci-dessous
+
+    # Colonne de cœur, présente sur toute base réelle ; une table `titres`
+    # réduite (fabriquée par un test) n'a rien à rattacher.
+    if "categorie" not in [r[1] for r in conn.execute("PRAGMA table_info(titres)")]:
+        return 0
+    a_rattacher = conn.execute(
+        "SELECT reference_titre, categorie FROM titres t "
+        "WHERE categorie IS NOT NULL AND NOT EXISTS ("
+        "SELECT 1 FROM titres_categories tc "
+        "WHERE tc.reference_titre = t.reference_titre) "
+        "ORDER BY reference_titre"
+    ).fetchall()
+    if not a_rattacher:
+        return 0
+    with services.transaction(conn):
+        nouvelles = categories_jeu.vocabulaire_de_migration(
+            [r["categorie"] for r in a_rattacher],
+            services.lire_vocabulaire_categories(conn))
+        conn.executemany("INSERT INTO categories_jeu (nom, cle) VALUES (?, ?)",
+                         [(nom, cle) for cle, nom in nouvelles.items()])
+        for ref, case in a_rattacher:
+            services.ecrire_categories_titre(conn, ref, case, purger=False)
+        services.purger_categories_orphelines(conn)
+    logging.getLogger("uvicorn.error").info(
+        "Catégories de jeu : %d titre(s) rattaché(s) à leur liste de "
+        "catégories.", len(a_rattacher))
+    return len(a_rattacher)
+
+
 def _seed_emplacements_rangement(conn: sqlite3.Connection) -> None:
     """
     Premier remplissage de `emplacements_rangement` (idempotent).
@@ -495,6 +550,9 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         # Réglage devenu obsolète : le titre de /live se règle désormais dans
         # « Gestion de l'événement » (une seule saisie au lieu de deux).
         _migrer_titre_live_vers_nom_evenement(conn)
+        # Après les migrations de colonnes (la liaison lit `titres`, qu'elles
+        # mettent à niveau) ; n'écrit que les titres pas encore rattachés.
+        _migrer_categories_jeu(conn)
         _purger_annonce_ecran_salle(conn)
         _seed_emplacements_rangement(conn)
         _seed_categories_signalement(conn)

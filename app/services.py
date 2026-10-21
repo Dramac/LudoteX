@@ -49,7 +49,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
-from app import bgg, classement
+from app import bgg, categories_jeu, classement
 
 # Fuseau de l'événement (saisies « 20h », « 2h du matin » = heure locale FR).
 # Les horodatages sont STOCKÉS en UTC ; on convertit aux frontières (filtre,
@@ -486,6 +486,113 @@ def lister_categories(conn: sqlite3.Connection) -> list[str]:
         "WHERE categorie IS NOT NULL AND categorie <> '' ORDER BY categorie"
     ).fetchall()
     return [r[0] for r in rows]
+
+
+# ===========================================================================
+# CATÉGORIES DE JEU — la liste, sa liaison et la copie (série « categories »)
+#
+# Un titre porte une LISTE de catégories (`titres_categories`, vocabulaire
+# `categories_jeu`, voir `app/models.py`). Découpage d'une case et clé de
+# rapprochement : `app/categories_jeu.py`, pur. Ici, les écritures.
+#
+# `titres.categorie` est une COPIE DÉRIVÉE de la liaison (« Cartes, Ambiance »)
+# que les lecteurs d'avant lisent sans changement. UN SEUL CHEMIN L'ÉCRIT :
+# `ecrire_categories_titre`, qui écrit la liaison et la copie ensemble. L'import,
+# « Créer un jeu », l'éditeur de fiche et la migration y passent tous.
+# ===========================================================================
+def lire_vocabulaire_categories(conn: sqlite3.Connection) -> dict[str, str]:
+    """Les catégories de jeu en base : clé de rapprochement -> graphie."""
+    return {r["cle"]: r["nom"] for r in conn.execute(
+        "SELECT cle, nom FROM categories_jeu")}
+
+
+def forme_canonique_categories(conn: sqlite3.Connection,
+                               case: str | None) -> str | None:
+    """
+    La copie qu'écrirait `ecrire_categories_titre` pour `case`, sans rien
+    écrire : les graphies en base pour les catégories connues, celle de la
+    saisie pour les autres. Sert à comparer une saisie à la base
+    (« cartes, ambiance » face à « Cartes, Ambiance » : rien à changer).
+    """
+    return categories_jeu.canoniser(case, lire_vocabulaire_categories(conn))
+
+
+def purger_categories_orphelines(conn: sqlite3.Connection) -> int:
+    """
+    Supprime les catégories que plus aucun titre ne porte ; leur nombre. Ne
+    committe pas : l'appelant est dans sa transaction.
+    """
+    return conn.execute(
+        "DELETE FROM categories_jeu WHERE NOT EXISTS ("
+        "SELECT 1 FROM titres_categories tc "
+        "WHERE tc.id_categorie_jeu = categories_jeu.id_categorie_jeu)").rowcount
+
+
+def ecrire_categories_titre(conn: sqlite3.Connection, reference_titre: str,
+                            case: str | None, purger: bool = True) -> list[str]:
+    """
+    Écrit les catégories d'un titre depuis une case brute (« cartes,Ambiance »)
+    — SEUL CHEMIN D'ÉCRITURE de `titres_categories` et de `titres.categorie`.
+
+    Dans une transaction (`transaction`, greffée sur celle de l'appelant s'il
+    en a une ouverte) :
+    1. la case est découpée (`categories_jeu.decouper`) ; chaque catégorie est
+       retrouvée par sa clé, sous sa graphie en base, ou CRÉÉE sous la graphie
+       de la saisie — jamais de refus ;
+    2. la liaison est réécrite dans l'ordre de la case, si elle a changé ;
+    3. la copie `titres.categorie` reçoit la jointure des graphies, si elle a
+       changé ;
+    4. les catégories devenues orphelines sont supprimées, sauf `purger=False`
+       (l'import et la migration purgent une seule fois, à la fin : une
+       catégorie que le fichier retire d'un jeu et donne à un autre ne doit pas
+       disparaître puis renaître entre deux lignes).
+
+    Ne touche jamais `modifie_le` : c'est à l'éditeur de la poser, la
+    migration et l'import ne le font pas. Une case vide retire toutes les
+    catégories du titre. Un titre inconnu : rien n'est écrit.
+
+    Returns:
+        Les graphies des catégories CRÉÉES par cet appel, dans l'ordre.
+    """
+    crees: list[str] = []
+    with transaction(conn):
+        titre = conn.execute("SELECT categorie FROM titres WHERE reference_titre = ?",
+                             (reference_titre,)).fetchone()
+        if titre is None:
+            return crees
+        ids: list[int] = []
+        graphies: list[str] = []
+        for nom in categories_jeu.decouper(case):
+            cle = categories_jeu.cle(nom)
+            ligne = conn.execute(
+                "SELECT id_categorie_jeu, nom FROM categories_jeu WHERE cle = ?",
+                (cle,)).fetchone()
+            if ligne is None:
+                ids.append(conn.execute(
+                    "INSERT INTO categories_jeu (nom, cle) VALUES (?, ?)",
+                    (nom, cle)).lastrowid)
+                graphies.append(nom)
+                crees.append(nom)
+            else:
+                ids.append(ligne["id_categorie_jeu"])
+                graphies.append(ligne["nom"])
+        actuels = [r[0] for r in conn.execute(
+            "SELECT id_categorie_jeu FROM titres_categories "
+            "WHERE reference_titre = ? ORDER BY rang", (reference_titre,))]
+        if actuels != ids:
+            conn.execute("DELETE FROM titres_categories WHERE reference_titre = ?",
+                         (reference_titre,))
+            conn.executemany(
+                "INSERT INTO titres_categories (reference_titre, id_categorie_jeu, "
+                "rang) VALUES (?, ?, ?)",
+                [(reference_titre, id_cat, rang) for rang, id_cat in enumerate(ids)])
+        copie = categories_jeu.joindre(graphies)
+        if titre["categorie"] != copie:
+            conn.execute("UPDATE titres SET categorie = ? WHERE reference_titre = ?",
+                         (copie, reference_titre))
+        if purger:
+            purger_categories_orphelines(conn)
+    return crees
 
 
 def ages_disponibles(conn: sqlite3.Connection) -> list[int]:
@@ -1839,22 +1946,24 @@ def creer_jeu(conn: sqlite3.Connection, nom: str, **champs) -> dict:
         raise ValueError("Le nom du jeu est obligatoire.")
     ref = slug_titre(nom)
 
-    colonnes_ok = ("type_jeu", "categorie", "nb_joueurs_min", "nb_joueurs_max",
+    # La catégorie n'est pas dans l'INSERT : elle passe par le seul chemin
+    # d'écriture de la liaison et de sa copie, `ecrire_categories_titre`.
+    colonnes_ok = ("type_jeu", "nb_joueurs_min", "nb_joueurs_max",
                    "duree_min", "age_min", "editeur", "auteur", "annee_edition",
                    "descriptif")
     valeurs = {c: champs.get(c) for c in colonnes_ok}
 
     conn.execute(
         """
-        INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
+        INSERT INTO titres (reference_titre, nom, type_jeu,
             nb_joueurs_min, nb_joueurs_max, duree_min, age_min, editeur, auteur,
             annee_edition, descriptif)
-        VALUES (:ref, :nom, :type_jeu, :categorie, :nb_joueurs_min,
+        VALUES (:ref, :nom, :type_jeu, :nb_joueurs_min,
             :nb_joueurs_max, :duree_min, :age_min, :editeur, :auteur,
             :annee_edition, :descriptif)
         ON CONFLICT(reference_titre) DO UPDATE SET
             nom=excluded.nom, type_jeu=excluded.type_jeu,
-            categorie=excluded.categorie, nb_joueurs_min=excluded.nb_joueurs_min,
+            nb_joueurs_min=excluded.nb_joueurs_min,
             nb_joueurs_max=excluded.nb_joueurs_max, duree_min=excluded.duree_min,
             age_min=excluded.age_min, editeur=excluded.editeur,
             auteur=excluded.auteur, annee_edition=excluded.annee_edition,
@@ -1862,6 +1971,9 @@ def creer_jeu(conn: sqlite3.Connection, nom: str, **champs) -> dict:
         """,
         {"ref": ref, "nom": nom, **valeurs},
     )
+    # Même règle qu'avant pour un titre de même slug : sa catégorie est
+    # remplacée par celle de la saisie, vide comprise.
+    ecrire_categories_titre(conn, ref, champs.get("categorie"))
     id_ex = prochain_id_exemplaire(conn)
     conn.execute(
         "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
@@ -2140,15 +2252,25 @@ def modifier_titre(conn: sqlite3.Connection, reference_titre: str,
         if avant is None:
             return None
         nouvelles = {c: valeurs[c] for c in colonnes if c in valeurs}
+        # La catégorie se compare sous sa forme CANONIQUE, ici et pas dans
+        # `lire_saisie_fiche` : elle dépend du vocabulaire en base (« bluff »
+        # tapé sur un parc qui porte « Bluff » s'écrit « Bluff »), lu dans la
+        # même transaction que l'écriture. « cartes, ambiance » sur une fiche
+        # « Cartes, Ambiance » ne change donc rien et n'écrit rien.
+        if "categorie" in nouvelles:
+            nouvelles["categorie"] = forme_canonique_categories(
+                conn, nouvelles["categorie"])
         # Relié, donc pas « pas sur BGG » — y compris quand c'est l'identifiant
         # déjà en base qui empêche de poser la marque.
         if nouvelles.get("bgg_id", avant.get("bgg_id")) is not None:
             nouvelles["bgg_absent"] = 0
         changes = [c for c in nouvelles if avant.get(c) != nouvelles[c]]
         if changes:
-            # Noms de colonnes tirés de `colonnes`, jamais de la requête.
-            affectations = [f"{c} = :{c}" for c in changes]
-            parametres = {c: nouvelles[c] for c in changes}
+            # Noms de colonnes tirés de `colonnes`, jamais de la requête. La
+            # catégorie n'y est pas : `ecrire_categories_titre` l'écrit, avec
+            # sa liaison.
+            affectations = [f"{c} = :{c}" for c in changes if c != "categorie"]
+            parametres = {c: nouvelles[c] for c in changes if c != "categorie"}
             if any(c in CHAMPS_FICHE for c in changes):
                 affectations.append("modifie_le = :modifie_le")
                 parametres["modifie_le"] = maintenant()
@@ -2157,6 +2279,9 @@ def modifier_titre(conn: sqlite3.Connection, reference_titre: str,
                 "WHERE reference_titre = :reference_titre",
                 {**parametres, "reference_titre": reference_titre},
             )
+            if "categorie" in changes:
+                ecrire_categories_titre(conn, reference_titre,
+                                        nouvelles["categorie"])
     apres = dict(avant, **{c: nouvelles[c] for c in changes})
     return {"changes": changes, "avant": avant, "apres": apres}
 

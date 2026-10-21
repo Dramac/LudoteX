@@ -56,6 +56,10 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 - Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches
   BoardGameGeek, clé `bgg_id` (jamais `reference_titre`), hors export CSV ;
   elle garde l'adresse de la vignette de la boîte, jamais l'image.
+- `categories_jeu` (vocabulaire, `cle` UNIQUE) et `titres_categories`
+  (liaison ordonnée par `rang`) : les catégories de jeu en liste. Découpage
+  d'une case et clé de rapprochement dans `app/categories_jeu.py`, module pur ;
+  écriture par `services.ecrire_categories_titre`, seule (voir § 10).
 
 **État déduit, pas stocké** : un exemplaire est *sorti* s'il a un prêt non clos.
 
@@ -168,6 +172,22 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   est verrouillée par `tests/test_fiche_jeu.py` ; toute colonne ajoutée à
   `titres` doit la tenir (une valeur que l'export écrit, l'import doit la
   relire à l'identique — d'où les bornes de `services.BORNES_FICHE`).
+- **`titres.categorie` est une copie verrouillée : ne jamais l'écrire à la
+  main.** La liste des catégories d'un titre fait foi (`titres_categories`) ;
+  la colonne en garde la jointure (« Cartes, Ambiance ») pour les lecteurs
+  d'avant la liste (menu du catalogue, fiche publique, export). Un seul chemin
+  écrit l'une et l'autre, ensemble : `services.ecrire_categories_titre`.
+  L'import, « Créer un jeu », l'éditeur de fiche et la migration y passent ;
+  un `UPDATE titres SET categorie` ailleurs ferait diverger la copie, et
+  `tests/test_categories_jeu.py::_verrou` tombe (essai de mutation fait au
+  lot categories-1). Comparer une saisie à la base se fait sous **forme
+  canonique** (`services.forme_canonique_categories`) : « cartes, ambiance »
+  face à « Cartes, Ambiance » n'est pas un changement.
+- **`COLLATE NOCASE` ne replie que l'ASCII.** « É » et « é » y restent
+  différents, et les accents ne sont jamais ignorés. Tout rapprochement « sans
+  casse ni accents » se fait en Python sur une clé calculée et stockée
+  (`categories_jeu.cle`), jamais par un `COLLATE` (l'emplacement local,
+  `obtenir_ou_creer_emplacement_rangement`, se contente encore de `NOCASE`).
 - **Colonnes de `titres` que l'import n'écrase pas** : les trois lettres,
   `bgg_id` (`COALESCE`) et la marque `bgg_absent`, parce qu'elles ne viennent
   pas du tableur du bureau. La marque voyage dans la colonne « Fiche

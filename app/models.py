@@ -12,6 +12,8 @@ et les deux tables du carnet de maintenance (voir
 docs/conception-signalements.md) :
 
     titres                  catalogue, niveau « référence » : un enregistrement par JEU.
+    categories_jeu          vocabulaire des catégories de jeu (« Cartes », « Ambiance »…).
+    titres_categories       liaison titre -> catégories de jeu, dans l'ordre du tableur.
     emplacements_rangement  liste gérée en admin des emplacements de rangement LOCAL.
     categories_signalement  liste gérée en admin des catégories de signalement.
     exemplaires             boîtes physiques, niveau « unité prêtable » : un par QR.
@@ -63,7 +65,7 @@ CREATE TABLE IF NOT EXISTS titres (
     reference_titre  TEXT PRIMARY KEY,            -- clé de regroupement (slug du nom, ex. "CATAN")
     nom              TEXT NOT NULL,               -- nom d'affichage du jeu
     type_jeu         TEXT,                        -- "Jeu" ou "Extension" (CSV "Type")
-    categorie        TEXT,                        -- catégorie pour le filtrage public (CSV "Type jeu")
+    categorie        TEXT,                        -- COPIE DÉRIVÉE de titres_categories (« Cartes, Ambiance »), voir SCHEMA_CATEGORIES_JEU
 
     -- Colonnes optionnelles (nullables). NULL = information absente du CSV.
     nb_joueurs_min   INTEGER,                     -- ex. "2 - 4" -> 2
@@ -103,6 +105,60 @@ CREATE TABLE IF NOT EXISTS titres (
     bgg_absent       INTEGER NOT NULL DEFAULT 0
                      CHECK (bgg_absent IN (0, 1) AND (bgg_absent = 0 OR bgg_id IS NULL))
 );
+"""
+
+# ---------------------------------------------------------------------------
+# categories_jeu et titres_categories — les catégories de jeu en LISTE (série
+# « categories », lot 1). Le nom dit « jeu » : `categories_signalement` (carnet
+# de maintenance) est une tout autre chose.
+# ---------------------------------------------------------------------------
+# Un titre porte zéro, une ou plusieurs catégories, dans l'ordre de la case du
+# tableur (« Type jeu » : « Cartes, Ambiance »). Découpage et rapprochement :
+# `app/categories_jeu.py`.
+#
+# `categories_jeu.cle` est la forme rapprochée (`app/categories_jeu.py::cle`, sans
+# casse ni accents), UNIQUE : « bluff » et « Bluff » sont une seule ligne. Le
+# rapprochement ne peut pas se faire en SQL (`COLLATE NOCASE` ne replie que
+# l'ASCII). `nom` est la graphie affichée, en NFC. Le vocabulaire n'est pas une
+# liste fixée par le bureau : il est fait des valeurs présentes, une catégorie
+# inconnue est créée à l'import, et une catégorie que plus aucun jeu ne porte
+# disparaît (`services.purger_categories_orphelines`).
+#
+# `titres.categorie` RESTE, comme COPIE DÉRIVÉE : la jointure des graphies de
+# la liaison, dans l'ordre de `rang`, séparées par « , ». Elle n'est écrite que
+# par `services.ecrire_categories_titre`, avec la liaison, et un test verrouille
+# l'égalité (tests/test_categories_jeu.py). Les lecteurs d'avant la liaison
+# (menu du catalogue, fiche publique, export…) la lisent sans changement.
+#
+# CLÉS ÉTRANGÈRES, deux règles différentes et voulues :
+#   - vers `titres`, ON DELETE CASCADE : supprimer un titre (seul cas : la
+#     remise à zéro du mode formation, `formation._vider_base_pret`) emporte sa
+#     liaison, rien d'autre ne la référence ;
+#   - vers `categories_jeu`, sans cascade : une catégorie qu'un titre porte ne
+#     peut pas être supprimée (la base refuse). La copie du titre deviendrait
+#     sinon fausse en silence. La purge ne supprime que les orphelines.
+#
+# Tables neuves : `CREATE TABLE IF NOT EXISTS` met une base existante à niveau,
+# et `db._migrer_categories_jeu` remplit la liaison depuis les copies.
+SCHEMA_CATEGORIES_JEU = """
+CREATE TABLE IF NOT EXISTS categories_jeu (
+    id_categorie_jeu  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom               TEXT NOT NULL,          -- graphie affichée (NFC), ex. "Stratégie"
+    cle               TEXT NOT NULL UNIQUE    -- forme rapprochée, ex. "strategie" (app/categories_jeu.py::cle)
+);
+
+CREATE TABLE IF NOT EXISTS titres_categories (
+    reference_titre   TEXT NOT NULL,          -- FK -> titres, cascade
+    id_categorie_jeu  INTEGER NOT NULL,       -- FK -> categories_jeu, SANS cascade
+    rang              INTEGER NOT NULL,       -- ordre dans la case du tableur, à partir de 0
+    PRIMARY KEY (reference_titre, id_categorie_jeu),
+    FOREIGN KEY (reference_titre) REFERENCES titres (reference_titre) ON DELETE CASCADE,
+    FOREIGN KEY (id_categorie_jeu) REFERENCES categories_jeu (id_categorie_jeu)
+);
+
+-- Filtre du catalogue par catégorie (lot 2) et purge des orphelines.
+CREATE INDEX IF NOT EXISTS idx_titres_categories_categorie
+    ON titres_categories (id_categorie_jeu);
 """
 
 # ---------------------------------------------------------------------------
@@ -442,10 +498,11 @@ SCHEMA_INDEXES_UNIQUES = (
 
 # Ordre d'exécution imposé par les clés étrangères : les tables référencées
 # (titres, emplacements_rangement, categories_signalement, exemplaires) AVANT
-# celles qui les référencent (signalements a besoin des deux dernières), puis
-# les index.
+# celles qui les référencent (titres_categories a besoin de titres,
+# signalements des deux dernières), puis les index.
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
+    SCHEMA_CATEGORIES_JEU,
     SCHEMA_EMPLACEMENTS_RANGEMENT,
     SCHEMA_CATEGORIES_SIGNALEMENT,
     SCHEMA_EXEMPLAIRES,

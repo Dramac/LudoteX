@@ -1317,6 +1317,10 @@ def etiquettes_pdf(
 # descriptif entier n'apprendrait rien de plus.
 CORRECTIONS_AFFICHEES = 20
 LONGUEUR_VALEUR_AFFICHEE = 80
+# Plafond des nouvelles catégories de jeu NOMMÉES dans le compte rendu : un
+# fichier maladroit (une colonne décalée) peut en créer des centaines. Les
+# suivantes sont comptées, « et N autres ».
+CATEGORIES_AFFICHEES = 10
 
 
 def _page_donnees(
@@ -1370,6 +1374,23 @@ def _archives_du_serveur() -> list[dict] | None:
     except OSError:
         return None
     return [{**a, "taille": services.format_taille(a["octets"])} for a in archives]
+
+
+def _phrase_categories_nouvelles(noms: list[str]) -> str:
+    """
+    « 3 nouvelles catégories créées : Hasard, Plis, Dessin. », bornée à
+    `CATEGORIES_AFFICHEES` noms ; chaîne vide sans catégorie nouvelle. Une
+    espace en tête, pour suivre la phrase précédente du compte rendu.
+    """
+    if not noms:
+        return ""
+    n = len(noms)
+    phrase = (f" {n} {services.pluriel(n, 'nouvelle catégorie créée', 'nouvelles catégories créées')}"
+              f" : {', '.join(noms[:CATEGORIES_AFFICHEES])}")
+    reste = n - CATEGORIES_AFFICHEES
+    if reste > 0:
+        phrase += f" et {reste} {services.pluriel(reste, 'autre', 'autres')}"
+    return phrase + "."
 
 
 @router.get("/donnees")
@@ -1435,6 +1456,9 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         if crees:
             texte += (f" {len(crees)} nouvel(aux) emplacement(s) local(-aux) "
                       f"créé(s) : {', '.join(crees)}.")
+        # Catégories de jeu inconnues : créées d'office, et toujours dites.
+        # Texte du fichier dans un message échappé par le gabarit.
+        texte += _phrase_categories_nouvelles(res.get("categories_nouvelles") or [])
         # Lettres de classement : une case remplie mais non reconnue n'empêche
         # pas la ligne d'entrer, ses lettres seules restent dehors. Tant que
         # les listes de lettres ne sont pas complètes, AUCUNE valeur n'est

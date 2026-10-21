@@ -48,8 +48,14 @@ from app.db import get_connection, init_db  # noqa: E402
 # résoudre/créer tolérament l'« Emplacement local » du CSV
 # (docs/conception-rangement.md §4.b, étape 7) sans dupliquer sa logique.
 # CHAMPS_FICHE : les colonnes que l'écran corrige et que l'import écrase.
-from app.services import (CHAMPS_FICHE, nettoyer_nom,  # noqa: E402
-                          obtenir_ou_creer_emplacement_rangement, slug_titre)
+# ecrire_categories_titre : seul chemin d'écriture des catégories d'un titre
+# (liaison et copie `titres.categorie`), partagé avec l'écran.
+from app.services import (CHAMPS_FICHE, ecrire_categories_titre,  # noqa: E402
+                          lire_vocabulaire_categories, nettoyer_nom,
+                          obtenir_ou_creer_emplacement_rangement,
+                          purger_categories_orphelines, slug_titre)
+# Découpage d'une case « Type jeu » et rapprochement des catégories.
+from app import categories_jeu  # noqa: E402
 # L'identifiant BoardGameGeek se lit au même domicile qu'à l'écran.
 from app.bgg import est_pas_sur_bgg  # noqa: E402
 from app.bgg import lire_identifiant as lire_bgg_id  # noqa: E402
@@ -325,13 +331,17 @@ class EtatBase:
 
     - `exemplaires` : id_exemplaire -> reference_titre ;
     - `titres` : reference_titre -> la ligne du titre (dict), réduite aux
-      colonnes utiles (nom, `CHAMPS_FICHE`, `modifie_le`).
+      colonnes utiles (nom, `CHAMPS_FICHE`, `modifie_le`) ;
+    - `categories` : le vocabulaire des catégories de jeu tel qu'il sera au
+      moment d'écrire, clé de rapprochement -> graphie (voir
+      `lire_etat_base`). Une catégorie du fichier absente d'ici est NOUVELLE.
 
     Lu par `lire_etat_base`, en simulation comme en import réel : la
     simulation annonce ainsi exactement ce que l'import fera.
     """
     exemplaires: dict[str, str] = field(default_factory=dict)
     titres: dict[str, dict] = field(default_factory=dict)
+    categories: dict[str, str] = field(default_factory=dict)
     # slug du nom ACTUEL -> références des titres qui portent ce nom.
     _par_slug: dict[str, list[str]] = field(default_factory=dict, repr=False)
 
@@ -363,7 +373,32 @@ def lire_etat_base(conn: sqlite3.Connection | None) -> EtatBase:
     except sqlite3.OperationalError:
         # Tables absentes (base jamais initialisée) : rien à retrouver.
         return EtatBase()
-    return EtatBase(exemplaires=exemplaires, titres=titres)
+    return EtatBase(exemplaires=exemplaires, titres=titres,
+                    categories=_lire_vocabulaire(conn))
+
+
+def _lire_vocabulaire(conn: sqlite3.Connection) -> dict[str, str]:
+    """
+    Le vocabulaire des catégories tel que l'import le trouvera en écrivant :
+    celui de la base, PLUS ce que la migration (`db._migrer_categories_jeu`,
+    rejouée par l'`init_db` de l'import réel) créera pour les titres pas encore
+    rattachés — même règle, même fonction. Sans cela, une simulation sur une
+    base d'avant le lot (la ligne de commande ne migre pas en simulation)
+    annoncerait comme nouvelles des catégories que l'import réel trouverait
+    déjà là.
+    """
+    try:
+        connues = lire_vocabulaire_categories(conn)
+        a_rattacher = conn.execute(
+            "SELECT categorie FROM titres t WHERE NOT EXISTS ("
+            "SELECT 1 FROM titres_categories tc "
+            "WHERE tc.reference_titre = t.reference_titre)").fetchall()
+    except sqlite3.OperationalError:
+        # Base d'avant le lot : aucune catégorie en liste, tout est à rattacher.
+        connues = {}
+        a_rattacher = conn.execute("SELECT categorie FROM titres").fetchall()
+    return {**connues, **categories_jeu.vocabulaire_de_migration(
+        [r[0] for r in a_rattacher], connues)}
 
 
 def resoudre_reference(id_exemplaire: str, nom: str, base: EtatBase | None) -> str:
@@ -419,7 +454,19 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
       - lettres_refusees : nombre de lignes dont la case « Lettres classement »
         est remplie mais invalide (la ligne s'importe, sans ses lettres)
       - bgg_refusees : même chose pour la case « Fiche BoardGameGeek »
+      - categories_nouvelles : les catégories de jeu que l'import créera,
+        absentes du vocabulaire de `base`, sous la graphie de leur première
+        occurrence (voir plus bas)
     Lève une erreur si les colonnes clés (Code jeu, Nom jeu) sont absentes.
+
+    CATÉGORIES. La case « Type jeu » d'un titre est la première case non vide
+    de ses lignes, comme pour les autres colonnes — « non vide » au sens de
+    `categories_jeu.decouper` : une case « , » ne dit rien. Elle est ensuite
+    mise sous forme CANONIQUE (`categories_jeu.Vocabulaire`) : graphie en base
+    pour une catégorie connue, graphie de la première occurrence pour une
+    nouvelle. « Première occurrence » parmi les cases RETENUES, dans l'ordre
+    des lignes où elles l'ont été : une case ignorée (titre déjà renseigné)
+    n'est pas écrite, elle ne crée donc rien et n'impose aucune graphie.
 
     `base` : l'état de la base (`lire_etat_base`), qui sert à retrouver un
     titre renommé à l'écran (`resoudre_reference`). None : la règle d'avant,
@@ -448,6 +495,8 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
     vus: set[str] = set()
     lettres_refusees = 0
     bgg_refusees = 0
+    # (référence, case) dans l'ordre où chaque titre a retenu sa case.
+    cases_categories: list[tuple[str, str]] = []
 
     for ligne in lignes:
         id_ex = (val(ligne, "id_exemplaire") or "").strip()
@@ -490,7 +539,9 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
             "reference_titre": ref,
             "nom": nom,
             "type_jeu": _ou_none(val(ligne, "type_jeu")),
-            "categorie": _ou_none(val(ligne, "categorie")),
+            "categorie": (_ou_none(val(ligne, "categorie"))
+                          if categories_jeu.decouper(val(ligne, "categorie"))
+                          else None),
             "nb_joueurs_min": nb_min,
             "nb_joueurs_max": nb_max,
             "duree_min": parse_duree(val(ligne, "duree")),
@@ -511,7 +562,11 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
         # une lettre d'une ligne et deux d'une autre.
         if ref not in titres:
             titres[ref] = champs
+            if champs["categorie"]:
+                cases_categories.append((ref, champs["categorie"]))
         else:
+            if titres[ref]["categorie"] is None and champs["categorie"]:
+                cases_categories.append((ref, champs["categorie"]))
             for k, v in champs.items():
                 if k in COLONNES_LETTRES:
                     continue
@@ -525,7 +580,19 @@ def construire_donnees(lignes: list[dict], index: dict[str, str | None],
         if da and (titres[ref].get("date_achat") is None or da > titres[ref]["date_achat"]):
             titres[ref]["date_achat"] = da
 
-    return exemplaires, titres, groupes, ignores, lettres_refusees, bgg_refusees
+    vocabulaire = categories_jeu.Vocabulaire(base.categories if base else None)
+    for ref, case in cases_categories:
+        titres[ref]["categorie"] = categories_jeu.joindre(vocabulaire.retenir(case))
+    # `titres` remis dans l'ordre où les cases ont été retenues (les titres
+    # sans catégorie à la suite) : `importer` écrit les catégories dans
+    # l'ordre de ce dictionnaire, et crée donc les nouvelles dans l'ordre même
+    # où la simulation les annonce. Rien d'autre ne dépend de cet ordre.
+    ordre = {ref: i for i, (ref, _) in enumerate(cases_categories)}
+    titres = dict(sorted(titres.items(),
+                         key=lambda item: ordre.get(item[0], len(ordre))))
+
+    return (exemplaires, titres, groupes, ignores, lettres_refusees, bgg_refusees,
+            vocabulaire.nouvelles)
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +614,11 @@ def corrections_defaites(titres: dict[str, dict], exemplaires: list[dict],
     - une boîte quitte un titre corrigé parce que le fichier lui donne un autre
       nom : écart sur le nom.
 
+    La catégorie se compare sous forme CANONIQUE des deux côtés : un fichier
+    qui porte « bluff » face à une fiche corrigée « Bluff » ne dit rien de
+    différent, et ne doit rien signaler. Le côté fichier l'est déjà
+    (`construire_donnees`) ; le côté base l'est ici, face au même vocabulaire.
+
     Returns:
         Liste triée par nom de {"reference_titre", "nom", "ecrase" (True si
         l'import écrit sur la fiche), "ecarts": [(libellé, avant, fichier)]}.
@@ -565,7 +637,10 @@ def corrections_defaites(titres: dict[str, dict], exemplaires: list[dict],
         if not actuel or not actuel.get("modifie_le"):
             continue
         for champ in CHAMPS_FICHE:
-            if champs.get(champ) != actuel.get(champ):
+            valeur = actuel.get(champ)
+            if champ == "categorie":
+                valeur = categories_jeu.canoniser(valeur, base.categories)
+            if champs.get(champ) != valeur:
                 noter(ref, champ, actuel.get(champ), champs.get(champ), True)
     for ex in exemplaires:
         ancienne = base.exemplaires.get(ex["id_exemplaire"])
@@ -631,7 +706,7 @@ def importer(chemin: Path, dry_run: bool = False,
         finally:
             conn.close()
     (exemplaires, titres, groupes, ignores, lettres_refusees,
-     bgg_refusees) = construire_donnees(lignes, index, base)
+     bgg_refusees, categories_nouvelles) = construire_donnees(lignes, index, base)
     defaites = corrections_defaites(titres, exemplaires, base)
     emplacements_locaux_crees: list[str] = []
 
@@ -640,19 +715,20 @@ def importer(chemin: Path, dry_run: bool = False,
         try:
             init_db(conn)  # garantit que les tables existent
             # UPSERT des titres (clé : reference_titre) — paramètres nommés.
+            # La catégorie n'y est pas : elle s'écrit juste après, par le seul
+            # chemin d'écriture de la liaison et de sa copie.
             conn.executemany(
                 """
-                INSERT INTO titres (reference_titre, nom, type_jeu, categorie,
+                INSERT INTO titres (reference_titre, nom, type_jeu,
                     nb_joueurs_min, nb_joueurs_max, duree_min, age_min,
                     editeur, auteur, annee_edition, descriptif, date_achat,
                     lettre_public, lettre_jeu, lettre_materiel, bgg_id)
-                VALUES (:reference_titre, :nom, :type_jeu, :categorie,
+                VALUES (:reference_titre, :nom, :type_jeu,
                     :nb_joueurs_min, :nb_joueurs_max, :duree_min, :age_min,
                     :editeur, :auteur, :annee_edition, :descriptif, :date_achat,
                     :lettre_public, :lettre_jeu, :lettre_materiel, :bgg_id)
                 ON CONFLICT(reference_titre) DO UPDATE SET
                     nom=excluded.nom, type_jeu=excluded.type_jeu,
-                    categorie=excluded.categorie,
                     nb_joueurs_min=excluded.nb_joueurs_min,
                     nb_joueurs_max=excluded.nb_joueurs_max,
                     duree_min=excluded.duree_min, age_min=excluded.age_min,
@@ -687,6 +763,17 @@ def importer(chemin: Path, dry_run: bool = False,
                 """,
                 list(titres.values()),
             )
+            # Catégories : la case du fichier ÉCRASE celles du titre, comme
+            # avant (case vide comprise), dans l'ordre des titres du fichier —
+            # celui où `construire_donnees` a retenu les graphies nouvelles :
+            # les catégories créées ici sont donc exactement celles que la
+            # simulation annonce. Purge des orphelines une seule fois, à la fin.
+            categories_creees: list[str] = []
+            for ref, champs in titres.items():
+                categories_creees += ecrire_categories_titre(
+                    conn, ref, champs["categorie"], purger=False)
+            purger_categories_orphelines(conn)
+            categories_nouvelles = categories_creees
             # « pas sur BGG » dans le fichier : la marque, sauf sur un jeu que
             # la base relie déjà (une liaison faite à l'écran après l'export
             # est plus récente que le fichier). Une case vide n'y touche pas.
@@ -757,6 +844,9 @@ def importer(chemin: Path, dry_run: bool = False,
         "ignores": ignores,
         "titres_data": titres,
         "emplacements_locaux_crees": emplacements_locaux_crees,
+        # Catégories de jeu absentes de la base au début de l'import, créées
+        # (ou, en simulation, à créer), graphie de leur première occurrence.
+        "categories_nouvelles": categories_nouvelles,
         "lettres_refusees": lettres_refusees,
         "bgg_refusees": bgg_refusees,
         # Fiches corrigées à l'écran que ce fichier défait (voir
@@ -788,6 +878,9 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
     if res.get("emplacements_locaux_crees"):
         noms = res["emplacements_locaux_crees"]
         print(f"Emplacements locaux créés : {len(noms)} -> {noms}")
+    if res.get("categories_nouvelles"):
+        noms = res["categories_nouvelles"]
+        print(f"Nouvelles catégories : {len(noms)} -> {', '.join(noms)}")
     if res.get("encodage_repli"):
         print("Encodage : le fichier n'est pas en UTF-8, il a été lu comme un "
               "CSV enregistré par Excel. Vérifier les accents dans le catalogue.")

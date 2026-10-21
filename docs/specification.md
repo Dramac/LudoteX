@@ -98,6 +98,13 @@ autres colonnes reconnues sont facultatives, et leurs intitulés tolérés sont
 listés dans `scripts/import_csv.py`. Les colonnes d'état d'un CSV (« prêt en
 cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 
+La colonne « Type jeu » porte une ou plusieurs **catégories**, séparées par
+une virgule (« Cartes, Ambiance »). L'import les rapproche de celles déjà
+connues sans tenir compte de la casse ni des accents (« bluff » rejoint
+« Bluff », qui garde sa graphie), crée d'office une catégorie inconnue et la
+nomme dans le compte rendu. Aucune case, si mauvaise soit-elle, ne fait
+refuser la ligne. Une catégorie que plus aucun jeu ne porte disparaît.
+
 ### 3.2 Tables
 
 **`titres`** — le catalogue, niveau « référence ».
@@ -106,7 +113,7 @@ cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 |---|---|
 | `reference_titre` | clé primaire (ex. `CATAN`) |
 | `nom` | nom affiché du jeu |
-| `categorie` | catégorie pour le filtrage public |
+| `categorie` | les catégories du jeu, en une chaîne (« Cartes, Ambiance ») : **copie dérivée** de la liste ci-dessous, écrite seulement avec elle |
 | *(champs facultatifs)* | joueurs, durée, âge, éditeur, auteur, descriptif… — tous nullables |
 | `bgg_id` | numéro de la fiche du jeu sur BoardGameGeek, s'il est connu ; sert un lien de vérification, et désigne la copie des données BGG (`fiches_bgg`, ci-dessous) |
 | `modifie_le` | date de la dernière correction faite à l'écran ; l'import s'en sert pour signaler qu'un fichier plus ancien la défait |
@@ -152,6 +159,15 @@ cours »…) sont ignorées : l'état se déduit des prêts (§3.3).
 |---|---|
 | `numero_pochette` | numéro (recyclé, voir §6) |
 | `occupe` | libre / occupé |
+
+**`categories_jeu`** et **`titres_categories`** — les catégories de jeu en
+liste. La première est le vocabulaire : une ligne par catégorie, avec sa
+graphie affichée et sa **clé de rapprochement** (sans casse ni accents),
+unique. La seconde rattache chaque titre à ses catégories, dans l'ordre de la
+case du tableur. C'est elle qui fait foi ; `titres.categorie` n'en est que la
+copie, gardée pour l'export et pour les écrans qui la lisent, et un test
+vérifie qu'elle ne s'en écarte jamais. Le vocabulaire n'est pas une liste fixée
+par le bureau : il est fait des valeurs présentes dans le tableur.
 
 La base de prêt porte aussi les réglages (`parametres`), le registre des
 appareils autorisés à écrire (`appareils`), les emplacements de rangement et
