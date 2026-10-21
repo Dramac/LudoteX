@@ -6,6 +6,13 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.25.0 — 2026-10-21
+
+- **Plusieurs catégories par jeu** : dans la colonne « Type jeu » du fichier, ou dans la case **Catégorie** d'une fiche, séparez-les par une virgule, par exemple « Cartes, Ambiance ».
+- **Une catégorie connue est reconnue même écrite autrement** : « bluff », « BLUFF » et « Bluff » sont la même, « strategie » et « Stratégie » aussi. Elle garde l'écriture qu'elle a déjà dans le catalogue.
+- **Les nouvelles catégories sont annoncées** : le message de fin d'import les nomme, par exemple « 1 nouvelle catégorie créée : Hasard. ». Une faute de frappe dans le fichier se voit tout de suite.
+- **Une catégorie que plus aucun jeu ne porte disparaît** d'elle-même du catalogue.
+
 ## 1.24.0 — 2026-10-15
 
 - **Après « C'est ce jeu », vous restez sur le jeu** : les cases vides de sa fiche se remplissent avec les valeurs de BoardGameGeek, marquées « repris de BGG ». Rien n'est enregistré : gardez-les ou corrigez-les. Une case déjà remplie garde votre valeur.
