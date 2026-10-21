@@ -364,11 +364,13 @@ def test_la_vignette_tient_dans_un_ecran_de_telephone():
 # ===========================================================================
 # 5. AUCUNE VIGNETTE EN PUBLIC, AUCUN APPEL RÉSEAU À L'AFFICHAGE
 # ===========================================================================
-def test_aucune_vignette_sur_une_page_publique(anonyme):
+def test_aucune_vignette_sur_une_page_publique_case_decochee(anonyme):
     _relier_catane(VIGNETTE)
     conn = _conn()
     try:
-        # Même avec le lien public coché : seul le lien sort, jamais l'image.
+        # Même avec le lien public coché : seul le lien sort, jamais l'image,
+        # tant que la case des images publiques (série « images », lot 2)
+        # reste décochée. Case cochée : tests/test_bgg_images_publiques.py.
         services.ecrire_bgg_lien_public(conn, True)
     finally:
         conn.close()
@@ -378,7 +380,7 @@ def test_aucune_vignette_sur_une_page_publique(anonyme):
         assert "geekdo" not in page.text and "vignette-bgg" not in page.text, url
         assert "/image/bgg/" not in page.text, url
     # Et la copie elle-même n'est lisible qu'avec la session d'administration
-    # (série « images », lot 1) : aucune réponse 200 sans elle.
+    # (série « images », lot 1) tant que la case est décochée.
     assert vignettes.url(13, VIGNETTE) is not None
     for url in (vignettes.url(13, VIGNETTE), "/image/bgg/13.webp"):
         assert anonyme.get(url).status_code == 404, url

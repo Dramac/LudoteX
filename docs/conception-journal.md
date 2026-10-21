@@ -82,6 +82,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Copie d'une fiche BoardGameGeek récupérée, par le bouton ou dans la foulée d'un identifiant enregistré (`bgg_fiche_recuperee` : nom et référence ; en échec, le **code** de l'issue, jamais le jeton ni la réponse) | `POST /admin/jeu/{ref}/bgg/recuperer`, `.../modifier` |
 | Lot de copies BoardGameGeek (`bgg_lot_recupere` : les **nombres** récupérées / images copiées / restantes, jamais l'adresse d'une image ; en échec, le code de l'issue, ou `image_` suivi du code d'arrêt de la copie des images) | `POST /admin/jeux/bgg/recuperer` |
 | Lien BoardGameGeek sur les fiches publiques affiché / masqué (`bgg_lien_public_modifie`, au changement seulement) | `POST /admin/identite` |
+| Image de la boîte sur les fiches publiques affichées / masquées (`bgg_images_publiques_modifie`, au changement seulement) | `POST /admin/identite` |
 | Recherche d'un jeu sur BoardGameGeek (`bgg_recherche` : nom et référence de **notre** jeu, **jamais le texte cherché** ; en échec, le code de l'issue). Journalisée parce qu'elle garde en base les copies des fiches candidates | `POST /admin/jeu/{ref}/bgg/chercher` |
 | Jeu relié à un candidat BGG par « C'est ce jeu » (`bgg_relie`), marqué « pas sur BGG » (`bgg_absent_marque`) ou démarqué (`bgg_absent_retire`) : nom et référence, au changement seulement. Une liaison ou une marque posée par la case de l'éditeur reste un `jeu_modifie` | `POST /admin/jeu/{ref}/bgg/relier`, `.../absent`, `.../present` |
 

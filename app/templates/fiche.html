@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_vignette_bgg.html" import vignette_bgg %}
 {% block titre %}{{ info.nom if info else "Jeu inconnu" }} — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
@@ -31,6 +32,14 @@
         📷 Prêter / rendre ce jeu
       </a>
     {% endif %}
+
+    {# Image de la boîte (série « images », lot 2) : seulement si le bureau
+       l'a choisi et que la copie locale existe — sinon rien, pas même un
+       cadre. APRÈS le bouton de prêt : un bénévole touche ce bouton des
+       centaines de fois par jour, l'image ne doit jamais le faire descendre.
+       Toujours la copie servie par ce site, jamais une adresse de BGG. La
+       légende cite la source, comme le demandent ses conditions. #}
+    {{ vignette_bgg({"nom": info.nom}, image_boite, "Image : BoardGameGeek") }}
 
     <dl class="caracteristiques">
       {% if info.type_jeu %}<dt>Type</dt><dd>{{ info.type_jeu }}</dd>{% endif %}

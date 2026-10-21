@@ -2659,6 +2659,22 @@ def ecrire_bgg_lien_public(conn: sqlite3.Connection, afficher: bool) -> None:
     ecrire_parametre(conn, CLE_BGG_LIEN_PUBLIC, "1" if afficher else None)
 
 
+# L'image de la boîte sur les fiches PUBLIQUES (série « images », lot 2) —
+# même réglage d'instance, même défaut : absent, donc décoché, donc aucune
+# migration. Décochée, la copie locale reste réservée à l'administration
+# (`app/routes/images.py::image_vignette_bgg`) et aucune page publique ne
+# porte de balise d'image de jeu.
+CLE_BGG_IMAGES_PUBLIQUES = "bgg_images_publiques"
+
+
+def lire_bgg_images_publiques(conn: sqlite3.Connection) -> bool:
+    return lire_parametre(conn, CLE_BGG_IMAGES_PUBLIQUES) == "1"
+
+
+def ecrire_bgg_images_publiques(conn: sqlite3.Connection, afficher: bool) -> None:
+    ecrire_parametre(conn, CLE_BGG_IMAGES_PUBLIQUES, "1" if afficher else None)
+
+
 def titres_pour_etiquettes(conn: sqlite3.Connection,
                            categorie: str | None = None) -> list[dict]:
     """

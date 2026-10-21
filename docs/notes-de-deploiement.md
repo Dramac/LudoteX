@@ -114,6 +114,14 @@ l'image s'affiche, servie par le site lui-même.
 **Retour en arrière** : supprimer le dossier `data/vignettes-bgg/` ; les fiches
 s'affichent sans image, rien d'autre ne change.
 
+### Image de la boîte sur les fiches publiques : rien à faire côté serveur
+
+Un réglage en base, dans « Identité de l'association » : **Afficher l'image
+de la boîte sur les fiches publiques**, décoché par défaut. Tant que le bureau
+ne le coche pas, le public ne voit rien de nouveau. Aucun fichier de
+`deploy/` ne change : l'image publique reste la copie servie par
+l'application, la CSP publique n'est pas élargie.
+
 ---
 
 ## 1.24.0 — 2026-10-15

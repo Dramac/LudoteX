@@ -1,0 +1,33 @@
+{# L'image de la boîte d'un jeu relié à BoardGameGeek — un seul balisage pour
+   l'administration et la fiche publique (série « images », lot 2).
+
+   C'est le paramètre `adresse` qui dit d'où vient l'image :
+   - la fiche du jeu, en administration comme en public, passe la COPIE
+     LOCALE (`vignettes.url`) : servie par notre serveur, `/image/bgg/…` ;
+   - chaque candidat de « Chercher sur BGG », pas encore relié et donc sans
+     copie, passe l'adresse BGG de sa copie de fiche (`f.vignette`, contrôlée
+     par bgg.lire_vignette) : le NAVIGATEUR la charge chez BGG (lot fiche-4),
+     en administration seulement. Jamais sur une page publique : la CSP
+     publique le refuserait.
+   `copie` donne le nom de l'`alt` (`nom`, sinon `bgg_id`).
+   `legende`, facultative : la fiche publique la passe (« Image :
+   BoardGameGeek », mention de la source) et l'image est alors rendue dans un
+   `<figure>` ; l'administration n'en passe pas et garde l'image seule.
+
+   Taille posée (200 × 150, celle des copies) : la page ne saute pas au
+   chargement. Si l'image ne vient pas, il reste un cadre de cette taille et
+   son texte : rien ne dépend de l'image. Sans adresse, rien du tout. #}
+{% macro vignette_bgg(copie, adresse, legende=none) %}
+  {%- if adresse %}
+  {%- if legende %}
+  <figure class="figure-bgg">
+  {%- endif %}
+  <img class="vignette-bgg" src="{{ adresse }}" width="200" height="150"
+       loading="lazy" decoding="async" referrerpolicy="no-referrer"
+       alt="Boîte de {{ copie.nom or ('la fiche n° ' ~ copie.bgg_id) }}">
+  {%- if legende %}
+    <figcaption class="stats-note">{{ legende }}</figcaption>
+  </figure>
+  {%- endif %}
+  {%- endif %}
+{%- endmacro %}

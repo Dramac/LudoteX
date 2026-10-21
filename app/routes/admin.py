@@ -2400,6 +2400,7 @@ def _page_identite(request: Request, saisies: dict, message, status_code: int = 
          "couleur_par_defaut": services.COULEUR_ASSOCIATION_DEFAUT,
          "couleur_lisible": couleur_lisible,
          "bgg_lien_public": bool(saisies.get("bgg_lien_public")),
+         "bgg_images_publiques": bool(saisies.get("bgg_images_publiques")),
          "suggestions_couleur": suggestions_couleur,
          "nom_par_defaut": NOM_ASSOCIATION,
          "depot_par_defaut": DEPOT_URL,
@@ -2443,6 +2444,7 @@ def identite_formulaire(request: Request):
                 conn, services.CLE_ASSOCIATION_DEPOT),
             "couleur": services.lire_couleur_association(conn),
             "bgg_lien_public": services.lire_bgg_lien_public(conn),
+            "bgg_images_publiques": services.lire_bgg_images_publiques(conn),
         }
     finally:
         conn.close()
@@ -2458,6 +2460,7 @@ def identite_enregistrer(
     depot_url: str = Form(""),
     couleur: str = Form(""),
     bgg_lien_public: str = Form(""),
+    bgg_images_publiques: str = Form(""),
     logo_fichier: UploadFile | None = File(None),
 ):
     """
@@ -2523,6 +2526,7 @@ def identite_enregistrer(
     saisie_couleur = services.normaliser_couleur_association(couleur)
     # Case à cocher : un navigateur n'envoie rien quand elle est décochée.
     saisie_bgg_public = bool(bgg_lien_public.strip())
+    saisie_images_publiques = bool(bgg_images_publiques.strip())
 
     # Une saisie non vide qui ressort normalisée à None a été REFUSÉE ; une
     # saisie vide, elle, veut simplement dire « efface ».
@@ -2565,7 +2569,8 @@ def identite_enregistrer(
              "contact": contact.strip() or None,
              "depot_url": depot_url.strip() or None,
              "couleur": couleur.strip() or None,
-             "bgg_lien_public": saisie_bgg_public},
+             "bgg_lien_public": saisie_bgg_public,
+             "bgg_images_publiques": saisie_images_publiques},
             ("erreur", " ".join(m for _, _, m in refus)),
             status_code=400,
         )
@@ -2582,6 +2587,8 @@ def identite_enregistrer(
         couleur_precedente = services.lire_couleur_association(conn)
         bgg_public_precedent = services.lire_bgg_lien_public(conn)
         services.ecrire_bgg_lien_public(conn, saisie_bgg_public)
+        images_publiques_precedent = services.lire_bgg_images_publiques(conn)
+        services.ecrire_bgg_images_publiques(conn, saisie_images_publiques)
         services.ecrire_parametre(
             conn, services.CLE_ASSOCIATION_NOM, saisie_nom or None)
         services.ecrire_parametre(
@@ -2631,6 +2638,11 @@ def identite_enregistrer(
             request, "admin", "bgg_lien_public_modifie",
             objet="affiché" if saisie_bgg_public else "masqué",
         )
+    if saisie_images_publiques != images_publiques_precedent:
+        journal.journaliser(
+            request, "admin", "bgg_images_publiques_modifie",
+            objet="affichées" if saisie_images_publiques else "masquées",
+        )
 
     # Écrit APRÈS les quatre valeurs texte, et seulement si aucun refus n'a
     # eu lieu plus haut : à ce point, le fichier a déjà passé tous les
@@ -2662,6 +2674,10 @@ def identite_enregistrer(
                   if saisie_bgg_public else
                   " Lien BoardGameGeek retiré des fiches publiques."
                   if bgg_public_precedent else "")
+    partie_images = (" Image de la boîte affichée sur les fiches publiques."
+                     if saisie_images_publiques else
+                     " Image de la boîte retirée des fiches publiques."
+                     if images_publiques_precedent else "")
     return _page_identite(
         request,
         {"nom": saisie_nom or None,
@@ -2669,10 +2685,11 @@ def identite_enregistrer(
          "contact": saisie_contact,
          "depot_url": saisie_depot,
          "couleur": saisie_couleur,
-         "bgg_lien_public": saisie_bgg_public},
+         "bgg_lien_public": saisie_bgg_public,
+         "bgg_images_publiques": saisie_images_publiques},
         ("succes", f"{partie_nom} {partie_presentation} "
                    f"{partie_contact} {partie_depot} {partie_couleur}"
-                   f"{partie_logo}{partie_bgg}"),
+                   f"{partie_logo}{partie_bgg}{partie_images}"),
     )
 
 
@@ -2713,6 +2730,7 @@ def identite_logo_retirer(request: Request):
                 conn, services.CLE_ASSOCIATION_DEPOT),
             "couleur": services.lire_couleur_association(conn),
             "bgg_lien_public": services.lire_bgg_lien_public(conn),
+            "bgg_images_publiques": services.lire_bgg_images_publiques(conn),
         }
     finally:
         conn.close()

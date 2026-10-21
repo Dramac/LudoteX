@@ -974,7 +974,8 @@ def test_la_reinitialisation_de_formation_vide_les_copies(bases):
 
 def test_actions_nouvelles_au_vocabulaire_et_a_la_conception():
     conception = Path("docs/conception-journal.md").read_text(encoding="utf-8")
-    for action in ("bgg_fiche_recuperee", "bgg_lot_recupere", "bgg_lien_public_modifie"):
+    for action in ("bgg_fiche_recuperee", "bgg_lot_recupere", "bgg_lien_public_modifie",
+                   "bgg_images_publiques_modifie"):
         assert action in journal.ACTIONS
         assert action in conception
 

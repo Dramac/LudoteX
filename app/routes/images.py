@@ -28,9 +28,11 @@ VIGNETTES BOARDGAMEGEEK (série « images », lot 1)
 `/image/bgg/<numéro>.webp` sert la copie locale de l'image d'une boîte
 (`app/vignettes.py`). Le numéro est un ENTIER validé ; le fichier servi est
 celui que `vignettes.chemin_servi` calcule de cet entier et de l'adresse en
-base — aucun chemin construit depuis le texte de l'URL. Réservée pour
-l'instant à la SESSION D'ADMINISTRATION : aucune page publique n'affiche
-d'image, aucune copie n'est lisible sans mot de passe.
+base — aucun chemin construit depuis le texte de l'URL. Servie à la SESSION
+D'ADMINISTRATION, et au public SEULEMENT si le bureau a coché « Afficher
+l'image de la boîte sur les fiches publiques » (lot 2, `/admin/identite`,
+décochée par défaut) : case décochée, aucune copie n'est lisible sans mot
+de passe.
 """
 
 import re
@@ -100,10 +102,14 @@ def image_favicon_512():
 # Un numéro de fiche BGG : chiffres seulement, sans zéro de tête, dix au plus.
 _NUMERO_BGG = re.compile(r"[1-9][0-9]{0,9}")
 
-# Réservée à l'administration : jamais dans un cache partagé. L'URL porte
-# l'empreinte de l'adresse (`vignettes.url`), donc un jour suffit sans risque
-# de garder une image périmée.
+# L'URL porte l'empreinte de l'adresse (`vignettes.url`) : un jour suffit
+# sans risque de garder une image périmée. Case publique décochée, l'image
+# n'est servie qu'à l'administration : jamais dans un cache partagé. Cochée,
+# elle est publique et peut l'être. Conséquence assumée : décocher la case
+# ne retire pas une image déjà en cache chez un visiteur (un jour au plus) ;
+# elle cesse d'être servie et affichée.
 CACHE_VIGNETTE = "private, max-age=86400"
+CACHE_VIGNETTE_PUBLIQUE = "public, max-age=86400"
 
 
 @router.get("/bgg/{numero}.webp")
@@ -111,19 +117,21 @@ def image_vignette_bgg(request: Request, numero: str):
     """
     La copie locale de la vignette de la fiche BGG `numero`, ou un 404 nu.
 
-    404 aussi SANS SESSION D'ADMINISTRATION, et non une redirection vers la
-    connexion : cette adresse est demandée par une balise `<img>`, et un
-    refus ne doit pas dire si la copie existe. Le lot 2 de la série
-    « images » ouvrira cette route au public quand la case d'affichage sera
-    cochée.
+    404 aussi SANS SESSION D'ADMINISTRATION quand la case publique est
+    décochée, et non une redirection vers la connexion : cette adresse est
+    demandée par une balise `<img>`, et un refus ne doit pas dire si la
+    copie existe. La case est lue en base par la route, à chaque requête :
+    décochée, la route se referme aussitôt.
     """
-    if not admin_auth.admin_connecte(request):
-        return Response(status_code=404)
+    admin = admin_auth.admin_connecte(request)
     if not _NUMERO_BGG.fullmatch(numero):
         return Response(status_code=404)
     bgg_id = int(numero)
     conn = get_connection()
     try:
+        publique = services.lire_bgg_images_publiques(conn)
+        if not (admin or publique):
+            return Response(status_code=404)
         copie = services.lire_fiche_bgg(conn, bgg_id)
     finally:
         conn.close()
@@ -135,4 +143,5 @@ def image_vignette_bgg(request: Request, numero: str):
     except OSError:
         return Response(status_code=404)
     return Response(content=octets, media_type="image/webp",
-                    headers={"Cache-Control": CACHE_VIGNETTE})
+                    headers={"Cache-Control": (CACHE_VIGNETTE_PUBLIQUE if publique
+                                               else CACHE_VIGNETTE)})

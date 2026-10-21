@@ -203,6 +203,25 @@
       </small>
     </div>
 
+    <div class="champ">
+      {# Décochée par défaut (série « images », lot 2) : l'image copiée reste
+         réservée à l'administration tant que le bureau ne l'a pas choisi. #}
+      <label class="case" for="bgg_images_publiques">
+        <input type="checkbox" id="bgg_images_publiques" name="bgg_images_publiques" value="1"
+               aria-describedby="bgg_images_publiques-aide"
+               {%- if bgg_images_publiques %} checked{% endif %}>
+        Afficher l'image de la boîte sur les fiches publiques
+      </label>
+      <small class="stats-note" id="bgg_images_publiques-aide">
+        L'image vient de BoardGameGeek ; elle est copiée sur ce site, et c'est
+        ce site qui la montre : les visiteurs ne se connectent pas à
+        BoardGameGeek. Cochée, la fiche publique d'un jeu la montre, avec la
+        mention « Image : BoardGameGeek » juste en dessous. Un jeu qui n'est
+        pas relié à BoardGameGeek, ou dont l'image n'est pas encore copiée,
+        n'en a pas. Décochée, aucune image n'est montrée au public.
+      </small>
+    </div>
+
     <button type="submit" class="bouton bouton-principal">Enregistrer</button>
   </form>
 </section>

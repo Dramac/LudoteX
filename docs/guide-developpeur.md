@@ -333,7 +333,13 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   réencode en WebP sans métadonnées, l'écrit de façon atomique dans
   `data/vignettes-bgg/` sous le nom `<bgg_id>-<empreinte de l'adresse>.webp`
   et la sert par `/image/bgg/<n>.webp?v=<empreinte>` (`app/routes/images.py`,
-  **session d'administration exigée**, 404 nu sinon). **Le fichier fait
+  session d'administration, **ou** case « Afficher l'image de la boîte sur
+  les fiches publiques » cochée — lue en base par la route à chaque requête,
+  `services.lire_bgg_images_publiques` ; 404 nu sinon ; `Cache-Control`
+  `public` quand la case est cochée, `private` sinon). Un seul balisage pour
+  l'administration et la fiche publique : la macro `vignette_bgg(copie,
+  adresse, legende)` de `app/templates/_vignette_bgg.html` (avec légende, un
+  `<figure>`). **Le fichier fait
   foi** : aucune colonne, les copies sont hors du zip de sauvegarde, et
   `vignettes.a_copier` croise `services.vignettes_bgg_attendues` avec le
   dossier. Une image refusée pour de bon laisse une marque vide

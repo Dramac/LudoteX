@@ -1,29 +1,12 @@
 {% extends "base.html" %}
 {% from "_champs_jeu.html" import champs_jeu %}
+{% from "_vignette_bgg.html" import vignette_bgg %}
 {% block titre %}{{ titre.nom if titre else "Jeu inconnu" }} — Administration — {{ nom_association }}{% endblock %}
 {# Écran de saisie : large sur ordinateur (le formulaire passe en deux
    colonnes de champs, les boîtes en grille), inchangé sur téléphone. #}
 {% block conteneur_extra %}contenu-large{% endblock %}
 
-{# L'image de la boîte. DEUX SOURCES, et c'est le paramètre `adresse` qui dit
-   laquelle :
-   - la fiche du jeu passe la COPIE LOCALE (`vignette_locale`, série
-     « images ») : servie par notre serveur, `/image/bgg/…` ;
-   - chaque candidat de « Chercher sur BGG », pas encore relié et donc sans
-     copie, passe l'adresse BGG de sa copie de fiche (`f.vignette`, contrôlée
-     par bgg.lire_vignette) : le NAVIGATEUR la charge chez BGG (lot fiche-4),
-     en administration seulement.
-   Même balisage dans les deux cas. Taille posée (200 × 150, celle des
-   vignettes BGG) : la carte ne saute pas au chargement. Si l'image ne vient
-   pas, il reste un cadre de cette taille et son texte : le nom BGG est écrit
-   juste à côté, rien ne dépend de l'image. #}
-{% macro vignette_bgg(copie, adresse) %}
-  {%- if adresse %}
-  <img class="vignette-bgg" src="{{ adresse }}" width="200" height="150"
-       loading="lazy" decoding="async" referrerpolicy="no-referrer"
-       alt="Boîte de {{ copie.nom or ('la fiche n° ' ~ copie.bgg_id) }}">
-  {%- endif %}
-{%- endmacro %}
+{# L'image de la boîte : macro partagée avec la fiche publique, voir le fragment. #}
 
 {% block contenu %}
 {% if titre is none %}

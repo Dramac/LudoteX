@@ -641,11 +641,15 @@ def test_la_route_sert_la_copie_a_l_administration(client):
     r = client.get(vignettes.url(13, VIGNETTE))
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/webp"
-    assert r.headers["cache-control"] == "private, max-age=86400"
+    # Case publique décochée (défaut) : jamais dans un cache partagé.
+    from app.routes import images
+    assert r.headers["cache-control"] == images.CACHE_VIGNETTE
     assert r.content == vignettes.chemin_servi(13, VIGNETTE).read_bytes()
 
 
-def test_la_route_refuse_sans_session_d_administration(anonyme):
+def test_la_route_refuse_sans_session_ni_case_publique(anonyme):
+    # Case « image de la boîte sur les fiches publiques » décochée (défaut) ;
+    # son symétrique est dans tests/test_bgg_images_publiques.py.
     _relier_catane()
     vignettes.enregistrer(13, VIGNETTE, JPEG)
     for adresse in (vignettes.url(13, VIGNETTE), "/image/bgg/13.webp"):
@@ -722,7 +726,7 @@ def test_les_candidats_restent_charges_chez_bgg(admin):
     assert re.search(r'src="([^"]*)"', balise).group(1).replace("&amp;", "&") == VIGNETTE
 
 
-def test_aucune_image_de_jeu_sur_une_page_publique(anonyme):
+def test_aucune_image_de_jeu_sur_une_page_publique_case_decochee(anonyme):
     _relier_catane()
     vignettes.enregistrer(13, VIGNETTE, JPEG)
     for adresse in ("/jeu/001", "/catalogue", "/catalogue?q=Catane", "/apropos", "/"):

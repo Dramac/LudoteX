@@ -201,8 +201,9 @@ livré, par module :
   **données BoardGameGeek** (seul site appelé, jeton facultatif en `.env`,
   copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
   des cases, **image de la boîte copiée sur le serveur** (contrôlée,
-  réencodée en WebP, hors sauvegarde, `app/vignettes.py`) et servie à la
-  seule session d'administration ; les candidats d'une recherche restent
+  réencodée en WebP, hors sauvegarde, `app/vignettes.py`), servie à
+  l'administration et, case cochée, sur la fiche publique avec « Image :
+  BoardGameGeek » ; les candidats d'une recherche restent
   chargés chez BGG (CSP élargie dans la seule `location /admin/`),
   reprise sans enregistrer, lien public réglable et décoché par
   défaut ; **relier les jeux un par un** : recherche bornée et cadencée,

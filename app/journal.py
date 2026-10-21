@@ -161,6 +161,10 @@ ACTIONS = {
     # /admin/identite. `objet` = « affiché » ou « masqué ». Écrit au
     # changement seulement.
     "bgg_lien_public_modifie",
+    # Réglage « image de la boîte sur les fiches publiques » de
+    # /admin/identite (série « images », lot 2). `objet` = « affichées » ou
+    # « masquées ». Écrit au changement seulement ; jamais l'adresse d'une image.
+    "bgg_images_publiques_modifie",
     # « Chercher sur BGG » depuis la fiche d'un jeu (série « fiche », lot 3).
     # `objet` = le nom de NOTRE jeu, `ref` = sa référence — JAMAIS le texte
     # cherché, que le bureau a pu retaper (« Chercher un autre nom ») : un

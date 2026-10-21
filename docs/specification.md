@@ -298,6 +298,11 @@ boîte donne un message, jamais une erreur (§2).
   chacune de ses catégories.
 - Disponibilité affichée au niveau du titre (combien d'exemplaires
   disponibles).
+- Image de la boîte sur la fiche, **si le bureau l'a choisi** (réglage
+  d'instance, décoché par défaut) : la copie servie par le site, jamais une
+  adresse de BoardGameGeek, avec la mention « Image : BoardGameGeek » en
+  dessous. Placée après le bouton de prêt des bénévoles, qu'elle ne fait
+  jamais descendre. Pas d'image sur les cartes du catalogue.
 - Consultable **à l'année**, y compris en amont de l'événement.
 
 ### 5.3 Page de statistiques
@@ -450,13 +455,15 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
   un clic est borné à 20 s ; la réponse est bornée en temps et en taille avant
   d'être lue. Sans clé, la fonction est
   absente et rien d'autre ne change. Le lien vers BGG sur les fiches publiques
-  est un réglage d'instance, décoché par défaut. **Une seule ressource
+  est un réglage d'instance, décoché par défaut ; l'image de la boîte sur
+  les fiches publiques aussi. **Une seule ressource
   tierce, en administration seulement** : l'image de la boîte des
   **candidats** de « Chercher sur BGG », pas encore reliés, chargée par le
   navigateur directement chez BGG (sans adresse d'origine :
   `Referrer-Policy` et `referrerpolicy="no-referrer"`). L'image d'un jeu
-  relié, elle, est la copie servie par notre serveur, et seulement à une
-  session d'administration. Aucune page publique ne charge quoi que ce soit
+  relié, elle, est la copie servie par notre serveur : à une session
+  d'administration, et au public seulement quand le bureau a coché la case
+  des images publiques. Aucune page publique ne charge quoi que ce soit
   d'ailleurs ; la CSP le garantit.
 
 ---

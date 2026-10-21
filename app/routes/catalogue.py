@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Query, Request
 
-from app import bgg, bgg_api, categories_jeu, services
+from app import bgg, bgg_api, categories_jeu, services, vignettes
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -139,10 +139,12 @@ def apropos(request: Request):
     contact = None
     depot_url = DEPOT_URL
     # Mention « Powered by BGG » (conditions d'utilisation de BoardGameGeek) :
-    # dès que l'instance UTILISE BGG — jeton configuré, lien public coché, ou
-    # copies déjà en base. Ce dernier cas compte : une valeur reprise de BGG
-    # finit sur la fiche publique et sur l'étiquette, même une fois le jeton
-    # retiré. Aucun appel réseau : trois lectures locales.
+    # dès que l'instance UTILISE BGG — jeton configuré, lien public coché,
+    # images publiques cochées, ou copies déjà en base. Ce dernier cas compte :
+    # une valeur reprise de BGG finit sur la fiche publique et sur l'étiquette,
+    # même une fois le jeton retiré. La case des images est couverte en
+    # pratique par les copies (pas d'image sans fiche) ; elle compte quand même,
+    # par cohérence avec le lien. Aucun appel réseau : lectures locales.
     mention_bgg = bgg_api.disponible()
     try:
         conn = get_connection()
@@ -151,6 +153,7 @@ def apropos(request: Request):
             contact = services.lire_contact_association(conn)
             depot_url = services.lire_depot_url(conn)
             mention_bgg = (mention_bgg or services.lire_bgg_lien_public(conn)
+                           or services.lire_bgg_images_publiques(conn)
                            or services.copies_bgg_presentes(conn))
         finally:
             conn.close()
@@ -192,6 +195,7 @@ def fiche(request: Request, id_exemplaire: str):
         total = disponible = 0
         emplacement = None
         lien_bgg = None
+        image_boite = None
         categories = []
         if info is not None:
             total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
@@ -201,6 +205,15 @@ def fiche(request: Request, id_exemplaire: str):
             # construit du seul identifiant : aucun appel réseau.
             if info["bgg_id"] and services.lire_bgg_lien_public(conn):
                 lien_bgg = bgg.url_fiche(info["bgg_id"])
+            # Image de la boîte (série « images », lot 2) : seulement si
+            # l'instance l'a choisi (/admin/identite, décoché par défaut) et
+            # que la copie locale existe pour l'adresse en base. Jamais
+            # l'adresse BGG : la page publique ne charge rien d'ailleurs (CSP).
+            # Sans copie, rien — ni balise, ni cadre vide.
+            if info["bgg_id"] and services.lire_bgg_images_publiques(conn):
+                copie = services.lire_fiche_bgg(conn, info["bgg_id"])
+                if copie and copie["trouve"]:
+                    image_boite = vignettes.url(info["bgg_id"], copie.get("vignette"))
             # Emplacement de rangement (docs/conception-rangement.md §7) :
             # seulement si le réglage de visibilité l'autorise pour ce
             # visiteur ET qu'un emplacement est effectivement renseigné
@@ -223,7 +236,8 @@ def fiche(request: Request, id_exemplaire: str):
         "fiche.html",
         {"id_exemplaire": id_exemplaire, "info": info,
          "total": total, "disponible": disponible, "emplacement": emplacement,
-         "lien_bgg": lien_bgg, "liens_categories": liens_categories},
+         "lien_bgg": lien_bgg, "image_boite": image_boite,
+         "liens_categories": liens_categories},
         status_code=200 if info else 404,
     )
 

@@ -606,6 +606,12 @@ summary:focus-visible,
   aspect-ratio: 4 / 3; object-fit: contain;
   margin: 0 0 8px; border: 1px solid var(--bord); border-radius: 4px;
 }
+/* La même image sur la fiche publique (série « images », lot 2), avec la
+   mention de sa source en dessous. Même cadre fixe ; la légende reprend
+   .stats-note (texte secondaire du thème). */
+.figure-bgg { margin: 12px 0; }
+.figure-bgg .vignette-bgg { margin-bottom: 4px; }
+.figure-bgg figcaption { margin: 0; }
 @media (min-width: 900px) {
   .candidats-bgg { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 }
