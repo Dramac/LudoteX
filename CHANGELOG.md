@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.26.0 — 2026-10-21
+
+- **Le catalogue se filtre en cochant des catégories**, plusieurs à la fois : la liste ne garde que les jeux qui les portent **toutes**. Chaque catégorie cochée apparaît en pastille ; toucher la pastille la retire, sans toucher aux autres.
+- **Aucun jeu ne porte toutes ces catégories ?** La page le dit et propose **Retirer les catégories**, en gardant vos autres filtres.
+- **La fiche d'un jeu renvoie vers chacune de ses catégories** : « Voir les autres jeux : Cartes · Ambiance ». Quand le jeu est tout sorti, les liens ne montrent que les jeux disponibles.
+- **Dans la fiche d'un jeu et dans « Créer un jeu »**, les catégories se cochent ; une catégorie absente de la liste se tape dans **Ajouter une catégorie**. L'ordre des catégories du jeu est gardé.
+- **Étiquettes et « Ranger les jeux »** : le menu de catégorie trouve désormais tous les jeux qui portent cette catégorie, même parmi d'autres (« Cartes » trouve aussi « Cartes, Ambiance »).
+- **« Ranger les jeux » ne range plus tout le catalogue par erreur** quand la catégorie du filtre a disparu entre-temps : rien n'est modifié, et le message le dit.
+
 ## 1.25.1 — 2026-10-21
 
 - **Page « À propos » : les nouveautés se lisent enfin proprement.** Les mots mis en valeur s'affichent en gras, au lieu d'être entourés d'astérisques.
