@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from app import models, services
+from app import categories_jeu, models, services
 
 
 @pytest.fixture
@@ -73,16 +73,17 @@ def test_lister_catalogue_dispo_seulement_masque_titre_tout_sorti(conn):
 
 def test_lister_catalogue_dispo_seulement_se_combine_avec_categorie(conn):
     # A4 : le filtre dispo se combine avec les autres filtres (ici catégorie).
-    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
     conn.execute(
-        "INSERT INTO titres (reference_titre, nom, categorie) "
-        "VALUES ('7WONDERS', '7 Wonders', 'Familial')"
+        "INSERT INTO titres (reference_titre, nom) VALUES ('7WONDERS', '7 Wonders')"
     )
     conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('010', '7WONDERS')")
+    services.ecrire_categories_titre(conn, "CATAN", "Familial")
+    services.ecrire_categories_titre(conn, "7WONDERS", "Familial")
     conn.commit()
     services.preter(conn, "010")
 
-    jeux = services.lister_catalogue(conn, categorie="Familial", dispo_seulement=True)
+    jeux = services.lister_catalogue(conn, [categories_jeu.cle("Familial")],
+                                     dispo_seulement=True)
     assert {j["nom"] for j in jeux} == {"Catan"}
 
 

@@ -1,0 +1,37 @@
+{# Bloc des catégories de jeu en cases à cocher — DOMICILE UNIQUE, partagé
+   par le filtre du catalogue public (catalogue.html) et par l'éditeur de
+   fiche et « Créer un jeu » (_champs_jeu.html). Une MACRO : tout passe par
+   les paramètres, aucun accès au contexte.
+
+     cases   — [{cle, nom, coche}], déjà triées
+               (categories_jeu.cases_a_cocher) ;
+     valeur  — ce que la case envoie : « cle » au catalogue (adresse stable,
+               indépendante de la graphie), « nom » dans l'éditeur (une
+               catégorie purgée entre l'ouverture de la page et
+               l'enregistrement se recrée de son nom ; une clé ne le
+               permettrait pas) ;
+     ouvert  — le bloc s'affiche déplié : au catalogue quand une case est
+               cochée, toujours dans l'éditeur ;
+     aide    — phrase affichée au-dessus des cases (facultative).
+
+   Le résumé dit le nombre de cases cochées : « Catégories (2) », complété
+   pour les lecteurs d'écran (« Catégories (2 cochées) »). La légende du
+   groupe, masquée à l'œil, répète « Catégories » : le résumé visible la
+   donne déjà. Sans JavaScript : le <details> est natif, le formulaire
+   parent s'envoie par son propre bouton. Chaque case et son libellé forment
+   une seule cible (`label` englobant), d'au moins 24 px de haut. #}
+{% macro cases_categories(cases, valeur="cle", ouvert=False, aide="") -%}
+{%- set n = cases | selectattr("coche") | list | length -%}
+<details class="recherche bloc-categories"{% if ouvert %} open{% endif %}>
+  <summary>Catégories{% if n %} ({{ n }}<span class="sr-only"> {{ 'cochée' if n == 1 else 'cochées' }}</span>){% endif %}</summary>
+  <fieldset class="champ-groupe">
+    <legend class="sr-only">Catégories</legend>
+    {% if aide %}<p class="stats-note">{{ aide }}</p>{% endif %}
+    <div class="cases-categories">
+      {% for c in cases %}
+      <label class="case case-categorie"><input type="checkbox" name="categorie" value="{{ c[valeur] }}"{% if c.coche %} checked{% endif %}> {{ c.nom }}</label>
+      {% endfor %}
+    </div>
+  </fieldset>
+</details>
+{%- endmacro %}

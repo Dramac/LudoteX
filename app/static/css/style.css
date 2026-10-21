@@ -642,6 +642,30 @@ summary:focus-visible,
 
 .case { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .case input { width: auto; }
+
+/* Bloc des catégories de jeu en cases (_cases_categories.html : catalogue,
+   éditeur de fiche, « Créer un jeu »). Deux colonnes dès 375 px (une seule
+   faisait 51 lignes, plus de 1 800 px à faire défiler), une seule plutôt que
+   de déborder sur un écran plus étroit : `min(…, 100%)`. Chaque libellé
+   englobe sa case : une seule cible, d'au moins 2.25rem de haut (36 px,
+   au-dessus des 24 × 24 px de WCAG 2.5.8). Un nom long se coupe en fin de
+   syllabe (`hyphens`, la page est en `lang="fr"`) au lieu d'élargir la
+   grille ou de casser n'importe où. */
+.bloc-categories { margin: 0; }
+.cases-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(7rem, 100%), 1fr));
+  gap: 0 8px;
+  margin-top: 4px;
+}
+.case-categorie {
+  min-height: 2.25rem; gap: 6px; font-weight: 400; font-size: .95rem;
+  hyphens: auto; overflow-wrap: break-word; min-width: 0;
+}
+.case-categorie input { flex: none; width: 1.25rem; height: 1.25rem; margin: 0; }
+/* Catalogue vide : le message et « Retirer les catégories » passent à la
+   ligne l'un sous l'autre plutôt que de se serrer. */
+.jeu-vide { flex-wrap: wrap; justify-content: flex-start; }
 /* Tableau de données dense (lecture) : .detail (stats/tournois) et
    .admin-table (admin) sont le même composant, apparu à deux moments du
    projet sous deux noms (voir docs/ui-composants.md §9). Règles fusionnées :

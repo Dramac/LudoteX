@@ -64,13 +64,15 @@
     <button type="submit" class="bouton-filtrer">Enregistrer ce réglage</button>
   </form>
 
-  {# Filtre par catégorie : formulaire GET indépendant (recharge la page). #}
+  {# Filtre par catégorie : formulaire GET indépendant (recharge la page).
+     Une seule catégorie à la fois ; la liste garde les jeux qui la portent,
+     parmi d'autres. #}
   <form method="get" action="/admin/etiquettes" class="filtre-cat">
     <label>Catégorie
       <select name="categorie" onchange="this.form.submit()">
         <option value="">Toutes</option>
         {% for c in categories %}
-          <option value="{{ c }}" {% if c == filtre %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c.cle }}" {% if c.cle == filtre %}selected{% endif %}>{{ c.nom }}</option>
         {% endfor %}
       </select>
     </label>

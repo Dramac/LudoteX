@@ -14,9 +14,11 @@ Pattern commun : on ouvre une connexion, on délègue tout le calcul à
 Les routes ne contiennent PAS de logique métier ni de SQL.
 """
 
-from fastapi import APIRouter, Request
+from urllib.parse import urlencode
 
-from app import bgg, bgg_api, services
+from fastapi import APIRouter, Query, Request
+
+from app import bgg, bgg_api, categories_jeu, services
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -190,8 +192,10 @@ def fiche(request: Request, id_exemplaire: str):
         total = disponible = 0
         emplacement = None
         lien_bgg = None
+        categories = []
         if info is not None:
             total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
+            categories = services.categories_du_titre(conn, info["reference_titre"])
             # Lien vers la fiche BoardGameGeek : seulement si l'instance l'a
             # choisi (/admin/identite, décoché par défaut). Un simple lien,
             # construit du seul identifiant : aucun appel réseau.
@@ -206,12 +210,20 @@ def fiche(request: Request, id_exemplaire: str):
     finally:
         conn.close()
 
+    # Un lien par catégorie vers le catalogue filtré sur sa CLÉ. Jeu tout
+    # sorti : vers les jeux DISPONIBLES de cette catégorie (règle « A4 »,
+    # voir fiche.html), sinon vers tous les autres.
+    tout_sorti = disponible == 0
+    liens_categories = [
+        {"nom": c["nom"],
+         "url": _url_catalogue({"cles": [c["cle"]], "dispo": tout_sorti})}
+        for c in categories]
     return templates.TemplateResponse(
         request,
         "fiche.html",
         {"id_exemplaire": id_exemplaire, "info": info,
          "total": total, "disponible": disponible, "emplacement": emplacement,
-         "lien_bgg": lien_bgg},
+         "lien_bgg": lien_bgg, "liens_categories": liens_categories},
         status_code=200 if info else 404,
     )
 
@@ -239,17 +251,25 @@ def _entier_ou_none(valeur: str | None) -> int | None:
 
 
 @router.get("/catalogue")
-def catalogue(request: Request, categorie: str | None = None, q: str | None = None,
-              age: str | None = None, joueurs: str | None = None,
-              dispo: str | None = None):
+def catalogue(request: Request, categorie: list[str] = Query(default=[]),
+              q: str | None = None, age: str | None = None,
+              joueurs: str | None = None, dispo: str | None = None):
     """
     Liste publique des jeux, avec recherche et filtres combinés.
 
-    Les cinq filtres (tous optionnels) viennent du panneau dépliable de
-    catalogue.html, en GET : `q` (texte), `categorie`, `age`, `joueurs`,
-    `dispo` (case « disponibles seulement », `1` si cochée). On les normalise
-    ici (chaînes vides → None, conversion entière/booléenne) avant de déléguer
-    la requête à `services.lister_catalogue`.
+    Les filtres (tous optionnels) viennent du panneau dépliable de
+    catalogue.html, en GET : `q` (texte), `categorie` (RÉPÉTÉ, une valeur par
+    case cochée), `age`, `joueurs`, `dispo` (case « disponibles seulement »,
+    `1` si cochée). On les normalise ici (chaînes vides → None, conversion
+    entière/booléenne) avant de déléguer la requête à
+    `services.lister_catalogue`.
+
+    `categorie` est déclaré en LISTE : en `str | None`, FastAPI ne garderait
+    que la dernière valeur d'un paramètre répété. Chaque valeur est découpée
+    puis mise en clé (`categories_jeu.cles_du_filtre`) : les anciennes
+    adresses, qui portaient la case entière (« Cartes, Ambiance ») ou une
+    graphie (« Stratégie »), filtrent comme avant le passage aux cases. Une
+    clé inconnue est ignorée (lecture publique : rien à refuser).
 
     Args:
         request: requête (nécessaire à Jinja2).
@@ -267,67 +287,92 @@ def catalogue(request: Request, categorie: str | None = None, q: str | None = No
 
     conn = get_connection()
     try:
-        categories = services.lister_categories(conn)
+        vocabulaire = {c["cle"]: c["nom"] for c in services.lister_categories_jeu(conn)}
+        cles = categories_jeu.cles_du_filtre(categorie, vocabulaire)
         ages = services.ages_disponibles(conn)
         max_j = services.max_joueurs(conn)
-        # Sécurité/robustesse : on n'accepte qu'une catégorie réellement existante
-        # (une valeur inconnue dans l'URL revient à « pas de filtre catégorie »).
-        filtre_cat = categorie if categorie in categories else None
-        jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i,
+        jeux = services.lister_catalogue(conn, cles, q, age_i, joueurs_i,
                                           dispo_seulement)
         derniers = services.derniers_achats(conn, 10)
     finally:
         conn.close()
 
+    filtres = {"q": q, "cles": cles, "age": age_i, "joueurs": joueurs_i,
+               "dispo": dispo_seulement}
     # `filtres_actifs` : sert au gabarit à ouvrir le panneau et afficher
     # « Réinitialiser » uniquement quand au moins un filtre est posé.
-    actifs = bool(q or filtre_cat or age_i is not None or joueurs_i is not None
+    actifs = bool(q or cles or age_i is not None or joueurs_i is not None
                   or dispo_seulement)
-    chips = _puces_filtres(q, filtre_cat, age_i, joueurs_i, dispo_seulement)
+    chips = _puces_filtres(filtres, vocabulaire)
+    autres_filtres = bool(q or age_i is not None or joueurs_i is not None
+                          or dispo_seulement)
     return templates.TemplateResponse(
         request,
         "catalogue.html",
-        {"jeux": jeux, "categories": categories, "ages": ages, "max_joueurs": max_j,
-         "filtre": filtre_cat, "q": q, "age": age_i, "joueurs": joueurs_i,
+        {"jeux": jeux,
+         "cases_categories": categories_jeu.cases_a_cocher(vocabulaire, cles),
+         "nb_categories": len(cles),
+         # Liste vide avec au moins une catégorie cochée : le message le dit,
+         # et « Retirer les catégories » garde tous les autres filtres.
+         "url_sans_categories": _url_catalogue({**filtres, "cles": []}),
+         "autres_filtres": autres_filtres,
+         "ages": ages, "max_joueurs": max_j,
+         "q": q, "age": age_i, "joueurs": joueurs_i,
          "dispo": dispo_seulement,
          "filtres_actifs": actifs, "chips": chips, "derniers_achats": derniers},
     )
 
 
-def _puces_filtres(q, categorie, age, joueurs, dispo_seulement=False):
+def _url_catalogue(filtres: dict) -> str:
+    """
+    L'adresse du catalogue pour ces filtres (`q`, `cles`, `age`, `joueurs`,
+    `dispo`) : `categorie` y est RÉPÉTÉ, une fois par clé.
+    """
+    params: list[tuple[str, object]] = []
+    if filtres.get("q"):
+        params.append(("q", filtres["q"]))
+    params += [("categorie", k) for k in filtres.get("cles") or ()]
+    if filtres.get("age") is not None:
+        params.append(("age", filtres["age"]))
+    if filtres.get("joueurs") is not None:
+        params.append(("joueurs", filtres["joueurs"]))
+    if filtres.get("dispo"):
+        params.append(("dispo", "1"))
+    requete = urlencode(params)
+    return "/catalogue?" + requete if requete else "/catalogue"
+
+
+def _puces_filtres(filtres: dict, vocabulaire: dict[str, str]) -> list[dict]:
     """
     Construit la liste des « puces » de filtres actifs, chacune avec le lien qui
-    RETIRE ce seul filtre (en conservant les autres).
+    RETIRE ce seul filtre (en conservant les autres). Une puce PAR CATÉGORIE
+    cochée : la sienne retire cette seule catégorie.
 
     Args:
-        q, categorie, age, joueurs: filtres normalisés en cours (str/int ou None).
-        dispo_seulement: état de la case « disponibles seulement ».
+        filtres: filtres normalisés en cours (`q`, `cles`, `age`, `joueurs`,
+            `dispo`), comme pour `_url_catalogue`.
+        vocabulaire: clé -> graphie, pour le libellé des puces de catégorie.
 
     Returns:
         Liste de dicts ``{"label": str, "url": str}``, dans l'ordre d'affichage.
         Vide si aucun filtre n'est posé.
     """
-    from urllib.parse import urlencode
-
-    tous = {"q": q, "categorie": categorie, "age": age, "joueurs": joueurs,
-             "dispo": "1" if dispo_seulement else None}
-
-    def _url_sans(cle):
-        params = {k: v for k, v in tous.items()
-                  if v not in (None, "") and k != cle}
-        requete = urlencode(params)
-        return "/catalogue?" + requete if requete else "/catalogue"
+    def _url_sans(**retrait):
+        return _url_catalogue({**filtres, **retrait})
 
     puces = []
+    q, cles = filtres.get("q"), filtres.get("cles") or []
+    age, joueurs = filtres.get("age"), filtres.get("joueurs")
     if q:
-        puces.append({"label": f"« {q} »", "url": _url_sans("q")})
-    if categorie:
-        puces.append({"label": categorie, "url": _url_sans("categorie")})
+        puces.append({"label": f"« {q} »", "url": _url_sans(q=None)})
+    for k in cles:
+        puces.append({"label": vocabulaire.get(k, k),
+                      "url": _url_sans(cles=[c for c in cles if c != k])})
     if age is not None:
-        puces.append({"label": f"dès {age} ans", "url": _url_sans("age")})
+        puces.append({"label": f"dès {age} ans", "url": _url_sans(age=None)})
     if joueurs is not None:
         pluriel = "s" if joueurs > 1 else ""
-        puces.append({"label": f"{joueurs} joueur{pluriel}", "url": _url_sans("joueurs")})
-    if dispo_seulement:
-        puces.append({"label": "disponibles seulement", "url": _url_sans("dispo")})
+        puces.append({"label": f"{joueurs} joueur{pluriel}", "url": _url_sans(joueurs=None)})
+    if filtres.get("dispo"):
+        puces.append({"label": "disponibles seulement", "url": _url_sans(dispo=False)})
     return puces

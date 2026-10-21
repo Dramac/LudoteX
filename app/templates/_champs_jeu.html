@@ -11,8 +11,14 @@
      erreurs     — dict champ -> message, affiché SOUS le champ fautif, relié
                    à lui (`aria-describedby`), le champ marqué
                    `aria-invalid` ; le PREMIER champ fautif reprend le focus ;
-     categories  — catégories existantes, proposées par un <datalist> (sans
-                   JS) pour éviter « Cartes » et « cartes » ;
+     cases_categories — les cases des catégories existantes, cochées pour
+                   celles du jeu ([{cle, nom, coche}],
+                   categories_jeu.cases_a_cocher), dans le bloc partagé avec
+                   le catalogue (_cases_categories.html), plus le champ
+                   « Ajouter une catégorie » (`valeurs.categorie_ajout`) :
+                   on doit toujours pouvoir en créer une. Les cases envoient
+                   le NOM ; la route compose la liste
+                   (categories_jeu.composer) sans réordonner celles du jeu ;
      types_jeu   — les types proposés (services.TYPES_JEU) ;
      type_vide   — propose « non renseigné » (éditeur : une case vidée efface
                    la valeur) ;
@@ -31,9 +37,10 @@
    Champs numériques en `type="number"` : un navigateur refuse d'envoyer une
    saisie illisible (« 10 ans ») et le dit sur le champ ; la route refuse
    aussi, avec son propre message, ce qui lui parviendrait quand même. #}
-{% macro champs_jeu(valeurs, erreurs, categories=(), types_jeu=("Jeu", "Extension"),
+{% from "_cases_categories.html" import cases_categories as bloc_categories %}
+{% macro champs_jeu(valeurs, erreurs, cases_categories=(), types_jeu=("Jeu", "Extension"),
                     type_vide=False, focus="", bgg={}) -%}
-{%- set ordre = ["nom", "type_jeu", "categorie", "nb_joueurs_min", "nb_joueurs_max",
+{%- set ordre = ["nom", "type_jeu", "categorie_ajout", "nb_joueurs_min", "nb_joueurs_max",
                  "duree_min", "age_min", "editeur", "auteur", "annee_edition",
                  "descriptif", "bgg"] -%}
 {%- set fautifs = ordre | select("in", erreurs) | list -%}
@@ -42,6 +49,7 @@
   {%- set decrit = [] -%}
   {%- if champ in erreurs %}{% set _ = decrit.append(champ ~ "-erreur") %}{% endif -%}
   {%- if champ in bgg %}{% set _ = decrit.append(champ ~ "-bgg") %}{% endif -%}
+  {%- if champ == "categorie_ajout" %}{% set _ = decrit.append(champ ~ "-aide") %}{% endif -%}
   {%- if champ in erreurs %} aria-invalid="true"{% endif -%}
   {%- if decrit %} aria-describedby="{{ decrit | join(' ') }}"{% endif -%}
   {%- if champ == premier %} autofocus{% endif -%}
@@ -81,17 +89,16 @@
       </select>
       {{- erreur("type_jeu") }}
     </div>
-    <div class="champ">
-      <label for="categorie">Catégorie</label>
-      <input type="text" id="categorie" name="categorie" placeholder="ex. Cartes, Ambiance"
-             maxlength="200" value="{{ valeurs.get('categorie', '') }}"
-             {%- if categories %} list="categories-connues"{% endif %}{{ attributs('categorie') }}>
-      {%- if categories %}
-      <datalist id="categories-connues">
-        {% for c in categories %}<option value="{{ c }}">{% endfor %}
-      </datalist>
+    <div class="champ champ-large">
+      {%- if cases_categories %}
+      {{ bloc_categories(cases_categories, valeur="nom", ouvert=True) }}
       {%- endif %}
-      {{- erreur("categorie") }}
+      <label for="categorie_ajout">Ajouter une catégorie</label>
+      <input type="text" id="categorie_ajout" name="categorie_ajout" maxlength="200"
+             value="{{ valeurs.get('categorie_ajout', '') }}"{{ attributs('categorie_ajout') }}>
+      <p class="stats-note" id="categorie_ajout-aide">Seulement si elle n'est pas dans la liste.
+        Plusieurs ? Séparez-les par une virgule, par exemple « Cartes, Ambiance ».</p>
+      {{- erreur("categorie_ajout") }}
     </div>
     <div class="champ">
       <label for="nb_joueurs_min">Joueurs minimum</label>

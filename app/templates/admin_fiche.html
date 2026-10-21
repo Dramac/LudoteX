@@ -228,7 +228,7 @@
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/modifier"
           class="recherche-form form-2col">
       {% if enchainer %}<input type="hidden" name="enchainer" value="1">{% endif %}
-      {{ champs_jeu(valeurs, erreurs, categories=categories, types_jeu=types_jeu,
+      {{ champs_jeu(valeurs, erreurs, cases_categories=cases_categories, types_jeu=types_jeu,
                     type_vide=True, bgg=indications_bgg) }}
       <div class="champ champ-large">
         <label for="bgg">Fiche BoardGameGeek</label>

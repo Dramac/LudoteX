@@ -13,7 +13,7 @@ import sqlite3
 
 import pytest
 
-from app import db, models, services
+from app import categories_jeu, db, models, services
 
 
 @pytest.fixture
@@ -1230,16 +1230,15 @@ def test_compter_manques_local(conn):
     assert services.compter_exemplaires_sans_emplacement(conn) == 0
 
 
-def test_compter_manques_filtre_categorie_et_recherche(conn):
-    conn.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
-                 "('DOBBLE', 'Dobble', 'Rapidité')")
+def test_compter_manques_filtre_recherche(conn):
+    # Plus de filtre par catégorie (lot categories-2) : aucun appelant n'en
+    # passait, le paramètre est retiré.
+    conn.execute("INSERT INTO titres (reference_titre, nom) VALUES ('DOBBLE', 'Dobble')")
     conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
                  "('002', 'DOBBLE')")
-    conn.execute("UPDATE titres SET categorie = 'Stratégie' WHERE reference_titre = 'CATAN'")
     conn.commit()
 
     assert services.compter_exemplaires_sans_emplacement(conn) == 2
-    assert services.compter_exemplaires_sans_emplacement(conn, categorie="Stratégie") == 1
     assert services.compter_exemplaires_sans_emplacement(conn, q="dob") == 1
     assert services.compter_exemplaires_sans_emplacement(conn, q="introuvable") == 0
 
@@ -1489,16 +1488,18 @@ def test_ranger_jeux_filtre_categorie(client):
     _connecter(client)
     conn = _connexion_test()
     try:
-        conn.execute("UPDATE titres SET categorie = 'Stratégie' WHERE reference_titre = 'CATAN'")
-        conn.execute("INSERT INTO titres (reference_titre, nom, categorie) VALUES "
-                     "('DOBBLE', 'Dobble', 'Rapidité')")
+        conn.execute("INSERT INTO titres (reference_titre, nom) VALUES "
+                     "('DOBBLE', 'Dobble')")
         conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES "
                      "('900', 'DOBBLE')")
+        services.ecrire_categories_titre(conn, "CATAN", "Stratégie")
+        services.ecrire_categories_titre(conn, "DOBBLE", "Rapidité")
         conn.commit()
     finally:
         conn.close()
 
-    r = client.get("/admin/rangement/ranger", params={"categorie": "Rapidité"})
+    r = client.get("/admin/rangement/ranger",
+                   params={"categorie": categories_jeu.cle("Rapidité")})
     assert r.status_code == 200
     assert "Dobble" in r.text
     assert "Catan" not in r.text
@@ -1742,12 +1743,12 @@ def test_ranger_appliquer_redirige_en_conservant_les_filtres(client):
     conn = _connexion_test()
     try:
         conn.execute(
-            "INSERT INTO titres (reference_titre, nom, categorie) VALUES "
-            "('DOBBLE', 'Dobble', 'Rapidité')"
+            "INSERT INTO titres (reference_titre, nom) VALUES ('DOBBLE', 'Dobble')"
         )
         conn.execute(
             "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('900', 'DOBBLE')"
         )
+        services.ecrire_categories_titre(conn, "DOBBLE", "Rapidité")
         conn.commit()
     finally:
         conn.close()
@@ -1755,12 +1756,13 @@ def test_ranger_appliquer_redirige_en_conservant_les_filtres(client):
     r = client.post(
         "/admin/rangement/ranger/appliquer",
         data={
-            "portee": "filtre", "emplacement_texte": "Table du fond", "categorie": "Rapidité",
+            "portee": "filtre", "emplacement_texte": "Table du fond",
+            "categorie": categories_jeu.cle("Rapidité"),
         },
         follow_redirects=False,
     )
     location = r.headers["location"]
-    assert "categorie=Rapidit" in location
+    assert f"categorie={categories_jeu.cle('Rapidité')}" in location
 
     # Le filtre catégorie est conservé au retour ; Dobble a bien reçu la
     # valeur (mais disparaît de la vue par défaut, désormais complètement

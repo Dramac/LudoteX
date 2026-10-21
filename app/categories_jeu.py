@@ -40,8 +40,8 @@ SEPARATEUR = ", "
 # segment est TRONQUÉ, jamais refusé : la ligne entre toujours, et le nom coupé
 # apparaît dans le compte rendu d'import comme une nouvelle catégorie, ce qui
 # le rend visible au bureau. La troncature est déterministe : le ré-import du
-# fichier exporté retombe sur la même catégorie. La case entière garde, dans
-# l'éditeur, sa propre borne (`services.LONGUEUR_TEXTE_FICHE`).
+# fichier exporté retombe sur la même catégorie. Dans l'éditeur, le champ
+# « Ajouter une catégorie » garde sa propre borne (`services.LONGUEUR_TEXTE_FICHE`).
 LONGUEUR_CATEGORIE = 60
 
 
@@ -181,3 +181,103 @@ def canoniser(case: str | None, connues: dict[str, str]) -> str | None:
     base (« cartes, ambiance » face à « Cartes, Ambiance » : la même).
     """
     return joindre(Vocabulaire(connues).retenir(case))
+
+
+# ---------------------------------------------------------------------------
+# Les écrans (lot categories-2) : le filtre du catalogue, les cases à cocher,
+# la composition de la liste d'un titre depuis l'éditeur.
+# ---------------------------------------------------------------------------
+
+# Nombre maximal de catégories qu'un filtre prend en compte. Chacune devient
+# une condition `EXISTS` de la requête du catalogue : une adresse fabriquée
+# avec mille valeurs ne doit pas en fabriquer mille. Le filtre est en ET, et
+# aucun titre du catalogue réel ne porte plus de deux catégories (mesuré au lot
+# categories-2, 51 catégories en tout) : au-delà de quelques cases, le
+# résultat est vide de toute façon. 10 laisse une large marge à un parc plus
+# finement classé. Les valeurs suivantes sont ignorées, sans erreur.
+FILTRE_CATEGORIES_MAX = 10
+
+
+def cles_du_filtre(valeurs: list[str] | None, connues) -> list[str]:
+    """
+    Les clés de catégorie d'un filtre reçu dans l'adresse, prêtes pour la
+    requête : chaque valeur est DÉCOUPÉE puis mise en clé, les clés inconnues
+    (absentes de `connues`, un ensemble ou un dict de clés) sont ignorées, les
+    doublons retirés, l'ordre d'arrivée gardé, au plus
+    `FILTRE_CATEGORIES_MAX`.
+
+    Le découpage donne la compatibilité des anciennes adresses : la fiche
+    publique et les signets d'avant le lot categories-2 portaient la case
+    entière (« ?categorie=Cartes, Ambiance »), qui se lit maintenant comme
+    `cartes` ET `ambiance` ; « Stratégie » ou « STRATÉGIE » donnent
+    `strategie`. Jamais d'erreur : une lecture publique n'a rien à refuser.
+    """
+    cles: list[str] = []
+    for valeur in valeurs or ():
+        for nom in decouper(valeur):
+            k = cle(nom)
+            if k in connues and k not in cles:
+                cles.append(k)
+                if len(cles) == FILTRE_CATEGORIES_MAX:
+                    return cles
+    return cles
+
+
+def cases_a_cocher(connues: dict[str, str], cochees: list[str]) -> list[dict]:
+    """
+    Les cases d'un bloc de catégories : une par catégorie connue (clé ->
+    graphie), plus une par catégorie cochée INCONNUE — une saisie réaffichée
+    après un refus garde ainsi une catégorie purgée entre-temps (par un
+    import), cochée, au lieu de la perdre sans bruit.
+
+    `cochees` : des noms ou des clés, comparés par leur clé.
+
+    Ordre alphabétique sur la CLÉ, puis sur la graphie : trié sur la graphie,
+    « Énigmes » partirait après « Stratégie » (le « É » vient après toutes les
+    lettres sans accent).
+
+    Returns:
+        Liste de dicts {cle, nom, coche}.
+    """
+    graphies = dict(connues)
+    marquees: set[str] = set()
+    for nom in cochees or ():
+        k = cle(nom)
+        if k:
+            marquees.add(k)
+            graphies.setdefault(k, nettoyer(nom))
+    return sorted(({"cle": k, "nom": n, "coche": k in marquees}
+                   for k, n in graphies.items()),
+                  key=lambda c: (c["cle"], c["nom"]))
+
+
+def composer(actuelles: list[str], cochees: list[str],
+             ajout: str | None) -> str | None:
+    """
+    La case à écrire pour un titre depuis l'éditeur de fiche : ce qui était
+    porté et reste coché, DANS L'ORDRE ACTUEL ; puis ce qui vient d'être coché,
+    dans l'ordre de la page ; puis le champ « Ajouter une catégorie », découpé
+    à la virgule.
+
+    POURQUOI CET ORDRE. La liste d'un titre est ordonnée (celle du tableur),
+    les cases arrivent dans l'ordre de la page (alphabétique). Les recomposer
+    naïvement réordonnerait « Cartes, Ambiance » en « Ambiance, Cartes » au
+    premier « Enregistrer » sans rien changer : une écriture, `modifie_le`
+    posé, et un faux « correction défaite » au ré-import suivant.
+
+    Chaque valeur cochée est elle-même découpée : une ancienne saisie
+    « Cartes, Ambiance » arrivée en une seule valeur vaut deux cases.
+    Comparaison par la clé ; les doublons tombent au découpage final.
+
+    Args:
+        actuelles: les catégories portées, dans leur ordre (`decouper` de la
+            copie, ou la liaison).
+        cochees: les valeurs des cases cochées (des noms), ordre de la page.
+        ajout: le champ libre, brut.
+    """
+    noms_coches = [n for valeur in cochees or () for n in decouper(valeur)]
+    cles_cochees = {cle(n) for n in noms_coches}
+    gardees = [n for n in actuelles if cle(n) in cles_cochees]
+    cles_gardees = {cle(n) for n in gardees}
+    nouvelles = [n for n in noms_coches if cle(n) not in cles_gardees]
+    return joindre(decouper(SEPARATEUR.join([*gardees, *nouvelles, *decouper(ajout)])))

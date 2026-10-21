@@ -164,9 +164,9 @@ refuser la ligne. Une catégorie que plus aucun jeu ne porte disparaît.
 liste. La première est le vocabulaire : une ligne par catégorie, avec sa
 graphie affichée et sa **clé de rapprochement** (sans casse ni accents),
 unique. La seconde rattache chaque titre à ses catégories, dans l'ordre de la
-case du tableur. C'est elle qui fait foi ; `titres.categorie` n'en est que la
-copie, gardée pour l'export et pour les écrans qui la lisent, et un test
-vérifie qu'elle ne s'en écarte jamais. Le vocabulaire n'est pas une liste fixée
+case du tableur. C'est elle qui fait foi, et que lisent les filtres ;
+`titres.categorie` n'en est que la copie, gardée pour l'export et pour les
+écrans qui l'affichent, et un test vérifie qu'elle ne s'en écarte jamais. Le vocabulaire n'est pas une liste fixée
 par le bureau : il est fait des valeurs présentes dans le tableur.
 
 La base de prêt porte aussi les réglages (`parametres`), le registre des
@@ -284,8 +284,12 @@ boîte donne un message, jamais une erreur (§2).
 ### 5.2 Catalogue public (consultation)
 
 - Accès en **lecture seule**, sans donnée personnelle, sans bouton d'action.
-- Recherche, filtres (catégorie, nombre de joueurs, âge…) et fiche par
-  exemplaire.
+- Recherche, filtres (catégories, nombre de joueurs, âge…) et fiche par
+  exemplaire. Les catégories se cochent, plusieurs à la fois : un jeu doit
+  les porter **toutes** (ET). L'adresse porte leur clé de rapprochement, pas
+  leur graphie, et une adresse d'avant, qui portait la case entière
+  (« Cartes, Ambiance »), filtre de la même façon. La fiche renvoie vers
+  chacune de ses catégories.
 - Disponibilité affichée au niveau du titre (combien d'exemplaires
   disponibles).
 - Consultable **à l'année**, y compris en amont de l'événement.

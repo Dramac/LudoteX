@@ -497,15 +497,17 @@ def test_catalogue_dispo_seulement_puce_retrait_conserve_les_autres_filtres(clie
     # A4 : la puce de retrait du filtre dispo doit ramener à la liste
     # complète (ou conserver les autres filtres posés en même temps).
     from app import db
+    from app import categories_jeu, services
     conn = db.get_connection()
-    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    services.ecrire_categories_titre(conn, "CATAN", "Familial")
     conn.commit()
     conn.close()
 
     r = client.get("/catalogue", params={"categorie": "Familial", "dispo": "1"})
     assert r.status_code == 200
     assert "disponibles seulement" in r.text
-    assert "/catalogue?categorie=Familial" in r.text  # puce dispo -> conserve categorie
+    # puce dispo -> conserve la catégorie, sous sa CLÉ
+    assert f"/catalogue?categorie={categories_jeu.cle('Familial')}" in r.text
 
     r_sans_dispo = client.get("/catalogue", params={"categorie": "Familial"})
     assert "Catan" in r_sans_dispo.text
@@ -806,15 +808,18 @@ def test_fiche_sorties_de_page_visiteur(client, monkeypatch):
     monkeypatch.setenv("PRET_TOKEN", "jeton-fiche-a1-xyz")   # sortir du mode ouvert
     from app import db
 
+    from app import categories_jeu, services
+    from urllib.parse import quote_plus
+
     conn = db.get_connection()
-    conn.execute("UPDATE titres SET categorie = 'Jeu de plateau' WHERE reference_titre='CATAN'")
+    services.ecrire_categories_titre(conn, "CATAN", "Jeu de plateau")
     conn.commit()
     conn.close()
 
     r = client.get("/jeu/001")
     assert r.status_code == 200
     assert 'href="/catalogue"' in r.text
-    assert "/catalogue?categorie=Jeu%20de%20plateau" in r.text
+    assert f"/catalogue?categorie={quote_plus(categories_jeu.cle('Jeu de plateau'))}" in r.text
     assert "/pret/" not in r.text
 
 
@@ -851,15 +856,16 @@ def test_fiche_jeu_tout_sorti_propose_le_lien_disponibles(client):
     jamais les deux en doublon.
     """
     from app import db
+    from app import categories_jeu, services
     conn = db.get_connection()
-    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    services.ecrire_categories_titre(conn, "CATAN", "Familial")
     conn.commit()
     conn.close()
     client.post("/pret/001/preter")   # seul exemplaire du titre -> tout sorti
 
     r = client.get("/jeu/001")
     assert r.status_code == 200
-    assert "/catalogue?categorie=Familial&dispo=1" in r.text
+    assert f"/catalogue?categorie={categories_jeu.cle('Familial')}&amp;dispo=1" in r.text
     assert "Voir les jeux disponibles" in r.text
     assert "Voir les autres jeux" not in r.text
 
@@ -868,14 +874,15 @@ def test_fiche_jeu_disponible_garde_le_lien_categorie_sans_filtre(client):
     """Non-régression : un jeu encore disponible garde le lien de catégorie
     d'origine (sans filtre dispo)."""
     from app import db
+    from app import categories_jeu, services
     conn = db.get_connection()
-    conn.execute("UPDATE titres SET categorie = 'Familial' WHERE reference_titre = 'CATAN'")
+    services.ecrire_categories_titre(conn, "CATAN", "Familial")
     conn.commit()
     conn.close()
 
     r = client.get("/jeu/001")
     assert r.status_code == 200
-    assert "/catalogue?categorie=Familial" in r.text
+    assert f"/catalogue?categorie={categories_jeu.cle('Familial')}" in r.text
     assert "dispo=1" not in r.text
     assert "Voir les autres jeux" in r.text
 

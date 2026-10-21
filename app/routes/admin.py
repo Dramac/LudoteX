@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 
 from app import (admin_auth, auth, bgg, bgg_api, bgg_recherche, carnet,
-                 classement, envois, exports, formation, journal, logo,
+                 categories_jeu, classement, envois, exports, formation, journal, logo,
                  sauvegarde, services, supervision)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
@@ -560,7 +560,7 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         # Menu déroulant de l'édition « emplacement local » par exemplaire
         # (§4.c) : mêmes emplacements actifs que partout ailleurs.
         emplacements_locaux = services.emplacements_actifs(conn)
-        categories = services.lister_categories(conn)
+        vocabulaire = {c["cle"]: c["nom"] for c in services.lister_categories_jeu(conn)}
         copie_bgg = services.lire_fiche_bgg(conn, titre["bgg_id"]) if titre else None
         relier = (_contexte_relier(conn, titre, list(candidats), recherche, fait,
                                    precedent) if titre else None)
@@ -576,6 +576,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                       for c in services.CHAMPS_FICHE}
             saisie["bgg"] = (str(titre["bgg_id"]) if titre["bgg_id"] is not None
                              else bgg.PAS_SUR_BGG if titre["bgg_absent"] else "")
+            saisie["categories_cochees"] = categories_jeu.decouper(titre["categorie"])
+            saisie["categorie_ajout"] = ""
         repris: set = set()
         message_reprise = None
         if reprise == "reprendre" and copie_bgg and copie_bgg["trouve"]:
@@ -599,7 +601,10 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
         contexte.update({
             "valeurs": saisie,
             "erreurs": erreurs or {},
-            "categories": categories,
+            # Les cases cochées telles que la saisie les porte : après un
+            # refus, une catégorie purgée entre-temps reste affichée, cochée.
+            "cases_categories": categories_jeu.cases_a_cocher(
+                vocabulaire, saisie.get("categories_cochees") or []),
             "types_jeu": services.TYPES_JEU,
             "message": message,
             "message_reprise": message_reprise,
@@ -672,7 +677,8 @@ def fiche_modifier(
     reference_titre: str,
     nom: str = Form(""),
     type_jeu: str = Form(""),
-    categorie: str = Form(""),
+    categorie: list[str] = Form(default=[]),
+    categorie_ajout: str = Form(""),
     nb_joueurs_min: str = Form(""),
     nb_joueurs_max: str = Form(""),
     duree_min: str = Form(""),
@@ -700,18 +706,20 @@ def fiche_modifier(
     `services.lire_saisie_fiche`, l'écriture `services.modifier_titre`. Un
     refus réaffiche la fiche avec TOUTES les saisies et un message sous chaque
     champ fautif ; rien n'est écrit.
+
+    Catégories : les cases cochées (`categorie`, répété, des noms) et le champ
+    « Ajouter une catégorie » sont COMPOSÉS ICI en une case
+    (`categories_jeu.composer`), contre la liste actuelle du titre que la
+    route vient de lire : celles du jeu gardent leur ordre, les nouvelles
+    suivent. Ici et pas dans `lire_saisie_fiche`, qui n'a pas de connexion ;
+    pas dans `modifier_titre`, dont le contrat (une case, comparée sous sa
+    forme canonique) reste celui de l'import. Un enregistrement sans
+    changement recompose la case à l'identique : rien n'est écrit.
     """
     if (garde := _garde(request)):
         return garde
     chaine = bool(enchainer.strip())
     avancer = chaine and suite == "suivant"
-    saisie = {
-        "nom": nom, "type_jeu": type_jeu, "categorie": categorie,
-        "nb_joueurs_min": nb_joueurs_min, "nb_joueurs_max": nb_joueurs_max,
-        "duree_min": duree_min, "age_min": age_min, "editeur": editeur,
-        "auteur": auteur, "annee_edition": annee_edition,
-        "descriptif": descriptif, "bgg": fiche_bgg,
-    }
     conn = get_connection()
     try:
         titre = services.get_titre(conn, reference_titre)
@@ -719,6 +727,17 @@ def fiche_modifier(
         conn.close()
     if titre is None:
         return _rendre_fiche(request, reference_titre)
+    saisie = {
+        "nom": nom, "type_jeu": type_jeu,
+        "categorie": categories_jeu.composer(
+            categories_jeu.decouper(titre["categorie"]), categorie,
+            categorie_ajout) or "",
+        "categories_cochees": categorie, "categorie_ajout": categorie_ajout,
+        "nb_joueurs_min": nb_joueurs_min, "nb_joueurs_max": nb_joueurs_max,
+        "duree_min": duree_min, "age_min": age_min, "editeur": editeur,
+        "auteur": auteur, "annee_edition": annee_edition,
+        "descriptif": descriptif, "bgg": fiche_bgg,
+    }
     valeurs, erreurs = services.lire_saisie_fiche(saisie, titre["type_jeu"])
     if erreurs:
         return _rendre_fiche(request, reference_titre, saisie=saisie, erreurs=erreurs,
@@ -1139,6 +1158,18 @@ def etiquette_png(request: Request, id_exemplaire: str):
     return Response(content=buf.getvalue(), media_type="image/png")
 
 
+def _cle_de_filtre(valeur: str | None, categories: list[dict]) -> str | None:
+    """
+    La clé de la catégorie d'un menu d'administration (une seule à la fois),
+    ou None si la valeur est vide ou ne désigne aucune catégorie existante.
+    Même lecture que le catalogue (`categories_jeu.cles_du_filtre`) : une
+    graphie (« Stratégie ») ou une ancienne case entière (« Cartes,
+    Ambiance », dont seule la première est retenue) valent leur clé.
+    """
+    cles = categories_jeu.cles_du_filtre([valeur or ""], {c["cle"] for c in categories})
+    return cles[0] if cles else None
+
+
 # ---------------------------------------------------------------------------
 # Impression d'étiquettes en lot
 # ---------------------------------------------------------------------------
@@ -1148,15 +1179,17 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
     """
     Page de sélection des jeux à imprimer + paramètres de planche.
 
-    Filtre optionnel par catégorie. Chaque jeu coché imprimera les étiquettes de
-    TOUS ses exemplaires.
+    Filtre optionnel par catégorie : le menu envoie la CLÉ, et la liste garde
+    les jeux qui PORTENT cette catégorie (parmi d'autres). Une valeur
+    inconnue revient à « pas de filtre » : c'est une lecture. Chaque jeu coché
+    imprimera les étiquettes de TOUS ses exemplaires.
     """
     if (garde := _garde(request)):
         return garde
     conn = get_connection()
     try:
-        categories = services.lister_categories(conn)
-        filtre = categorie if categorie in categories else None
+        categories = services.lister_categories_jeu(conn)
+        filtre = _cle_de_filtre(categorie, categories)
         jeux = services.titres_pour_etiquettes(conn, filtre)
         afficher_code = services.lire_etiquette_code(conn)
         format_code = services.lire_etiquette_format(conn)
@@ -1706,14 +1739,19 @@ def _int_ou_none(v: str) -> int | None:
 
 
 def _contexte_creation(valeurs: dict | None = None, erreurs: dict | None = None) -> dict:
-    """Contexte de l'écran de création : saisie réaffichée après un refus."""
+    """
+    Contexte de l'écran de création : saisie réaffichée après un refus, cases
+    des catégories existantes (toutes décochées au premier affichage).
+    """
     conn = get_connection()
     try:
-        categories = services.lister_categories(conn)
+        vocabulaire = {c["cle"]: c["nom"] for c in services.lister_categories_jeu(conn)}
     finally:
         conn.close()
-    return {"valeurs": valeurs or {}, "erreurs": erreurs or {},
-            "categories": categories}
+    valeurs = valeurs or {}
+    return {"valeurs": valeurs, "erreurs": erreurs or {},
+            "cases_categories": categories_jeu.cases_a_cocher(
+                vocabulaire, valeurs.get("categories_cochees") or [])}
 
 
 @router.get("/jeu-nouveau")
@@ -1730,7 +1768,8 @@ def nouveau_creer(
     request: Request,
     nom: str = Form(""),
     type_jeu: str = Form("Jeu"),
-    categorie: str = Form(""),
+    categorie: list[str] = Form(default=[]),
+    categorie_ajout: str = Form(""),
     nb_joueurs_min: str = Form(""),
     nb_joueurs_max: str = Form(""),
     duree_min: str = Form(""),
@@ -1740,11 +1779,17 @@ def nouveau_creer(
     annee_edition: str = Form(""),
     descriptif: str = Form(""),
 ):
-    """Crée le jeu (titre + 1 exemplaire id auto) puis ouvre sa fiche admin."""
+    """
+    Crée le jeu (titre + 1 exemplaire id auto) puis ouvre sa fiche admin.
+
+    Catégories : cases cochées puis champ « Ajouter une catégorie », composés
+    comme dans l'éditeur (`categories_jeu.composer`, sans liste actuelle).
+    """
     if (garde := _garde(request)):
         return garde
     if not nom.strip():
-        saisie = {"nom": nom, "type_jeu": type_jeu, "categorie": categorie,
+        saisie = {"nom": nom, "type_jeu": type_jeu,
+                  "categories_cochees": categorie, "categorie_ajout": categorie_ajout,
                   "nb_joueurs_min": nb_joueurs_min, "nb_joueurs_max": nb_joueurs_max,
                   "duree_min": duree_min, "age_min": age_min, "editeur": editeur,
                   "auteur": auteur, "annee_edition": annee_edition,
@@ -1759,7 +1804,7 @@ def nouveau_creer(
         res = services.creer_jeu(
             conn, nom,
             type_jeu=type_jeu.strip() or None,
-            categorie=categorie.strip() or None,
+            categorie=categories_jeu.composer([], categorie, categorie_ajout),
             nb_joueurs_min=_int_ou_none(nb_joueurs_min),
             nb_joueurs_max=_int_ou_none(nb_joueurs_max),
             duree_min=_int_ou_none(duree_min),
@@ -1992,7 +2037,7 @@ def aide_admin(request: Request):
 # Lit UNIQUEMENT la fenêtre des LIMITE_JOURNAL dernières lignes (jamais tout
 # le fichier), puis filtre EN PYTHON dans cette fenêtre : les menus déroulants
 # ne proposent que les valeurs RÉELLEMENT présentes dans la fenêtre courante
-# (motif de `services.lister_categories`), pas le vocabulaire fermé entier —
+# (motif de l'ancien menu des catégories du catalogue), pas le vocabulaire fermé entier —
 # un menu « action » à 40 entrées serait plus gênant qu'utile. Une recherche
 # plus profonde dans l'historique reste possible via `scripts/journal.py` ou
 # un `grep`/`jq` direct sur le fichier, documenté à l'écran.
@@ -4002,13 +4047,14 @@ def rangement_ranger_jeux(
     page = max(page, 1)
     conn = get_connection()
     try:
-        categories = services.lister_categories(conn)
+        categories = services.lister_categories_jeu(conn)
         ages = services.ages_disponibles(conn)
         max_j = services.max_joueurs(conn)
-        filtre_cat = categorie if categorie in categories else None
+        filtre_cat = _cle_de_filtre(categorie, categories)
         contexte = services.rangement_contexte(conn)
         emplacements_locaux = services.emplacements_actifs(conn) if contexte == "local" else []
-        jeux = services.lister_catalogue(conn, filtre_cat, q, age_i, joueurs_i)
+        jeux = services.lister_catalogue(conn, [filtre_cat] if filtre_cat else [],
+                                          q, age_i, joueurs_i)
         jeux = services.rangement_par_titre(conn, jeux, contexte)
     finally:
         conn.close()
@@ -4062,6 +4108,13 @@ def rangement_ranger_appliquer(
 
     Un emplacement vide est REFUSÉ (§13.4, pas de wipe de masse) : rien n'est
     modifié, message clair, retour sur la même vue (mêmes filtres).
+
+    Une catégorie INCONNUE au moment du POST, en portée « filtre », est
+    REFUSÉE de même (lot categories-2). Elle a pu être purgée par un import
+    entre l'affichage et le clic : la faire retomber à « pas de filtre »
+    appliquerait l'emplacement à TOUS les titres. Un filtre qui disparaît ne
+    doit jamais élargir une écriture de masse. En portée « coches », la
+    catégorie n'entre pas dans la sélection : rien à refuser.
     """
     if (garde := _garde(request)):
         return garde
@@ -4076,8 +4129,10 @@ def rangement_ranger_appliquer(
 
     conn = get_connection()
     try:
-        categories = services.lister_categories(conn)
-        filtre_cat = filtre_cat_brut if filtre_cat_brut in categories else None
+        categories = services.lister_categories_jeu(conn)
+        filtre_cat = _cle_de_filtre(filtre_cat_brut, categories)
+        filtre_perdu = (portee != "coches" and bool(filtre_cat_brut)
+                        and filtre_cat is None)
         contexte = services.rangement_contexte(conn)
 
         if contexte == "local":
@@ -4095,7 +4150,15 @@ def rangement_ranger_appliquer(
             valide = bool(texte)
             libelle = texte or None
 
-        if not valide:
+        if filtre_perdu:
+            msg = ("Cette catégorie n'existe plus (un import a pu la retirer "
+                   "entre-temps) : rien n'a été modifié. Choisissez à nouveau "
+                   "le filtre, puis appliquez.")
+            journal.journaliser(
+                request, "rangement", "rangement_lot_applique",
+                objet=libelle, ok=False, detail="categorie_inconnue",
+            )
+        elif not valide:
             msg = "Emplacement requis : rien n'a été modifié."
             journal.journaliser(
                 request, "rangement", "rangement_lot_applique",
@@ -4105,7 +4168,8 @@ def rangement_ranger_appliquer(
             if portee == "coches":
                 reference_titres = [t for t in titres_coches if t]
             else:
-                jeux = services.lister_catalogue(conn, filtre_cat, q_n, age_i, joueurs_i)
+                jeux = services.lister_catalogue(conn, [filtre_cat] if filtre_cat else [],
+                                                  q_n, age_i, joueurs_i)
                 jeux = services.rangement_par_titre(conn, jeux, contexte)
                 jeux_affiches = jeux if tous_b else [j for j in jeux if not j["rangement_complet"]]
                 reference_titres = [j["reference_titre"] for j in jeux_affiches]

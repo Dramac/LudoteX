@@ -66,19 +66,23 @@
        quand ce jeu est tout sorti, le rebond de catégorie devient le lien
        DISPONIBLES SEULEMENT (A4) plutôt que « les autres jeux » — proposer à
        nouveau des jeux potentiellement tout aussi sortis ne rendrait pas
-       service à quelqu'un qui cherche à jouer maintenant. Un seul lien de
-       catégorie à la fois, jamais les deux en doublon. #}
+       service à quelqu'un qui cherche à jouer maintenant. Une seule
+       formulation à la fois, jamais les deux en doublon.
+
+       Un lien PAR CATÉGORIE (lot categories-2), construit par la route. Le
+       début de phrase visible est masqué aux lecteurs d'écran et répété,
+       masqué à l'œil, dans chaque lien : hors contexte (liste des liens),
+       chacun s'entend « Voir les autres jeux Cartes », pas « Cartes ». #}
+    {% set debut_lien = "Voir les jeux disponibles" if disponible == 0 else "Voir les autres jeux" %}
     <p class="lien-fiche">
       <a class="lien" href="/catalogue">← Retour au catalogue</a>
-      {% if info.categorie %}
+      {% if liens_categories %}
         &nbsp;·&nbsp;
-        {% if disponible == 0 %}
-          <a class="lien" href="/catalogue?categorie={{ info.categorie | urlencode }}&dispo=1">
-            Voir les jeux disponibles « {{ info.categorie }} »</a>
-        {% else %}
-          <a class="lien" href="/catalogue?categorie={{ info.categorie | urlencode }}">
-            Voir les autres jeux « {{ info.categorie }} »</a>
-        {% endif %}
+        <span aria-hidden="true">{{ debut_lien }} :</span>
+        {% for l in liens_categories %}
+          <a class="lien" href="{{ l.url }}"><span class="sr-only">{{ debut_lien }} </span>{{ l.nom }}</a>
+          {%- if not loop.last %} <span aria-hidden="true">·</span>{% endif %}
+        {% endfor %}
       {% endif %}
     </p>
   </section>

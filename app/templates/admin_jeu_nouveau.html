@@ -12,7 +12,7 @@
     {# Bloc de champs partagé avec l'éditeur de la fiche (_champs_jeu.html).
        Seul refus de la route : le nom manquant, relié au champ qui prend le
        focus. #}
-    {{ champs_jeu(valeurs or {}, erreurs or {}, categories=categories or (),
+    {{ champs_jeu(valeurs or {}, erreurs or {}, cases_categories=cases_categories or (),
                   focus="nom") }}
     <div class="champ-large"><button type="submit" class="bouton-filtrer">Créer le jeu</button></div>
   </form>

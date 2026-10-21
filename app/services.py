@@ -45,6 +45,7 @@ import re
 import secrets
 import sqlite3
 import unicodedata
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -471,23 +472,6 @@ def est_sorti(conn: sqlite3.Connection, id_exemplaire: str) -> bool:
     return pret_en_cours(conn, id_exemplaire) is not None
 
 
-def lister_categories(conn: sqlite3.Connection) -> list[str]:
-    """
-    Liste les catégories distinctes du catalogue (pour le menu de filtrage).
-
-    Source : la colonne `titres.categorie` (issue du CSV « Type jeu »). On exclut
-    les valeurs nulles/vides et on trie alphabétiquement.
-
-    Returns:
-        Liste de chaînes (catégories), triée.
-    """
-    rows = conn.execute(
-        "SELECT DISTINCT categorie FROM titres "
-        "WHERE categorie IS NOT NULL AND categorie <> '' ORDER BY categorie"
-    ).fetchall()
-    return [r[0] for r in rows]
-
-
 # ===========================================================================
 # CATÉGORIES DE JEU — la liste, sa liaison et la copie (série « categories »)
 #
@@ -526,6 +510,39 @@ def purger_categories_orphelines(conn: sqlite3.Connection) -> int:
         "DELETE FROM categories_jeu WHERE NOT EXISTS ("
         "SELECT 1 FROM titres_categories tc "
         "WHERE tc.id_categorie_jeu = categories_jeu.id_categorie_jeu)").rowcount
+
+
+def lister_categories_jeu(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Le vocabulaire des catégories de jeu, pour les cases du catalogue et de
+    l'éditeur et les menus d'administration : [{cle, nom}], en ordre
+    alphabétique de la CLÉ (sans casse ni accents : « Énigmes » avant
+    « Enquête », pas après « Stratégie »), puis de la graphie.
+
+    Une catégorie n'existe que portée par au moins un titre (purge des
+    orphelines) : la liste ne propose jamais une case vide de sens.
+    """
+    return [dict(r) for r in conn.execute(
+        "SELECT cle, nom FROM categories_jeu ORDER BY cle, nom")]
+
+
+def categories_du_titre(conn: sqlite3.Connection,
+                        reference_titre: str) -> list[dict]:
+    """Les catégories d'un titre, dans leur ordre : [{cle, nom}]."""
+    return [dict(r) for r in conn.execute(
+        "SELECT c.cle, c.nom FROM titres_categories tc "
+        "JOIN categories_jeu c ON c.id_categorie_jeu = tc.id_categorie_jeu "
+        "WHERE tc.reference_titre = ? ORDER BY tc.rang", (reference_titre,))]
+
+
+# Condition SQL « le titre `t` porte la catégorie de clé ? » — DOMICILE UNIQUE
+# du filtre par catégorie : le catalogue public, « Ranger les jeux » (qui
+# réutilise `lister_catalogue`) et les étiquettes en lot la partagent. Une
+# condition par clé, jointes en ET.
+CONDITION_PORTE_CATEGORIE = (
+    "EXISTS (SELECT 1 FROM titres_categories tc "
+    "JOIN categories_jeu c ON c.id_categorie_jeu = tc.id_categorie_jeu "
+    "WHERE tc.reference_titre = t.reference_titre AND c.cle = ?)")
 
 
 def ecrire_categories_titre(conn: sqlite3.Connection, reference_titre: str,
@@ -619,7 +636,7 @@ def max_joueurs(conn: sqlite3.Connection) -> int:
     return val or 0
 
 
-def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
+def lister_catalogue(conn: sqlite3.Connection, categories: Sequence[str] = (),
                      q: str | None = None, age: int | None = None,
                      joueurs: int | None = None,
                      dispo_seulement: bool = False,
@@ -638,7 +655,10 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
     `SUM(CASE WHEN p.id_pret IS NULL THEN 1 ELSE 0 END)`.
 
     Filtres combinables (tous optionnels, ajoutés dynamiquement au WHERE) :
-        categorie : égalité exacte sur la catégorie.
+        categories: des CLÉS de catégorie (`categories_jeu.cle`), en ET : le
+                    titre doit les porter toutes. Vide : pas de filtre. Une
+                    clé inconnue ne trouve rien ; c'est à la route de
+                    l'écarter (`categories_jeu.cles_du_filtre`) ou de refuser.
         q         : sous-chaîne dans le nom (LIKE, insensible à la casse ASCII).
         age       : jeux accessibles dès cet âge (`age_min <= age`).
         joueurs   : jeux jouables à ce nombre EXACT (`min <= joueurs <= max`).
@@ -659,7 +679,7 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
 
     Args:
         conn: connexion SQLite ouverte.
-        categorie, q, age, joueurs: filtres optionnels (voir ci-dessus).
+        categories, q, age, joueurs: filtres optionnels (voir ci-dessus).
         dispo_seulement: si True, ne garde que les titres ayant au moins un
             exemplaire disponible.
         sans_bgg: si True, ne garde que les titres à relier à BoardGameGeek.
@@ -683,9 +703,9 @@ def lister_catalogue(conn: sqlite3.Connection, categorie: str | None = None,
     # (jamais de concaténation de valeurs → pas d'injection SQL).
     conditions: list[str] = []
     params: list = []
-    if categorie:
-        conditions.append("t.categorie = ?")
-        params.append(categorie)
+    for cle_categorie in categories:
+        conditions.append(CONDITION_PORTE_CATEGORIE)
+        params.append(cle_categorie)
     if q:
         conditions.append("t.nom LIKE ? COLLATE NOCASE")
         params.append(f"%{q}%")
@@ -2139,8 +2159,10 @@ def lire_saisie_fiche(saisie: dict, type_actuel: str | None = None
 
     Args:
         saisie: les champs du formulaire, tels que reçus (chaînes) — les clés
-            de `CHAMPS_FICHE`, plus `bgg` (numéro ou adresse BoardGameGeek,
-            ou la valeur réservée « pas sur BGG »).
+            de `CHAMPS_FICHE` (`categorie` déjà composée par la route), plus
+            `bgg` (numéro ou adresse BoardGameGeek, ou la valeur réservée
+            « pas sur BGG ») et `categorie_ajout` (le champ « Ajouter une
+            catégorie », seulement borné ici).
         type_actuel: le type en base, accepté même hors de `TYPES_JEU`.
 
     Returns:
@@ -2169,11 +2191,22 @@ def lire_saisie_fiche(saisie: dict, type_actuel: str | None = None
         erreurs["type_jeu"] = "Choisissez un type dans la liste."
     valeurs["type_jeu"] = type_jeu or None
 
-    for nom_champ in ("categorie", "editeur", "auteur"):
+    for nom_champ in ("editeur", "auteur"):
         valeurs[nom_champ], erreur = _lire_texte_fiche(champ(nom_champ),
                                                        LONGUEUR_TEXTE_FICHE)
         if erreur:
             erreurs[nom_champ] = erreur
+
+    # Catégories (lot categories-2) : `categorie` est la case que la route a
+    # COMPOSÉE des cases cochées et du champ « Ajouter une catégorie »
+    # (`categories_jeu.composer`). La borne de 200 caractères ne porte plus
+    # que sur ce que le bureau TAPE, le champ « Ajouter » : cocher toutes les
+    # cases ne doit pas produire un refus, et chaque catégorie est déjà
+    # bornée par le découpage (`categories_jeu.LONGUEUR_CATEGORIE`).
+    valeurs["categorie"] = champ("categorie").strip() or None
+    _, erreur = _lire_texte_fiche(champ("categorie_ajout"), LONGUEUR_TEXTE_FICHE)
+    if erreur:
+        erreurs["categorie_ajout"] = erreur
 
     # Un descriptif tapé dans un navigateur arrive en fins de ligne Windows
     # (\r\n) : normalisées, pour que le ré-import du fichier exporté relise
@@ -2611,7 +2644,9 @@ def titres_pour_etiquettes(conn: sqlite3.Connection,
                            categorie: str | None = None) -> list[dict]:
     """
     Liste les titres (avec leur nombre d'exemplaires) pour l'écran de sélection
-    d'impression d'étiquettes en lot. Filtrable par catégorie.
+    d'impression d'étiquettes en lot. Filtrable par catégorie : `categorie`
+    est une CLÉ, et le filtre garde les titres qui la PORTENT (parmi
+    d'autres), par la même condition que le catalogue.
 
     Returns:
         Liste de dicts {reference_titre, nom, categorie, nb_exemplaires}, triée
@@ -2625,7 +2660,7 @@ def titres_pour_etiquettes(conn: sqlite3.Connection,
     """
     params: list = []
     if categorie:
-        sql += " WHERE t.categorie = ?"
+        sql += " WHERE " + CONDITION_PORTE_CATEGORIE
         params.append(categorie)
     sql += (" GROUP BY t.reference_titre, t.nom, t.categorie "
             "ORDER BY t.nom COLLATE NOCASE")
@@ -3974,14 +4009,16 @@ def _clause_sans_emplacement(contexte: str) -> str:
     return "(x.emplacement_evenement IS NULL OR x.emplacement_evenement = '')"
 
 
-def _filtre_manques(conn: sqlite3.Connection, categorie: str | None, q: str | None):
-    """Construit (clause WHERE, params) partagée par compteur et liste des manques."""
+def _filtre_manques(conn: sqlite3.Connection, q: str | None):
+    """
+    Construit (clause WHERE, params) du compteur des manques.
+
+    Plus de filtre par catégorie (lot categories-2) : aucun appelant n'en
+    passait depuis que « Ranger les jeux » a remplacé la page des manques.
+    """
     contexte = rangement_contexte(conn)
     conditions = [_clause_sans_emplacement(contexte)]
     params: list = []
-    if categorie:
-        conditions.append("t.categorie = ?")
-        params.append(categorie)
     if q:
         conditions.append("t.nom LIKE ? COLLATE NOCASE")
         params.append(f"%{q}%")
@@ -3989,10 +4026,10 @@ def _filtre_manques(conn: sqlite3.Connection, categorie: str | None, q: str | No
 
 
 def compter_exemplaires_sans_emplacement(
-    conn: sqlite3.Connection, categorie: str | None = None, q: str | None = None
+    conn: sqlite3.Connection, q: str | None = None
 ) -> int:
-    """Nombre d'exemplaires sans emplacement dans le contexte actif (filtres optionnels)."""
-    where, params = _filtre_manques(conn, categorie, q)
+    """Nombre d'exemplaires sans emplacement dans le contexte actif (filtre optionnel)."""
+    where, params = _filtre_manques(conn, q)
     (n,) = conn.execute(
         f"SELECT COUNT(*) FROM exemplaires x "
         f"JOIN titres t ON t.reference_titre = x.reference_titre WHERE {where}",

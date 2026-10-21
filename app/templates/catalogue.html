@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_cases_categories.html" import cases_categories as bloc_categories %}
 {% block titre %}Catalogue — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
@@ -15,15 +16,10 @@
         <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
       </div>
 
-      <div class="champ">
-        <label for="categorie">Catégorie</label>
-        <select id="categorie" name="categorie">
-          <option value="">Toutes</option>
-          {% for c in categories %}
-            <option value="{{ c }}" {% if c == filtre %}selected{% endif %}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
+      {% if cases_categories %}
+      {{ bloc_categories(cases_categories, valeur="cle", ouvert=nb_categories > 0,
+                         aide="Les jeux affichés portent toutes les catégories cochées.") }}
+      {% endif %}
 
       <div class="champ">
         <label for="age">Âge minimum</label>
@@ -74,8 +70,11 @@
   {% if chips %}
   <div class="filtres-actifs">
     <span class="fa-label">Filtres actifs :</span>
+    {# Le début « Retirer le filtre », masqué à l'œil, donne à chaque puce un
+       nom qui se comprend hors contexte (« Retirer le filtre Cartes ») : avec
+       une puce par catégorie, « Cartes » seul ne dit pas ce que fait le lien. #}
     {% for c in chips %}
-      <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+      <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre"><span class="sr-only">Retirer le filtre </span>{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
     {% endfor %}
     <a class="lien" href="/catalogue">Tout effacer</a>
   </div>
@@ -98,7 +97,21 @@
       {% endif %}
     </li>
   {% else %}
-    <li class="jeu"><em>Aucun jeu ne correspond à ces critères.</em></li>
+    {# Liste vide avec au moins une catégorie cochée : le filtre en ET est
+       le suspect le plus probable, on le dit et on offre de le retirer en
+       un tap, les autres filtres gardés. Si d'autres filtres sont posés,
+       on ne peut pas accuser les catégories seules : message général. #}
+    <li class="jeu jeu-vide">
+      {% if nb_categories and not autres_filtres %}
+        <em>{{ "Aucun jeu ne porte cette catégorie." if nb_categories == 1
+               else "Aucun jeu ne porte toutes ces catégories." }}</em>
+      {% else %}
+        <em>Aucun jeu ne correspond à ces critères.</em>
+      {% endif %}
+      {% if nb_categories %}
+        <a class="lien" href="{{ url_sans_categories }}">Retirer les catégories</a>
+      {% endif %}
+    </li>
   {% endfor %}
 </ul>
 

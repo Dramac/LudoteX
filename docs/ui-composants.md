@@ -82,6 +82,17 @@ n'est à corriger, choisir celle qui simplifie le gabarit du moment.
 Cases à cocher/radio isolées : `.case` (`<label class="case"><input
 type="checkbox">Texte</label>`), pas `.champ`.
 
+**Groupe de cases repliable** — `_cases_categories.html` (macro
+`cases_categories`), pour les catégories de jeu : catalogue public, éditeur
+de fiche, « Créer un jeu ». Un `<details class="recherche bloc-categories">`
+dont le résumé dit le nombre coché (« Catégories (2) », « cochées » ajouté
+pour les lecteurs d'écran), un `<fieldset class="champ-groupe">` à légende
+masquée, une grille `.cases-categories` de `.case.case-categorie` : deux
+colonnes dès 375 px, une seule plutôt que de déborder, coupure des noms longs
+en fin de syllabe, cible de 36 px de haut au moins (case et libellé
+ensemble). Aucun JavaScript. Le paramètre `valeur` dit ce que la case envoie :
+la clé au catalogue, le nom dans l'éditeur.
+
 **Hors périmètre volontaire** : les champs insérés dans un tableau dense
 (scores par ronde, marges d'impression d'étiquettes, saisie inline de
 rangement) n'utilisent pas `.champ` — legitimate, ce ne sont pas des champs de

@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-from app import bgg, classement, etiquettes, services
+from app import bgg, categories_jeu, classement, etiquettes, services
 
 MOT_DE_PASSE = "secret-admin-fiche"
 BASE_URL = "https://exemple.test"
@@ -73,6 +73,9 @@ def bases(tmp_path, monkeypatch):
         conn.execute("INSERT INTO exemplaires (id_exemplaire, reference_titre) "
                      "VALUES (?, ?)", (id_ex, ref))
     conn.commit()
+    # Catégories posées en SQL dans la copie : la migration les rattache à
+    # leur liste, que lisent désormais les cases de l'éditeur.
+    db.init_db(conn)
     conn.close()
     return tmp_path
 
@@ -125,6 +128,8 @@ def _formulaire(ref="CATANE", **changements):
     titre = _titre(ref)
     donnees = {c: "" if titre[c] is None else str(titre[c]) for c in services.CHAMPS_FICHE}
     donnees["bgg"] = "" if titre["bgg_id"] is None else str(titre["bgg_id"])
+    # Les catégories du jeu arrivent cochées, une valeur par case (le nom).
+    donnees["categorie"] = categories_jeu.decouper(titre["categorie"])
     donnees.update(changements)
     return donnees
 
@@ -317,9 +322,12 @@ def test_la_fiche_est_pre_remplie(client):
     assert 'value="10"' in _champ(page, "age_min")
     assert 'value="Kosmos"' in _champ(page, "editeur")
     assert "Colonisation d&#39;une île." in page
-    # Catégories existantes proposées sans JS.
-    assert 'list="categories-connues"' in _champ(page, "categorie")
-    assert '<option value="Ambiance">' in page and '<option value="Stratégie">' in page
+    # Catégories existantes en cases (lot categories-2) : celles du jeu
+    # cochées, les autres non ; plus de <datalist>.
+    assert re.search(r'<input type="checkbox" name="categorie" value="Stratégie" checked>', page)
+    assert re.search(r'<input type="checkbox" name="categorie" value="Ambiance">', page)
+    assert 'value=""' in _champ(page, "categorie_ajout")
+    assert "categories-connues" not in page
 
 
 @pytest.mark.parametrize("chemin", [
@@ -518,14 +526,22 @@ def test_chaque_champ_de_l_editeur_a_son_label(client):
     formulaire = re.search(r'<form[^>]*action="/admin/jeu/CATANE/modifier".*?</form>',
                            page, re.S).group(0)
     idents = re.findall(r'<(?:input|select|textarea)[^>]*\bid="([^"]+)"', formulaire)
-    assert set(idents) >= set(services.CHAMPS_FICHE) | {"bgg"}
+    # La catégorie n'est plus un champ à identifiant : des cases, chacune
+    # dans son libellé, et le champ « Ajouter une catégorie ».
+    assert set(idents) >= (set(services.CHAMPS_FICHE) - {"categorie"}) | {
+        "bgg", "categorie_ajout"}
     for ident in idents:
         assert f'<label for="{ident}">' in formulaire, ident
+    cases = re.findall(r'(<label class="case case-categorie">)?<input type="checkbox" '
+                       r'name="categorie"', formulaire)
+    assert cases and all(cases)
 
 
 def test_la_creation_partage_le_bloc_et_garde_la_saisie(client):
     page = client.get("/admin/jeu-nouveau").text
-    assert 'list="categories-connues"' in page and "autofocus" in _champ(page, "nom")
+    assert "autofocus" in _champ(page, "nom")
+    assert 'name="categorie_ajout"' in page
+    assert re.search(r'<input type="checkbox" name="categorie" value="Ambiance">', page)
     r = client.post("/admin/jeu-nouveau", data={"nom": " ", "editeur": "Kosmos",
                                                 "type_jeu": "Extension"})
     assert r.status_code == 400

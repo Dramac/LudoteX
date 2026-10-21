@@ -33,7 +33,7 @@
         <select id="categorie" name="categorie">
           <option value="">Toutes</option>
           {% for c in categories %}
-            <option value="{{ c }}" {% if c == categorie %}selected{% endif %}>{{ c }}</option>
+            <option value="{{ c.cle }}" {% if c.cle == categorie %}selected{% endif %}>{{ c.nom }}</option>
           {% endfor %}
         </select>
       </div>

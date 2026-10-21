@@ -174,8 +174,9 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   relire à l'identique — d'où les bornes de `services.BORNES_FICHE`).
 - **`titres.categorie` est une copie verrouillée : ne jamais l'écrire à la
   main.** La liste des catégories d'un titre fait foi (`titres_categories`) ;
-  la colonne en garde la jointure (« Cartes, Ambiance ») pour les lecteurs
-  d'avant la liste (menu du catalogue, fiche publique, export). Un seul chemin
+  la colonne en garde la jointure (« Cartes, Ambiance ») pour ce qui
+  l'affiche tel quel (carte du catalogue, fiche publique, étiquettes, export).
+  Les filtres, eux, lisent la liste (voir le point suivant). Un seul chemin
   écrit l'une et l'autre, ensemble : `services.ecrire_categories_titre`.
   L'import, « Créer un jeu », l'éditeur de fiche et la migration y passent ;
   un `UPDATE titres SET categorie` ailleurs ferait diverger la copie, et
@@ -183,6 +184,21 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   lot categories-1). Comparer une saisie à la base se fait sous **forme
   canonique** (`services.forme_canonique_categories`) : « cartes, ambiance »
   face à « Cartes, Ambiance » n'est pas un changement.
+- **Filtrer par catégorie : une condition, des clés.** Le catalogue public,
+  « Ranger les jeux » (par `lister_catalogue`) et les étiquettes en lot
+  partagent `services.CONDITION_PORTE_CATEGORIE`, un `EXISTS` par clé, joints
+  en ET. L'adresse porte la **clé** (`?categorie=cartes&categorie=ambiance`),
+  déclarée en liste dans la route (`str | None` ne garderait que la dernière
+  valeur) et lue par `categories_jeu.cles_du_filtre` : découpage, clés
+  inconnues ignorées, borne `FILTRE_CATEGORIES_MAX`. Une écriture de masse
+  qui rejoue un filtre **refuse** une clé inconnue au lieu de l'ignorer.
+- **L'éditeur ne réordonne jamais les catégories d'un jeu.** Les cases
+  arrivent dans l'ordre de la page ; `categories_jeu.composer` garde d'abord
+  celles du jeu dans leur ordre, puis les nouvelles, puis le champ
+  « Ajouter une catégorie ». Recomposées dans l'ordre de la page, « Cartes,
+  Ambiance » deviendrait « Ambiance, Cartes » au premier enregistrement sans
+  changement : `modifie_le` posé, et un faux « correction défaite » au
+  ré-import.
 - **`COLLATE NOCASE` ne replie que l'ASCII.** « É » et « é » y restent
   différents, et les accents ne sont jamais ignorés. Tout rapprochement « sans
   casse ni accents » se fait en Python sur une clé calculée et stockée

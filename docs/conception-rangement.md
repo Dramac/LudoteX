@@ -355,6 +355,11 @@ Les filtres sont ceux de `services.lister_catalogue()` déjà en place :
 `categorie`, `q` (texte), `age`, `joueurs`. « Jeux à deux » = le filtre
 `joueurs`. **Aucune logique de filtre réimplémentée.**
 
+Depuis le lot categories-2, `categorie` est la **clé** d'une seule catégorie
+(menu simple) et garde les jeux qui la **portent**, parmi d'autres : c'est la
+même condition que les cases du catalogue public
+(`services.CONDITION_PORTE_CATEGORIE`), passée en liste d'une clé.
+
 ### 13.3 « Sélectionner tout » robuste
 
 « Appliquer à X jeux » **rejoue le filtre côté serveur** : le formulaire POST
@@ -375,6 +380,12 @@ remplir que les trous. Jamais de perte silencieuse.
 
 Un emplacement **vide est refusé en lot** (pas de wipe de masse) : pour retirer
 un emplacement, on passe à l'unité (fiche admin).
+
+Une catégorie **qui n'existe plus** au moment d'appliquer, en portée
+« filtre », est **refusée** de même (lot categories-2) : rien n'est modifié,
+le message le dit. Un import a pu la purger entre l'affichage et le clic ; la
+faire retomber à « pas de filtre » appliquait l'emplacement à **tous** les
+titres. Un filtre qui disparaît n'élargit jamais une écriture de masse.
 
 ### 13.5 Portée : vue de rangement complète *(décidé — option 2)*
 
