@@ -46,9 +46,11 @@ En cas de doute entre deux niveaux, prendre le plus élevé.
    - ...
    ```
 
-   Les puces de la section la plus récente sont affichées telles quelles sur la
-   page « À propos » (« Nouveautés de cette version ») : les garder claires,
-   courtes et sans jargon technique.
+   Les puces de la section la plus récente sont affichées sur la page
+   « À propos » (« Nouveautés de cette version ») : les garder claires,
+   courtes et sans jargon technique. Trois mises en forme y sont rendues,
+   **gras** (`**…**`), *italique* (`*…*`) et code (`` `…` ``) ; tout le reste
+   (lien, titre, HTML) s'affiche en texte brut (`app/version.py::puce_en_html`).
 
 Le numéro doit être **identique** dans `app/version.py`, `VERSION` et l'entête
 de la section `CHANGELOG.md`.

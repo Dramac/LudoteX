@@ -22,7 +22,7 @@ from app.modules import module_visible
 from app.templating import templates
 from app.tournoi import services as tournoi_services
 from app.tournoi.db import get_connection as get_tournoi_connection
-from app.version import APP_VERSION, nouveautes_recentes
+from app.version import APP_VERSION, nouveautes_recentes, puce_en_html
 
 # `tags` regroupe ces routes dans la doc auto (/docs).
 router = APIRouter(tags=["catalogue"])
@@ -158,7 +158,8 @@ def apropos(request: Request):
     return templates.TemplateResponse(
         request, "apropos.html",
         {"version": APP_VERSION,
-         "nouveautes": nouveautes_recentes(),
+         # Puces du changelog : Markdown simple mis en forme, texte échappé.
+         "nouveautes": [puce_en_html(p) for p in nouveautes_recentes()],
          "presentation": services.paragraphes(presentation),
          "contact": contact,
          "depot_url": depot_url,

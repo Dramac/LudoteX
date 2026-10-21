@@ -17,7 +17,9 @@ sont pas les siennes : c'est silencieux, et ça ne se voit qu'en production.
 import re
 from pathlib import Path
 
-from app.version import APP_VERSION, nouveautes_recentes
+import pytest
+
+from app.version import APP_VERSION, nouveautes_recentes, puce_en_html
 
 _RACINE = Path(__file__).resolve().parent.parent
 
@@ -77,3 +79,38 @@ def test_les_gestes_de_deploiement_ont_un_domicile_cite_par_la_marche_a_suivre()
     for document in ("docs/versioning.md", "docs/deploiement.md"):
         texte = (_RACINE / document).read_text(encoding="utf-8")
         assert "notes-de-deploiement.md" in texte, document
+
+
+# Les puces s'affichent sur /apropos MISES EN FORME (correctif 1.25.1) : avant,
+# le texte était échappé tel quel et le bénévole lisait les « ** » du Markdown.
+@pytest.mark.parametrize("puce, attendu", [
+    ("**Gras** puis texte", "<strong>Gras</strong> puis texte"),
+    ("Ouvrir *nom du jeu* ici", "Ouvrir <em>nom du jeu</em> ici"),
+    ("L'**écran** (`/live`) et *lui*",
+     "L&#39;<strong>écran</strong> (<code>/live</code>) et <em>lui</em>"),
+    ("**Gras avec *italique* dedans**",
+     "<strong>Gras avec <em>italique</em> dedans</strong>"),
+    # Échappé AVANT la mise en forme : aucune balise ne passe.
+    ("<script>x</script> & **<b>y</b>**",
+     "&lt;script&gt;x&lt;/script&gt; &amp; <strong>&lt;b&gt;y&lt;/b&gt;</strong>"),
+    # Le contenu d'un code n'est pas mis en forme.
+    ("`**pas gras**`", "<code>**pas gras**</code>"),
+    # Sans son pair, ou entouré d'espaces, un astérisque reste un astérisque.
+    ("2 * 3 = 6", "2 * 3 = 6"),
+    ("une *seule étoile", "une *seule étoile"),
+    ("** pas gras **", "** pas gras **"),
+    ("rien du tout", "rien du tout"),
+])
+def test_une_puce_est_mise_en_forme_sans_laisser_passer_de_html(puce, attendu):
+    assert str(puce_en_html(puce)) == attendu
+
+
+def test_aucune_puce_du_changelog_ne_garde_de_markdown_brut():
+    # Toutes les sections, pas seulement la première : une forme nouvelle
+    # glissée dans une version future se verrait ici avant d'arriver sur
+    # /apropos (lien, souligné…), et c'est ce test qu'il faudra étendre.
+    for ligne in (_RACINE / "CHANGELOG.md").read_text(encoding="utf-8").splitlines():
+        if ligne.startswith("- "):
+            html = str(puce_en_html(ligne[2:]))
+            assert "**" not in html and "`" not in html, ligne
+

@@ -20,7 +20,10 @@ racine reprend le même numéro (+ date + résumé) pour l'écran de supervision
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+from markupsafe import Markup, escape
 
 APP_VERSION = "1.25.0"
 
@@ -55,3 +58,40 @@ def nouveautes_recentes() -> list[str]:
         if dans_section and ligne.strip().startswith("- "):
             puces.append(ligne.strip()[2:].strip())
     return puces
+
+
+# Les trois mises en forme Markdown que portent les puces de `CHANGELOG.md`
+# (inventaire fait sur tout le fichier au correctif 1.25.1) : `code`,
+# **gras** et *italique*. Rien d'autre : ni lien, ni titre, ni HTML.
+_CODE = re.compile(r"`([^`]+)`")
+_GRAS = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
+# Une étoile seule, jamais collée à une autre : sans quoi les « ** » restés
+# sans pair (« ** pas gras ** ») se liraient comme une italique.
+_ITALIQUE = re.compile(r"(?<!\*)\*(?![\s*])(.+?)(?<![\s*])\*(?!\*)")
+
+
+def puce_en_html(puce: str) -> Markup:
+    """
+    Une puce de `CHANGELOG.md` mise en forme pour /apropos.
+
+    Le texte est ÉCHAPPÉ D'ABORD, en entier : un chevron ou une esperluette
+    tapés dans le changelog restent du texte, et aucune balise ne peut passer
+    par cette page publique. Seules les trois formes de `_CODE`, `_GRAS` et
+    `_ITALIQUE` deviennent ensuite `<code>`, `<strong>` et `<em>`, sur ce
+    texte déjà échappé (l'échappement ne touche ni « * » ni « ` »).
+
+    Le contenu d'un `code` n'est pas mis en forme : « `**x**` » s'affiche tel
+    quel. Un astérisque sans son pair reste un astérisque.
+    """
+    morceaux = _CODE.split(str(escape(puce)))
+    # `split` avec un groupe alterne texte, code, texte, code… : les rangs
+    # impairs sont le contenu des `code`.
+    html = []
+    for rang, morceau in enumerate(morceaux):
+        if rang % 2:
+            html.append(f"<code>{morceau}</code>")
+        else:
+            morceau = _GRAS.sub(r"<strong>\1</strong>", morceau)
+            html.append(_ITALIQUE.sub(r"<em>\1</em>", morceau))
+    return Markup("".join(html))
+

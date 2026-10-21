@@ -476,3 +476,15 @@ def test_apropos_repond_si_la_lecture_en_base_echoue(client, monkeypatch):
     assert page.status_code == 200
     assert "GPLv3" in page.text
     assert f'href="{DEPOT_URL}"' in page.text
+
+
+def test_les_nouveautes_s_affichent_en_gras_et_restent_echappees(client, monkeypatch):
+    # Correctif 1.25.1 : les « ** » du changelog s'affichaient tels quels.
+    from app.routes import catalogue
+    monkeypatch.setattr(catalogue, "nouveautes_recentes",
+                        lambda: ["**Nouveau** : `<b>x</b>` et *ceci*"])
+    page = client.get("/apropos").text
+    assert ("<li><strong>Nouveau</strong> : <code>&lt;b&gt;x&lt;/b&gt;</code> "
+            "et <em>ceci</em></li>") in page
+    assert "**" not in page
+
