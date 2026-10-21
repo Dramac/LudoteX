@@ -18,6 +18,32 @@ une porte.
 Stack : **Python + FastAPI**, **SQLite**, templates **Jinja2**, un peu de **JS**
 pour le scanner caméra. Servi par **uvicorn**.
 
+Le code est rangé en couches : une **route** reçoit la requête (URL + verbe),
+contrôle l'accès et choisit la page ; un **service** applique la règle métier et
+touche **sa** base ; un **gabarit** met en forme le HTML. Les trois bases sont
+indépendantes : quand le module tournois ou planning a besoin de l'identité de
+l'événement, c'est **sa route** qui la lit dans `app/services.py` et la
+transmet, jamais son service.
+
+```mermaid
+flowchart TB
+    U["Téléphone, navigateur, écran de salle"] -->|"URL + GET / POST"| M["app/main.py<br/>branche les routeurs,<br/>garde de visibilité des modules"]
+    M --> RP["app/routes/<br/>catalogue, prêt, scanner, admin,<br/>stats, live, maintenance…"]
+    M --> RT["app/tournoi/routes*.py"]
+    M --> RPl["app/planning/routes.py"]
+    RP --> SP["app/services.py<br/>(et modules voisins)"]
+    RT --> ST["app/tournoi/services.py"]
+    RPl --> SPl["app/planning/services.py"]
+    SP --> BP[("Base prêt<br/>app/models.py")]
+    ST --> BT[("Base tournois<br/>app/tournoi/models.py")]
+    SPl --> BPl[("Base planning<br/>app/planning/models.py")]
+    RT -. "lit l'identité" .-> SP
+    RPl -. "lit l'identité" .-> SP
+    RP & RT & RPl --> J["app/journal.py<br/>fichier à vocabulaire fermé"]
+    RP & RT & RPl --> G["app/templates/ (Jinja2)"]
+    G -->|"page HTML"| U
+```
+
 ## 2. Conventions (respectées partout)
 
 - **Langue : français** pour le code, les variables, fonctions, colonnes,
@@ -47,7 +73,7 @@ pour le scanner caméra. Servi par **uvicorn**.
 
 Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer.
 
-## 4. Modèle de données (4 tables, voir `app/models.py`)
+## 4. Modèle de données de la base de prêt (voir `app/models.py`)
 
 - `titres` (PK `reference_titre`) : catalogue + colonnes optionnelles nullables.
 - `exemplaires` (PK `id_exemplaire`, FK → titres).
@@ -66,13 +92,38 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 
 ## 5. Flux d'une requête (exemple : prêter un jeu)
 
+```mermaid
+sequenceDiagram
+    actor B as Bénévole
+    participant S as scanner.js
+    participant R as routes/pret.py
+    participant A as auth.exiger_jeton
+    participant V as services.py
+    participant D as Base prêt
+    participant J as journal.py
+    B->>S: scanne le QR de la boîte
+    S->>R: GET /pret/{id}
+    R->>V: info_exemplaire, pret_en_cours
+    V->>D: lecture
+    R-->>B: pret.html (bouton « Prêter »)
+    B->>R: POST /pret/{id}/preter
+    R->>A: jeton bénévole ou session admin ?
+    A-->>R: accordé (sinon 403, page « accès réservé »)
+    R->>V: preter_si_disponible
+    V->>D: BEGIN IMMEDIATE, plus petit numéro libre, INSERT du prêt
+    V-->>R: numéro de pochette (ou deja_sorti)
+    R->>J: une ligne « pret », jamais le numéro
+    R-->>B: pret.html avec le numéro en grand
+```
+
 1. Le bénévole ouvre `/scanner` (protégé par jeton) → `static/js/scanner.js`
    décode le QR et redirige vers `/pret/<id>`.
 2. `routes/pret.py` (`ecran`) appelle `services.info_exemplaire` /
    `pret_en_cours`, puis rend `templates/pret.html`.
 3. Le bénévole tape « Prêter » → POST `/pret/<id>/preter`.
-4. `routes/pret.py` (`action_preter`) vérifie l'état puis appelle
-   `services.preter`, qui attribue le plus petit numéro libre et insère le prêt.
+4. `routes/pret.py` (`action_preter`) appelle
+   `services.preter_si_disponible`, qui contrôle l'état, attribue le plus petit
+   numéro libre et insère le prêt dans une seule transaction.
 5. La page est re-rendue avec un `resultat` affichant l'emplacement.
 
 `app/main.py` assemble le tout : montage de `/static`, enregistrement des
