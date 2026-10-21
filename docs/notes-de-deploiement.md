@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.28.0 — 2026-10-21
 
 ### Images de boîte copiées sur le serveur : rien à faire, deux vérifications — facultatif
 

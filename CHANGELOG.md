@@ -6,6 +6,12 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.28.0 — 2026-10-21
+
+- **L'image de la boîte, copiée sur votre site** : pour les jeux reliés à BoardGameGeek, le site garde lui-même une copie de l'image de la boîte. La fiche d'un jeu, dans l'administration, l'affiche sans plus rien demander à BoardGameGeek.
+- **Les images se récupèrent avec les données** : **Récupérer les données BGG manquantes** copie aussi les images qui manquent, une centaine par clic. Relier un jeu avec **C'est ce jeu** copie son image tout de suite.
+- **L'image sur les fiches publiques, si vous le souhaitez** : cochez **Afficher l'image de la boîte sur les fiches publiques** dans « Identité de l'association ». La fiche publique montre alors l'image, avec la mention « Image : BoardGameGeek ». Les visiteurs ne contactent jamais BoardGameGeek : l'image vient de votre site. Décochée par défaut.
+
 ## 1.27.0 — 2026-10-21
 
 - **Rechercher un jeu par catégories, dans l'administration** : l'écran **Rechercher un jeu** a maintenant les mêmes cases **Catégories** que le catalogue. Cochez-en une ou plusieurs : la liste garde les jeux qui les portent toutes. Les cases se combinent avec un début de nom et avec **Seulement les jeux sans fiche BoardGameGeek**.
