@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_cases_categories.html" import cases_categories as bloc_categories %}
 {% block titre %}Jeux — Administration — {{ nom_association }}{% endblock %}
 {% block conteneur_extra %}contenu-large{% endblock %}
 
@@ -11,6 +12,11 @@
       <label for="q">Rechercher un jeu</label>
       <input type="search" id="q" name="q" value="{{ q or '' }}" placeholder="Nom du jeu…">
     </div>
+    {# Mêmes cases que le catalogue public (macro partagée), filtre en ET. #}
+    {% if cases_categories %}
+    {{ bloc_categories(cases_categories, valeur="cle", ouvert=nb_categories > 0,
+                       aide="Les jeux affichés portent toutes les catégories cochées.") }}
+    {% endif %}
     <label class="case" for="sans-bgg">
       <input type="checkbox" id="sans-bgg" name="sans_bgg" value="1"
              {% if sans_bgg %}checked{% endif %}>

@@ -274,11 +274,16 @@ def logout(request: Request):
 # ---------------------------------------------------------------------------
 @router.get("/jeux")
 def liste_jeux(request: Request, q: str | None = None,
+               categorie: list[str] = Query(default=[]),
                sans_bgg: str | None = None, pas_sur_bgg: str | None = None,
                bgg_lot: str = "", bgg_inconnues: str = "", bgg_echec: str = "",
                fait: str = "", precedent: str = ""):
     """
     Liste/recherche des jeux pour atteindre une fiche (réimpression incluse).
+
+    `categorie` (RÉPÉTÉ, une valeur par case cochée) : mêmes cases et même
+    lecture qu'au catalogue public (`categories_jeu.cles_du_filtre`, filtre
+    en ET, clé inconnue ignorée), par la même fonction de filtre.
 
     `sans_bgg` (case « sans fiche BoardGameGeek ») : la liste de travail de
     l'association manuelle, une fois la première passe automatique faite.
@@ -303,7 +308,9 @@ def liste_jeux(request: Request, q: str | None = None,
     disponible = bgg_api.disponible()
     conn = get_connection()
     try:
-        jeux = services.lister_catalogue(conn, q=q, sans_bgg=filtre_bgg,
+        vocabulaire = {c["cle"]: c["nom"] for c in services.lister_categories_jeu(conn)}
+        cles = categories_jeu.cles_du_filtre(categorie, vocabulaire)
+        jeux = services.lister_catalogue(conn, cles, q=q, sans_bgg=filtre_bgg,
                                          pas_sur_bgg=filtre_absents)
         restantes = len(services.ids_bgg_a_recuperer(conn)) if disponible else 0
         relier = {"restants": services.compter_a_relier(conn),
@@ -319,6 +326,8 @@ def liste_jeux(request: Request, q: str | None = None,
     return templates.TemplateResponse(
         request, "admin_jeux.html",
         {"jeux": jeux, "q": q, "sans_bgg": filtre_bgg,
+         "cases_categories": categories_jeu.cases_a_cocher(vocabulaire, cles),
+         "nb_categories": len(cles),
          "pas_sur_bgg": filtre_absents, "relier": relier,
          "bgg_disponible": disponible, "bgg_restantes": restantes,
          "bgg_lot": lot, "message_bgg": MESSAGES_BGG_FICHE.get(bgg_echec)},

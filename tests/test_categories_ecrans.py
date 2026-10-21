@@ -585,3 +585,48 @@ def test_ranger_appliquer_coches_ignore_la_categorie(client, parc):
                           "emplacement_texte": "Étagère", "categorie": "purgee"})
     assert r.status_code == 303
     assert [ex for ex, v in _emplacements().items() if v] == [_id("CATANE")]
+
+
+# ===========================================================================
+# L'ÉCRAN « JEUX » DE L'ADMINISTRATION (correctif 1.26.2) : mêmes cases que le
+# catalogue public, même lecture de l'adresse, même fonction de filtre.
+# ===========================================================================
+def test_admin_jeux_filtre_en_et(client, parc):
+    page = client.get("/admin/jeux?categorie=cartes&categorie=ambiance").text
+    assert _noms_catalogue(page) == ["Dobble", "Skull"]
+    assert sorted(_cochees(page)) == ["ambiance", "cartes"]
+    assert "Catégories (2" in _bloc_categories(page)
+
+
+def test_admin_jeux_sans_categorie_bloc_replie_et_liste_entiere(client, parc):
+    page = client.get("/admin/jeux").text
+    assert len(_noms_catalogue(page)) == 5
+    assert "open" not in _bloc_categories(page).split(">", 1)[0]
+    assert _cochees(page) == []
+
+
+def test_admin_jeux_cle_inconnue_ignoree_et_ancienne_adresse(client, parc):
+    inconnue = client.get("/admin/jeux?categorie=inexistante").text
+    assert len(_noms_catalogue(inconnue)) == 5
+    ancienne = client.get("/admin/jeux?categorie=Cartes, Ambiance").text
+    assert _noms_catalogue(ancienne) == ["Dobble", "Skull"]
+
+
+def test_admin_jeux_categories_avec_recherche_et_sans_bgg(client, parc):
+    conn = _conn()
+    try:
+        conn.execute("UPDATE titres SET bgg_id = 39856 WHERE nom = 'Dixit'")
+        conn.commit()
+    finally:
+        conn.close()
+    assert _noms_catalogue(client.get("/admin/jeux?categorie=cartes&q=ob").text) == ["Dobble"]
+    sans_bgg = client.get("/admin/jeux?categorie=cartes&sans_bgg=1").text
+    assert _noms_catalogue(sans_bgg) == ["Dobble", "Skull"]
+    assert sorted(_cochees(sans_bgg)) == ["cartes"]
+
+
+def test_admin_jeux_memes_titres_que_le_catalogue(client, parc):
+    for requete in ("categorie=cartes", "categorie=ambiance&categorie=bluff",
+                    "categorie=strategie&categorie=cartes"):
+        assert (_noms_catalogue(client.get(f"/admin/jeux?{requete}").text)
+                == _noms_catalogue(client.get(f"/catalogue?{requete}").text)), requete

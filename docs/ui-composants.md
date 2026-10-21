@@ -83,8 +83,8 @@ Cases à cocher/radio isolées : `.case` (`<label class="case"><input
 type="checkbox">Texte</label>`), pas `.champ`.
 
 **Groupe de cases repliable** — `_cases_categories.html` (macro
-`cases_categories`), pour les catégories de jeu : catalogue public, éditeur
-de fiche, « Créer un jeu ». Un `<details class="recherche bloc-categories">`
+`cases_categories`), pour les catégories de jeu : catalogue public, écran
+« Jeux » de l'administration, éditeur de fiche, « Créer un jeu ». Un `<details class="recherche bloc-categories">`
 dont le résumé dit le nombre coché (« Catégories (2) », « cochées » ajouté
 pour les lecteurs d'écran), un `<fieldset class="champ-groupe">` à légende
 masquée, une grille `.cases-categories` de `.case.case-categorie` : deux
