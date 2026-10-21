@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.26.1 — 2026-10-21
+
+- **Ranger les jeux : un refus se voit comme un refus.** « Emplacement requis » ou une catégorie qui n'existe plus s'affichent maintenant en orange, comme un avertissement, et non plus en vert comme une réussite. Quand rien n'a été modifié, le message est en bleu.
+
 ## 1.26.0 — 2026-10-21
 
 - **Le catalogue se filtre en cochant des catégories**, plusieurs à la fois : la liste ne garde que les jeux qui les portent **toutes**. Chaque catégorie cochée apparaît en pastille ; toucher la pastille la retire, sans toucher aux autres.
