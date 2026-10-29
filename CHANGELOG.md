@@ -6,6 +6,13 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.29.0 — 2026-10-29
+
+- **Réunir un jeu saisi deux fois sous deux noms** : sur la fiche d'un jeu, dans l'administration, **Rattacher ces boîtes à un autre jeu** fait passer ses boîtes dans le bon jeu. Tapez une partie de son nom, choisissez-le, puis confirmez. Les boîtes gardent leur QR code, leurs prêts (même en cours), leurs signalements et leur rangement.
+- **Rien ne se perd sans prévenir** : avant de rattacher, un écran dit ce qui sera repris et ce qui sera perdu. Le jeu vidé est ensuite supprimé ; ce qu'il portait remplit les cases vides du bon jeu, qui garde toujours ses propres valeurs.
+- **Deux jeux qui portent le même nom sont signalés** : leur fiche l'annonce en haut, avec un bouton qui mène droit au rattachement.
+- **Un ancien fichier de catalogue est signalé à l'import** : s'il remettait les boîtes dans leur ancien jeu, le message de fin d'import le dit. Exportez le catalogue après un rattachement.
+
 ## 1.28.0 — 2026-10-21
 
 - **L'image de la boîte, copiée sur votre site** : pour les jeux reliés à BoardGameGeek, le site garde lui-même une copie de l'image de la boîte. La fiche d'un jeu, dans l'administration, l'affiche sans plus rien demander à BoardGameGeek.
