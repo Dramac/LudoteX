@@ -91,7 +91,13 @@ stables :
   l'administration. Elle sert à agréger les statistiques par titre (§7).
   Elle est **fixée à la création** : corriger le nom d'un jeu depuis sa fiche
   d'administration ne la change pas, et l'import retrouve ce jeu sous son
-  nouveau nom plutôt que d'en créer un second.
+  nouveau nom plutôt que d'en créer un second. Donner à un jeu le nom d'un
+  autre ne réunit donc pas leurs boîtes : la fiche d'administration le
+  signale (« un autre jeu porte déjà ce nom », au slug près) et offre de
+  **rattacher les boîtes d'un jeu à un autre jeu**. La boîte change de jeu,
+  son `id_exemplaire` jamais ; ses prêts, signalements et emplacements la
+  suivent. Le jeu vidé est **supprimé**, après avoir complété les cases vides
+  du jeu qui reçoit les boîtes, lequel garde toujours ses propres valeurs.
 
 À l'import, seuls le code d'exemplaire et le nom du jeu sont exigés ; les
 autres colonnes reconnues sont facultatives, et leurs intitulés tolérés sont

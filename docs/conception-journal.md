@@ -78,6 +78,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Réinitialisation des données de formation | `POST /admin/formation/reinitialiser` |
 | Création d'une fiche de jeu, ajout d'exemplaire | `POST /admin/jeu-nouveau`, `.../exemplaire` |
 | Fiche d'un jeu corrigée (au changement seulement ; nom et référence, jamais les valeurs), lettres de classement effacées | `POST /admin/jeu/{ref}/modifier`, `.../lettres/effacer` |
+| Boîtes d'un jeu rattachées à un autre jeu (`exemplaires_rattaches` : `objet` = nom du jeu qui reçoit, nombre de boîtes et **référence** du jeu d'origine, supprimé ; `ref` = référence du jeu qui reçoit ; **jamais le nom tapé dans la recherche**). Un refus n'écrit rien | `POST /admin/jeu/{ref}/rattacher` |
 | Import qui défait des corrections faites à l'écran (le **nombre** de fiches, jamais les valeurs) | `POST /admin/donnees/import` |
 | Copie d'une fiche BoardGameGeek récupérée, par le bouton ou dans la foulée d'un identifiant enregistré (`bgg_fiche_recuperee` : nom et référence ; en échec, le **code** de l'issue, jamais le jeton ni la réponse) | `POST /admin/jeu/{ref}/bgg/recuperer`, `.../modifier` |
 | Lot de copies BoardGameGeek (`bgg_lot_recupere` : les **nombres** récupérées / images copiées / restantes, jamais l'adresse d'une image ; en échec, le code de l'issue, ou `image_` suivi du code d'arrêt de la copie des images) | `POST /admin/jeux/bgg/recuperer` |

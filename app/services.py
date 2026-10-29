@@ -2350,6 +2350,228 @@ def effacer_lettres(conn: sqlite3.Connection, reference_titre: str) -> dict | No
 
 
 # ===========================================================================
+# RATTACHER LES BOÎTES D'UN JEU À UN AUTRE JEU (série « fiche », lot 5)
+#
+# Un jeu saisi sous un nom fautif (« time line ») et renommé à l'écran garde sa
+# référence (`TIME_LINE`) : ses boîtes ne rejoignent pas le « Timelines » déjà
+# présent. Le geste qui répare : déplacer les boîtes d'un titre SOURCE vers un
+# titre CIBLE existant. Seule `exemplaires.reference_titre` bouge ;
+# `id_exemplaire` (le QR imprimé) jamais. Ce qui est attaché à la BOÎTE la
+# suit sans rien réécrire : prêts (en cours compris), signalements, les deux
+# emplacements de rangement. Ce qui est attaché au JEU reste au jeu.
+#
+# Le jeu vidé est SUPPRIMÉ (arbitrage de Simon, 2026-10-28) : le garder
+# fabriquerait un jeu fantôme vers lequel un ancien fichier d'import renverrait
+# les boîtes. Avant la suppression, ses valeurs complètent les cases VIDES de
+# la cible — la cible garde toujours les siennes.
+#
+# `modifie_le` est posé sur la cible : un fichier d'import antérieur, qui
+# rendrait les boîtes à leur ancien nom, est alors signalé par
+# `scripts/import_csv.py::corrections_defaites` (une boîte quitte une fiche
+# corrigée), sans changer la règle de l'import.
+# ===========================================================================
+# Ce que le jeu supprimé peut apporter à la cible, par code, avec son libellé
+# (celui de l'écran). Les codes voyagent dans l'adresse de la fiche cible
+# (`?repris=…`) : liste FERMÉE, un code inconnu est ignoré. Le nom n'y est
+# pas : la cible garde le sien, toujours rempli.
+CHAMPS_REPRIS_RATTACHEMENT: dict[str, str] = {
+    **{c: l for c, l in CHAMPS_FICHE.items() if c != "nom"},
+    "date_achat": "Date d'achat",
+    "lettres": "Lettres de classement",
+    "bgg_id": "Fiche BoardGameGeek",
+}
+
+# Les refus, par code. Le message est à la route (`MESSAGES_RATTACHEMENT`).
+REFUS_RATTACHEMENT = ("source_inconnue", "cible_inconnue", "meme_jeu",
+                      "sans_boite", "boite_etrangere")
+
+
+def homonymes(conn: sqlite3.Connection, reference_titre: str) -> list[dict]:
+    """
+    Les AUTRES titres dont le nom a le même slug que celui de `reference_titre`
+    (« Timelines », « timelines », « Timelinés ») : deux jeux pour le bureau,
+    dont les boîtes sont comptées à part. Calculé à l'affichage de la fiche,
+    en Python (le slug ne s'écrit pas en SQL) : quelques centaines de noms.
+
+    Returns:
+        [{reference_titre, nom, boites}], par nom puis référence ; [] pour un
+        titre inconnu.
+    """
+    titre = get_titre(conn, reference_titre)
+    if titre is None:
+        return []
+    cle = slug_titre(titre["nom"] or "")
+    return [dict(r) for r in conn.execute(
+        "SELECT t.reference_titre, t.nom, "
+        "(SELECT COUNT(*) FROM exemplaires e "
+        " WHERE e.reference_titre = t.reference_titre) AS boites "
+        "FROM titres t WHERE t.reference_titre <> ? "
+        "ORDER BY t.nom COLLATE NOCASE, t.reference_titre", (reference_titre,))
+        if slug_titre(r["nom"] or "") == cle]
+
+
+def _vide(valeur) -> bool:
+    return valeur is None or valeur == ""
+
+
+def preparer_rattachement(conn: sqlite3.Connection, source_ref: str,
+                          cible_ref: str,
+                          ids: Sequence[str] | None = None) -> dict:
+    """
+    Ce que ferait `rattacher_exemplaires`, SANS RIEN ÉCRIRE : sert l'écran de
+    confirmation, et le service lui-même (dans sa transaction), pour que
+    l'écran annonce exactement ce qui sera fait.
+
+    `ids` : les boîtes à déplacer, toutes celles de la source si None. L'écran
+    de ce lot ne propose que « toutes » ; la liste sert à un lot suivant.
+
+    La complétion (cases vides de la cible) ne se calcule que si la source se
+    vide, puisqu'elle précède sa suppression :
+    - chaque colonne de la fiche, la date d'achat : reprise si la cible est
+      vide et la source remplie ;
+    - les joueurs minimum et maximum : chacun comme ci-dessus, mais aucun des
+      deux n'est repris si le couple obtenu se contredisait (minimum au-dessus
+      du maximum) ;
+    - les catégories : celles de la source, si la cible n'en a aucune ;
+    - les lettres de classement : les trois ensemble, si la cible n'en a
+      aucune (jamais de lettres partielles, `app/classement.py`) ;
+    - la fiche BGG : si la cible n'en a pas ET n'est pas marquée « pas sur
+      BGG » (la contrainte de `titres.bgg_absent` refuserait les deux).
+      La marque « pas sur BGG » de la source, elle, n'est jamais reprise :
+      posée sur un nom fautif, elle dit seulement que BGG ne connaissait pas
+      la faute.
+
+    Returns:
+        {"refus": code de `REFUS_RATTACHEMENT`} ; ou {"refus": None,
+        "source", "cible" (les titres), "boites" (ids, triés), "sorties"
+        (combien sont prêtées), "supprime" (la source se vide),
+        "reprises" ({code: valeur}), "perdues" ([(libellé, valeur de la
+        source)]) — ce que la source porte et que la cible ne recevra pas}.
+    """
+    source = get_titre(conn, source_ref)
+    if source is None:
+        return {"refus": "source_inconnue"}
+    cible = get_titre(conn, cible_ref)
+    if cible is None:
+        return {"refus": "cible_inconnue"}
+    if source_ref == cible_ref:
+        return {"refus": "meme_jeu"}
+    toutes = [r[0] for r in conn.execute(
+        "SELECT id_exemplaire FROM exemplaires WHERE reference_titre = ? "
+        "ORDER BY id_exemplaire", (source_ref,))]
+    if not toutes:
+        return {"refus": "sans_boite"}
+    if ids is None:
+        boites = toutes
+    else:
+        boites = sorted(set(ids))
+        if not boites:
+            return {"refus": "sans_boite"}
+        if not set(boites) <= set(toutes):
+            return {"refus": "boite_etrangere"}
+    supprime = len(boites) == len(toutes)
+    sorties = sum(1 for b in boites if est_sorti(conn, b))
+
+    reprises: dict = {}
+    perdues: list[tuple[str, str]] = []
+    if supprime:
+        for code in (*(c for c in CHAMPS_FICHE if c not in ("nom", "categorie")),
+                     "date_achat"):
+            if _vide(source.get(code)):
+                continue
+            if _vide(cible.get(code)):
+                reprises[code] = source[code]
+            elif source[code] != cible[code]:
+                perdues.append((CHAMPS_REPRIS_RATTACHEMENT[code],
+                                _date_fr(source[code]) if code == "date_achat"
+                                else str(source[code])))
+        mini = reprises.get("nb_joueurs_min", cible["nb_joueurs_min"])
+        maxi = reprises.get("nb_joueurs_max", cible["nb_joueurs_max"])
+        if mini is not None and maxi is not None and mini > maxi:
+            for code in ("nb_joueurs_min", "nb_joueurs_max"):
+                if code in reprises:
+                    perdues.append((CHAMPS_REPRIS_RATTACHEMENT[code],
+                                    str(reprises.pop(code))))
+        if not _vide(source["categorie"]):
+            if _vide(cible["categorie"]):
+                reprises["categorie"] = source["categorie"]
+            elif source["categorie"] != cible["categorie"]:
+                perdues.append((CHAMPS_FICHE["categorie"], source["categorie"]))
+        lettres_source = [source[c] for c in classement.COLONNES_LETTRES]
+        if any(v is not None for v in lettres_source):
+            if all(cible[c] is None for c in classement.COLONNES_LETTRES):
+                reprises["lettres"] = lettres_source
+            elif lettres_source != [cible[c] for c in classement.COLONNES_LETTRES]:
+                perdues.append((CHAMPS_REPRIS_RATTACHEMENT["lettres"],
+                                " ".join(v or "–" for v in lettres_source)))
+        if source["bgg_id"] is not None:
+            if cible["bgg_id"] is None and not cible["bgg_absent"]:
+                reprises["bgg_id"] = source["bgg_id"]
+            elif source["bgg_id"] != cible["bgg_id"]:
+                perdues.append((CHAMPS_REPRIS_RATTACHEMENT["bgg_id"],
+                                f"fiche n° {source['bgg_id']}"))
+        if source["bgg_absent"] and not cible["bgg_absent"]:
+            perdues.append((CHAMPS_REPRIS_RATTACHEMENT["bgg_id"], bgg.PAS_SUR_BGG))
+    return {"refus": None, "source": source, "cible": cible, "boites": boites,
+            "sorties": sorties, "supprime": supprime, "reprises": reprises,
+            "perdues": perdues}
+
+
+def rattacher_exemplaires(conn: sqlite3.Connection, source_ref: str,
+                          cible_ref: str,
+                          ids: Sequence[str] | None = None) -> dict:
+    """
+    Déplace des boîtes du titre `source_ref` vers le titre EXISTANT
+    `cible_ref` — toutes si `ids` est None — en UNE transaction
+    (`transaction`) : tout est écrit, ou rien.
+
+    1. `exemplaires.reference_titre` des boîtes passe à la cible. Une boîte
+       sortie se rattache comme une autre : son prêt la suit.
+    2. Si la source n'a plus de boîte : ses valeurs complètent les cases
+       vides de la cible (règles : `preparer_rattachement`), puis elle est
+       supprimée (sa liaison aux catégories part par la cascade), et les
+       catégories devenues orphelines sont purgées.
+    3. `modifie_le` est posé sur la cible (voir l'en-tête de la section).
+
+    Jamais de référence créée à la volée : une cible inconnue est refusée.
+    Le ménage des images de boîte (fichiers, `app/vignettes.py`) est à la
+    route, après la transaction.
+
+    Returns:
+        Le dict de `preparer_rattachement` (refus compris, alors rien n'est
+        écrit), plus, en cas de succès, "avant" et "apres" : la cible avant
+        et après.
+    """
+    with transaction(conn):
+        plan = preparer_rattachement(conn, source_ref, cible_ref, ids)
+        if plan["refus"]:
+            return plan
+        marques = ", ".join("?" for _ in plan["boites"])
+        conn.execute(
+            f"UPDATE exemplaires SET reference_titre = ? "
+            f"WHERE id_exemplaire IN ({marques})", (cible_ref, *plan["boites"]))
+        reprises = dict(plan["reprises"])
+        categorie = reprises.pop("categorie", None)
+        lettres = reprises.pop("lettres", None)
+        if lettres is not None:
+            reprises.update(zip(classement.COLONNES_LETTRES, lettres))
+        # Noms de colonnes tirés de `preparer_rattachement` (liste fermée),
+        # jamais d'une saisie.
+        affectations = [f"{c} = :{c}" for c in reprises] + ["modifie_le = :modifie_le"]
+        conn.execute(
+            f"UPDATE titres SET {', '.join(affectations)} "
+            "WHERE reference_titre = :reference_titre",
+            {**reprises, "modifie_le": maintenant(), "reference_titre": cible_ref})
+        if categorie is not None:
+            ecrire_categories_titre(conn, cible_ref, categorie, purger=False)
+        if plan["supprime"]:
+            conn.execute("DELETE FROM titres WHERE reference_titre = ?", (source_ref,))
+            purger_categories_orphelines(conn)
+        apres = get_titre(conn, cible_ref)
+    return {**plan, "avant": plan["cible"], "apres": apres}
+
+
+# ===========================================================================
 # COPIE DES FICHES BOARDGAMEGEEK (série « fiche », lot 2)
 #
 # Ce que BGG dit d'une fiche est récupéré SUR DEMANDE par `app/bgg_api.py`

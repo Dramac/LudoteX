@@ -131,8 +131,9 @@ CREATE TABLE IF NOT EXISTS titres (
 # (menu du catalogue, fiche publique, export…) la lisent sans changement.
 #
 # CLÉS ÉTRANGÈRES, deux règles différentes et voulues :
-#   - vers `titres`, ON DELETE CASCADE : supprimer un titre (seul cas : la
-#     remise à zéro du mode formation, `formation._vider_base_pret`) emporte sa
+#   - vers `titres`, ON DELETE CASCADE : supprimer un titre (deux cas : la
+#     remise à zéro du mode formation, `formation._vider_base_pret`, et le jeu
+#     vidé par un rattachement, `services.rattacher_exemplaires`) emporte sa
 #     liaison, rien d'autre ne la référence ;
 #   - vers `categories_jeu`, sans cascade : une catégorie qu'un titre porte ne
 #     peut pas être supprimée (la base refuse). La copie du titre deviendrait

@@ -139,6 +139,13 @@ ACTIONS = {
     # Les trois lettres de classement d'un titre effacées d'un coup. Même
     # `objet` et `ref` que ci-dessus.
     "lettres_effacees",
+    # Les boîtes d'un jeu rattachées à un autre jeu (série « fiche », lot 5).
+    # `objet` = le nom du jeu CIBLE, suivi du nombre de boîtes et de la
+    # RÉFÉRENCE du jeu d'origine (« Timelines ← 3 boîtes de TIME_LINE ») :
+    # `detail` ne s'écrit qu'en échec, et le jeu d'origine, supprimé, n'a plus
+    # de nom à lire. `ref` = la référence cible. JAMAIS le texte tapé dans la
+    # recherche qui a mené au jeu cible : un champ libre ne s'écrit nulle part.
+    "exemplaires_rattaches",
     # Un import a défait des corrections faites à l'écran. `objet` porte le
     # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
     # message affiché au bureau, pas ici.

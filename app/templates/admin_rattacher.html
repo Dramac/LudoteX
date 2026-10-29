@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block titre %}Rattacher des boîtes — Administration — {{ nom_association }}{% endblock %}
+
+{# Confirmation du rattachement (série « fiche », lot 5) : tout ce qui est
+   affiché ici vient de services.preparer_rattachement, la fonction même que
+   le rattachement rejoue dans sa transaction. Rien n'est écrit avant le
+   bouton. Un refus garde un retour à la fiche en un tap. #}
+{% block contenu %}
+<section class="carte carte-rattacher">
+{% if message_refus %}
+  <h1>Rattacher des boîtes</h1>
+  <p class="resultat resultat-attention" role="alert">{{ message_refus }}</p>
+  <p><a class="lien" href="/admin/jeu/{{ reference_titre }}">← Revenir à la fiche du jeu</a></p>
+{% else %}
+  {% set s = plan.source %}{% set c = plan.cible %}{% set n = plan.boites | length %}
+  {# Deux jeux de même nom sont le cas courant ici : chaque nom porte sa
+     référence, sans quoi la page dirait « rattacher X à X ». #}
+  {% set nom_s = "« " ~ s.nom ~ " » (" ~ s.reference_titre ~ ")" %}
+  {% set nom_c = "« " ~ c.nom ~ " » (" ~ c.reference_titre ~ ")" %}
+  <h1>Rattacher les boîtes de {{ nom_s }} à {{ nom_c }}</h1>
+  <p><a class="lien" href="/admin/jeu/{{ s.reference_titre }}">← Annuler et revenir à la fiche {{ nom_s }}</a></p>
+
+  <h2>Ce qui change</h2>
+  <ul>
+    {% if n == 1 %}
+    <li>La boîte {{ plan.boites[0] }} rejoint {{ nom_c }}. Son QR code, ses
+        prêts, ses signalements et son rangement la suivent.</li>
+    {% else %}
+    <li>Les {{ n }} boîtes ({{ plan.boites | join(', ') }}) rejoignent
+        {{ nom_c }}. Leurs QR codes, leurs prêts, leurs signalements et leur
+        rangement les suivent.</li>
+    {% endif %}
+    {% if plan.sorties %}
+    <li>{{ plan.sorties }} {{ pluriel(plan.sorties, 'boîte est sortie', 'boîtes sont sorties') }}
+        en ce moment : le prêt continue, le retour se fera comme d'habitude.</li>
+    {% endif %}
+    {% if etiquette_change %}
+    <li>L'étiquette déjà collée sur {{ pluriel(n, 'cette boîte', 'ces boîtes') }}
+        ne dira plus la même chose (nom ou code de classement) : la fiche
+        {{ nom_c }} vous proposera de la réimprimer.</li>
+    {% endif %}
+    {% if plan.supprime %}
+    <li>Le jeu {{ nom_s }} n'aura plus aucune boîte : il est <strong>supprimé</strong>.</li>
+    {% endif %}
+  </ul>
+
+  {% if plan.supprime %}
+  <h2>Repris dans les cases vides de {{ nom_c }}</h2>
+  {% if reprises %}
+  <ul>
+    {% for libelle, valeur in reprises %}<li>{{ libelle }} : {{ valeur }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p>Rien : {{ nom_c }} n'a aucune case vide que {{ nom_s }} pourrait remplir.</p>
+  {% endif %}
+  <p class="stats-note">{{ nom_c }} garde toujours ses propres valeurs.</p>
+
+  <h2>Perdu avec {{ nom_s }}</h2>
+  {% if plan.perdues or s.nom != c.nom %}
+  <ul>
+    {% if s.nom != c.nom %}<li>Son nom, « {{ s.nom }} ».</li>{% endif %}
+    {% for libelle, valeur in plan.perdues %}<li>{{ libelle }} : {{ valeur }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p>Rien : tout ce que porte {{ nom_s }} est déjà sur {{ nom_c }}, ou y sera repris.</p>
+  {% endif %}
+  <p class="stats-note">Ce geste ne se défait pas en le refaisant dans l'autre
+     sens : le jeu {{ nom_s }} n'existera plus. Les boîtes, elles, pourront
+     toujours être rattachées à un autre jeu.</p>
+  {% endif %}
+
+  <form method="post" action="/admin/jeu/{{ s.reference_titre }}/rattacher">
+    <input type="hidden" name="cible" value="{{ c.reference_titre }}">
+    <button type="submit" class="bouton-filtrer">Rattacher {{ pluriel(n, 'la boîte', 'les ' ~ n ~ ' boîtes') }} à « {{ c.nom }} » ({{ c.reference_titre }})</button>
+  </form>
+{% endif %}
+</section>
+{% endblock %}

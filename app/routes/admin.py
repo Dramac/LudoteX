@@ -19,6 +19,7 @@ déclarées par `_envoi_admin`, qui pose la même garde AVANT la lecture du corp
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -456,7 +457,9 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                 etiquette: str = "", bgg_echec: str = "",
                 reprise: str = Query("", alias="bgg"),
                 candidats: str = "", recherche: str = "",
-                fait: str = "", precedent: str = "", enchainer: str = ""):
+                fait: str = "", precedent: str = "", enchainer: str = "",
+                rattacher: str = "", boites: str = "", depuis: str = "",
+                repris: str = ""):
     """
     Fiche admin d'un jeu : l'éditeur de ses champs, ses lettres de
     classement, ses exemplaires + l'étiquette de chacun.
@@ -484,17 +487,29 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
 
     `enchainer` : on travaille la liste à relier, un jeu après l'autre. Le
     formulaire offre alors « Enregistrer et passer au jeu suivant ».
+
+    `rattacher` : le nom tapé dans « Rattacher ces boîtes à un autre jeu »
+    (lot fiche-5). Il sert à la recherche de la liste des jeux, réaffiché
+    dans sa case, et va NULLE PART ailleurs (ni base, ni journal).
+
+    `ok=rattache`, `boites`, `depuis`, `repris` : on arrive ici, jeu CIBLE,
+    après un rattachement. Un nombre, une référence (`MOTIF_REFERENCE`) et
+    des codes fermés (`services.CHAMPS_REPRIS_RATTACHEMENT`) : le nom du jeu
+    supprimé n'est plus en base, et aucun texte libre ne passe par l'adresse.
     """
     if (garde := _garde(request)):
         return garde
+    message = (_message_rattachement(boites, depuis, repris) if ok == "rattache"
+               else MESSAGES_FICHE.get(ok))
     return _rendre_fiche(request, reference_titre,
-                         message=MESSAGES_FICHE.get(ok),
+                         message=message,
                          etiquette_perimee=(etiquette == "1"),
                          bgg_echec=bgg_echec,
                          reprise=reprise,
                          candidats=_lire_candidats(candidats),
                          recherche=recherche, fait=fait, precedent=precedent,
-                         enchainer=bool(enchainer.strip()))
+                         enchainer=bool(enchainer.strip()),
+                         rattacher=rattacher)
 
 
 # Ce que dit chaque position du code de classement (app/classement.py).
@@ -611,7 +626,7 @@ def _contexte_relier(conn, titre: dict, candidats: list[int], recherche: str,
 def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                   etiquette_perimee=False, saisie=None, erreurs=None,
                   bgg_echec="", reprise="", candidats=(), recherche="",
-                  fait="", precedent="", enchainer=False):
+                  fait="", precedent="", enchainer=False, rattacher=""):
     """
     Rend la fiche d'administration d'un jeu.
 
@@ -625,6 +640,10 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
 
     `enchainer` : le formulaire offre « Enregistrer et passer au jeu suivant »
     (liste à relier, `_vers_jeu_suivant`).
+
+    `rattacher` : le nom cherché pour « Rattacher ces boîtes à un autre
+    jeu ». Les jeux trouvés le sont par la recherche de la liste des jeux
+    (`services.lister_catalogue`, la même), le jeu ouvert en moins.
 
     AUCUN APPEL RÉSEAU ICI : seule la copie en base est lue. Une panne de BGG
     ne peut pas empêcher d'ouvrir une fiche.
@@ -642,6 +661,11 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                                    precedent) if titre else None)
         suivant = (services.jeu_suivant_a_relier(conn, reference_titre)
                    if titre and enchainer else None)
+        homonymes = services.homonymes(conn, reference_titre) if titre else []
+        cherche = rattacher.strip()
+        trouves = ([j for j in services.lister_catalogue(conn, q=cherche)
+                    if j["reference_titre"] != reference_titre]
+                   if titre and cherche else [])
     finally:
         conn.close()
     contexte = {"titre": titre, "exemplaires": exemplaires,
@@ -707,6 +731,10 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
             "relier": relier,
             "enchainer": enchainer,
             "suivant": suivant,
+            "homonymes": homonymes,
+            "rattacher": {"cherche": cherche,
+                          "trouves": trouves[:RESULTATS_RATTACHEMENT],
+                          "en_plus": max(0, len(trouves) - RESULTATS_RATTACHEMENT)},
             "champs_fiche": services.CHAMPS_FICHE,
             # Lettres en base, avec leur libellé quand la lettre est dans sa
             # liste (sinon « hors liste ») : affichées, jamais saisissables.
@@ -1174,6 +1202,171 @@ def fiche_effacer_lettres(request: Request, reference_titre: str):
                         objet=resultat["avant"]["nom"], ref=reference_titre)
     return _vers_fiche(reference_titre, "lettres",
                        _etiquette_change(resultat["avant"], resultat["apres"]))
+
+
+# ---------------------------------------------------------------------------
+# Rattacher les boîtes d'un jeu à un autre jeu (série « fiche », lot 5)
+# ---------------------------------------------------------------------------
+# Les jeux trouvés montrés au plus par la recherche « Rattacher ces boîtes à
+# un autre jeu » : au-delà, la fiche demande un nom plus précis.
+RESULTATS_RATTACHEMENT = 20
+
+# Une référence de titre telle que la fabrique `services.slug_titre` : seule
+# forme acceptée pour `?depuis=` dans l'adresse de la fiche cible.
+MOTIF_REFERENCE = re.compile(r"[A-Z0-9_]{1,200}")
+
+# Les refus du rattachement, par code (`services.REFUS_RATTACHEMENT`). Chacun
+# est affiché avec un lien de retour à la fiche : rien n'a bougé.
+MESSAGES_RATTACHEMENT = {
+    "source_inconnue": ("Ce jeu n'existe plus : ses boîtes ont peut-être déjà "
+                        "été rattachées à un autre jeu. Rien n'a été modifié."),
+    "cible_inconnue": ("Le jeu choisi n'existe pas, ou plus. Rien n'a été "
+                       "modifié : cherchez-le de nouveau par son nom."),
+    "meme_jeu": ("Les boîtes sont déjà dans ce jeu : choisissez un autre jeu. "
+                 "Rien n'a été modifié."),
+    "sans_boite": ("Ce jeu n'a aucune boîte à rattacher. Rien n'a été modifié."),
+    "boite_etrangere": ("Une des boîtes demandées n'appartient pas à ce jeu. "
+                        "Rien n'a été modifié."),
+}
+
+# Le message sur la fiche cible après un rattachement réussi, en phrases
+# assemblées : le compte, d'où viennent les boîtes, ce qui a été repris.
+MESSAGE_RATTACHE = {1: "1 boîte a rejoint ce jeu.",
+                    "n": "{n} boîtes ont rejoint ce jeu.",
+                    0: "Les boîtes ont rejoint ce jeu."}
+MESSAGE_RATTACHE_DEPUIS = {1: "Elle venait du jeu de référence {depuis}, qui est supprimé.",
+                           "n": "Elles venaient du jeu de référence {depuis}, qui est supprimé."}
+MESSAGE_RATTACHE_REPRIS = "Repris du jeu supprimé, dans les cases qui étaient vides : {champs}."
+MESSAGE_RATTACHE_RIEN_REPRIS = "Aucune case vide à compléter : ce jeu garde toutes ses valeurs."
+
+
+def _message_rattachement(boites: str, depuis: str, repris: str) -> str:
+    """
+    Le message de la fiche cible, à partir des seuls paramètres fermés de
+    l'adresse : un nombre, une référence, des codes. Un paramètre illisible
+    retire sa phrase, jamais le message.
+    """
+    nombre = int(boites) if boites.isdigit() else 0
+    cle = nombre if nombre in (0, 1) else "n"
+    phrases = [MESSAGE_RATTACHE[cle].format(n=nombre)]
+    if MOTIF_REFERENCE.fullmatch(depuis or ""):
+        phrases.append(MESSAGE_RATTACHE_DEPUIS[1 if nombre == 1 else "n"]
+                       .format(depuis=depuis))
+        codes = [c for c in services.CHAMPS_REPRIS_RATTACHEMENT
+                 if c in (repris or "").split(",")]
+        phrases.append(MESSAGE_RATTACHE_REPRIS.format(champs=", ".join(
+            services.CHAMPS_REPRIS_RATTACHEMENT[c] for c in codes))
+            if codes else MESSAGE_RATTACHE_RIEN_REPRIS)
+    return " ".join(phrases)
+
+
+def _rendre_rattachement(request: Request, reference_titre: str, cible: str,
+                         *, refus: str | None = None, status_code: int = 200):
+    """
+    L'écran de confirmation du rattachement : ce qui part, ce qui est repris,
+    ce qui est perdu. Rien n'est écrit. Un refus s'y affiche avec un retour
+    à la fiche en un tap.
+    """
+    conn = get_connection()
+    try:
+        plan = services.preparer_rattachement(conn, reference_titre, cible)
+        format_code = services.lire_etiquette_format(conn)
+    finally:
+        conn.close()
+    refus = refus or plan["refus"]
+    contexte = {"reference_titre": reference_titre, "plan": plan,
+                "message_refus": MESSAGES_RATTACHEMENT.get(refus) if refus else None}
+    if not refus:
+        apres = dict(plan["cible"])
+        for code, valeur in plan["reprises"].items():
+            if code == "lettres":
+                apres.update(zip(classement.COLONNES_LETTRES, valeur))
+            else:
+                apres[code] = valeur
+        contexte.update({
+            "reprises": [(services.CHAMPS_REPRIS_RATTACHEMENT[c],
+                          " ".join(v or "–" for v in valeur) if c == "lettres"
+                          else f"fiche n° {valeur}" if c == "bgg_id"
+                          else services._date_fr(valeur) if c == "date_achat"
+                          else valeur)
+                         for c, valeur in plan["reprises"].items()],
+            "etiquette_change": (
+                texte_imprime(plan["source"], format_code)
+                != texte_imprime(apres, format_code)),
+        })
+    elif status_code == 200:
+        status_code = 404 if refus in ("source_inconnue", "cible_inconnue") else 409
+    return templates.TemplateResponse(request, "admin_rattacher.html", contexte,
+                                      status_code=status_code)
+
+
+@router.get("/jeu/{reference_titre}/rattacher")
+def rattacher_confirmer(request: Request, reference_titre: str, cible: str = ""):
+    """
+    « Rattacher les boîtes de ce jeu à… » : l'écran de CONFIRMATION, ouvert
+    depuis l'encadré « un autre jeu porte déjà ce nom » ou depuis la
+    recherche de la fiche. Une simple lecture : rien n'est écrit.
+
+    Pourquoi une confirmation : le jeu vidé est supprimé (arbitrage du
+    2026-10-28), et ce que lui seul portait disparaît avec lui. Refaire le
+    geste dans l'autre sens ne le ramène pas. L'écran dit donc, avant le
+    tap, ce qui est repris et ce qui est perdu.
+    """
+    if (garde := _garde(request)):
+        return garde
+    return _rendre_rattachement(request, reference_titre, cible)
+
+
+@router.post("/jeu/{reference_titre}/rattacher")
+def rattacher_appliquer(request: Request, reference_titre: str,
+                        cible: str = Form("")):
+    """
+    Rattache TOUTES les boîtes du jeu à `cible`, puis redirige (303) vers la
+    fiche cible, qui dit combien de boîtes l'ont rejointe, d'où, ce qui a été
+    repris, et propose la réimpression si l'étiquette change.
+
+    Refus (`MESSAGES_RATTACHEMENT`) : l'écran de confirmation réaffiché avec
+    le message et le retour à la fiche ; rien n'est écrit.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        resultat = services.rattacher_exemplaires(conn, reference_titre, cible)
+    finally:
+        conn.close()
+    if resultat["refus"]:
+        return _rendre_rattachement(request, reference_titre, cible,
+                                    refus=resultat["refus"],
+                                    status_code=(404 if resultat["refus"] in (
+                                        "source_inconnue", "cible_inconnue") else 409))
+    nombre = len(resultat["boites"])
+    journal.journaliser(
+        request, "catalogue", "exemplaires_rattaches",
+        objet=(f"{resultat['apres']['nom']} ← {nombre} "
+               f"{services.pluriel(nombre, 'boîte', 'boîtes')} de {reference_titre}"),
+        ref=cible)
+    if resultat["supprime"]:
+        # L'image de la boîte du jeu supprimé part si plus aucun titre ne
+        # porte sa fiche BGG (série « images »).
+        _menage_vignettes()
+    conn = get_connection()
+    try:
+        format_code = services.lire_etiquette_format(conn)
+    finally:
+        conn.close()
+    etiquette = (
+        texte_imprime(resultat["source"], format_code)
+        != texte_imprime(resultat["apres"], format_code)
+        or texte_imprime(resultat["avant"], format_code)
+        != texte_imprime(resultat["apres"], format_code))
+    url = f"/admin/jeu/{quote(cible)}?ok=rattache&boites={nombre}"
+    if resultat["supprime"]:
+        url += f"&depuis={quote(reference_titre)}"
+        url += "&repris=" + ",".join(resultat["reprises"])
+    if etiquette:
+        url += "&etiquette=1"
+    return RedirectResponse(url, status_code=303)
 
 
 @router.post("/jeu/{reference_titre}/exemplaire")

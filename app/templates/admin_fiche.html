@@ -51,6 +51,34 @@
     </div>
     {% endif %}
 
+    {# Un autre jeu porte le même nom, au slug près (casse, accents,
+       ponctuation) : calculé À L'AFFICHAGE (services.homonymes), donc aussi
+       pour un doublon créé avant ce lot. Un bouton par destination, chacun
+       avec le nom et la référence du jeu visé : on rattache CE jeu (la fiche
+       ouverte) à l'autre ; pour l'inverse, on ouvre l'autre fiche. Sans
+       boîte ici, rien à rattacher : le lien seul. #}
+    {% if homonymes %}
+    <div class="resultat resultat-attention resultat-liste" role="status" id="homonymes">
+      <p>{% if homonymes | length == 1 %}Un autre jeu porte déjà ce nom{% else %}{{ homonymes | length }} autres jeux portent déjà ce nom{% endif %} :
+         pour LudoteX ce sont des jeux différents, et leurs boîtes sont
+         comptées à part, au catalogue comme dans les statistiques.</p>
+      <ul>
+        {% for h in homonymes %}
+        <li>
+          <a class="lien" href="/admin/jeu/{{ h.reference_titre }}">Ouvrir la fiche « {{ h.nom }} »
+             (référence {{ h.reference_titre }}, {{ h.boites }} {{ pluriel(h.boites, 'boîte', 'boîtes') }})</a>
+          {% if exemplaires %}
+          <form method="get" action="/admin/jeu/{{ titre.reference_titre }}/rattacher">
+            <input type="hidden" name="cible" value="{{ h.reference_titre }}">
+            <button type="submit" class="bouton-filtrer">Rattacher les boîtes de ce jeu à « {{ h.nom }} » ({{ h.reference_titre }})</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     <p class="dispo-titre">
        {% if titre.type_jeu %}{{ titre.type_jeu }} · {% endif %}
        Référence : <code>{{ titre.reference_titre }}</code> ·
@@ -248,7 +276,9 @@
       </div>
       <p class="stats-note champ-large">Le nom peut changer, la référence
          <code>{{ titre.reference_titre }}</code> jamais : les étiquettes et
-         les statistiques restent rattachées à ce jeu.</p>
+         les statistiques restent rattachées à ce jeu. Donner à ce jeu le nom
+         d'un autre ne réunit pas leurs boîtes : pour cela, « Rattacher ces
+         boîtes à un autre jeu », en bas de la fiche.</p>
       {# Liste à relier : on avance quand on le décide. « Enregistrer et
          passer » vient en premier, c'est le geste de la série (et celui de la
          touche Entrée) ; il reste sur la fiche s'il y a une étiquette à
@@ -338,5 +368,56 @@
     </section>
   {% endfor %}
   </div>
+
+  {# Rattacher les boîtes à un autre jeu (série « fiche », lot 5). La
+     recherche est celle de la liste des jeux (services.lister_catalogue),
+     le jeu ouvert en moins ; le nom tapé ne va ni en base ni au journal.
+     Choisir mène à une CONFIRMATION, qui dit ce qui sera repris et perdu :
+     rien ne bouge avant elle. #}
+  {% if exemplaires %}
+  <section class="carte" id="rattacher">
+    <h2>Rattacher ces boîtes à un autre jeu</h2>
+    <p class="stats-note">Pour un jeu saisi deux fois sous deux noms (une faute
+       de frappe, une ancienne graphie) :
+       {% if exemplaires | length == 1 %}la boîte de ce jeu rejoint le jeu
+       choisi, avec ses prêts, ses signalements et son rangement.
+       {%- else %}les {{ exemplaires | length }} boîtes de ce jeu rejoignent
+       le jeu choisi, avec leurs prêts, leurs signalements et leur rangement.
+       {%- endif %} Ce jeu-ci est ensuite supprimé ; ce qu'il porte complète
+       les cases vides de l'autre. Une confirmation vous dira tout avant.</p>
+    <form method="get" action="/admin/jeu/{{ titre.reference_titre }}#rattacher" class="recherche-form">
+      <div class="champ">
+        <label for="rattacher-nom">Nom de l'autre jeu</label>
+        <input type="search" id="rattacher-nom" name="rattacher" value="{{ rattacher.cherche }}"
+               maxlength="100" aria-describedby="rattacher-aide">
+        <p class="stats-note" id="rattacher-aide">Tapez une partie du nom : la
+           recherche est celle de la liste des jeux.</p>
+      </div>
+      <div><button type="submit" class="bouton-filtrer">Chercher le jeu</button></div>
+    </form>
+    {% if rattacher.cherche %}
+    {% if rattacher.trouves %}
+    <p role="status">{{ rattacher.trouves | length + rattacher.en_plus }}
+       {{ pluriel(rattacher.trouves | length + rattacher.en_plus, 'jeu trouvé', 'jeux trouvés') }}
+       {%- if rattacher.en_plus %}, les {{ rattacher.trouves | length }} premiers affichés : précisez le nom pour voir les autres{% endif %}.</p>
+    <ul class="liste-rattachement">
+      {% for j in rattacher.trouves %}
+      <li>
+        <form method="get" action="/admin/jeu/{{ titre.reference_titre }}/rattacher">
+          <input type="hidden" name="cible" value="{{ j.reference_titre }}">
+          <button type="submit" class="bouton-filtrer">Choisir « {{ j.nom }} »<span class="sr-only"> comme jeu de destination</span></button>
+          <span class="stats-note">référence {{ j.reference_titre }} · {{ j.total }} {{ pluriel(j.total, 'boîte', 'boîtes') }}</span>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="resultat resultat-attention" role="status">Aucun autre jeu ne porte
+       un nom qui contient « {{ rattacher.cherche }} ». Essayez une partie du
+       nom seulement.</p>
+    {% endif %}
+    {% endif %}
+  </section>
+  {% endif %}
 {% endif %}
 {% endblock %}

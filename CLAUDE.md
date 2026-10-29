@@ -197,7 +197,9 @@ livré, par module :
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
   appareils, création et **correction de la fiche d'un jeu** (référence
-  figée au renommage, avertissement quand un import défait une correction),
+  figée au renommage, avertissement quand un import défait une correction,
+  **rattachement des boîtes d'un jeu à un autre**, signalé quand deux jeux
+  portent le même nom, jeu vidé supprimé après complétion),
   **données BoardGameGeek** (seul site appelé, jeton facultatif en `.env`,
   copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
   des cases, **image de la boîte copiée sur le serveur** (contrôlée,

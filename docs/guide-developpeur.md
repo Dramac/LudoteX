@@ -70,6 +70,8 @@ flowchart TB
 - `reference_titre` : regroupe les exemplaires d'un même jeu (stats). Générée
   comme slug normalisé du nom à la création ou au premier import, puis
   **figée** : un jeu renommé à l'écran la garde (voir § 10, ré-import).
+  Seul `services.rattacher_exemplaires` change la référence d'une boîte dans
+  l'application (§ 10, rattachement) ; l'import le fait aussi, par son UPSERT.
 
 Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer.
 
@@ -224,6 +226,23 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   est verrouillée par `tests/test_fiche_jeu.py` ; toute colonne ajoutée à
   `titres` doit la tenir (une valeur que l'export écrit, l'import doit la
   relire à l'identique — d'où les bornes de `services.BORNES_FICHE`).
+- **Deux jeux de même nom ne se rejoignent pas : on les réunit par le
+  rattachement.** Le renommage ne touchant pas la référence, « time line »
+  corrigé en « Timelines » reste à part de `TIMELINES`. Le geste vit dans
+  `services` (`homonymes`, `preparer_rattachement`, `rattacher_exemplaires`,
+  section « Rattacher les boîtes ») et sur la fiche (`routes/admin.py`,
+  `rattacher_confirmer` / `rattacher_appliquer`, gabarit
+  `admin_rattacher.html`). Une seule fonction calcule ce qui est repris et
+  perdu, pour l'écran de confirmation comme pour l'écriture : elle tourne
+  de nouveau dans la transaction. Le jeu vidé est **supprimé** (seul
+  `DELETE FROM titres` hors du mode formation) ; ses fichiers d'image sont
+  nettoyés par la route, après la transaction (`_menage_vignettes`). Une
+  colonne ajoutée à `titres` doit trouver sa règle de complétion dans
+  `preparer_rattachement`, ou y être écrite comme perdue. `modifie_le` est
+  posé sur la cible : un fichier d'import d'avant le rattachement le défait
+  (la règle de `resoudre_reference` est inchangée), mais
+  `corrections_defaites` le signale comme une boîte qui quitte une fiche
+  corrigée.
 - **`titres.categorie` est une copie verrouillée : ne jamais l'écrire à la
   main.** La liste des catégories d'un titre fait foi (`titres_categories`) ;
   la colonne en garde la jointure (« Cartes, Ambiance ») pour ce qui

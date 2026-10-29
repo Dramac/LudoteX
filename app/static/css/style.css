@@ -346,6 +346,15 @@ summary:focus-visible,
 /* Une liste détaillée dans un message (fiches qu'un import a défaites, lot
    fiche-1) : alignée à gauche, une liste centrée ne se lit pas. */
 .resultat-liste { text-align: left; }
+/* Les jeux trouvés par « Rattacher ces boîtes à un autre jeu » (lot fiche-5) :
+   un bouton par jeu, sa référence à côté, à la ligne sur téléphone. */
+.liste-rattachement { list-style: none; padding: 0; margin: 0; }
+.liste-rattachement li { margin: 8px 0; }
+.liste-rattachement form { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+#homonymes form { margin: 8px 0 4px; }
+/* Une référence (TIMES_LINES_MULTI_THEMES) est un seul mot pour le navigateur :
+   sans coupure permise, elle sort de la carte à 375 px. */
+#homonymes, #rattacher, .carte-rattacher { overflow-wrap: anywhere; }
 
 /* Code personnel (fiche D4, docs/audit-ux-2026-07-18.md) : code de
    désinscription tournoi, code de modification planning — même besoin
