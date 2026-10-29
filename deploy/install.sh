@@ -91,10 +91,16 @@ apt-get update -y >/dev/null
 # build-essential/libjpeg-dev/zlib1g-dev évitent un échec de compilation de
 # Pillow (dépendance de qrcode[pil]) si aucune roue précompilée n'existe pour
 # l'architecture du VPS.
+#
+# Des NOMS RÉELS de paquets, jamais un nom de remplacement : le contrôle de
+# report (scripts/controle_report.py) relit cette liste et interroge
+# `dpkg-query`, qui ne connaît que les noms réels. `dnsutils` (pour `dig`)
+# n'est plus qu'un nom de remplacement de `bind9-dnsutils` depuis Debian 13 :
+# apt l'installait, mais le contrôle le disait absent.
 PAQUETS_BASE=(
     python3 python3-venv python3-pip python3-dev
     git nginx sqlite3 certbot python3-certbot-nginx
-    ufw curl dnsutils
+    ufw curl bind9-dnsutils
     build-essential libjpeg-dev zlib1g-dev
 )
 info "Installation des paquets de base : ${PAQUETS_BASE[*]}"

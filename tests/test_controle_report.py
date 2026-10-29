@@ -420,6 +420,15 @@ def test_les_paquets_se_relisent_dans_le_vrai_install_sh():
     assert not any(p.startswith("#") for p in paquets)
 
 
+def test_install_sh_ne_nomme_aucun_paquet_de_remplacement():
+    # `dpkg-query` ne résout pas un nom de remplacement : sous Debian 13,
+    # `dnsutils` (fourni par `bind9-dnsutils`) faisait dire au contrôle de
+    # fin d'update.sh qu'un paquet installé manquait.
+    paquets = cr.paquets_attendus((_RACINE / "deploy/install.sh").read_text(encoding="utf-8"))
+    assert "dnsutils" not in paquets
+    assert "bind9-dnsutils" in paquets
+
+
 # ===========================================================================
 # Permissions — ce qu'une comparaison de fichiers ne voit pas
 # ===========================================================================
