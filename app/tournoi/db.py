@@ -173,10 +173,13 @@ def _seed_publics_programme(conn: sqlite3.Connection) -> None:
     liste. La colonne `public_vise` n'est pas vidée : un retour à la version
     précédente retrouve ses données intactes.
     """
-    (nb,) = conn.execute("SELECT COUNT(*) FROM publics_programme").fetchone()
-    if nb:
-        return
     with transaction(conn):
+        # Compté SOUS le verrou d'écriture : deux démarrages simultanés (le
+        # `python -m app.tournoi.db` d'update.sh et le service) ne peuvent pas
+        # amorcer la liste deux fois.
+        (nb,) = conn.execute("SELECT COUNT(*) FROM publics_programme").fetchone()
+        if nb:
+            return
         ids: dict[str, int] = {}
         for ordre, nom in enumerate(_PUBLICS_PROGRAMME_SEED):
             cur = conn.execute(
