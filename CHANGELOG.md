@@ -6,6 +6,13 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.31.0 — 2026-11-10
+
+- **Les bénévoles peuvent afficher l'annonce de l'écran de salle**, si le bureau l'a permis : cochez **Les bénévoles peuvent afficher une annonce** dans « Écran de salle ». La case est décochée par défaut : sans ce geste, rien ne change.
+- **Une page pensée pour le téléphone** : les bénévoles trouvent **Annonce en salle** dans leur menu. Ils voient l'annonce en cours et son heure de fin, puis l'affichent, la remplacent ou l'effacent. La durée se choisit d'un tap : 15 min, 30 min, 1 h ou 2 h.
+- **La dernière annonce posée l'emporte**, qu'elle vienne du bureau ou d'un bénévole. Décocher la case ne retire pas l'annonce en cours : **Effacer l'annonce** reste à portée de main.
+- **Le journal d'activité indique quel appareil** a posé ou effacé l'annonce, jamais ce qu'elle disait. La même consigne figure sous le champ : décrire une situation, jamais une personne.
+
 ## 1.30.0 — 2026-11-10
 
 - **Retrouver un élément du programme parmi des dizaines** : la liste de gestion du programme se filtre par **Type**, **Lieu**, **Public** et **État**. Les filtres restent en place quand vous publiez, modifiez ou dupliquez un élément.

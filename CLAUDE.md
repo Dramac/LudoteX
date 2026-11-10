@@ -156,7 +156,7 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 
 ## État de l'application
 
-**Dernière version au dépôt : 1.29.0** (voir `VERSION` et `CHANGELOG.md`,
+**Dernière version au dépôt : 1.31.0** (voir `VERSION` et `CHANGELOG.md`,
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
 du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
@@ -188,8 +188,9 @@ livré, par module :
   disponibilités et de préférences, préremplissage glouton (continuité, équité),
   grille d'ajustement **sans JS**, export « mon planning » en `.ics`.
 - **Écran de salle** (`/live`) — tableau de bord temps réel pour projecteur,
-  annonces libres du bureau, **alerte automatique « rapportez les exemplaires »**
-  avant chaque tournoi.
+  annonces libres du bureau — et des bénévoles, depuis `/live/annonce`, si le
+  bureau l'a permis (interrupteur fermé par défaut) —, **alerte automatique
+  « rapportez les exemplaires »** avant chaque tournoi.
 - **Rangement** — emplacements, deux contextes interchangeables, affectation en
   lot, mode rangement visible sur toutes les pages.
 - **Carnet de maintenance** — signalements d'état des boîtes et catégories
