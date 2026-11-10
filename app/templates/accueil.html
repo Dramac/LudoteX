@@ -52,7 +52,7 @@
               <span class="planning-bloc-nom">{% if b.type_icone %}{{ b.type_icone }} {% endif %}{{ b.intitule }}</span>
               {% if b.type_nom %}<span class="planning-bloc-meta">{{ b.type_nom }}</span>{% endif %}
               {% if b.lieu %}<span class="planning-bloc-meta">📍 {{ b.lieu }}</span>{% endif %}
-              {% if b.public_vise %}<span class="planning-bloc-meta">{{ b.public_vise }}</span>{% endif %}
+              {% if b.publics %}<span class="planning-bloc-meta">{{ b.publics }}</span>{% endif %}
             </a>
           {% else %}
             <a class="planning-bloc planning-bloc--{{ b.etat }}"
@@ -101,7 +101,7 @@
             <span class="jeu-categorie">
               {{ e.date_heure | dt_local }}
               {% if e.lieu %} · {{ e.lieu }}{% endif %}
-              {% if e.public_vise %} · {{ e.public_vise }}{% endif %}
+              {% if e.publics %} · {{ e.publics }}{% endif %}
             </span>
           </a>
         {% endif %}

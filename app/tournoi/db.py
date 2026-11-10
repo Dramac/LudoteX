@@ -48,6 +48,7 @@ import sqlite3
 from pathlib import Path
 
 from app.db import TIMEOUT_ECRITURE_S
+from app.services import transaction
 from app.environnement import charger_env
 from app.tournoi import models
 
@@ -112,6 +113,24 @@ _TYPES_PROGRAMME_SEED = [
 ]
 
 
+# Premier remplissage de la liste des PUBLICS visés. Les deux tranches d'âge
+# enfants sont un choix du bureau : l'âge et le public tiennent dans une seule
+# liste, sans troisième axe à filtrer.
+_PUBLICS_PROGRAMME_SEED = [
+    "Enfants moins de 8 ans",
+    "Enfants 8 ans et plus",
+    "Ados",
+    "Adultes",
+    "Familles",
+    "Joueurs confirmés",
+]
+
+# Anciennes saisies libres qui voulaient dire « tous les publics » : reprises
+# en cochant TOUS les publics par défaut, ce que le filtre comprend (un élément
+# tout public doit sortir sous « Familles » comme sous « Ados »).
+_TOUT_PUBLIC = {"tout public", "tous publics", "tout-public", "tous public", "tout publics"}
+
+
 def _appliquer_migrations(conn: sqlite3.Connection) -> None:
     """Ajoute les colonnes manquantes des bases déjà créées (idempotent)."""
     for table, colonne, type_sql in _MIGRATIONS_COLONNES:
@@ -138,6 +157,59 @@ def _seed_types_programme(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _seed_publics_programme(conn: sqlite3.Connection) -> None:
+    """
+    Premier remplissage de `publics_programme` ET reprise de l'ancien texte
+    libre `programme.public_vise` (idempotent).
+
+    Ne fait rien dès que la liste compte un public : la reprise ne se joue
+    donc qu'une fois, au premier démarrage de la version qui introduit la
+    liste, et ne recrée jamais un public que le bureau aurait supprimé depuis
+    (même règle que `_seed_types_programme`).
+
+    Reprise : chaque valeur distincte (casse et espaces ignorés) est rattachée
+    au public par défaut de même nom, ou à TOUS les publics par défaut si elle
+    voulait dire « tout public », ou sinon devient un public de plus, en fin de
+    liste. La colonne `public_vise` n'est pas vidée : un retour à la version
+    précédente retrouve ses données intactes.
+    """
+    (nb,) = conn.execute("SELECT COUNT(*) FROM publics_programme").fetchone()
+    if nb:
+        return
+    with transaction(conn):
+        ids: dict[str, int] = {}
+        for ordre, nom in enumerate(_PUBLICS_PROGRAMME_SEED):
+            cur = conn.execute(
+                "INSERT INTO publics_programme (nom, actif, ordre) VALUES (?, 1, ?)", (nom, ordre)
+            )
+            ids[nom.casefold()] = cur.lastrowid
+        defaut = list(ids.values())
+        ordre = len(_PUBLICS_PROGRAMME_SEED)
+        saisies = conn.execute(
+            "SELECT id_element, public_vise FROM programme WHERE public_vise IS NOT NULL"
+        ).fetchall()
+        for id_element, valeur in saisies:
+            texte = " ".join(valeur.split())
+            cle = texte.casefold()
+            if not cle:
+                continue
+            if cle in _TOUT_PUBLIC:
+                cibles = defaut
+            else:
+                if cle not in ids:
+                    cur = conn.execute(
+                        "INSERT INTO publics_programme (nom, actif, ordre) VALUES (?, 1, ?)",
+                        (texte, ordre),
+                    )
+                    ids[cle] = cur.lastrowid
+                    ordre += 1
+                cibles = [ids[cle]]
+            conn.executemany(
+                "INSERT OR IGNORE INTO programme_publics (id_element, id_public) VALUES (?, ?)",
+                [(id_element, i) for i in cibles],
+            )
+
+
 def init_db(conn: sqlite3.Connection | None = None) -> None:
     """
     Crée les tables/index manquants de la base des tournois et applique les
@@ -156,6 +228,7 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         conn.commit()
         _appliquer_migrations(conn)
         _seed_types_programme(conn)
+        _seed_publics_programme(conn)
     finally:
         if own_connection:
             conn.close()

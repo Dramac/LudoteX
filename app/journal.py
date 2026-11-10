@@ -206,6 +206,10 @@ ACTIONS = {
     "programme_type_cree",
     "programme_type_modifie",
     "programme_type_supprime",
+    # Liste des publics visés du programme : mêmes trois verbes que les types.
+    "programme_public_cree",
+    "programme_public_modifie",
+    "programme_public_supprime",
     "planning_questionnaire_ferme",
     "planning_genere",
     "planning_publie",

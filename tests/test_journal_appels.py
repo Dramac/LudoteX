@@ -672,6 +672,22 @@ def test_programme_type_cree_modifie_supprime(client, _journal_isole):
     assert supprime["ok"] is True and supprime["objet"] == "Animation jeune public"
 
 
+def test_programme_public_cree_modifie_supprime(client, _journal_isole):
+    _connexion(client)
+    client.post("/admin/programme-publics", data={"nom": "Joueurs débutants"})
+    cree = _derniere(_journal_isole, "programme_public_cree")
+    assert cree["module"] == "programme" and cree["objet"] == "Joueurs débutants"
+    id_public = cree["ref"]
+
+    client.post(f"/admin/programme-publics/{id_public}/renommer", data={"nom": "Débutants"})
+    modifie = _derniere(_journal_isole, "programme_public_modifie")
+    assert modifie["objet"] == "Débutants"
+
+    client.post(f"/admin/programme-publics/{id_public}/supprimer")
+    supprime = _derniere(_journal_isole, "programme_public_supprime")
+    assert supprime["ok"] is True and supprime["objet"] == "Débutants"
+
+
 # ===========================================================================
 # LOT D — Priorité 2 : Planning (§2.2)
 # ===========================================================================

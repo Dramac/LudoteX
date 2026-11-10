@@ -525,13 +525,13 @@ def _vider_base_tournoi(conn: sqlite3.Connection) -> None:
     Supprime toutes les lignes des tables de la base des tournois, éléments de
     programme compris (ils vivent dans la même base).
 
-    `types_programme` n'est PAS vidée : c'est une liste de configuration
-    amorcée au démarrage (les cinq types par défaut), pas une donnée
-    d'exemple. La vider ferait disparaître les types que le bureau aurait
-    renommés pendant sa formation, et le peuplement ci-dessous se rattache de
-    toute façon aux types existants sans en créer.
+    `types_programme` et `publics_programme` ne sont PAS vidées : ce sont des
+    listes de configuration amorcées au démarrage (types et publics par
+    défaut), pas des données d'exemple. Les vider ferait disparaître ce que le
+    bureau aurait renommé pendant sa formation, et le peuplement ci-dessous se
+    rattache de toute façon aux entrées existantes sans en créer.
     """
-    for table in ("rencontres", "inscriptions", "tournois", "programme"):
+    for table in ("rencontres", "inscriptions", "tournois", "programme_publics", "programme"):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
 
@@ -679,6 +679,16 @@ def _id_type(conn: sqlite3.Connection, nom: str) -> int | None:
     return None
 
 
+def _ids_publics(conn: sqlite3.Connection, *noms: str) -> list[int]:
+    """
+    Ids des publics portant ces noms (insensible à la casse). Même règle que
+    `_id_type` : un public renommé ou supprimé est simplement omis.
+    """
+    par_nom = {p["nom"].casefold(): p["id_public"]
+               for p in programme.lister_publics(conn, actifs_seulement=False)}
+    return [par_nom[n.casefold()] for n in noms if n.casefold() in par_nom]
+
+
 def peupler_programme(conn: sqlite3.Connection, noms: list[str] | None = None) -> dict:
     """
     Crée les éléments de programme d'exemple (la base a déjà été vidée par
@@ -703,7 +713,8 @@ def peupler_programme(conn: sqlite3.Connection, noms: list[str] | None = None) -
         description="Découverte des règles en petit groupe, sans inscription.",
         id_type=_id_type(conn, "Initiation"),
         date_heure=_date_locale_dans(20), duree_min=45,
-        lieu="Espace famille", public_vise="tout public", jauge=8,
+        lieu="Espace famille", jauge=8,
+        publics=_ids_publics(conn, "Enfants 8 ans et plus", "Familles", "Ados", "Adultes"),
     )
     programme.changer_etat(conn, id_e, "publie")
 
@@ -713,7 +724,8 @@ def peupler_programme(conn: sqlite3.Connection, noms: list[str] | None = None) -
         description="Fabriquer un petit jeu de société de A à Z.",
         id_type=_id_type(conn, "Atelier"),
         date_heure=_date_locale_dans(240), duree_min=90,
-        lieu="Salle du fond", public_vise="8 ans et plus", jauge=12,
+        lieu="Salle du fond", jauge=12,
+        publics=_ids_publics(conn, "Enfants 8 ans et plus", "Ados"),
     )
     programme.changer_etat(conn, id_e, "publie")
 

@@ -1,17 +1,20 @@
+{# Écran commun aux deux listes administrables du programme : les types et
+   les publics visés (`_LISTES_PROGRAMME` dans app/routes/admin.py). Seuls
+   l'adresse, les libellés et la colonne « Icône » (types seulement)
+   diffèrent. #}
 {% extends "base.html" %}
-{% block titre %}Types de programme — Administration — {{ nom_association }}{% endblock %}
+{% block titre %}{{ cfg.titre }} — Administration — {{ nom_association }}{% endblock %}
 {% block conteneur_extra %}contenu-large{% endblock %}
 
 {% block contenu %}
 <section class="carte">
-  <h1>Types de programme</h1>
+  <h1>{{ cfg.titre }}</h1>
   <p class="stats-note">
-    La liste utilisée pour classer les éléments du <a class="lien" href="/programme">programme
-    du week-end</a> (animations, ateliers, initiations…). Renommer se répercute
-    automatiquement sur tous les éléments concernés. Archiver retire le type des
-    nouveaux formulaires (réversible) sans toucher aux éléments déjà saisis ; la
-    suppression définitive n'est proposée que si plus aucun élément n'y est
-    rattaché. La saisie des éléments eux-mêmes se fait côté bénévole, depuis
+    {{ cfg.intro }} Renommer se répercute automatiquement sur tous les
+    éléments concernés. Archiver retire l'entrée des nouveaux formulaires
+    (réversible) sans toucher aux éléments déjà saisis ; la suppression
+    définitive n'est proposée que si plus aucun élément n'y est rattaché. La
+    saisie des éléments eux-mêmes se fait côté bénévole, depuis
     <a class="lien" href="/programme/gestion">la gestion du programme</a>.
   </p>
   {% if message %}
@@ -23,7 +26,7 @@
   <table class="admin-table">
     <thead>
       <tr>
-        <th>Icône</th>
+        {% if cfg.icone %}<th>Icône</th>{% endif %}
         <th>Nom</th>
         <th>Statut</th>
         <th>Éléments</th>
@@ -32,14 +35,17 @@
       </tr>
     </thead>
     <tbody>
-      {% for t in types %}
+      {% for t in entrees %}
+      {% set id_entree = t.id_type if cfg.icone else t.id_public %}
       <tr>
-        <td colspan="2">
-          <form method="post" action="/admin/programme-types/{{ t.id_type }}/renommer"
+        <td{% if cfg.icone %} colspan="2"{% endif %}>
+          <form method="post" action="{{ base }}/{{ id_entree }}/renommer"
                 class="rangement-form-inline">
+            {% if cfg.icone %}
             <input type="text" name="icone" value="{{ t.icone or '' }}" size="3" placeholder="🎉"
-                   maxlength="4">
-            <input type="text" name="nom" value="{{ t.nom }}" required>
+                   maxlength="4" aria-label="Icône">
+            {% endif %}
+            <input type="text" name="nom" value="{{ t.nom }}" required aria-label="Nom">
             <button type="submit" class="bouton-filtrer">Renommer</button>
           </form>
         </td>
@@ -52,29 +58,29 @@
         </td>
         <td>{{ t.usage_count }} {{ pluriel(t.usage_count, 'élément', 'éléments') }}</td>
         <td class="rangement-ordre">
-          <form method="post" action="/admin/programme-types/{{ t.id_type }}/monter"
+          <form method="post" action="{{ base }}/{{ id_entree }}/monter"
                 class="rangement-form-inline">
             <button type="submit" class="bouton-filtrer" title="Monter dans la liste">▲</button>
           </form>
-          <form method="post" action="/admin/programme-types/{{ t.id_type }}/descendre"
+          <form method="post" action="{{ base }}/{{ id_entree }}/descendre"
                 class="rangement-form-inline">
             <button type="submit" class="bouton-filtrer" title="Descendre dans la liste">▼</button>
           </form>
         </td>
         <td class="rangement-actions">
           {% if t.actif %}
-          <form method="post" action="/admin/programme-types/{{ t.id_type }}/archiver"
+          <form method="post" action="{{ base }}/{{ id_entree }}/archiver"
                 class="rangement-form-inline">
             <button type="submit" class="bouton-filtrer">Archiver</button>
           </form>
           {% else %}
-          <form method="post" action="/admin/programme-types/{{ t.id_type }}/reactiver"
+          <form method="post" action="{{ base }}/{{ id_entree }}/reactiver"
                 class="rangement-form-inline">
             <button type="submit" class="bouton-filtrer">Réactiver</button>
           </form>
           {% endif %}
           {% if t.usage_count == 0 %}
-          <form method="post" action="/admin/programme-types/{{ t.id_type }}/supprimer"
+          <form method="post" action="{{ base }}/{{ id_entree }}/supprimer"
                 class="rangement-form-inline"
                 onsubmit="return confirm('Supprimer définitivement « {{ t.nom }} » ? Cette action est irréversible.');">
             <button type="submit" class="bouton-filtrer">Supprimer</button>
@@ -86,14 +92,16 @@
     </tbody>
   </table>
 
-  <form method="post" action="/admin/programme-types" class="recherche-form">
+  <form method="post" action="{{ base }}" class="recherche-form">
+    {% if cfg.icone %}
     <div class="champ">
       <label for="icone-nouveau">Icône <small>(emoji, facultatif)</small></label>
       <input type="text" id="icone-nouveau" name="icone" maxlength="4" placeholder="🎉">
     </div>
+    {% endif %}
     <div class="champ">
-      <label for="nom-nouveau">Ajouter un type</label>
-      <input type="text" id="nom-nouveau" name="nom" placeholder="ex. Blind-test" required>
+      <label for="nom-nouveau">Ajouter {{ 'un type' if cfg.icone else 'un public' }}</label>
+      <input type="text" id="nom-nouveau" name="nom" placeholder="{{ cfg.exemple }}" required>
     </div>
     <p><button type="submit" class="bouton bouton-principal">Ajouter</button></p>
   </form>

@@ -18,12 +18,12 @@ CONVENTIONS (alignées sur `app/tournoi/routes.py`)
 
 CARTE DES URL
 -------------
-    /programme                              grille publique (filtres jour/type)
+    /programme                              grille publique (filtres jour/type/public)
     /programme/aide                         aide / mode d'emploi (publique)
     /programme/{id}                         page publique d'un élément (publique)
     /programme/{id}/agenda.ics              « Ajouter à mon agenda » (publique)
     /programme/gestion         [bénévole]  liste de travail (brouillons compris,
-                                           filtres type/lieu/état)
+                                           filtres type/lieu/public/état)
     /programme/gestion/en-lot  [bénévole]  « Tout publier » / « Tout dépublier »
                                            sur la liste filtrée : confirmation
                                            (GET) + POST
@@ -98,6 +98,25 @@ def _types_pour_formulaire(conn, id_type_courant: int | None) -> list[dict]:
     return types
 
 
+def _publics_pour_formulaire(conn, coches: list[int]) -> list[dict]:
+    """
+    Cases « Public visé » du formulaire : les publics actifs, plus ceux déjà
+    cochés sur l'élément qui ont été archivés depuis (même règle que
+    `_types_pour_formulaire` : rien ne se perd à l'enregistrement). Chaque
+    public porte `coche`.
+    """
+    publics = [p for p in programme.lister_publics(conn, actifs_seulement=False)
+               if p["actif"] or p["id_public"] in coches]
+    for p in publics:
+        p["coche"] = p["id_public"] in coches
+    return publics
+
+
+def _ids(valeurs: list[str]) -> list[int]:
+    """Identifiants cochés d'un groupe de cases (saisies non numériques ignorées)."""
+    return [i for i in (_int_ou_none(v) for v in valeurs) if i is not None]
+
+
 def _reglages_evenement() -> tuple[list, str | None]:
     """
     Les deux réglages de l'événement dont ce module a besoin, en UNE seule
@@ -149,52 +168,62 @@ def _jour_valide(jour: str, jours_evenement: list) -> date | None:
 
 
 @router.get("/programme")
-def grille_publique(request: Request, jour: str = "", type: str = ""):
+def grille_publique(request: Request, jour: str = "", type: str = "", public: str = ""):
     """
     Grille horaire du week-end (éléments publiés uniquement), filtrable par
-    jour et par type. Réutilise le rendu de la frise des tournois (même
-    structure de données, voir `programme.grille`).
+    jour, par type et par public visé. Réutilise le rendu de la frise des
+    tournois (même structure de données, voir `programme.grille`).
     """
     jours_evenement = _jours_evenement()
     id_type = _int_ou_none(type)
+    id_public = _int_ou_none(public)
     jour_choisi = _jour_valide(jour, jours_evenement)
     jours = [jour_choisi] if jour_choisi else jours_evenement
 
     conn = get_connection()
     try:
         types = programme.lister_types(conn, actifs_seulement=True)
+        publics = programme.lister_publics(conn, actifs_seulement=True)
         filtre_type = next((t for t in types if t["id_type"] == id_type), None) if id_type else None
-        donnees_grille = programme.grille(conn, jours, id_type=id_type) if jours else []
+        filtre_public = (next((p for p in publics if p["id_public"] == id_public), None)
+                         if id_public else None)
+        donnees_grille = programme.grille(
+            conn, jours,
+            id_type=filtre_type["id_type"] if filtre_type else None,
+            id_public=filtre_public["id_public"] if filtre_public else None,
+        ) if jours else []
     finally:
         conn.close()
 
     from app.tournoi.creneau import label_jour
 
-    chips = _puces_filtres(jour_choisi, filtre_type)
+    chips = _puces_filtres(jour_choisi, filtre_type, filtre_public)
     jours_options = [{"value": j.isoformat(), "label": label_jour(j)} for j in jours_evenement]
     return templates.TemplateResponse(
         request, "programme_public.html",
         {"grille": donnees_grille, "jours_evenement": jours_evenement, "jours_options": jours_options,
-         "types": types, "jour": jour_choisi, "filtre_type": filtre_type, "chips": chips,
-         "filtres_actifs": bool(chips)},
+         "types": types, "publics": publics, "jour": jour_choisi, "filtre_type": filtre_type,
+         "filtre_public": filtre_public, "chips": chips, "filtres_actifs": bool(chips)},
     )
 
 
-def _puces_filtres(jour_choisi, filtre_type) -> list[dict]:
-    """Puces de retrait des filtres jour/type actifs (patron du catalogue)."""
-    from urllib.parse import urlencode
-
+def _puces_filtres(jour_choisi, filtre_type, filtre_public=None) -> list[dict]:
+    """Puces de retrait des filtres jour/type/public actifs (patron du catalogue)."""
     from app.tournoi.creneau import label_jour
 
-    puces = []
+    actifs = {}
     if jour_choisi is not None:
-        params = {"type": filtre_type["id_type"]} if filtre_type else {}
-        url = "/programme" + (f"?{urlencode(params)}" if params else "")
-        puces.append({"label": label_jour(jour_choisi), "url": url})
+        actifs["jour"] = (jour_choisi.isoformat(), label_jour(jour_choisi))
     if filtre_type is not None:
-        params = {"jour": jour_choisi.isoformat()} if jour_choisi is not None else {}
+        actifs["type"] = (filtre_type["id_type"], filtre_type["nom"])
+    if filtre_public is not None:
+        actifs["public"] = (filtre_public["id_public"], filtre_public["nom"])
+
+    puces = []
+    for cle, (_, libelle) in actifs.items():
+        params = {k: v for k, (v, _) in actifs.items() if k != cle}
         url = "/programme" + (f"?{urlencode(params)}" if params else "")
-        puces.append({"label": filtre_type["nom"], "url": url})
+        puces.append({"label": libelle, "url": url})
     return puces
 
 
@@ -214,11 +243,12 @@ def detail(request: Request, id_element: int):
         if e is not None and e["etat"] == "brouillon":
             e = None
         elem_type = programme.get_type(conn, e["id_type"]) if e and e["id_type"] else None
+        publics = programme.libelle_publics(programme.publics_element(conn, id_element)) if e else None
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "programme_detail.html",
-        {"e": e, "type": elem_type},
+        {"e": e, "type": elem_type, "publics": publics},
         status_code=200 if e else 404,
     )
 
@@ -268,16 +298,18 @@ def agenda_ics(request: Request, id_element: int):
 # reviennent sur la liste AVEC ses filtres : sur une quarantaine d'éléments,
 # perdre le tri à chaque geste rendrait les filtres inutiles. Les filtres
 # voyagent dans un champ caché `retour` (chaîne de requête), relu par
-# `_filtres_depuis_retour` qui n'en garde que les trois clés connues : aucune
+# `_filtres_depuis_retour` qui n'en garde que les clés connues : aucune
 # redirection ne peut donc être détournée vers une autre adresse.
 LIBELLES_ETAT = {"brouillon": "Brouillon", "publie": "Publié", "annule": "Annulé"}
 
 
-def _filtres_gestion(type: str = "", lieu: str = "", etat: str = "") -> dict:
+def _filtres_gestion(type: str = "", lieu: str = "", etat: str = "", public: str = "") -> dict:
     """Filtres valides de la liste de gestion (clés absentes quand inactifs)."""
     filtres = {}
     if _int_ou_none(type) is not None:
         filtres["type"] = str(_int_ou_none(type))
+    if _int_ou_none(public) is not None:
+        filtres["public"] = str(_int_ou_none(public))
     if (lieu or "").strip():
         filtres["lieu"] = lieu.strip()
     if etat in ETATS_PROGRAMME:
@@ -292,6 +324,7 @@ def _filtres_depuis_retour(retour: str) -> dict:
         type=(valeurs.get("type") or [""])[0],
         lieu=(valeurs.get("lieu") or [""])[0],
         etat=(valeurs.get("etat") or [""])[0],
+        public=(valeurs.get("public") or [""])[0],
     )
 
 
@@ -306,22 +339,24 @@ def _elements_filtres(conn, filtres: dict) -> list[dict]:
         conn, inclure_brouillons=True,
         id_type=_int_ou_none(filtres.get("type", "")),
         lieu=filtres.get("lieu"), etat=filtres.get("etat"),
+        id_public=_int_ou_none(filtres.get("public", "")),
     )
 
 
 @router.get("/programme/gestion")
 def gestion(request: Request, _=Depends(exiger_jeton),
-            type: str = "", lieu: str = "", etat: str = "",
+            type: str = "", lieu: str = "", etat: str = "", public: str = "",
             fait: str = "", nb: str = ""):
     """
     Liste de travail (brouillons compris) : toutes les actions y sont
     regroupées. Filtrable par type, lieu et état ; « Tout publier » et « Tout
     dépublier » portent sur la liste telle qu'elle est filtrée.
     """
-    filtres = _filtres_gestion(type, lieu, etat)
+    filtres = _filtres_gestion(type, lieu, etat, public)
     conn = get_connection()
     try:
         elements = _elements_filtres(conn, filtres)
+        publics = programme.lister_publics(conn, actifs_seulement=False)
         total = len(programme.lister_elements(conn, inclure_brouillons=True))
         types = programme.lister_types(conn, actifs_seulement=False)
         lieux = programme.lieux_distincts(conn)
@@ -337,6 +372,10 @@ def gestion(request: Request, _=Depends(exiger_jeton),
         puces.append({"label": libelle, "url": _url_gestion({k: v for k, v in filtres.items() if k != "type"})})
     if "lieu" in filtres:
         puces.append({"label": filtres["lieu"], "url": _url_gestion({k: v for k, v in filtres.items() if k != "lieu"})})
+    if "public" in filtres:
+        pu = next((p for p in publics if p["id_public"] == int(filtres["public"])), None)
+        puces.append({"label": pu["nom"] if pu else "Public inconnu",
+                      "url": _url_gestion({k: v for k, v in filtres.items() if k != "public"})})
     if "etat" in filtres:
         puces.append({"label": LIBELLES_ETAT[filtres["etat"]], "url": _url_gestion({k: v for k, v in filtres.items() if k != "etat"})})
 
@@ -349,7 +388,7 @@ def gestion(request: Request, _=Depends(exiger_jeton),
     return templates.TemplateResponse(
         request, "programme_gestion.html",
         {"elements": elements, "types_par_id": types_par_id, "types": types,
-         "lieux": lieux, "libelles_etat": LIBELLES_ETAT,
+         "lieux": lieux, "publics": publics, "libelles_etat": LIBELLES_ETAT,
          "transitions": programme.TRANSITIONS_PROGRAMME,
          "filtres": filtres, "puces": puces, "total": total,
          "retour": urlencode(filtres),
@@ -380,13 +419,13 @@ def _page_en_lot(request: Request, vers: str, filtres: dict, *, erreur: str | No
 
 @router.get("/programme/gestion/en-lot")
 def en_lot_confirmation(request: Request, _=Depends(exiger_jeton), vers: str = "",
-                        type: str = "", lieu: str = "", etat: str = ""):
+                        type: str = "", lieu: str = "", etat: str = "", public: str = ""):
     """
     Confirmation de « Tout publier » (`vers=publie` : les brouillons affichés)
     ou de « Tout dépublier » (`vers=brouillon` : les publiés affichés). Les
     éléments annulés ne sont jamais concernés (`programme.SOURCES_EN_LOT`).
     """
-    filtres = _filtres_gestion(type, lieu, etat)
+    filtres = _filtres_gestion(type, lieu, etat, public)
     if vers not in programme.SOURCES_EN_LOT:
         return RedirectResponse(_url_gestion(filtres), status_code=303)
     return _page_en_lot(request, vers, filtres)
@@ -431,11 +470,13 @@ def nouveau_formulaire(request: Request, _=Depends(exiger_jeton)):
     conn = get_connection()
     try:
         types = _types_pour_formulaire(conn, None)
+        publics = _publics_pour_formulaire(conn, [])
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "programme_form.html",
-        {"e": None, "types": types, "valeur_date": "", "valeur_fin": "", "erreur": None},
+        {"e": None, "types": types, "publics": publics,
+         "valeur_date": "", "valeur_fin": "", "erreur": None},
     )
 
 
@@ -449,7 +490,7 @@ def nouveau_creer(
     date_heure: str = Form(""),
     heure_fin: str = Form(""),
     lieu: str = Form(""),
-    public_vise: str = Form(""),
+    publics: list[str] = Form([]),
     jauge: str = Form(""),
 ):
     """Crée l'élément (état 'brouillon') puis ouvre la liste de gestion."""
@@ -459,7 +500,9 @@ def nouveau_creer(
             types = _types_pour_formulaire(conn, _int_ou_none(id_type))
             return templates.TemplateResponse(
                 request, "programme_form.html",
-                {"e": None, "types": types, "valeur_date": date_heure, "valeur_fin": heure_fin,
+                {"e": None, "types": types,
+                 "publics": _publics_pour_formulaire(conn, _ids(publics)),
+                 "valeur_date": date_heure, "valeur_fin": heure_fin,
                  "erreur": "L'intitulé est obligatoire."},
                 status_code=400,
             )
@@ -473,7 +516,7 @@ def nouveau_creer(
             date_heure=debut_utc,
             duree_min=duree_min,
             lieu=lieu,
-            public_vise=public_vise,
+            publics=_ids(publics),
             jauge=_int_ou_none(jauge),
         )
     finally:
@@ -494,6 +537,8 @@ def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton)
     try:
         e = programme.get_element(conn, id_element)
         types = _types_pour_formulaire(conn, e["id_type"] if e else None)
+        publics = _publics_pour_formulaire(
+            conn, [p["id_public"] for p in programme.publics_element(conn, id_element)])
     finally:
         conn.close()
     if e is None:
@@ -501,7 +546,7 @@ def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton)
     fin_utc = programme.fin_iso(e["date_heure"], e["duree_min"])
     return templates.TemplateResponse(
         request, "programme_form.html",
-        {"e": e, "types": types,
+        {"e": e, "types": types, "publics": publics,
          "valeur_date": iso_utc_vers_datetime_local(e["date_heure"]),
          "valeur_fin": iso_utc_vers_datetime_local(fin_utc),
          "erreur": None,
@@ -520,7 +565,7 @@ def editer_action(
     date_heure: str = Form(""),
     heure_fin: str = Form(""),
     lieu: str = Form(""),
-    public_vise: str = Form(""),
+    publics: list[str] = Form([]),
     jauge: str = Form(""),
     retour: str = Form(""),
 ):
@@ -535,7 +580,9 @@ def editer_action(
             types = _types_pour_formulaire(conn, _int_ou_none(id_type))
             return templates.TemplateResponse(
                 request, "programme_form.html",
-                {"e": e, "types": types, "valeur_date": date_heure, "valeur_fin": heure_fin,
+                {"e": e, "types": types,
+                 "publics": _publics_pour_formulaire(conn, _ids(publics)),
+                 "valeur_date": date_heure, "valeur_fin": heure_fin,
                  "erreur": "L'intitulé est obligatoire.",
                  "retour": urlencode(filtres), "url_gestion": _url_gestion(filtres)},
                 status_code=400,
@@ -551,9 +598,9 @@ def editer_action(
             date_heure=debut_utc,
             duree_min=duree_min,
             lieu=(lieu or "").strip() or None,
-            public_vise=(public_vise or "").strip() or None,
             jauge=_int_ou_none(jauge),
         )
+        programme.definir_publics(conn, id_element, _ids(publics))
     finally:
         conn.close()
     journal.journaliser(

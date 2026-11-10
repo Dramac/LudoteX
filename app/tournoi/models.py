@@ -147,11 +147,44 @@ CREATE TABLE IF NOT EXISTS programme (
     date_heure     TEXT,                       -- début, ISO 8601 UTC ; nullable
     duree_min      INTEGER,                    -- durée en minutes (déduite de l'heure de fin saisie)
     lieu           TEXT,                       -- zone ou table dans la salle
-    public_vise    TEXT,                       -- indicatif (« tout public », « famille »…)
+    public_vise    TEXT,                       -- ANCIEN texte libre, plus lu ni écrit : repris
+                                               -- dans programme_publics (tournoi/db.py), gardé
+                                               -- pour qu'un retour de version retrouve ses données
     jauge          INTEGER,                    -- purement informative, aucune réservation
     etat           TEXT NOT NULL DEFAULT 'brouillon',   -- 'brouillon' | 'publie' | 'annule'
     date_creation  TEXT NOT NULL,              -- horodatage de création (ISO 8601 UTC)
     FOREIGN KEY (id_type) REFERENCES types_programme (id_type)
+);
+"""
+
+# ---------------------------------------------------------------------------
+# publics_programme — liste configurable des PUBLICS visés (« Enfants moins de
+# 8 ans », « Familles »…), même patron que `types_programme` (archivage doux,
+# ordre, suppression refusée tant qu'un élément y est rattaché). Remplace le
+# texte libre `programme.public_vise`, qu'on ne pouvait pas filtrer.
+#
+# programme_publics — liaison PLUSIEURS-À-PLUSIEURS : les publics se
+# recouvrent (un atelier tout public convient aux familles comme aux ados), le
+# bureau coche donc tous ceux qui conviennent et le filtre public reste un
+# simple « porte ce public ». Cascade à la suppression d'un ÉLÉMENT ; aucune
+# cascade côté public (la suppression d'un public rattaché est refusée).
+# ---------------------------------------------------------------------------
+SCHEMA_PUBLICS_PROGRAMME = """
+CREATE TABLE IF NOT EXISTS publics_programme (
+    id_public  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom        TEXT NOT NULL,               -- « Enfants moins de 8 ans », « Familles »…
+    actif      INTEGER NOT NULL DEFAULT 1,  -- 0 = archivé (retrait doux)
+    ordre      INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+SCHEMA_PROGRAMME_PUBLICS = """
+CREATE TABLE IF NOT EXISTS programme_publics (
+    id_element  INTEGER NOT NULL,
+    id_public   INTEGER NOT NULL,
+    PRIMARY KEY (id_element, id_public),
+    FOREIGN KEY (id_element) REFERENCES programme (id_element) ON DELETE CASCADE,
+    FOREIGN KEY (id_public) REFERENCES publics_programme (id_public)
 );
 """
 
@@ -164,6 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_inscriptions_code    ON inscriptions (code_desins
 CREATE INDEX IF NOT EXISTS idx_rencontres_tournoi   ON rencontres (id_tournoi);
 CREATE INDEX IF NOT EXISTS idx_programme_date_heure ON programme (date_heure);
 CREATE INDEX IF NOT EXISTS idx_programme_etat       ON programme (etat);
+CREATE INDEX IF NOT EXISTS idx_programme_publics_public ON programme_publics (id_public);
 """
 
 # Ordre imposé par les FK : tournois (référencé) avant inscriptions/rencontres ;
@@ -174,5 +208,7 @@ SCHEMA_STATEMENTS = (
     SCHEMA_RENCONTRES,
     SCHEMA_TYPES_PROGRAMME,
     SCHEMA_PROGRAMME,
+    SCHEMA_PUBLICS_PROGRAMME,
+    SCHEMA_PROGRAMME_PUBLICS,
     SCHEMA_INDEXES,
 )

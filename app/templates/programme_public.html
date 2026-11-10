@@ -36,6 +36,17 @@
           {% endfor %}
         </select>
       </div>
+      {% if publics %}
+      <div class="champ">
+        <label for="public">Public</label>
+        <select id="public" name="public">
+          <option value="">Tous</option>
+          {% for p in publics %}
+            <option value="{{ p.id_public }}" {% if filtre_public and filtre_public.id_public == p.id_public %}selected{% endif %}>{{ p.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <div class="recherche-actions">
         <button type="submit" class="bouton-filtrer">Filtrer</button>
         {% if filtres_actifs %}<a class="lien" href="/programme">Réinitialiser</a>{% endif %}
@@ -86,7 +97,7 @@
               <span class="planning-bloc-heure">{{ b.heure_txt }}</span>
               <span class="planning-bloc-nom">{{ b.type_icone ~ ' ' if b.type_icone }}{{ b.intitule }}</span>
               {% if b.lieu %}<span class="planning-bloc-meta">📍 {{ b.lieu }}</span>{% endif %}
-              {% if b.public_vise %}<span class="planning-bloc-meta">{{ b.public_vise }}</span>{% endif %}
+              {% if b.publics %}<span class="planning-bloc-meta">{{ b.publics }}</span>{% endif %}
             </a>
           {% endfor %}
         </div>

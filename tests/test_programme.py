@@ -191,8 +191,7 @@ def test_reordonner_types(conn):
 def test_creer_et_get_element(conn):
     id_element = programme.creer_element(
         conn, "Loto des familles", description="Un loto convivial",
-        date_heure=_iso(60), duree_min=45, lieu="Table 1",
-        public_vise="famille", jauge=20,
+        date_heure=_iso(60), duree_min=45, lieu="Table 1", jauge=20,
     )
     e = programme.get_element(conn, id_element)
     assert e["intitule"] == "Loto des familles"
@@ -272,10 +271,12 @@ def test_lister_elements_filtre_jour_type_brouillons(conn):
 
 def test_dupliquer_element(conn):
     id_type = programme.creer_type(conn, "Atelier")
+    familles = programme.creer_entree(conn, "publics", "Familles")
+    ados = programme.creer_entree(conn, "publics", "Ados")
     id_element = programme.creer_element(
         conn, "Loto", description="desc", id_type=id_type,
         date_heure=_iso(60), duree_min=30, lieu="Table 2",
-        public_vise="tout public", jauge=10,
+        publics=[familles, ados], jauge=10,
     )
     programme.changer_etat(conn, id_element, "publie")
     nouvel_horaire = _iso(24 * 60)
@@ -286,6 +287,7 @@ def test_dupliquer_element(conn):
     assert copie["duree_min"] == 30
     assert copie["etat"] == "brouillon"  # repart propre
     assert copie["date_heure"] == nouvel_horaire
+    assert {p["id_public"] for p in programme.publics_element(conn, id_copie)} == {familles, ados}
 
 
 def test_dupliquer_element_source_introuvable(conn):
@@ -919,13 +921,25 @@ def _id_type(nom: str) -> int:
         conn.close()
 
 
+def _id_public(nom):
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        return conn.execute(
+            "SELECT id_public FROM publics_programme WHERE nom = ?", (nom,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
 def test_detail_element_publie(client):
     id_type = _id_type("Atelier")
     r = client.post("/programme/nouveau", data={
         "intitule": "Peinture de figurines", "description": "Un atelier calme.",
         "id_type": str(id_type), "date_heure": "2026-08-01T10:00",
         "heure_fin": "2026-08-01T11:00", "lieu": "Table 3",
-        "public_vise": "8 ans et +", "jauge": "6",
+        "publics": [str(_id_public("Enfants 8 ans et plus")), str(_id_public("Familles"))],
+        "jauge": "6",
     }, follow_redirects=False)
     from app.tournoi import db as tdb
     conn = tdb.get_connection()
@@ -943,7 +957,7 @@ def test_detail_element_publie(client):
     assert "Peinture de figurines" in page
     assert "Atelier" in page  # type
     assert "Table 3" in page
-    assert "8 ans et +" in page
+    assert "Enfants 8 ans et plus, Familles" in page
     assert "6" in page and "place" in page  # jauge indicative
     assert "Un atelier calme." in page
     assert f'href="/programme/{id_element}/agenda.ics"' in page
@@ -1253,3 +1267,195 @@ def test_retour_ne_peut_pas_detourner_la_redirection(client):
         "etat": "publie", "retour": "next=https://exemple.invalid&etat=nimporte",
     }, follow_redirects=False)
     assert r.headers["location"] == "/programme/gestion"
+
+
+# ===========================================================================
+# Publics visés — liste administrable, cases à cocher, filtres
+# ===========================================================================
+PUBLICS_PAR_DEFAUT = [
+    "Enfants moins de 8 ans", "Enfants 8 ans et plus", "Ados", "Adultes",
+    "Familles", "Joueurs confirmés",
+]
+
+
+def test_seed_publics_programme(db_path):
+    tournoi_db.init_db()
+    tournoi_db.init_db()  # idempotent
+    conn = tournoi_db.get_connection()
+    try:
+        noms = [p["nom"] for p in programme.lister_publics(conn)]
+    finally:
+        conn.close()
+    assert noms == PUBLICS_PAR_DEFAUT
+
+
+def _base_d_avant_les_publics(saisies: list[str | None]) -> list[int]:
+    """
+    Simule le premier démarrage de la version qui introduit les publics sur une
+    base qui avait des saisies libres : tables de publics vides, `public_vise`
+    rempli. Renvoie les ids des éléments créés.
+    """
+    tournoi_db.init_db()
+    conn = tournoi_db.get_connection()
+    try:
+        conn.execute("DELETE FROM programme_publics")
+        conn.execute("DELETE FROM publics_programme")
+        ids = []
+        for i, valeur in enumerate(saisies):
+            cur = conn.execute(
+                "INSERT INTO programme (intitule, public_vise, etat, date_creation)"
+                " VALUES (?, ?, 'brouillon', '2026-08-01T00:00:00+00:00')",
+                (f"E{i}", valeur),
+            )
+            ids.append(cur.lastrowid)
+        conn.commit()
+    finally:
+        conn.close()
+    return ids
+
+
+def test_reprise_du_texte_libre(db_path):
+    ids = _base_d_avant_les_publics(
+        ["tout public", "  familles ", "8 ans et +", "8 ANS et +", None, "   "]
+    )
+    tournoi_db.init_db()
+    conn = tournoi_db.get_connection()
+    try:
+        noms = lambda i: [p["nom"] for p in programme.publics_element(conn, i)]  # noqa: E731
+        assert noms(ids[0]) == PUBLICS_PAR_DEFAUT  # « tout public » : tout coché
+        assert noms(ids[1]) == ["Familles"]
+        assert noms(ids[2]) == noms(ids[3]) == ["8 ans et +"]  # une seule entrée créée
+        assert noms(ids[4]) == noms(ids[5]) == []
+        assert [p["nom"] for p in programme.lister_publics(conn)] == PUBLICS_PAR_DEFAUT + ["8 ans et +"]
+        # L'ancienne colonne n'est pas vidée : un retour de version la retrouve.
+        assert programme.get_element(conn, ids[1])["public_vise"] == "  familles "
+    finally:
+        conn.close()
+
+
+def test_reprise_ne_se_rejoue_pas(db_path):
+    ids = _base_d_avant_les_publics(["Familles"])
+    tournoi_db.init_db()
+    conn = tournoi_db.get_connection()
+    try:
+        programme.definir_publics(conn, ids[0], [])  # le bureau décoche
+    finally:
+        conn.close()
+    tournoi_db.init_db()
+    conn = tournoi_db.get_connection()
+    try:
+        assert programme.publics_element(conn, ids[0]) == []
+    finally:
+        conn.close()
+
+
+def test_supprimer_element_supprime_ses_liens(conn):
+    pu = programme.creer_entree(conn, "publics", "Ados")
+    e = programme.creer_element(conn, "X", publics=[pu])
+    assert programme.supprimer_entree(conn, "publics", pu) is False  # rattaché
+    programme.supprimer_element(conn, e)
+    assert conn.execute("SELECT COUNT(*) FROM programme_publics").fetchone()[0] == 0
+    assert programme.supprimer_entree(conn, "publics", pu) is True
+
+
+def test_definir_publics_ignore_les_inconnus_et_garde_les_archives(conn):
+    a = programme.creer_entree(conn, "publics", "Ados")
+    b = programme.creer_entree(conn, "publics", "Adultes")
+    e = programme.creer_element(conn, "X", publics=[a, b, 999])
+    programme.archiver_entree(conn, "publics", b)
+    assert [p["id_public"] for p in programme.publics_element(conn, e)] == [a, b]
+    programme.definir_publics(conn, e, [b])
+    assert [p["nom"] for p in programme.publics_element(conn, e)] == ["Adultes"]
+
+
+def test_lister_publics_ordre_et_usage(conn):
+    a = programme.creer_entree(conn, "publics", "Ados")
+    b = programme.creer_entree(conn, "publics", "Adultes")
+    programme.creer_element(conn, "X", publics=[b])
+    programme.reordonner_liste(conn, "publics", b, "haut")
+    publics = programme.lister_publics(conn)
+    assert [p["id_public"] for p in publics] == [b, a]
+    assert [p["usage_count"] for p in publics] == [1, 0]
+
+
+def test_grille_et_liste_filtrent_par_public(conn):
+    jour = datetime.now(timezone.utc).date()
+    ados = programme.creer_entree(conn, "publics", "Ados")
+    familles = programme.creer_entree(conn, "publics", "Familles")
+    a = programme.creer_element(conn, "A", publics=[ados, familles],
+                                date_heure=f"{jour.isoformat()}T10:00:00+00:00")
+    b = programme.creer_element(conn, "B", publics=[familles],
+                                date_heure=f"{jour.isoformat()}T11:00:00+00:00")
+    programme.changer_etat(conn, a, "publie")
+    programme.changer_etat(conn, b, "publie")
+
+    blocs = programme.grille(conn, [jour], id_public=ados)[0]["blocs"]
+    assert [x["intitule"] for x in blocs] == ["A"]
+    assert blocs[0]["publics"] == "Ados, Familles"
+    assert {e["intitule"] for e in programme.lister_elements(conn, id_public=familles)} == {"A", "B"}
+
+
+def test_saisie_des_publics_par_cases(client):
+    ados, familles = _id_public("Ados"), _id_public("Familles")
+    formulaire = client.get("/programme/nouveau").text
+    assert 'name="publics"' in formulaire and "Enfants moins de 8 ans" in formulaire
+
+    client.post("/programme/nouveau", data={"intitule": "Atelier", "publics": [str(ados), str(familles)]})
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        id_e = conn.execute("SELECT id_element FROM programme WHERE intitule = 'Atelier'").fetchone()[0]
+    finally:
+        conn.close()
+    edition = client.get(f"/programme/{id_e}/editer").text
+    assert f'value="{ados}" checked' in edition
+
+    client.post(f"/programme/{id_e}/editer", data={"intitule": "Atelier", "publics": [str(familles)]})
+    conn = tdb.get_connection()
+    try:
+        assert [p["nom"] for p in programme.publics_element(conn, id_e)] == ["Familles"]
+    finally:
+        conn.close()
+
+    # Filtre de la liste de gestion.
+    r = client.get("/programme/gestion", params={"public": str(ados)})
+    assert "Aucun élément ne correspond" in r.text
+    r = client.get("/programme/gestion", params={"public": str(familles)})
+    assert "Atelier" in r.text
+
+
+def test_filtre_public_sur_la_page_publique(client):
+    _regler_date_evenement(client, "2026-08-01")
+    ados, familles = _id_public("Ados"), _id_public("Familles")
+    for intitule, publics, heure in (("Pour ados", [ados], "10:00"), ("Pour familles", [familles], "11:00")):
+        client.post("/programme/nouveau", data={
+            "intitule": intitule, "publics": [str(p) for p in publics],
+            "date_heure": f"2026-08-01T{heure}", "heure_fin": f"2026-08-01T{heure[:2]}:45",
+        })
+    from app.tournoi import db as tdb
+    conn = tdb.get_connection()
+    try:
+        for (id_e,) in conn.execute("SELECT id_element FROM programme").fetchall():
+            programme.changer_etat(conn, id_e, "publie")
+    finally:
+        conn.close()
+
+    page = client.get("/programme").text
+    assert 'name="public"' in page and "Pour ados" in page and "Pour familles" in page
+    page = client.get("/programme", params={"public": str(ados)}).text
+    assert "Pour ados" in page and "Pour familles" not in page
+    assert 'class="chip-filtre"' in page and "Ados" in page
+
+
+def test_admin_publics_exige_le_mot_de_passe_et_gere_la_liste(client):
+    r = client.get("/admin/programme-publics", follow_redirects=False)
+    assert r.status_code in (302, 303)
+    _connecter_admin(client)
+    page = client.get("/admin/programme-publics").text
+    assert "Publics du programme" in page and "Enfants 8 ans et plus" in page
+    assert 'name="icone"' not in page  # pas d'icône pour un public
+    r = client.post("/admin/programme-publics", data={"nom": "Débutants"}, follow_redirects=False)
+    assert "Public%20ajout" in r.headers["location"]
+    assert "Débutants" in client.get("/admin/programme-publics").text
+    # Les types gardent leur écran, icône comprise.
+    assert 'name="icone"' in client.get("/admin/programme-types").text

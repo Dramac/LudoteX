@@ -66,127 +66,250 @@ def _nettoyer_texte(texte: str | None) -> str | None:
 
 
 # ===========================================================================
-# Types de programme (liste configurable, conception §4.1)
-# Patron identique à `app.services` (emplacements de rangement) : liste,
-# création, renommage propagé (FK, aucune duplication à gérer ailleurs),
-# archivage doux, réordonnancement, suppression refusée si utilisé.
+# Les deux LISTES administrables du programme : types et publics visés
+# (conception §4.1). Patron identique à `app.services` (emplacements de
+# rangement) : liste, création, renommage propagé (clé, aucune duplication à
+# gérer ailleurs), archivage doux, réordonnancement, suppression refusée si
+# utilisée. Une seule implémentation, paramétrée par `_LISTES`, plutôt que
+# deux copies qui finiraient par diverger ; les fonctions `*_type` restent
+# comme raccourcis pour les appelants existants.
 # ===========================================================================
-def lister_types(conn: sqlite3.Connection, *, actifs_seulement: bool = True) -> list[dict]:
+_LISTES = {
+    "types": {
+        "table": "types_programme", "cle": "id_type", "icone": True,
+        # Éléments qui pointent vers l'entrée `t` (sous-requête corrélée).
+        "usage": "SELECT COUNT(*) FROM programme p WHERE p.id_type = t.id_type",
+    },
+    "publics": {
+        "table": "publics_programme", "cle": "id_public", "icone": False,
+        "usage": "SELECT COUNT(*) FROM programme_publics l WHERE l.id_public = t.id_public",
+    },
+}
+
+
+def lister_liste(conn: sqlite3.Connection, liste: str, *, actifs_seulement: bool = True) -> list[dict]:
     """
-    Liste des types de programme, triée par ordre d'affichage puis nom, avec
-    le nombre d'éléments qui y sont rattachés (`usage_count` — sert à décider
-    si la suppression dure est proposée). `actifs_seulement` (défaut True)
-    exclut les types archivés ; False renvoie la liste complète (écran admin).
+    Entrées d'une liste (`"types"` ou `"publics"`), triées par ordre puis nom,
+    avec `usage_count` (nombre d'éléments rattachés — décide si la
+    suppression dure est proposée). `actifs_seulement` exclut les archivées.
     """
-    clause = "WHERE tp.actif = 1" if actifs_seulement else ""
+    cfg = _LISTES[liste]
+    clause = "WHERE t.actif = 1" if actifs_seulement else ""
     rows = conn.execute(
         f"""
-        SELECT tp.id_type, tp.nom, tp.icone, tp.actif, tp.ordre,
-               COUNT(p.id_element) AS usage_count
-        FROM types_programme tp
-        LEFT JOIN programme p ON p.id_type = tp.id_type
+        SELECT t.*, ({cfg["usage"]}) AS usage_count
+        FROM {cfg["table"]} t
         {clause}
-        GROUP BY tp.id_type
-        ORDER BY tp.ordre, tp.nom COLLATE NOCASE
+        ORDER BY t.ordre, t.nom COLLATE NOCASE
         """
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def get_type(conn: sqlite3.Connection, id_type: int) -> dict | None:
-    """Un type de programme (actif ou archivé), ou None."""
-    return _row(
-        conn.execute(
-            "SELECT * FROM types_programme WHERE id_type = ?", (id_type,)
-        ).fetchone()
-    )
+def get_entree(conn: sqlite3.Connection, liste: str, id_entree: int) -> dict | None:
+    """Une entrée de liste (active ou archivée), ou None."""
+    cfg = _LISTES[liste]
+    return _row(conn.execute(
+        f"SELECT * FROM {cfg['table']} WHERE {cfg['cle']} = ?", (id_entree,)
+    ).fetchone())
 
 
-def creer_type(conn: sqlite3.Connection, nom: str, icone: str | None = None) -> int | None:
-    """Ajoute un type en fin de liste (ordre = max + 1). None si `nom` est vide."""
+def creer_entree(conn: sqlite3.Connection, liste: str, nom: str, icone: str | None = None) -> int | None:
+    """Ajoute une entrée en fin de liste (ordre = max + 1). None si `nom` est vide."""
+    cfg = _LISTES[liste]
     nom_normalise = _nettoyer_texte(nom)
     if not nom_normalise:
         return None
-    (max_ordre,) = conn.execute(
-        "SELECT COALESCE(MAX(ordre), -1) FROM types_programme"
-    ).fetchone()
-    cur = conn.execute(
-        "INSERT INTO types_programme (nom, icone, actif, ordre) VALUES (?, ?, 1, ?)",
-        (nom_normalise, _nettoyer_texte(icone), max_ordre + 1),
-    )
+    (max_ordre,) = conn.execute(f"SELECT COALESCE(MAX(ordre), -1) FROM {cfg['table']}").fetchone()
+    if cfg["icone"]:
+        cur = conn.execute(
+            f"INSERT INTO {cfg['table']} (nom, icone, actif, ordre) VALUES (?, ?, 1, ?)",
+            (nom_normalise, _nettoyer_texte(icone), max_ordre + 1),
+        )
+    else:
+        cur = conn.execute(
+            f"INSERT INTO {cfg['table']} (nom, actif, ordre) VALUES (?, 1, ?)",
+            (nom_normalise, max_ordre + 1),
+        )
     conn.commit()
     return int(cur.lastrowid)
 
 
-def renommer_type(conn: sqlite3.Connection, id_type: int, nom: str, icone: str | None = None) -> bool:
+def renommer_entree(conn: sqlite3.Connection, liste: str, id_entree: int,
+                    nom: str, icone: str | None = None) -> bool:
     """
-    Renomme un type (répercuté automatiquement partout via la FK) et met à
-    jour son icône. False si `nom` est vide (rien n'est modifié).
+    Renomme une entrée (répercuté partout, les éléments ne portent que la clé)
+    et, pour les types, met à jour l'icône. False si `nom` est vide.
     """
+    cfg = _LISTES[liste]
     nom_normalise = _nettoyer_texte(nom)
     if not nom_normalise:
         return False
-    conn.execute(
-        "UPDATE types_programme SET nom = ?, icone = ? WHERE id_type = ?",
-        (nom_normalise, _nettoyer_texte(icone), id_type),
-    )
+    if cfg["icone"]:
+        conn.execute(
+            f"UPDATE {cfg['table']} SET nom = ?, icone = ? WHERE {cfg['cle']} = ?",
+            (nom_normalise, _nettoyer_texte(icone), id_entree),
+        )
+    else:
+        conn.execute(
+            f"UPDATE {cfg['table']} SET nom = ? WHERE {cfg['cle']} = ?", (nom_normalise, id_entree)
+        )
     conn.commit()
     return True
 
 
-def archiver_type(conn: sqlite3.Connection, id_type: int) -> None:
-    """Retrait doux : disparaît des menus de saisie, les éléments déjà saisis gardent leur type."""
-    conn.execute("UPDATE types_programme SET actif = 0 WHERE id_type = ?", (id_type,))
+def _changer_actif(conn: sqlite3.Connection, liste: str, id_entree: int, actif: int) -> None:
+    cfg = _LISTES[liste]
+    conn.execute(f"UPDATE {cfg['table']} SET actif = ? WHERE {cfg['cle']} = ?", (actif, id_entree))
     conn.commit()
 
 
-def reactiver_type(conn: sqlite3.Connection, id_type: int) -> None:
-    """Annule un archivage : redevient proposé dans les menus de saisie."""
-    conn.execute("UPDATE types_programme SET actif = 1 WHERE id_type = ?", (id_type,))
-    conn.commit()
+def archiver_entree(conn: sqlite3.Connection, liste: str, id_entree: int) -> None:
+    """Retrait doux : disparaît des formulaires de saisie, les éléments déjà saisis la gardent."""
+    _changer_actif(conn, liste, id_entree, 0)
 
 
-def compteur_usage_type(conn: sqlite3.Connection, id_type: int) -> int:
-    """Nombre d'éléments de programme qui pointent actuellement vers ce type."""
+def reactiver_entree(conn: sqlite3.Connection, liste: str, id_entree: int) -> None:
+    """Annule un archivage : redevient proposée dans les formulaires de saisie."""
+    _changer_actif(conn, liste, id_entree, 1)
+
+
+def compteur_usage(conn: sqlite3.Connection, liste: str, id_entree: int) -> int:
+    """Nombre d'éléments de programme actuellement rattachés à cette entrée."""
+    cfg = _LISTES[liste]
     (n,) = conn.execute(
-        "SELECT COUNT(*) FROM programme WHERE id_type = ?", (id_type,)
-    ).fetchone()
+        f"SELECT ({cfg['usage']}) FROM {cfg['table']} t WHERE t.{cfg['cle']} = ?", (id_entree,)
+    ).fetchone() or (0,)
     return n
 
 
-def supprimer_type(conn: sqlite3.Connection, id_type: int) -> bool:
+def supprimer_entree(conn: sqlite3.Connection, liste: str, id_entree: int) -> bool:
     """
     Suppression DURE : refusée (False, rien n'est modifié) si au moins un
-    élément de programme y est encore rattaché — jamais de FK orpheline.
+    élément de programme y est encore rattaché — jamais de lien orphelin.
     """
-    if compteur_usage_type(conn, id_type) > 0:
+    cfg = _LISTES[liste]
+    if compteur_usage(conn, liste, id_entree) > 0:
         return False
-    conn.execute("DELETE FROM types_programme WHERE id_type = ?", (id_type,))
+    conn.execute(f"DELETE FROM {cfg['table']} WHERE {cfg['cle']} = ?", (id_entree,))
     conn.commit()
     return True
 
 
-def reordonner_types(conn: sqlite3.Connection, id_type: int, sens: str) -> None:
+def reordonner_liste(conn: sqlite3.Connection, liste: str, id_entree: int, sens: str) -> None:
     """
-    Échange la position d'un type avec son voisin immédiat dans la liste triée
-    (`sens` = "haut" ou "bas"). Sans effet en bout de liste ou si `id_type` est
-    inconnu. Travaille sur la POSITION dans la liste triée (pas la valeur brute
-    d'`ordre`), comme `deplacer_emplacement_rangement`.
+    Échange la position d'une entrée avec sa voisine immédiate dans la liste
+    triée (`sens` = "haut" ou "bas"). Sans effet en bout de liste ou si
+    l'entrée est inconnue. Travaille sur la POSITION dans la liste triée (pas
+    la valeur brute d'`ordre`), comme `deplacer_emplacement_rangement`.
     """
+    cfg = _LISTES[liste]
+    table, cle = cfg["table"], cfg["cle"]
     lignes = conn.execute(
-        "SELECT id_type, ordre FROM types_programme ORDER BY ordre, nom COLLATE NOCASE"
+        f"SELECT {cle} AS id, ordre FROM {table} ORDER BY ordre, nom COLLATE NOCASE"
     ).fetchall()
-    ids = [r["id_type"] for r in lignes]
-    if id_type not in ids:
+    ids = [r["id"] for r in lignes]
+    if id_entree not in ids:
         return
-    idx = ids.index(id_type)
+    idx = ids.index(id_entree)
     voisin = idx - 1 if sens == "haut" else idx + 1
     if voisin < 0 or voisin >= len(ids):
         return
     a, b = lignes[idx], lignes[voisin]
-    conn.execute("UPDATE types_programme SET ordre = ? WHERE id_type = ?", (b["ordre"], a["id_type"]))
-    conn.execute("UPDATE types_programme SET ordre = ? WHERE id_type = ?", (a["ordre"], b["id_type"]))
+    conn.execute(f"UPDATE {table} SET ordre = ? WHERE {cle} = ?", (b["ordre"], a["id"]))
+    conn.execute(f"UPDATE {table} SET ordre = ? WHERE {cle} = ?", (a["ordre"], b["id"]))
     conn.commit()
+
+
+# Raccourcis historiques pour les types (appelants et tests existants).
+def lister_types(conn: sqlite3.Connection, *, actifs_seulement: bool = True) -> list[dict]:
+    return lister_liste(conn, "types", actifs_seulement=actifs_seulement)
+
+
+def get_type(conn: sqlite3.Connection, id_type: int) -> dict | None:
+    return get_entree(conn, "types", id_type)
+
+
+def creer_type(conn: sqlite3.Connection, nom: str, icone: str | None = None) -> int | None:
+    return creer_entree(conn, "types", nom, icone)
+
+
+def renommer_type(conn: sqlite3.Connection, id_type: int, nom: str, icone: str | None = None) -> bool:
+    return renommer_entree(conn, "types", id_type, nom, icone)
+
+
+def archiver_type(conn: sqlite3.Connection, id_type: int) -> None:
+    archiver_entree(conn, "types", id_type)
+
+
+def reactiver_type(conn: sqlite3.Connection, id_type: int) -> None:
+    reactiver_entree(conn, "types", id_type)
+
+
+def compteur_usage_type(conn: sqlite3.Connection, id_type: int) -> int:
+    return compteur_usage(conn, "types", id_type)
+
+
+def supprimer_type(conn: sqlite3.Connection, id_type: int) -> bool:
+    return supprimer_entree(conn, "types", id_type)
+
+
+def reordonner_types(conn: sqlite3.Connection, id_type: int, sens: str) -> None:
+    reordonner_liste(conn, "types", id_type, sens)
+
+
+def lister_publics(conn: sqlite3.Connection, *, actifs_seulement: bool = True) -> list[dict]:
+    return lister_liste(conn, "publics", actifs_seulement=actifs_seulement)
+
+
+# ===========================================================================
+# Publics d'un élément (liaison plusieurs-à-plusieurs `programme_publics`)
+# ===========================================================================
+def publics_par_element(conn: sqlite3.Connection) -> dict[int, list[dict]]:
+    """
+    Publics de chaque élément, dans l'ordre de la liste : {id_element: [{id_public,
+    nom, actif}, …]}. Une seule requête pour toute une page (grille, gestion).
+    """
+    resultat: dict[int, list[dict]] = {}
+    for r in conn.execute(
+        """
+        SELECT l.id_element, pu.id_public, pu.nom, pu.actif
+        FROM programme_publics l
+        JOIN publics_programme pu ON pu.id_public = l.id_public
+        ORDER BY pu.ordre, pu.nom COLLATE NOCASE
+        """
+    ):
+        resultat.setdefault(r["id_element"], []).append(
+            {"id_public": r["id_public"], "nom": r["nom"], "actif": r["actif"]}
+        )
+    return resultat
+
+
+def publics_element(conn: sqlite3.Connection, id_element: int) -> list[dict]:
+    """Publics d'un seul élément, dans l'ordre de la liste."""
+    return publics_par_element(conn).get(id_element, [])
+
+
+def libelle_publics(publics: list[dict]) -> str | None:
+    """« Enfants 8 ans et plus, Familles » — None si aucun public n'est coché."""
+    return ", ".join(p["nom"] for p in publics) or None
+
+
+def definir_publics(conn: sqlite3.Connection, id_element: int, ids_publics) -> None:
+    """
+    Remplace les publics d'un élément par `ids_publics` (identifiants inconnus
+    ignorés). Un public archivé déjà coché reste coché tant qu'on ne le décoche
+    pas : l'archivage ne retire jamais rien d'un élément déjà saisi.
+    """
+    valides = {
+        r[0] for r in conn.execute("SELECT id_public FROM publics_programme")
+    }
+    with transaction(conn):
+        conn.execute("DELETE FROM programme_publics WHERE id_element = ?", (id_element,))
+        conn.executemany(
+            "INSERT OR IGNORE INTO programme_publics (id_element, id_public) VALUES (?, ?)",
+            [(id_element, i) for i in dict.fromkeys(ids_publics or []) if i in valides],
+        )
 
 
 # ===========================================================================
@@ -201,28 +324,31 @@ def creer_element(
     date_heure: str | None = None,
     duree_min: int | None = None,
     lieu: str | None = None,
-    public_vise: str | None = None,
+    publics: list[int] | None = None,
     jauge: int | None = None,
 ) -> int:
     """
     Crée un élément de programme à l'état 'brouillon' et renvoie son id.
 
     `date_heure` est attendu en UTC ISO (la route convertit la saisie locale,
-    jalon 2). `id_type` est nullable (aucun type choisi).
+    jalon 2). `id_type` est nullable (aucun type choisi). `publics` : les
+    identifiants des publics cochés (voir `definir_publics`).
     """
     cur = conn.execute(
         """
         INSERT INTO programme
             (intitule, description, id_type, date_heure, duree_min, lieu,
-             public_vise, jauge, etat, date_creation)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'brouillon', ?)
+             jauge, etat, date_creation)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'brouillon', ?)
         """,
         (intitule.strip(), _nettoyer_texte(description), id_type, date_heure,
-         duree_min, _nettoyer_texte(lieu), _nettoyer_texte(public_vise), jauge,
-         maintenant()),
+         duree_min, _nettoyer_texte(lieu), jauge, maintenant()),
     )
     conn.commit()
-    return int(cur.lastrowid)
+    id_element = int(cur.lastrowid)
+    if publics:
+        definir_publics(conn, id_element, publics)
+    return id_element
 
 
 def get_element(conn: sqlite3.Connection, id_element: int) -> dict | None:
@@ -241,7 +367,7 @@ def modifier_element(conn: sqlite3.Connection, id_element: int, **champs) -> Non
     """
     colonnes = {
         "intitule", "description", "id_type", "date_heure", "duree_min",
-        "lieu", "public_vise", "jauge",
+        "lieu", "jauge",
     }
     maj = {c: v for c, v in champs.items() if c in colonnes}
     if not maj:
@@ -290,13 +416,15 @@ def lister_elements(
     id_type: int | None = None,
     lieu: str | None = None,
     etat: str | None = None,
+    id_public: int | None = None,
     inclure_brouillons: bool = False,
 ) -> list[dict]:
     """
     Liste les éléments de programme (heure de début croissante ; ceux sans
     date en dernier), filtrable par jour (heure locale), par type, par lieu
     (comparé sans tenir compte de la casse ni des espaces de bord, comme le
-    regroupe `lieux_distincts`) et par état.
+    regroupe `lieux_distincts`), par état et par public. Chaque élément porte
+    la liste de ses publics (`publics`).
 
     `inclure_brouillons` : True pour la vue bénévole (jalon 2), False pour le
     public (brouillons masqués). Les éléments ANNULÉS restent dans la liste —
@@ -306,9 +434,13 @@ def lister_elements(
     lignes = conn.execute(
         "SELECT * FROM programme ORDER BY (date_heure IS NULL), date_heure, intitule COLLATE NOCASE"
     ).fetchall()
+    publics = publics_par_element(conn)
     resultat = []
     for r in lignes:
         d = dict(r)
+        d["publics"] = publics.get(d["id_element"], [])
+        if id_public is not None and all(p["id_public"] != id_public for p in d["publics"]):
+            continue
         if not inclure_brouillons and d["etat"] == "brouillon":
             continue
         if id_type is not None and d["id_type"] != id_type:
@@ -411,7 +543,8 @@ def dupliquer_element(
     return creer_element(
         conn, e["intitule"],
         description=e["description"], id_type=e["id_type"], date_heure=date_heure,
-        duree_min=e["duree_min"], lieu=e["lieu"], public_vise=e["public_vise"],
+        duree_min=e["duree_min"], lieu=e["lieu"],
+        publics=[p["id_public"] for p in publics_element(conn, id_element)],
         jauge=e["jauge"],
     )
 
@@ -608,6 +741,7 @@ def imminents(
         WHERE p.etat != 'brouillon' AND p.date_heure IS NOT NULL
         """
     ).fetchall()
+    publics = publics_par_element(conn) if lignes else {}
     for r in lignes:
         d = dict(r)
         if d["etat"] == "annule" and not inclure_annules:
@@ -629,7 +763,7 @@ def imminents(
             "heure_locale": _heure_locale(d["date_heure"]),
             "minutes_avant": _minutes_avant(d["date_heure"], maintenant_dt),
             "jauge": d["jauge"],
-            "public_vise": d["public_vise"],
+            "publics": libelle_publics(publics.get(d["id_element"], [])),
         }
         fusion.append((dt, d["intitule"], entree))
 
@@ -646,39 +780,47 @@ def imminents(
 # de la page /programme).
 # ===========================================================================
 def grille(
-    conn: sqlite3.Connection, jours: list[date], *, id_type: int | None = None
+    conn: sqlite3.Connection, jours: list[date], *, id_type: int | None = None,
+    id_public: int | None = None,
 ) -> list[dict]:
     """
     Construit la grille horaire des éléments de programme PUBLIÉS pour les
-    `jours` donnés (heure locale), filtrable par type. Renvoie une liste de
+    `jours` donnés (heure locale), filtrable par type et par public. Renvoie une liste de
     dicts par jour (même ordre que `jours`), même structure que
     `tournoi.services.planning` (label, blocs, vide, nb_couloirs, nb_slots,
     heures) : le gabarit `/programme` réutilise le même rendu que la frise de
     l'accueil. Les éléments sans durée occupent DUREE_DEFAUT_MIN.
     """
-    clause_type = "AND p.id_type = ?" if id_type is not None else ""
-    params: tuple = (id_type,) if id_type is not None else ()
+    clauses, params = "", []
+    if id_type is not None:
+        clauses += " AND p.id_type = ?"
+        params.append(id_type)
+    if id_public is not None:
+        clauses += (" AND EXISTS (SELECT 1 FROM programme_publics l"
+                    " WHERE l.id_element = p.id_element AND l.id_public = ?)")
+        params.append(id_public)
     lignes = conn.execute(
         f"""
         SELECT p.*, tp.nom AS type_nom, tp.icone AS type_icone
         FROM programme p
         LEFT JOIN types_programme tp ON tp.id_type = p.id_type
-        WHERE p.etat = 'publie' AND p.date_heure IS NOT NULL {clause_type}
+        WHERE p.etat = 'publie' AND p.date_heure IS NOT NULL{clauses}
         ORDER BY p.date_heure ASC
         """,
         params,
     ).fetchall()
 
+    publics = publics_par_element(conn) if lignes else {}
     par_jour: dict[date, list] = {j: [] for j in jours}
     for r in lignes:
-        bloc = _bloc_programme(r)
+        bloc = _bloc_programme(r, publics.get(r["id_element"], []))
         if bloc and bloc["debut_dt"].date() in par_jour:
             par_jour[bloc["debut_dt"].date()].append(bloc)
 
     return assembler_jours(par_jour, jours, cle_tri="intitule")
 
 
-def _bloc_programme(r) -> dict | None:
+def _bloc_programme(r, publics: list[dict] | None = None) -> dict | None:
     """
     Un élément de programme sous forme de bloc de frise (ou None si sa date
     est absente/invalide). Partagé par `grille` et par la frise fusionnée de
@@ -695,7 +837,7 @@ def _bloc_programme(r) -> dict | None:
         # sur la même clé.
         "nom": r["intitule"],
         "lieu": r["lieu"], "type_nom": r["type_nom"], "type_icone": r["type_icone"],
-        "public_vise": r["public_vise"], "jauge": r["jauge"],
+        "publics": libelle_publics(publics or []), "jauge": r["jauge"],
         "debut_dt": debut, "fin_dt": fin,
         "heure_txt": f'{debut.strftime("%H:%M")}–{fin.strftime("%H:%M")}',
     }
@@ -739,8 +881,9 @@ def planning_fusionne(
             ORDER BY p.date_heure ASC
             """
         ).fetchall()
+        publics = publics_par_element(conn) if lignes else {}
         for r in lignes:
-            bloc = _bloc_programme(r)
+            bloc = _bloc_programme(r, publics.get(r["id_element"], []))
             if bloc and bloc["debut_dt"].date() in par_jour:
                 par_jour[bloc["debut_dt"].date()].append(bloc)
 

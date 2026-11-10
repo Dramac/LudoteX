@@ -3861,142 +3861,156 @@ def rangement_emplacement_descendre(request: Request, id_emplacement: int):
 
 
 # ---------------------------------------------------------------------------
-# Programme du week-end : CRUD de la liste des TYPES (docs/conception-
-# programme.md §4.1/§6.3), groupe « Événement » du tableau de bord. Patron
-# EXACT du rangement ci-dessus (même style de table, mêmes actions, message en
-# query string) : seule différence, ces types vivent dans la base SÉPARÉE des
-# tournois (`data/tournoi.db`), d'où `get_tournoi_connection` au lieu de
-# `get_connection`. La saisie des ÉLÉMENTS eux-mêmes reste bénévole (jeton),
-# voir `app/tournoi/routes_programme.py`.
+# Programme du week-end : CRUD des deux LISTES administrables, les TYPES et les
+# PUBLICS visés (docs/conception-programme.md §4.1/§6.3), groupe « Événement »
+# du tableau de bord. Patron EXACT du rangement ci-dessus (même style de table,
+# mêmes actions, message en query string) : seule différence, ces listes vivent
+# dans la base SÉPARÉE des tournois (`data/tournoi.db`), d'où
+# `get_tournoi_connection` au lieu de `get_connection`. La saisie des ÉLÉMENTS
+# eux-mêmes reste bénévole (jeton), voir `app/tournoi/routes_programme.py`.
+#
+# Une seule série de routes, déclarée deux fois par `_routes_liste_programme`,
+# plutôt que deux copies : seuls l'adresse, les libellés et les actions de
+# journal diffèrent. Archiver, réactiver et réordonner restent hors journal
+# (ajustements de présentation, voir le vocabulaire de `app/journal.py`).
 # ---------------------------------------------------------------------------
-def _page_programme_types(request: Request, message: str | None = None):
-    conn = get_tournoi_connection()
-    try:
-        types = programme_services.lister_types(conn, actifs_seulement=False)
-    finally:
-        conn.close()
-    return templates.TemplateResponse(
-        request, "admin_programme_types.html",
-        {"types": types, "message": message},
-    )
+_LISTES_PROGRAMME = {
+    "types": {
+        "chemin": "/programme-types", "titre": "Types de programme",
+        "un": "Type", "icone": True, "action": "programme_type",
+        "exemple": "ex. Blind-test",
+        "intro": ("La liste utilisée pour classer les éléments du programme du "
+                  "week-end (animations, ateliers, initiations…)."),
+    },
+    "publics": {
+        "chemin": "/programme-publics", "titre": "Publics du programme",
+        "un": "Public", "icone": False, "action": "programme_public",
+        "exemple": "ex. Joueurs débutants",
+        "intro": ("La liste des publics visés que l'on coche sur chaque élément "
+                  "du programme, et selon laquelle le public peut filtrer la "
+                  "page Programme."),
+    },
+}
 
 
-@router.get("/programme-types")
-def programme_types_page(request: Request):
-    """Écran dédié : liste des types d'éléments de programme."""
-    if (garde := _garde(request)):
-        return garde
-    return _page_programme_types(request, request.query_params.get("msg"))
+def _routes_liste_programme(liste: str) -> None:
+    cfg = _LISTES_PROGRAMME[liste]
+    base = "/admin" + cfg["chemin"]
+
+    def _vers_liste(msg: str | None = None):
+        return RedirectResponse(base + ("?msg=" + quote(msg) if msg else ""), status_code=303)
+
+    def page(request: Request):
+        if (garde := _garde(request)):
+            return garde
+        conn = get_tournoi_connection()
+        try:
+            entrees = programme_services.lister_liste(conn, liste, actifs_seulement=False)
+        finally:
+            conn.close()
+        return templates.TemplateResponse(
+            request, "admin_programme_liste.html",
+            {"entrees": entrees, "cfg": cfg, "base": base,
+             "message": request.query_params.get("msg")},
+        )
+
+    def creer(request: Request, nom: str = Form(""), icone: str = Form("")):
+        if (garde := _garde(request)):
+            return garde
+        conn = get_tournoi_connection()
+        try:
+            cree = programme_services.creer_entree(conn, liste, nom, icone)
+        finally:
+            conn.close()
+        journal.journaliser(
+            request, "programme", cfg["action"] + "_cree",
+            objet=nom.strip() or None, ref=str(cree) if cree is not None else None,
+            ok=cree is not None, detail=None if cree is not None else "nom_manquant",
+        )
+        return _vers_liste(f"{cfg['un']} ajouté." if cree is not None
+                           else "Nom manquant : rien n'a été ajouté.")
+
+    def renommer(request: Request, id_entree: int, nom: str = Form(""), icone: str = Form("")):
+        if (garde := _garde(request)):
+            return garde
+        conn = get_tournoi_connection()
+        try:
+            ok = programme_services.renommer_entree(conn, liste, id_entree, nom, icone)
+        finally:
+            conn.close()
+        journal.journaliser(
+            request, "programme", cfg["action"] + "_modifie",
+            objet=nom.strip() or None, ref=str(id_entree), ok=ok,
+            detail=None if ok else "nom_manquant",
+        )
+        return _vers_liste(f"{cfg['un']} renommé." if ok else "Nom manquant : rien n'a été modifié.")
+
+    def archiver(request: Request, id_entree: int):
+        if (garde := _garde(request)):
+            return garde
+        conn = get_tournoi_connection()
+        try:
+            programme_services.archiver_entree(conn, liste, id_entree)
+        finally:
+            conn.close()
+        return _vers_liste(f"{cfg['un']} archivé — il n'apparaît plus dans les formulaires de saisie.")
+
+    def reactiver(request: Request, id_entree: int):
+        if (garde := _garde(request)):
+            return garde
+        conn = get_tournoi_connection()
+        try:
+            programme_services.reactiver_entree(conn, liste, id_entree)
+        finally:
+            conn.close()
+        return _vers_liste(f"{cfg['un']} réactivé.")
+
+    def supprimer(request: Request, id_entree: int):
+        if (garde := _garde(request)):
+            return garde
+        conn = get_tournoi_connection()
+        try:
+            avant = programme_services.get_entree(conn, liste, id_entree)
+            ok = programme_services.supprimer_entree(conn, liste, id_entree)
+        finally:
+            conn.close()
+        journal.journaliser(
+            request, "programme", cfg["action"] + "_supprime",
+            objet=avant["nom"] if avant else None, ref=str(id_entree),
+            ok=ok, detail=None if ok else "rattache",
+        )
+        return _vers_liste(
+            f"{cfg['un']} supprimé définitivement." if ok else
+            "Suppression refusée : des éléments de programme y sont encore rattachés."
+        )
+
+    def deplacer(sens: str):
+        def action(request: Request, id_entree: int):
+            if (garde := _garde(request)):
+                return garde
+            conn = get_tournoi_connection()
+            try:
+                programme_services.reordonner_liste(conn, liste, id_entree, sens)
+            finally:
+                conn.close()
+            return _vers_liste()
+        return action
+
+    chemin = cfg["chemin"]
+    router.add_api_route(chemin, page, methods=["GET"], name=f"programme_{liste}_page")
+    router.add_api_route(chemin, creer, methods=["POST"], name=f"programme_{liste}_creer")
+    for suffixe, fonction in (
+        ("renommer", renommer), ("archiver", archiver), ("reactiver", reactiver),
+        ("supprimer", supprimer), ("monter", deplacer("haut")), ("descendre", deplacer("bas")),
+    ):
+        router.add_api_route(
+            f"{chemin}/{{id_entree:int}}/{suffixe}", fonction, methods=["POST"],
+            name=f"programme_{liste}_{suffixe}",
+        )
 
 
-@router.post("/programme-types")
-def programme_types_creer(request: Request, nom: str = Form(""), icone: str = Form("")):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        cree = programme_services.creer_type(conn, nom, icone)
-    finally:
-        conn.close()
-    msg = "Type ajouté." if cree is not None else "Nom manquant : rien n'a été ajouté."
-    journal.journaliser(
-        request, "programme", "programme_type_cree",
-        objet=nom.strip() or None, ref=str(cree) if cree is not None else None,
-        ok=cree is not None, detail=None if cree is not None else "nom_manquant",
-    )
-    return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
-
-
-@router.post("/programme-types/{id_type:int}/renommer")
-def programme_types_renommer(request: Request, id_type: int,
-                             nom: str = Form(""), icone: str = Form("")):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        ok = programme_services.renommer_type(conn, id_type, nom, icone)
-    finally:
-        conn.close()
-    msg = "Type renommé." if ok else "Nom manquant : rien n'a été modifié."
-    journal.journaliser(
-        request, "programme", "programme_type_modifie",
-        objet=nom.strip() or None, ref=str(id_type), ok=ok,
-        detail=None if ok else "nom_manquant",
-    )
-    return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
-
-
-@router.post("/programme-types/{id_type:int}/archiver")
-def programme_types_archiver(request: Request, id_type: int):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        programme_services.archiver_type(conn, id_type)
-    finally:
-        conn.close()
-    msg = "Type archivé — il n'apparaît plus dans les formulaires de saisie."
-    return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
-
-
-@router.post("/programme-types/{id_type:int}/reactiver")
-def programme_types_reactiver(request: Request, id_type: int):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        programme_services.reactiver_type(conn, id_type)
-    finally:
-        conn.close()
-    return RedirectResponse(
-        "/admin/programme-types?msg=" + quote("Type réactivé."), status_code=303
-    )
-
-
-@router.post("/programme-types/{id_type:int}/supprimer")
-def programme_types_supprimer(request: Request, id_type: int):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        type_avant = programme_services.get_type(conn, id_type)
-        ok = programme_services.supprimer_type(conn, id_type)
-    finally:
-        conn.close()
-    msg = (
-        "Type supprimé définitivement." if ok else
-        "Suppression refusée : des éléments de programme y sont encore rattachés."
-    )
-    journal.journaliser(
-        request, "programme", "programme_type_supprime",
-        objet=type_avant["nom"] if type_avant else None, ref=str(id_type),
-        ok=ok, detail=None if ok else "rattache",
-    )
-    return RedirectResponse("/admin/programme-types?msg=" + quote(msg), status_code=303)
-
-
-@router.post("/programme-types/{id_type:int}/monter")
-def programme_types_monter(request: Request, id_type: int):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        programme_services.reordonner_types(conn, id_type, "haut")
-    finally:
-        conn.close()
-    return RedirectResponse("/admin/programme-types", status_code=303)
-
-
-@router.post("/programme-types/{id_type:int}/descendre")
-def programme_types_descendre(request: Request, id_type: int):
-    if (garde := _garde(request)):
-        return garde
-    conn = get_tournoi_connection()
-    try:
-        programme_services.reordonner_types(conn, id_type, "bas")
-    finally:
-        conn.close()
-    return RedirectResponse("/admin/programme-types", status_code=303)
+_routes_liste_programme("types")
+_routes_liste_programme("publics")
 
 
 # ---------------------------------------------------------------------------

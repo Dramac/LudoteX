@@ -43,6 +43,17 @@
           {% endfor %}
         </select>
       </div>
+      {% if publics %}
+      <div class="champ">
+        <label for="filtre-public">Public</label>
+        <select id="filtre-public" name="public">
+          <option value="">Tous</option>
+          {% for p in publics %}
+            <option value="{{ p.id_public }}" {% if filtres.public == p.id_public|string %}selected{% endif %}>{{ p.nom }}{{ ' (archivé)' if not p.actif }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <div class="champ">
         <label for="filtre-etat">État</label>
         <select id="filtre-etat" name="etat">

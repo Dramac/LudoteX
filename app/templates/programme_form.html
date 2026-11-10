@@ -49,12 +49,20 @@
              value="{{ e.lieu if edition and e.lieu else '' }}"
              placeholder="Zone ou table dans la salle">
     </div>
-    <div class="champ">
-      <label for="public_vise">Public visé</label>
-      <input type="text" id="public_vise" name="public_vise"
-             value="{{ e.public_vise if edition and e.public_vise else '' }}"
-             placeholder="ex. tout public, famille, 8 ans et +">
-    </div>
+    {% if publics %}
+    {# Cases plutôt que texte libre : la page publique filtre par public.
+       Mêmes classes que les cases de catégories de jeu (deux colonnes dès
+       375 px, cibles d'au moins 36 px). La liste se règle en administration. #}
+    <fieldset class="champ champ-groupe">
+      <legend>Public visé</legend>
+      <p class="stats-note">Cochez tous les publics qui conviennent ; pour un élément tout public, cochez-les tous.</p>
+      <div class="cases-categories">
+        {% for p in publics %}
+        <label class="case case-categorie"><input type="checkbox" name="publics" value="{{ p.id_public }}"{% if p.coche %} checked{% endif %}> {{ p.nom }}{% if not p.actif %} (archivé){% endif %}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endif %}
     <div class="champ">
       <label for="jauge">Jauge indicative</label>
       <input type="number" id="jauge" name="jauge" min="0"

@@ -103,11 +103,38 @@ id_type        INTEGER                    -- FK -> types_programme, nullable (ty
 date_heure     TEXT                       -- début, ISO 8601 UTC ; nullable comme pour les tournois
 duree_min      INTEGER                    -- durée en minutes (déduite de l'heure de fin saisie)
 lieu           TEXT                       -- zone ou table dans la salle
-public_vise    TEXT                       -- indicatif (« tout public », « famille », « 8 ans et + »)
+public_vise    TEXT                       -- ANCIEN texte libre, plus lu ni écrit (voir §4.3)
 jauge          INTEGER                    -- purement informative, aucune réservation
 etat           TEXT NOT NULL DEFAULT 'brouillon'   -- 'brouillon' | 'publie' | 'annule'
 date_creation  TEXT NOT NULL
 ```
+
+### 4.3 `publics_programme` et `programme_publics` — les publics visés
+
+```
+publics_programme : id_public PK, nom, actif, ordre       -- même patron que types_programme
+programme_publics : (id_element, id_public) PK            -- plusieurs-à-plusieurs
+                    id_element -> programme ON DELETE CASCADE
+                    id_public  -> publics_programme (suppression refusée si rattaché)
+```
+
+Le public visé était un texte libre (`public_vise`) : « tout public », « Tout
+public » et « tous publics » y faisaient trois valeurs, impossibles à filtrer.
+Il devient une liste administrable (`/admin/programme-publics`), cochée sur
+chaque élément. **Plusieurs** publics par élément, parce qu'ils se recouvrent :
+un atelier tout public convient aux familles comme aux ados, le bureau coche
+donc tous ceux qui conviennent et le filtre reste un simple « porte ce
+public », sans valeur spéciale « tout public » à interpréter. L'âge tient
+dans la même liste (« Enfants moins de 8 ans », « Enfants 8 ans et plus »),
+choix du bureau : pas de troisième axe de filtre.
+
+Reprise au premier démarrage (`tournoi/db.py::_seed_publics_programme`,
+seulement quand la liste est vide) : chaque saisie libre est rattachée au
+public par défaut de même nom, à tous les publics par défaut si elle voulait
+dire « tout public », ou devient un public de plus. `public_vise` n'est pas
+vidée, pour qu'un retour de version retrouve ses données. Les types et les
+publics partagent une seule implémentation (`programme._LISTES`, un seul
+gabarit d'administration `admin_programme_liste.html`).
 
 Trois choix à expliciter :
 

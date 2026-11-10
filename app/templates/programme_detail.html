@@ -24,7 +24,7 @@
       {% if e.date_heure %}<dt>Début</dt><dd>{{ e.date_heure | dt_local }}</dd>{% endif %}
       {% if e.duree_min %}<dt>Durée</dt><dd>{{ e.duree_min }} min</dd>{% endif %}
       {% if e.lieu %}<dt>Lieu</dt><dd>{{ e.lieu }}</dd>{% endif %}
-      {% if e.public_vise %}<dt>Public visé</dt><dd>{{ e.public_vise }}</dd>{% endif %}
+      {% if publics %}<dt>Public visé</dt><dd>{{ publics }}</dd>{% endif %}
       {% if e.jauge %}<dt>Jauge</dt><dd>{{ e.jauge }} {{ pluriel(e.jauge, 'place', 'places') }} <small>(indicatif)</small></dd>{% endif %}
     </dl>
 
