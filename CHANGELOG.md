@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.30.0 — 2026-11-10
+
+- **Retrouver un élément du programme parmi des dizaines** : la liste de gestion du programme se filtre par **Type**, **Lieu**, **Public** et **État**. Les filtres restent en place quand vous publiez, modifiez ou dupliquez un élément.
+- **Tout publier, tout dépublier** : deux boutons agissent sur les éléments affichés. Filtrez sur le type « Tournoi », touchez **Tout publier**, et tous vos tournois sont en ligne d'un coup. Une page de confirmation montre la liste avant de rien changer, et les éléments annulés ne sont jamais concernés.
+- **Le public visé se coche** : enfants de moins de 8 ans, enfants de 8 ans et plus, ados, adultes, familles, joueurs confirmés. Cochez tous ceux qui conviennent. Le bureau gère la liste dans **Publics du programme**. Ce qui avait déjà été écrit à la main est repris automatiquement.
+- **Les visiteurs filtrent le programme par public** : la page Programme propose un filtre **Public**, à côté du jour et du type.
+- **Lier des jeux à un élément du programme** : depuis un élément, **Choisir les jeux liés** cherche dans le catalogue. Les jeux liés apparaissent sur la page de l'élément, chacun avec un lien vers ses boîtes au catalogue.
+
 ## 1.29.0 — 2026-10-29
 
 - **Réunir un jeu saisi deux fois sous deux noms** : sur la fiche d'un jeu, dans l'administration, **Rattacher ces boîtes à un autre jeu** fait passer ses boîtes dans le bon jeu. Tapez une partie de son nom, choisissez-le, puis confirmez. Les boîtes gardent leur QR code, leurs prêts (même en cours), leurs signalements et leur rangement.
