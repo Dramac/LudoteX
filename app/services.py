@@ -1940,6 +1940,25 @@ def get_titre(conn: sqlite3.Connection, reference_titre: str) -> dict | None:
     return dict(row) if row else None
 
 
+def noms_titres(conn: sqlite3.Connection, references) -> dict[str, str]:
+    """
+    {reference_titre: nom} des titres qui existent parmi `references` ; les
+    références inconnues sont simplement absentes du résultat. Sert aux jeux
+    liés du programme : la base des tournois ne porte que la référence, c'est
+    la route qui lit les noms ici et les transmet.
+    """
+    refs = list(dict.fromkeys(r for r in references if r))
+    if not refs:
+        return {}
+    marques = ", ".join("?" * len(refs))
+    return {
+        r["reference_titre"]: r["nom"]
+        for r in conn.execute(
+            f"SELECT reference_titre, nom FROM titres WHERE reference_titre IN ({marques})", refs
+        )
+    }
+
+
 def creer_jeu(conn: sqlite3.Connection, nom: str, **champs) -> dict:
     """
     Crée (ou complète) un titre et lui ajoute un premier exemplaire (id AUTO).

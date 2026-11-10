@@ -31,6 +31,8 @@ CARTE DES URL
     /programme/{id}/editer     [bénévole]  formulaire d'édition + POST
     /programme/{id}/etat       [bénévole]  transition d'état (POST)
     /programme/{id}/dupliquer  [bénévole]  copie en brouillon, sans date (POST)
+    /programme/{id}/jeux       [bénévole]  jeux du catalogue liés : recherche (GET),
+                                           lier / délier (POST)
     /programme/{id}/supprimer  [bénévole]  page de confirmation (GET) + POST
 
 NOTE : les paramètres d'id utilisent le convertisseur `:int`, ce qui évite toute
@@ -59,7 +61,9 @@ from app import journal
 from app.auth import exiger_jeton
 from app.db import get_connection as get_pret_connection
 from app.services import (
+    lister_catalogue,
     lire_nom_evenement,
+    noms_titres,
     lire_parametre,
     local_vers_utc_iso,
     nom_association,
@@ -115,6 +119,24 @@ def _publics_pour_formulaire(conn, coches: list[int]) -> list[dict]:
 def _ids(valeurs: list[str]) -> list[int]:
     """Identifiants cochés d'un groupe de cases (saisies non numériques ignorées)."""
     return [i for i in (_int_ou_none(v) for v in valeurs) if i is not None]
+
+
+def _jeux_lies(refs: list[str], *, public: bool) -> list[dict]:
+    """
+    Jeux liés à un élément, avec leur nom lu dans la base de PRÊT (c'est la
+    route qui traverse, jamais le service : invariant des trois bases).
+    `public=True` masque les références dont le titre a disparu ; sinon elles
+    restent, marquées `introuvable`, pour que la gestion les signale.
+    """
+    if not refs:
+        return []
+    conn_pret = get_pret_connection()
+    try:
+        noms = noms_titres(conn_pret, refs)
+    finally:
+        conn_pret.close()
+    jeux = [{"reference_titre": r, "nom": noms.get(r), "introuvable": r not in noms} for r in refs]
+    return [j for j in jeux if not j["introuvable"]] if public else jeux
 
 
 def _reglages_evenement() -> tuple[list, str | None]:
@@ -244,11 +266,12 @@ def detail(request: Request, id_element: int):
             e = None
         elem_type = programme.get_type(conn, e["id_type"]) if e and e["id_type"] else None
         publics = programme.libelle_publics(programme.publics_element(conn, id_element)) if e else None
+        refs = programme.jeux_element(conn, id_element) if e else []
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "programme_detail.html",
-        {"e": e, "type": elem_type, "publics": publics},
+        {"e": e, "type": elem_type, "publics": publics, "jeux": _jeux_lies(refs, public=True)},
         status_code=200 if e else 404,
     )
 
@@ -357,12 +380,24 @@ def gestion(request: Request, _=Depends(exiger_jeton),
     try:
         elements = _elements_filtres(conn, filtres)
         publics = programme.lister_publics(conn, actifs_seulement=False)
+        jeux_par_element = programme.jeux_par_element(conn)
         total = len(programme.lister_elements(conn, inclure_brouillons=True))
         types = programme.lister_types(conn, actifs_seulement=False)
         lieux = programme.lieux_distincts(conn)
     finally:
         conn.close()
     types_par_id = {t["id_type"]: t for t in types}
+    # Liens vers un jeu qui n'existe plus au catalogue : signalés sur la ligne.
+    refs = [r for liste in jeux_par_element.values() for r in liste]
+    if refs:
+        conn_pret = get_pret_connection()
+        try:
+            connus = noms_titres(conn_pret, refs)
+        finally:
+            conn_pret.close()
+        for e in elements:
+            e["jeux_introuvables"] = sum(
+                1 for r in jeux_par_element.get(e["id_element"], []) if r not in connus)
 
     # Puces de retrait : chacune ramène la liste sans CE filtre (patron du catalogue).
     puces = []
@@ -539,6 +574,7 @@ def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton)
         types = _types_pour_formulaire(conn, e["id_type"] if e else None)
         publics = _publics_pour_formulaire(
             conn, [p["id_public"] for p in programme.publics_element(conn, id_element)])
+        nb_jeux = len(programme.jeux_element(conn, id_element))
     finally:
         conn.close()
     if e is None:
@@ -546,7 +582,7 @@ def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton)
     fin_utc = programme.fin_iso(e["date_heure"], e["duree_min"])
     return templates.TemplateResponse(
         request, "programme_form.html",
-        {"e": e, "types": types, "publics": publics,
+        {"e": e, "types": types, "publics": publics, "nb_jeux": nb_jeux,
          "valeur_date": iso_utc_vers_datetime_local(e["date_heure"]),
          "valeur_fin": iso_utc_vers_datetime_local(fin_utc),
          "erreur": None,
@@ -654,6 +690,106 @@ def dupliquer_action(request: Request, id_element: int, _=Depends(exiger_jeton),
     )
     suite = f"?{urlencode({'retour': urlencode(filtres)})}" if filtres else ""
     return RedirectResponse(f"/programme/{nouveau}/editer{suite}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Jeux liés — page à part plutôt que champ du formulaire : chercher parmi
+# ~700 jeux demande un aller-retour (sans JavaScript), qui viderait sinon le
+# formulaire en cours de saisie. Chaque geste revient sur cette page, avec la
+# recherche en cours : on lie trois jeux d'une même recherche sans la retaper.
+# ---------------------------------------------------------------------------
+NB_RESULTATS_JEUX = 20
+
+
+def _url_jeux(id_element: int, q: str = "", retour: str = "", **extra) -> str:
+    params = {k: v for k, v in {"q": q.strip(), "retour": retour, **extra}.items() if v}
+    return f"/programme/{id_element}/jeux" + ("?" + urlencode(params) if params else "")
+
+
+@router.get("/programme/{id_element:int}/jeux")
+def jeux_page(request: Request, id_element: int, _=Depends(exiger_jeton),
+              q: str = "", retour: str = "", msg: str = ""):
+    """Jeux liés à l'élément, et recherche dans le catalogue pour en lier d'autres."""
+    filtres = _filtres_depuis_retour(retour)
+    conn = get_connection()
+    try:
+        e = programme.get_element(conn, id_element)
+        refs = programme.jeux_element(conn, id_element) if e else []
+    finally:
+        conn.close()
+    if e is None:
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
+
+    q = q.strip()
+    resultats, trop = [], False
+    if q:
+        conn_pret = get_pret_connection()
+        try:
+            trouves = [t for t in lister_catalogue(conn_pret, q=q) if t["reference_titre"] not in refs]
+        finally:
+            conn_pret.close()
+        resultats, trop = trouves[:NB_RESULTATS_JEUX], len(trouves) > NB_RESULTATS_JEUX
+    retour_qs = urlencode(filtres)
+    return templates.TemplateResponse(
+        request, "programme_jeux.html",
+        {"e": e, "jeux": _jeux_lies(refs, public=False), "q": q, "resultats": resultats,
+         "trop": trop, "message": msg or None, "retour": retour_qs,
+         "url_edition": f"/programme/{id_element}/editer"
+                        + (f"?{urlencode({'retour': retour_qs})}" if retour_qs else ""),
+         "url_gestion": _url_gestion(filtres)},
+    )
+
+
+@router.post("/programme/{id_element:int}/jeux/lier")
+def jeux_lier(request: Request, id_element: int, _=Depends(exiger_jeton),
+              reference_titre: str = Form(""), q: str = Form(""), retour: str = Form("")):
+    """Lie un jeu du catalogue (vérifié dans la base de prêt) puis revient à la page."""
+    conn_pret = get_pret_connection()
+    try:
+        nom = noms_titres(conn_pret, [reference_titre.strip()]).get(reference_titre.strip())
+    finally:
+        conn_pret.close()
+    if nom is None:
+        return RedirectResponse(_url_jeux(
+            id_element, q, retour, msg="Ce jeu n'est plus au catalogue : rien n'a été lié."),
+            status_code=303)
+    conn = get_connection()
+    try:
+        e = programme.get_element(conn, id_element)
+        ok = programme.lier_jeu(conn, id_element, reference_titre.strip())
+    finally:
+        conn.close()
+    if e is None:
+        return RedirectResponse("/programme/gestion", status_code=303)
+    if ok:
+        journal.journaliser(
+            request, "programme", "programme_modifie",
+            objet=f"{e['intitule']} : jeu lié, {nom}", ref=str(id_element),
+        )
+    return RedirectResponse(_url_jeux(
+        id_element, q, retour, msg=f"« {nom} » lié." if ok else f"« {nom} » était déjà lié."),
+        status_code=303)
+
+
+@router.post("/programme/{id_element:int}/jeux/delier")
+def jeux_delier(request: Request, id_element: int, _=Depends(exiger_jeton),
+                reference_titre: str = Form(""), q: str = Form(""), retour: str = Form("")):
+    """Retire un jeu de l'élément (y compris un jeu qui n'existe plus au catalogue)."""
+    conn = get_connection()
+    try:
+        e = programme.get_element(conn, id_element)
+        ok = programme.delier_jeu(conn, id_element, reference_titre.strip())
+    finally:
+        conn.close()
+    if e is None:
+        return RedirectResponse("/programme/gestion", status_code=303)
+    if ok:
+        journal.journaliser(
+            request, "programme", "programme_modifie",
+            objet=f"{e['intitule']} : jeu retiré, {reference_titre.strip()}", ref=str(id_element),
+        )
+    return RedirectResponse(_url_jeux(id_element, q, retour, msg="Jeu retiré." if ok else None),
+                            status_code=303)
 
 
 @router.get("/programme/{id_element:int}/supprimer")

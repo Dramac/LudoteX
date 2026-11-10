@@ -136,6 +136,31 @@ vidée, pour qu'un retour de version retrouve ses données. Les types et les
 publics partagent une seule implémentation (`programme._LISTES`, un seul
 gabarit d'administration `admin_programme_liste.html`).
 
+### 4.4 `programme_jeux` — les jeux liés
+
+```
+programme_jeux : (id_element, reference_titre) PK
+                 id_element -> programme ON DELETE CASCADE
+                 reference_titre : clé du titre dans la base de PRÊT, SANS FK
+```
+
+Un élément peut présenter plusieurs jeux du catalogue (une initiation « jeux
+d'ambiance » en montre trois ou quatre). La base des tournois ne porte que la
+**référence**, clé stable et figée au renommage ; `tournoi/programme.py` ne
+lit jamais la base de prêt. C'est la **route** qui lit les noms
+(`services.noms_titres`), cherche dans le catalogue (`services.lister_catalogue`)
+et vérifie qu'un titre existe avant de le lier. Une référence dont le titre a
+disparu (jeu vidé par un rattachement, puis supprimé) est masquée sur la page
+publique et signalée sur la liste de gestion, avec un **Retirer** en un tap.
+
+Le choix se fait sur une page à part (`/programme/{id}/jeux`) plutôt que
+dans le formulaire : chercher parmi quelque 700 jeux demande un aller-retour
+sans JavaScript, qui viderait le formulaire en cours. La recherche est
+conservée d'un geste à l'autre. Sur la fiche publique, chaque jeu mène au
+catalogue filtré sur son nom : il n'existe pas de page publique par titre,
+seulement par boîte. Lier et retirer un jeu écrivent `programme_modifie` au
+journal. La duplication d'un élément copie ses jeux.
+
 Trois choix à expliciter :
 
 - **`duree_min` plutôt qu'une heure de fin**, alors que la note parle d'heure de
@@ -222,6 +247,8 @@ telle quelle à l'intérieur) : aucune régression sur l'existant.
 - `GET|POST /programme/nouveau`, `GET|POST /programme/{id}/editer`,
   `GET|POST /programme/{id}/supprimer` (double confirmation, comme les
   tournois), `POST /programme/{id}/etat`.
+- `GET /programme/{id}/jeux`, `POST /programme/{id}/jeux/lier|delier` — les
+  jeux du catalogue liés à l'élément (§4.4).
 - `POST /programme/{id}/dupliquer` — un atelier se rejoue souvent le dimanche à
   la même heure ; le patron `dupliquer_tournoi` existe et se recopie.
 

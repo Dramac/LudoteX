@@ -1459,3 +1459,111 @@ def test_admin_publics_exige_le_mot_de_passe_et_gere_la_liste(client):
     assert "Débutants" in client.get("/admin/programme-publics").text
     # Les types gardent leur écran, icône comprise.
     assert 'name="icone"' in client.get("/admin/programme-types").text
+
+
+# ===========================================================================
+# Jeux liés — références vers la base de PRÊT, sans clé étrangère
+# ===========================================================================
+def test_lier_delier_jeu_et_duplication(conn):
+    e = programme.creer_element(conn, "Initiation ambiance")
+    assert programme.lier_jeu(conn, e, "DIXIT") is True
+    assert programme.lier_jeu(conn, e, "DIXIT") is False  # déjà lié
+    assert programme.lier_jeu(conn, e, "  ") is False
+    assert programme.lier_jeu(conn, 9999, "DIXIT") is False
+    programme.lier_jeu(conn, e, "CODENAMES")
+    assert programme.jeux_element(conn, e) == ["DIXIT", "CODENAMES"]
+
+    copie = programme.dupliquer_element(conn, e)
+    assert programme.jeux_element(conn, copie) == ["DIXIT", "CODENAMES"]
+
+    assert programme.delier_jeu(conn, e, "DIXIT") is True
+    assert programme.delier_jeu(conn, e, "DIXIT") is False
+    programme.supprimer_element(conn, e)
+    assert programme.jeux_par_element(conn) == {copie: ["DIXIT", "CODENAMES"]}
+
+
+def _creer_jeu_catalogue(nom):
+    from app import db, services
+    c = db.get_connection()
+    try:
+        return services.creer_jeu(c, nom)["reference_titre"]
+    finally:
+        c.close()
+
+
+def test_lier_des_jeux_par_la_recherche_et_fiche_publique(client, monkeypatch):
+    lignes = []
+    from app import journal
+    monkeypatch.setattr(journal, "journaliser", lambda *a, **k: lignes.append((a[2], k.get("objet"))))
+    azul = _creer_jeu_catalogue("Azul")
+    pavillon = _creer_jeu_catalogue("Azul Pavillon d'été")
+    _creer_jeu_catalogue("Dixit")
+    e = _creer_par_route(client, "Initiation Azul")
+    client.post(f"/programme/{e}/etat", data={"etat": "publie"})
+
+    page = client.get(f"/programme/{e}/jeux", params={"q": "azul"}).text
+    assert "Azul Pavillon" in page and "Dixit" not in page
+    assert "Aucun jeu lié" in page
+
+    r = client.post(f"/programme/{e}/jeux/lier",
+                    data={"reference_titre": azul, "q": "azul"}, follow_redirects=False)
+    assert r.status_code == 303 and "q=azul" in r.headers["location"]
+    page = client.get(r.headers["location"]).text
+    assert "« Azul » lié." in page
+    client.post(f"/programme/{e}/jeux/lier", data={"reference_titre": pavillon})
+    assert ("programme_modifie", "Initiation Azul : jeu lié, Azul") in lignes
+
+    fiche = client.get(f"/programme/{e}").text
+    assert 'href="/catalogue?q=Azul"' in fiche
+    assert "Jeux" in fiche and "Azul Pavillon" in fiche
+
+    # Une référence inventée n'est jamais liée.
+    r = client.post(f"/programme/{e}/jeux/lier", data={"reference_titre": "INEXISTANT"})
+    assert "plus au catalogue" in r.text
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    try:
+        assert programme.jeux_element(c, e) == [azul, pavillon]
+    finally:
+        c.close()
+
+
+def test_jeu_disparu_masque_en_public_et_signale_en_gestion(client):
+    dixit = _creer_jeu_catalogue("Dixit")
+    e = _creer_par_route(client, "Soirée ambiance")
+    client.post(f"/programme/{e}/etat", data={"etat": "publie"})
+    client.post(f"/programme/{e}/jeux/lier", data={"reference_titre": dixit})
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    try:
+        programme.lier_jeu(c, e, "JEU-SUPPRIME")  # titre disparu du catalogue
+    finally:
+        c.close()
+
+    fiche = client.get(f"/programme/{e}")
+    assert fiche.status_code == 200
+    assert "Dixit" in fiche.text and "JEU-SUPPRIME" not in fiche.text
+    assert "<dt>Jeu</dt>" in fiche.text  # un seul jeu visible : singulier
+
+    gestion = client.get("/programme/gestion").text
+    assert "1 jeu introuvable" in gestion
+
+    page = client.get(f"/programme/{e}/jeux").text
+    assert "Jeu introuvable" in page
+    client.post(f"/programme/{e}/jeux/delier", data={"reference_titre": "JEU-SUPPRIME"})
+    assert "jeu introuvable" not in client.get("/programme/gestion").text
+
+
+def test_jeux_lies_exigent_le_jeton(client, monkeypatch):
+    e = _creer_par_route(client, "X")
+    monkeypatch.setenv("PRET_TOKEN", "jeton-programme-secret")
+    assert client.get(f"/programme/{e}/jeux").status_code == 403
+    assert client.post(f"/programme/{e}/jeux/lier", data={"reference_titre": "A"}).status_code == 403
+    assert client.post(f"/programme/{e}/jeux/delier", data={"reference_titre": "A"}).status_code == 403
+
+
+def test_formulaire_d_edition_mene_aux_jeux_lies(client):
+    e = _creer_par_route(client, "X")
+    page = client.get(f"/programme/{e}/editer", params={"retour": "lieu=Bar"}).text
+    assert f'/programme/{e}/jeux?retour=lieu%3DBar' in page
+    assert "Jeux liés : aucun" in page

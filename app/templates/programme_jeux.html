@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block titre %}Jeux liés — {{ e.intitule }} — Programme — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Jeux liés</h1>
+  <p class="rappel-evenement">{{ e.intitule }}</p>
+  <p class="stats-note">Les jeux liés s'affichent sur la page publique de
+     l'élément ; chacun mène au catalogue, où le visiteur voit les boîtes et
+     leur disponibilité.</p>
+
+  {% if message %}
+    <p class="resultat resultat-ok" role="status">{{ message }}</p>
+  {% endif %}
+
+  {% if jeux %}
+  <ul class="liste-jeux">
+    {% for j in jeux %}
+    <li class="rangement-actions">
+      {% if j.introuvable %}
+        <span class="badge-attention">⚠ Jeu introuvable</span>
+        <span>Ce jeu n'est plus au catalogue (il a pu être rattaché à un autre jeu). Il n'apparaît plus au public : retirez-le, puis liez le bon jeu.</span>
+      {% else %}
+        <strong>{{ j.nom }}</strong>
+      {% endif %}
+      <form method="post" action="/programme/{{ e.id_element }}/jeux/delier" class="rangement-form-inline">
+        <input type="hidden" name="reference_titre" value="{{ j.reference_titre }}">
+        <input type="hidden" name="q" value="{{ q }}">
+        {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
+        <button type="submit" class="bouton-filtrer">Retirer</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    <p><em>Aucun jeu lié pour le moment.</em></p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  <h2>Lier un jeu du catalogue</h2>
+  <form method="get" action="/programme/{{ e.id_element }}/jeux" class="recherche-form">
+    {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
+    <div class="champ">
+      <label for="q">Nom du jeu</label>
+      <input type="search" id="q" name="q" value="{{ q }}" placeholder="ex. Azul" autocomplete="off">
+    </div>
+    <p><button type="submit" class="bouton-filtrer">Chercher</button></p>
+  </form>
+
+  {% if q %}
+    {% if resultats %}
+    <ul class="liste-jeux">
+      {% for t in resultats %}
+      <li class="rangement-actions">
+        <span>{{ t.nom }}</span>
+        <form method="post" action="/programme/{{ e.id_element }}/jeux/lier" class="rangement-form-inline">
+          <input type="hidden" name="reference_titre" value="{{ t.reference_titre }}">
+          <input type="hidden" name="q" value="{{ q }}">
+          {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
+          <button type="submit" class="bouton-filtrer">Lier</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if trop %}<p class="stats-note">Seuls les {{ resultats|length }} premiers jeux sont affichés : précisez le nom.</p>{% endif %}
+    {% else %}
+      <p><em>Aucun jeu du catalogue ne contient « {{ q }} »{{ ' (hors jeux déjà liés)' if jeux }}.</em></p>
+    {% endif %}
+  {% endif %}
+</section>
+
+<p class="lien-fiche">
+  <a class="lien" href="{{ url_edition }}">← Retour à l'élément</a>
+  &nbsp;·&nbsp; <a class="lien" href="{{ url_gestion }}">Liste de gestion</a>
+</p>
+{% endblock %}

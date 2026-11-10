@@ -25,6 +25,10 @@
       {% if e.duree_min %}<dt>Durée</dt><dd>{{ e.duree_min }} min</dd>{% endif %}
       {% if e.lieu %}<dt>Lieu</dt><dd>{{ e.lieu }}</dd>{% endif %}
       {% if publics %}<dt>Public visé</dt><dd>{{ publics }}</dd>{% endif %}
+      {% if jeux %}
+        <dt>{{ pluriel(jeux|length, 'Jeu', 'Jeux') }}</dt>
+        <dd>{% for j in jeux %}<a class="lien" href="/catalogue?q={{ j.nom | urlencode }}" title="Voir les boîtes au catalogue">{{ j.nom }}</a>{{ ', ' if not loop.last }}{% endfor %}</dd>
+      {% endif %}
       {% if e.jauge %}<dt>Jauge</dt><dd>{{ e.jauge }} {{ pluriel(e.jauge, 'place', 'places') }} <small>(indicatif)</small></dd>{% endif %}
     </dl>
 

@@ -313,6 +313,56 @@ def definir_publics(conn: sqlite3.Connection, id_element: int, ids_publics) -> N
 
 
 # ===========================================================================
+# Jeux liés à un élément (`programme_jeux`) — références seulement : ce module
+# ne lit JAMAIS la base de prêt. Les noms, l'existence du titre et la recherche
+# sont l'affaire de la route.
+# ===========================================================================
+def jeux_element(conn: sqlite3.Connection, id_element: int) -> list[str]:
+    """Références des jeux liés à un élément, dans l'ordre où ils ont été liés."""
+    return [r[0] for r in conn.execute(
+        "SELECT reference_titre FROM programme_jeux WHERE id_element = ? ORDER BY rowid",
+        (id_element,),
+    )]
+
+
+def jeux_par_element(conn: sqlite3.Connection) -> dict[int, list[str]]:
+    """{id_element: [reference_titre, …]} pour toute la liste de gestion, en une requête."""
+    resultat: dict[int, list[str]] = {}
+    for id_element, ref in conn.execute(
+        "SELECT id_element, reference_titre FROM programme_jeux ORDER BY rowid"
+    ):
+        resultat.setdefault(id_element, []).append(ref)
+    return resultat
+
+
+def lier_jeu(conn: sqlite3.Connection, id_element: int, reference_titre: str) -> bool:
+    """
+    Lie un jeu à un élément. False (rien n'est fait) si l'élément n'existe pas,
+    si la référence est vide ou si le jeu est déjà lié. La route a vérifié que
+    le titre existe dans la base de prêt.
+    """
+    ref = (reference_titre or "").strip()
+    if not ref or get_element(conn, id_element) is None:
+        return False
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO programme_jeux (id_element, reference_titre) VALUES (?, ?)",
+        (id_element, ref),
+    )
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def delier_jeu(conn: sqlite3.Connection, id_element: int, reference_titre: str) -> bool:
+    """Retire un jeu d'un élément. False si ce lien n'existait pas."""
+    cur = conn.execute(
+        "DELETE FROM programme_jeux WHERE id_element = ? AND reference_titre = ?",
+        (id_element, reference_titre),
+    )
+    conn.commit()
+    return cur.rowcount == 1
+
+
+# ===========================================================================
 # Éléments de programme (CRUD, machine à états — conception §4.2/§5)
 # ===========================================================================
 def creer_element(
@@ -535,18 +585,21 @@ def dupliquer_element(
     Crée une COPIE d'un élément de programme pour le reprogrammer à un autre
     horaire (un atelier se rejoue souvent le dimanche à la même heure — patron
     `tournoi.services.dupliquer_tournoi`). Repart à l'état 'brouillon'. Seule
-    la date change. None si la source est introuvable.
+    la date change ; publics et jeux liés suivent. None si la source est introuvable.
     """
     e = get_element(conn, id_element)
     if e is None:
         return None
-    return creer_element(
+    nouveau = creer_element(
         conn, e["intitule"],
         description=e["description"], id_type=e["id_type"], date_heure=date_heure,
         duree_min=e["duree_min"], lieu=e["lieu"],
         publics=[p["id_public"] for p in publics_element(conn, id_element)],
         jauge=e["jauge"],
     )
+    for ref in jeux_element(conn, id_element):
+        lier_jeu(conn, nouveau, ref)
+    return nouveau
 
 
 def duree_depuis_fin(debut_iso: str | None, fin_iso: str | None) -> int | None:

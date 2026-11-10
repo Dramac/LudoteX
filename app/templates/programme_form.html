@@ -70,6 +70,14 @@
              placeholder="Nombre de places, à titre indicatif (aucune réservation)">
     </div>
 
+    {% if edition %}
+    <p class="champ">
+      <span>Jeux liés : {{ nb_jeux or "aucun" }}</span><br>
+      <a class="lien" href="/programme/{{ e.id_element }}/jeux{{ ('?retour=' ~ (retour|urlencode)) if retour }}">Choisir les jeux liés</a>
+      <small>(enregistrez d'abord vos modifications)</small>
+    </p>
+    {% endif %}
+
     <button type="submit" class="bouton bouton-principal">
       {{ "Enregistrer" if edition else "Créer l'élément" }}
     </button>

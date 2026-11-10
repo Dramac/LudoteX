@@ -189,6 +189,24 @@ CREATE TABLE IF NOT EXISTS programme_publics (
 """
 
 # ---------------------------------------------------------------------------
+# programme_jeux — jeux du catalogue présentés par un élément (une initiation
+# « jeux d'ambiance » en montre souvent trois ou quatre). `reference_titre` est
+# la clé STABLE du titre dans la base de PRÊT (figée au renommage) : AUCUNE FK,
+# l'autre base est hors de portée (invariant des trois bases). C'est la ROUTE
+# qui lit les noms dans la base de prêt et les transmet ; une référence dont le
+# titre a disparu (jeu vidé par un rattachement puis supprimé) est masquée en
+# public et signalée en gestion, jamais une erreur.
+# ---------------------------------------------------------------------------
+SCHEMA_PROGRAMME_JEUX = """
+CREATE TABLE IF NOT EXISTS programme_jeux (
+    id_element       INTEGER NOT NULL,
+    reference_titre  TEXT NOT NULL,     -- titres.reference_titre de la base de prêt (sans FK)
+    PRIMARY KEY (id_element, reference_titre),
+    FOREIGN KEY (id_element) REFERENCES programme (id_element) ON DELETE CASCADE
+);
+"""
+
+# ---------------------------------------------------------------------------
 # Index — requêtes fréquentes.
 # ---------------------------------------------------------------------------
 SCHEMA_INDEXES = """
@@ -210,5 +228,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_PROGRAMME,
     SCHEMA_PUBLICS_PROGRAMME,
     SCHEMA_PROGRAMME_PUBLICS,
+    SCHEMA_PROGRAMME_JEUX,
     SCHEMA_INDEXES,
 )

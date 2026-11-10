@@ -101,7 +101,7 @@ avec son propre schéma, ses migrations et son initialisation :
 | Base | Schéma | Tables |
 | --- | --- | --- |
 | Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg` |
-| Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme` |
+| Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme`, `publics_programme`, `programme_publics`, `programme_jeux` |
 | Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
 
 **L'invariant à ne jamais perdre de vue : un service ne traverse jamais une
@@ -178,9 +178,12 @@ livré, par module :
   tournois **par équipes**, option BO3, inscription publique avec code de
   désinscription (**e-mail jamais stocké**), inscription réservable aux
   bénévoles, export `.ics`, duplication, ouverture groupée du jour.
-- **Programme du week-end** (`/programme`) — types d'éléments administrables,
-  grille publique filtrable, page publique par élément, reprise sur l'écran de
-  salle et sur l'accueil.
+- **Programme du week-end** (`/programme`) — types et publics visés
+  administrables, jeux du catalogue liés (référence seule, sans clé
+  étrangère vers la base de prêt), grille publique filtrable par jour, type
+  et public, page publique par élément, liste de gestion filtrable avec
+  « Tout publier » / « Tout dépublier », reprise sur l'écran de salle et sur
+  l'accueil.
 - **Planning bénévoles** (`/planning`, base séparée) — questionnaire de
   disponibilités et de préférences, préremplissage glouton (continuité, équité),
   grille d'ajustement **sans JS**, export « mon planning » en `.ics`.

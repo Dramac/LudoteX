@@ -124,7 +124,12 @@
         {% set t = types_par_id.get(e.id_type) %}
         {% set possibles = transitions.get(e.etat, []) %}
         <tr>
-          <td>{{ e.intitule }}</td>
+          <td>{{ e.intitule }}
+            {% if e.jeux_introuvables %}
+              <br><a class="badge-attention" href="/programme/{{ e.id_element }}/jeux{{ ('?retour=' ~ (retour|urlencode)) if retour }}"
+                     title="Un jeu lié n'existe plus au catalogue">⚠ {{ e.jeux_introuvables }} {{ pluriel(e.jeux_introuvables, 'jeu introuvable', 'jeux introuvables') }}</a>
+            {% endif %}
+          </td>
           <td>{% if t %}{{ t.icone ~ ' ' if t.icone }}{{ t.nom }}{% endif %}</td>
           <td>{{ e.date_heure | dt_local if e.date_heure else "—" }}</td>
           <td>{{ e.lieu if e.lieu else "—" }}</td>
