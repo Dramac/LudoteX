@@ -100,17 +100,11 @@
 
     <div class="champ">
       <label for="annonce">Annonce affichée en bandeau sur /live</label>
-      <textarea id="annonce" name="annonce" maxlength="200" rows="2"
+      <textarea id="annonce" name="annonce" maxlength="{{ longueur_annonce }}" rows="2"
                 aria-describedby="annonce-consigne"
                 placeholder="Ex. : Tombola à 15 h, stand accueil.">{{ annonce or '' }}</textarea>
-      {# Patron exact de la consigne du signalement (« Décrivez la boîte,
-         jamais une personne. ») : cet écran est PUBLIC, et l'appel nominatif
-         est l'usage le plus naturel d'une annonce urgente. La consigne dit
-         quoi écrire à la place, parce qu'on la lit dans l'urgence. #}
-      <p class="stats-note" id="annonce-consigne">Décrivez une situation, jamais
-        une personne&nbsp;: «&nbsp;Un enfant attend ses parents à
-        l'accueil&nbsp;», sans son nom. 200 caractères maximum. Laissez vide
-        pour ne rien afficher.</p>
+      {# Consigne partagée avec la page bénévole /live/annonce. #}
+      {% include "_consigne_annonce.html" %}
     </div>
 
     <div class="champ">
@@ -165,6 +159,30 @@
     </form>
   {% endif %}
 
+</section>
+
+{# Interrupteur de l'annonce par les bénévoles (série annonce) : formulaire À
+   PART, pour qu'« Effacer l'annonce » ne le referme jamais au passage (une
+   case décochée n'est pas transmise). Fermé par défaut. #}
+<section class="carte">
+  <h2>Annonce par les bénévoles</h2>
+  <form method="post" action="/admin/ecran-salle/benevoles" class="recherche-form">
+    <div class="champ">
+      <label class="case">
+        <input type="checkbox" name="annonce_benevoles" value="1"
+               aria-describedby="annonce-benevoles-note"
+               {% if annonce_benevoles %}checked{% endif %}>
+        Les bénévoles peuvent afficher une annonce
+      </label>
+      <p class="stats-note" id="annonce-benevoles-note">Une annonce posée par un
+        bénévole remplace la vôtre, et inversement. Le journal indique
+        l'appareil, jamais le texte. Décocher cette case ne retire pas
+        l'annonce déjà affichée : effacez-la avec le bouton prévu, plus haut.</p>
+      <p class="stats-note">Case cochée, les bénévoles trouvent
+        « Annonce en salle » dans leur menu.</p>
+    </div>
+    <button type="submit" class="bouton bouton-principal">Enregistrer ce réglage</button>
+  </form>
 </section>
 
 <section class="carte">

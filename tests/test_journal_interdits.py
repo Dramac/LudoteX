@@ -243,6 +243,20 @@ def scenario(client, bases, _journal_isole):
     finally:
         conn.close()
 
+    # --- Bénévole : l'annonce de l'écran de salle (série annonce) ----------
+    # Le même texte, posé puis effacé par la page bénévole, interrupteur du
+    # bureau ouvert : la porte s'élargit, le journal doit rester muet sur le
+    # texte. Durée en minutes d'un bouton de la page (15).
+    conn = db.get_connection()
+    try:
+        services.ecrire_annonce_benevoles(conn, True)
+    finally:
+        conn.close()
+    client.post("/live/annonce", data={"annonce": TEXTE_ANNONCE, "annonce_duree": "15"},
+                follow_redirects=False)
+    client.post("/live/annonce", data={"annonce": "", "annonce_duree": ""},
+                follow_redirects=False)
+
     # --- Administration : connexion, puis restauration de sauvegarde -------
     client.post("/admin/login", data={"mot_de_passe": MOT_DE_PASSE})
     # Refermer le signalement : la seconde ligne du carnet de maintenance, et
@@ -406,6 +420,23 @@ def test_l_annonce_dit_sa_duree_jamais_son_texte(scenario):
         assert fragment not in texte, f"fragment d'annonce trouvé : {fragment!r}"
 
 
+def test_l_annonce_des_benevoles_dit_l_appareil_jamais_le_texte(scenario):
+    """
+    Série annonce : posée puis effacée depuis /live/annonce, l'annonce laisse
+    deux lignes `qui=benevole`, avec l'appareil, la durée à la pose — et pas
+    un fragment du texte (cherché par le test ci-dessus, sur tout le journal).
+    """
+    texte, _ = scenario
+    lignes = [l for l in _lignes(texte)
+              if l["action"] in ("annonce_posee", "annonce_effacee")
+              and l["qui"] == "benevole"]
+    assert [l["action"] for l in lignes] == ["annonce_posee", "annonce_effacee"]
+    assert all(l.get("appareil") for l in lignes)
+    assert lignes[0]["objet"] == "15 min"
+    assert "objet" not in lignes[1]
+    assert all("detail" not in l for l in lignes)
+
+
 def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
     """
     GARDE-FOU DE CLASSE, pour les routes à venir : le scénario ci-dessus ne
@@ -449,9 +480,10 @@ def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
                         f"en `{mot.arg}` — le texte d'une annonce ne va jamais "
                         f"au journal (RGPD-01)."
                     )
-    # Non-vacuité : la route d'aujourd'hui doit être vue, sinon ce test ne
-    # garde plus rien.
-    assert "admin.py:ecran_salle_enregistrer" in fonctions_vues
+    # Non-vacuité : le domicile d'aujourd'hui doit être vu, sinon ce test ne
+    # garde plus rien. Depuis la série annonce, le bureau (/admin/ecran-salle)
+    # et les bénévoles (/live/annonce) passent tous deux par cette fonction.
+    assert "live.py:enregistrer_annonce" in fonctions_vues
 
 
 def test_aucune_adresse_ip_ni_query_string_brute(scenario):

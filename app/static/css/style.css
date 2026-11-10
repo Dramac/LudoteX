@@ -287,6 +287,39 @@ summary:focus-visible,
 /* Boutons de durée rapide sous le champ "annonce_duree" (point I). */
 .duree-rapide { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .duree-rapide .bouton-filtrer { padding: 6px 14px; font-size: 0.9rem; }
+/* Un texte de 200 caractères sans espace ne doit jamais élargir la page à
+   375 px : la puce garde sa place, le texte se coupe où il peut. */
+.apercu-annonce-salle > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Page bénévole /live/annonce (série annonce) : la durée en boutons radio,
+   assez grands pour le pouce, à la ligne si l'écran est étroit. Le cercle
+   natif reste visible — c'est lui qui porte le focus clavier (règle
+   input:focus-visible plus haut). */
+.annonce-benevole { padding: 16px; }
+.annonce-benevole h1 { margin-bottom: 8px; }
+.annonce-benevole .annonce-benevole-fin { margin: 0 0 4px; }
+/* Message de résultat plus serré que sur les écrans de prêt : sur cette page,
+   le bouton principal doit rester visible sans défiler, clavier fermé, même
+   avec une annonce en cours au-dessus (mesuré à 375 × 667). */
+.annonce-benevole .resultat { padding: 10px 14px; margin-bottom: 8px; }
+.choix-duree-options { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+/* Les quatre durées tiennent sur une ligne à 375 px (marges du cercle natif
+   retirées) ; plus étroit, elles passent à la ligne. */
+.choix-duree-option input { margin: 0; }
+.choix-duree-options .choix-duree-option {
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 2px solid var(--bord-champ);
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+}
+.choix-duree-option:has(input:checked) {
+  border-color: var(--primaire-lisible);
+  background: var(--primaire-fond);
+  font-weight: 700;
+}
 .apercu-annonce-salle .apercu-annonce-label {
   font-weight: 400;
   font-size: 0.75em;

@@ -7,10 +7,15 @@ derniers prêts/retours. Page PUBLIQUE en LECTURE SEULE : aucune action, aucun
 jeton bénévole requis, aucune donnée personnelle (le numéro de pochette, lié à
 une pièce d'identité, n'est volontairement jamais affiché ici).
 
-Deux routes :
+Deux routes publiques :
 - GET /live      : la page (HTML plein écran, mise en page 16:9).
 - GET /live/data : les données fraîches au format JSON (interrogé en boucle par
                    la page via fetch(), sans rechargement).
+
+Et une page BÉNÉVOLE, la seule écriture de ce module (série annonce, lot 1) :
+- GET/POST /live/annonce : poser, remplacer ou effacer l'annonce de l'écran,
+                   derrière le jeton bénévole ET l'interrupteur du bureau
+                   (`services.CLE_ANNONCE_BENEVOLES`, fermé par défaut).
 
 Comme partout dans le projet, AUCUNE logique métier ici : on délègue à
 `app.services` (prêt) et `app.tournoi.services` (tournois), on assemble, on rend.
@@ -18,10 +23,13 @@ Comme partout dans le projet, AUCUNE logique métier ici : on délègue à
 
 import re
 from datetime import datetime, timezone
+from typing import NamedTuple
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import RedirectResponse
 
-from app import services
+from app import journal, services
+from app.auth import exiger_jeton
 from app.db import get_connection
 from app.modules import lire_etat_module
 from app.services import FUSEAU_LOCAL
@@ -304,6 +312,110 @@ def alerte_tournoi(conn, conn_tournoi) -> str | None:
     return detail[0] if detail else None
 
 
+def lire_alerte_detaillee(conn) -> tuple[str, str] | None:
+    """
+    `alerte_tournoi_detaillee` telle que la lisent les deux pages qui RÈGLENT
+    le bandeau (/admin/ecran-salle et /live/annonce) : avec la précédence du
+    module — un module `tournois` désactivé n'a plus de tournoi à annoncer, et
+    /live se comporte déjà ainsi — et en ouvrant elle-même la base des
+    tournois. C'est une fonction de ROUTE : le pont entre les deux bases se
+    fait ici, jamais dans un service (invariant des trois bases).
+
+    Un seul domicile pour cette lecture : sans lui, les deux pages auraient
+    chacune leur copie du test de module et de l'ouverture de connexion.
+    """
+    if lire_etat_module(conn, "tournois") == "desactive":
+        return None
+    conn_t = get_tournoi_connection()
+    try:
+        return alerte_tournoi_detaillee(conn, conn_t)
+    finally:
+        conn_t.close()
+
+
+# ---------------------------------------------------------------------------
+# Enregistrer l'annonce — un seul domicile pour le bureau et les bénévoles
+# ---------------------------------------------------------------------------
+class AnnonceEnregistree(NamedTuple):
+    """
+    Ce qu'un enregistrement a fait, sans le texte : `posee` (sinon effacée),
+    l'heure locale de fin « HH:MM » et la phrase de correction de durée
+    (`services.duree_annonce`), None quand la saisie a été prise telle quelle.
+    """
+    posee: bool
+    heure_fin: str | None = None
+    correction: str | None = None
+
+
+def enregistrer_annonce(request: Request, annonce: str,
+                        annonce_duree: str) -> AnnonceEnregistree:
+    """
+    Pose ou efface l'annonce à partir de la SAISIE BRUTE d'un formulaire, et
+    journalise ce qui a eu lieu. Appelée par `/admin/ecran-salle` (le bureau)
+    et par `/live/annonce` (les bénévoles) : la normalisation, les bornes, le
+    choix de la ligne de journal et l'heure de fin n'ont qu'un domicile.
+
+    - Annonce vide => elle est EFFACÉE de la base, pas seulement masquée — y
+      compris un texte expiré qui y traînait encore.
+    - Durée OBLIGATOIRE, bornée (`services.duree_annonce`) : une saisie vide,
+      nulle, négative, illisible ou trop longue n'est jamais refusée (geste
+      d'urgence) mais corrigée, et `correction` le dit. Une valeur forgée sur
+      la page bénévole, dont les durées sont des boutons, passe par la même
+      borne : elle ne contourne rien.
+
+    Elle vit dans la route `live` et non dans `services` parce que
+    `journaliser` réclame la requête, que les services ne connaissent pas.
+    La dernière annonce posée l'emporte, d'où qu'elle vienne : pas de verrou,
+    pas de marque d'origine en base. L'appareil est dans le journal, comme
+    pour toute action bénévole (`journal._qui`).
+    """
+    saisie_annonce = " ".join(annonce.split())[:services.LONGUEUR_ANNONCE]
+    duree_min, correction = (services.duree_annonce(annonce_duree)
+                             if saisie_annonce else (None, None))
+    conn = get_connection()
+    try:
+        # Lu AVANT écriture : sert uniquement à savoir s'il y avait une annonce
+        # AFFICHÉE à effacer. Enregistrer les panneaux seuls (bureau) ne doit
+        # rien écrire au journal — sinon chaque passage sur cette page
+        # produirait une ligne « annonce effacée » qui n'a jamais eu lieu. Un
+        # texte déjà expiré est effacé lui aussi, mais en silence : personne ne
+        # l'a retiré de l'écran.
+        annonce_precedente = annonce_active(conn)
+        if saisie_annonce:
+            expire_iso = services.poser_annonce(conn, saisie_annonce, duree_min)
+        else:
+            services.effacer_annonce(conn)
+    finally:
+        conn.close()
+
+    # L'annonce est une SAISIE LIBRE, servie au public : son texte ne part
+    # JAMAIS au journal, ni entier, ni tronqué, ni à la pose, ni à
+    # l'effacement (constat RGPD-01 ; même règle que le détail d'un
+    # signalement). Le journal dit qu'une annonce a été posée, pour combien de
+    # temps, ou retirée — ce qu'on cherche après coup, sans rien de ce
+    # qu'elle disait. Verrouillé par tests/test_journal_interdits.py.
+    if saisie_annonce:
+        journal.journaliser(request, "live", "annonce_posee", objet=f"{duree_min} min")
+        return AnnonceEnregistree(
+            True, services.format_local(expire_iso).split(" ")[-1], correction)
+    if annonce_precedente:
+        journal.journaliser(request, "live", "annonce_effacee")
+    return AnnonceEnregistree(False)
+
+
+def message_annonce(resultat: AnnonceEnregistree) -> tuple[str, str]:
+    """
+    Le message `(niveau, texte)` d'un enregistrement. Une durée corrigée
+    s'annonce en « attention » : la personne qui a posé l'annonce doit la voir.
+    """
+    if not resultat.posee:
+        return "succes", "Annonce effacée."
+    texte = f"Annonce enregistrée, affichée en salle jusqu'à {resultat.heure_fin}."
+    if resultat.correction:
+        return "attention", f"{texte} {resultat.correction}"
+    return "succes", texte
+
+
 def _collecter_donnees() -> dict:
     """
     Rassemble toutes les données du tableau de bord (partagé par la page et
@@ -465,3 +577,125 @@ def live(request: Request):
 def live_data():
     """Données fraîches du tableau de bord (JSON), interrogées en boucle par la page."""
     return _collecter_donnees()
+
+
+# ---------------------------------------------------------------------------
+# /live/annonce — l'annonce posée par les bénévoles (série annonce, lot 1)
+# ---------------------------------------------------------------------------
+# Durées proposées en BOUTONS RADIO sur téléphone, en minutes, avec leur
+# libellé. La valeur par défaut (`services.DUREE_ANNONCE_DEFAUT_MIN`) doit en
+# faire partie, et toutes restent sous `services.DUREE_ANNONCE_MAX_MIN` :
+# verrouillé par tests/test_annonce_benevoles.py. Plus court que les raccourcis
+# du bureau (jusqu'à 12 h) : un appel du stand dure le temps d'un appel ; une
+# information de la journée relève du bureau.
+DUREES_ANNONCE_BENEVOLE = ((15, "15 min"), (30, "30 min"), (60, "1 h"), (120, "2 h"))
+# Phrase qui remplace, après la redirection, la correction de durée de
+# `services.duree_annonce` : celle-ci cite la saisie reçue (« Durée « abc »
+# illisible… »), qui n'a rien à faire dans une adresse. Sur cette page, les
+# durées sont des boutons : une correction ne survient que sur un envoi forgé
+# ou tronqué.
+CORRECTION_BENEVOLE = ("La durée reçue n'a pas été reconnue : l'heure de fin "
+                       "a été corrigée.")
+_MOTIF_HEURE = re.compile(r"^\d{2}:\d{2}$")
+URL_ANNONCE_BENEVOLE = "/live/annonce"
+
+
+def _vers_annonce(resultat: AnnonceEnregistree | None = None) -> RedirectResponse:
+    """
+    Redirection 303 après un envoi : un rechargement du navigateur ne
+    repostera pas l'annonce. Le message voyage en CODES dans l'adresse
+    (patron de `routes/admin.py::_vers_fiche`) : `ok`, l'heure de fin
+    « HH:MM » et un drapeau de correction. JAMAIS le texte de l'annonce, ni la
+    saisie de durée reçue.
+    """
+    if resultat is None:
+        return RedirectResponse(URL_ANNONCE_BENEVOLE, status_code=303)
+    if not resultat.posee:
+        return RedirectResponse(f"{URL_ANNONCE_BENEVOLE}?ok=effacee", status_code=303)
+    url = f"{URL_ANNONCE_BENEVOLE}?ok=posee&fin={resultat.heure_fin}"
+    if resultat.correction:
+        url += "&corrigee=1"
+    return RedirectResponse(url, status_code=303)
+
+
+def _message_depuis_adresse(ok: str, fin: str, corrigee: str) -> tuple[str, str] | None:
+    """
+    Reconstruit le message de `message_annonce` à partir des codes de
+    `_vers_annonce`. Un code inconnu ou une heure mal formée (adresse forgée)
+    ne donnent aucun message, jamais une erreur.
+    """
+    if ok == "effacee":
+        return message_annonce(AnnonceEnregistree(False))
+    if ok == "posee" and _MOTIF_HEURE.match(fin or ""):
+        return message_annonce(AnnonceEnregistree(
+            True, fin, CORRECTION_BENEVOLE if corrigee else None))
+    return None
+
+
+@router.get(URL_ANNONCE_BENEVOLE)
+def annonce_benevole(request: Request, ok: str = "", fin: str = "",
+                     corrigee: str = "", _=Depends(exiger_jeton)):
+    """
+    La page bénévole de l'annonce, pensée téléphone et sans JS : l'annonce en
+    cours (calculée par `annonce_active`, la même fonction que /live) et son
+    heure de fin, l'alerte tournoi si elle occupe le bandeau, puis le champ,
+    la durée en boutons et « Afficher en salle » / « Remplacer l'annonce ».
+
+    Le garde du module `live` s'applique (routeur) ; il règle la visibilité,
+    pas l'accès, d'où le `Depends(exiger_jeton)` en propre.
+
+    Interrupteur fermé (lien ancien, page restée ouverte) : une page qui le
+    dit, jamais une erreur. La règle vaut AUSSI pour un administrateur
+    connecté, que `exiger_jeton` laisse passer : il a sa propre page,
+    /admin/ecran-salle, vers laquelle le gabarit lui donne un lien. Une règle
+    qui changerait selon la personne connectée serait impossible à expliquer
+    dans le guide bénévole.
+    """
+    conn = get_connection()
+    try:
+        ouverte = services.lire_annonce_benevoles(conn)
+        annonce = annonce_active(conn) if ouverte else None
+        expire_iso = (services.lire_parametre(conn, services.CLE_ANNONCE_EXPIRE, None)
+                      if annonce else None)
+        detail_alerte = lire_alerte_detaillee(conn) if ouverte else None
+    finally:
+        conn.close()
+
+    return templates.TemplateResponse(
+        request, "live_annonce.html",
+        {"ouverte": ouverte,
+         "annonce": annonce,
+         "annonce_fin": _heure_locale(expire_iso),
+         "alerte_reprise": detail_alerte[1] if detail_alerte else None,
+         "alerte_active": detail_alerte is not None,
+         "durees": DUREES_ANNONCE_BENEVOLE,
+         "duree_defaut": services.DUREE_ANNONCE_DEFAUT_MIN,
+         "longueur_annonce": services.LONGUEUR_ANNONCE,
+         "message": _message_depuis_adresse(ok, fin, corrigee) if ouverte else None},
+    )
+
+
+@router.post(URL_ANNONCE_BENEVOLE)
+def annonce_benevole_enregistrer(request: Request, annonce: str = Form(""),
+                                 annonce_duree: str = Form(""),
+                                 _=Depends(exiger_jeton)):
+    """
+    Pose, remplace ou efface l'annonce (saisie vide = effacer), par la même
+    fonction que le bureau (`enregistrer_annonce`), puis redirige (303).
+
+    Interrupteur fermé : rien n'est écrit, rien n'est journalisé, et l'on
+    revient à la page, qui explique pourquoi.
+
+    Pas de limitation de débit propre à cette route (arbitrage du lot) : le
+    jeton, l'interrupteur et l'appareil inscrit au journal suffisent, et une
+    limite ne protège pas de la seule menace réelle — un jeton qui a circulé
+    et UNE annonce déplacée, que le bureau efface d'un bouton.
+    """
+    conn = get_connection()
+    try:
+        ouverte = services.lire_annonce_benevoles(conn)
+    finally:
+        conn.close()
+    if not ouverte:
+        return _vers_annonce()
+    return _vers_annonce(enregistrer_annonce(request, annonce, annonce_duree))

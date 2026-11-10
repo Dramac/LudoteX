@@ -82,6 +82,11 @@ ACTIONS = {
     # nommer quelqu'un (RGPD-01, verrouillé par tests/test_journal_interdits.py).
     "annonce_posee",
     "annonce_effacee",
+    # Interrupteur du bureau qui ouvre l'annonce aux bénévoles
+    # (/admin/ecran-salle, série annonce) : `objet` porte l'état retenu
+    # (« ouverte » / « fermée »). Écrit au changement seulement, comme la
+    # visibilité d'un module : c'est un réglage d'ACCÈS, pas d'affichage.
+    "annonce_benevoles_modifiee",
     # Alerte « rapportez les exemplaires » avant un tournoi
     # (docs/conception-alerte-tournoi.md, D11) : seul l'ENREGISTREMENT du
     # modèle de message est journalisé — son affichage en salle est un calcul

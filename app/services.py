@@ -3000,7 +3000,8 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
 # ===========================================================================
 # Annonce de l'écran de salle — texte libre, donc éphémère par construction
 # ===========================================================================
-# L'annonce est le seul texte de l'application de prêt tapé par le bureau et
+# L'annonce est le seul texte de l'application de prêt tapé par le bureau (et,
+# s'il l'a permis, par les bénévoles) et
 # SERVI AU PUBLIC sans authentification (/live, /live/data). Son usage le plus
 # naturel est un appel nominatif (« le petit … attend ses parents ») : c'est
 # une porte d'entrée à donnée personnelle, et elle est refermée par quatre
@@ -3009,8 +3010,9 @@ def ecrire_parametre(conn: sqlite3.Connection, cle: str, valeur: str | None) -> 
 # 1. une DURÉE D'AFFICHAGE OBLIGATOIRE et bornée (`duree_annonce`) : plus
 #    aucune annonce n'est affichée sans échéance, et une annonce sans échéance
 #    ou à l'échéance illisible n'est jamais affichée (`annonce_affichable`) ;
-# 2. une consigne sous le champ (gabarit `admin_live.html`) ;
-# 3. le texte n'est JAMAIS journalisé (routes/admin.py, `ecran_salle_enregistrer`) ;
+# 2. une consigne sous le champ (fragment `_consigne_annonce.html`) ;
+# 3. le texte n'est JAMAIS journalisé (routes/live.py, `enregistrer_annonce`,
+#    partagée par le bureau et les bénévoles) ;
 # 4. le texte est EFFACÉ, pas seulement masqué : une annonce expirée n'est plus
 #    « rappelable » (ce confort gardait le texte en base, donc dans chaque
 #    sauvegarde deux fois par jour). Voir `purger_annonce_expiree` pour les
@@ -3151,6 +3153,51 @@ def purger_annonce_expiree(conn: sqlite3.Connection) -> bool:
         return False
     effacer_annonce(conn)
     return texte is not None
+
+
+# L'annonce ouverte aux BÉNÉVOLES (série annonce, lot 1) : un interrupteur du
+# bureau, réglé sur /admin/ecran-salle, qui ouvre la page /live/annonce et son
+# lien dans le menu bénévole. FERMÉ PAR DÉFAUT, dans le code, sans ligne écrite
+# au démarrage (patron des panneaux de l'écran de salle) : une base d'avant se
+# comporte exactement comme avant. Seule la valeur « 1 » l'ouvre — une valeur
+# absente, vide ou corrompue le laisse fermé, puisque c'est la sûre.
+#
+# Ce n'est PAS une donnée de l'annonce : la clé n'est ni effacée avec elle
+# (`effacer_annonce`), ni retirée des archives (`sauvegarde._retirer_annonce`).
+# Une restauration ramène donc le réglage du bureau, jamais un texte.
+CLE_ANNONCE_BENEVOLES = "live_annonce_benevoles"
+
+
+def lire_annonce_benevoles(conn: sqlite3.Connection) -> bool:
+    """True si le bureau a permis aux bénévoles d'afficher une annonce."""
+    return lire_parametre(conn, CLE_ANNONCE_BENEVOLES, "0") == "1"
+
+
+def ecrire_annonce_benevoles(conn: sqlite3.Connection, ouverte: bool) -> None:
+    """Ouvre (True) ou ferme (False) l'annonce aux bénévoles."""
+    ecrire_parametre(conn, CLE_ANNONCE_BENEVOLES, "1" if ouverte else "0")
+
+
+def annonce_benevoles_ouverte() -> bool:
+    """
+    Même valeur que `lire_annonce_benevoles`, pour le global Jinja du menu
+    bénévole (un gabarit ne dispose que de la requête). Même exception à la
+    convention `conn` en paramètre que `nom_evenement`, et même parade.
+
+    Ne lève JAMAIS : le menu est rendu sur toutes les pages, y compris la page
+    d'erreur 500, où la base peut précisément être en cause. Dans le doute, le
+    lien est masqué (fermé est l'état sûr).
+    """
+    from app.db import get_connection
+
+    try:
+        conn = get_connection()
+        try:
+            return lire_annonce_benevoles(conn)
+        finally:
+            conn.close()
+    except Exception:  # ne jamais faire tomber le rendu d'une page
+        return False
 
 
 # ===========================================================================

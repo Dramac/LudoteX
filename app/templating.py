@@ -101,6 +101,13 @@ templates.env.globals["est_admin"] = admin_auth.admin_connecte
 #   {% if module_visible(request, "tournois") %} ... {% endif %}
 templates.env.globals["module_visible"] = modules.module_visible
 
+# Le bureau a-t-il ouvert l'annonce de l'écran de salle aux bénévoles
+# (interrupteur de /admin/ecran-salle, fermé par défaut) ? Lu par le menu
+# bénévole pour afficher, ou non, le lien « Annonce en salle ». Même patron que
+# `module_visible` : un global, aucune requête ajoutée dans chaque route. Ne
+# lève jamais (voir sa docstring). Usage : {% if annonce_benevoles_ouverte() %}
+templates.env.globals["annonce_benevoles_ouverte"] = services.annonce_benevoles_ouverte
+
 # Indique si l'emplacement de rangement doit être affiché à ce visiteur sur le
 # catalogue / la fiche publique (3 niveaux réglables en admin, voir
 # docs/conception-rangement.md §7). Usage : {% if rangement_visible(request) %}

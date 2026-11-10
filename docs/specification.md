@@ -332,7 +332,8 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   aux bénévoles. Base séparée (§3.4), données personnelles assumées (§9.2).
   `docs/conception-planning.md`.
 - **Écran de salle** — tableau de bord projeté (chiffres du prêt, derniers
-  mouvements, tournois, programme), annonces du bureau limitées dans le temps, alerte « rapportez
+  mouvements, tournois, programme), annonces limitées dans le temps — posées
+  par le bureau et, s'il l'a permis, par les bénévoles —, alerte « rapportez
   les exemplaires » avant chaque tournoi. Aucun numéro de pochette n'y
   apparaît. `docs/conception-alerte-tournoi.md`.
 - **Rangement** — où ranger chaque boîte, selon deux contextes

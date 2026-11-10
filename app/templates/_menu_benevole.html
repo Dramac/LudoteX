@@ -20,6 +20,12 @@
   {% endif %}
   {% if module_visible(request, "live") %}
   <a href="/live">Écran salle</a>
+  {# Série annonce : seulement si le bureau l'a ouverte (interrupteur de
+     /admin/ecran-salle, fermé par défaut). Même règle pour un administrateur
+     connecté, qui voit aussi ce menu : il a sa propre page. #}
+  {% if annonce_benevoles_ouverte() %}
+  <a href="/live/annonce">Annonce en salle</a>
+  {% endif %}
   {% endif %}
   {# Carnet de maintenance (lot agora-5). Pas de badge « 3 ouverts » : ce
      serait une requête de comptage au rendu de CHAQUE page bénévole, pour une

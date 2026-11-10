@@ -1,0 +1,16 @@
+{# Fragment PARTAGÉ : la consigne sous le champ de l'annonce de l'écran de
+   salle, reliée au champ par aria-describedby="annonce-consigne". Incluse par
+   admin_live.html (le bureau) et live_annonce.html (les bénévoles) : un seul
+   domicile pour ce texte, verrouillé par tests/test_annonce_benevoles.py.
+
+   Patron exact de la consigne du signalement (« Décrivez la boîte, jamais une
+   personne. ») : l'écran de salle est PUBLIC, et l'appel nominatif est
+   l'usage le plus naturel d'une annonce urgente. La consigne dit quoi écrire
+   à la place, parce qu'on la lit dans l'urgence. Espaces insécables : à
+   375 px, un « ne doit jamais tomber seul en fin de ligne.
+
+   Attend `longueur_annonce` (services.LONGUEUR_ANNONCE) dans le contexte. #}
+<p class="stats-note" id="annonce-consigne">Décrivez une situation, jamais
+        une personne&nbsp;: «&nbsp;Un enfant attend ses parents à
+        l'accueil&nbsp;», sans son nom. {{ longueur_annonce }} caractères maximum. Laissez vide
+        pour ne rien afficher.</p>
