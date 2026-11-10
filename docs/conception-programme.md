@@ -180,7 +180,18 @@ telle quelle à l'intérieur) : aucune régression sur l'existant.
 
 ### 6.2 Bénévole (jeton)
 
-- `GET /programme/gestion` — liste de travail, brouillons compris.
+- `GET /programme/gestion` — liste de travail, brouillons compris, filtrable
+  par type, lieu (texte libre, regroupé sans tenir compte de la casse) et
+  état. Les actions de ligne reviennent sur la liste avec ses filtres (champ
+  caché `retour`, dont seules les trois clés connues sont relues).
+- `GET|POST /programme/gestion/en-lot` — « Tout publier » (brouillons →
+  publiés) et « Tout dépublier » (publiés → brouillons) sur la liste filtrée,
+  après confirmation. Les annulés ne sont jamais concernés
+  (`programme.SOURCES_EN_LOT`, plus étroit que la machine à états à dessein).
+  Une seule transaction ; une ligne de journal par élément, avec l'action
+  existante `programme_etat_change`. Ouvert au jeton bénévole comme les
+  changements d'état un par un : le bouton n'ajoute aucun pouvoir, seulement
+  de la vitesse.
 - `GET|POST /programme/nouveau`, `GET|POST /programme/{id}/editer`,
   `GET|POST /programme/{id}/supprimer` (double confirmation, comme les
   tournois), `POST /programme/{id}/etat`.

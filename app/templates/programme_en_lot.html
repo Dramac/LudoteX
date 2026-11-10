@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% set publier = vers == 'publie' %}
+{% block titre %}{{ "Tout publier" if publier else "Tout dépublier" }} — Programme — {{ nom_association }}{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>{{ "Tout publier" if publier else "Tout dépublier" }}</h1>
+
+  {% if erreur %}
+    <p class="resultat resultat-attention" role="alert">{{ erreur }}</p>
+  {% endif %}
+
+  <p>
+    {% set n = concernes|length %}
+    {% if publier %}
+      {{ n }} brouillon{{ 's' if n > 1 }} {{ 'vont' if n > 1 else 'va' }} devenir
+      visible{{ 's' if n > 1 }} du public (page Programme, accueil, écran de salle) :
+    {% else %}
+      {{ n }} élément{{ 's' if n > 1 }} publié{{ 's' if n > 1 }} {{ 'vont' if n > 1 else 'va' }}
+      repasser en brouillon et disparaître des pages publiques :
+    {% endif %}
+  </p>
+  <ul>
+    {% for e in concernes %}
+      <li>{{ e.intitule }}{% if e.date_heure %} — {{ e.date_heure | dt_local }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <p class="stats-note">Les éléments annulés ne sont pas concernés. Tout peut se défaire
+     ensuite, élément par élément ou avec le bouton inverse.</p>
+
+  <form method="post" action="/programme/gestion/en-lot">
+    <input type="hidden" name="vers" value="{{ vers }}">
+    {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
+    {% for e in concernes %}<input type="hidden" name="ids" value="{{ e.id_element }}">{% endfor %}
+    <button type="submit" class="bouton bouton-principal">
+      {% if erreur %}Réessayer{% elif publier %}Publier {{ concernes|length }} élément{{ 's' if concernes|length > 1 }}{% else %}Dépublier {{ concernes|length }} élément{{ 's' if concernes|length > 1 }}{% endif %}
+    </button>
+  </form>
+
+  <p class="lien-fiche"><a class="lien" href="{{ url_gestion }}">Annuler</a></p>
+</section>
+{% endblock %}

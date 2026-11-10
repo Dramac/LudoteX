@@ -1036,3 +1036,220 @@ def test_gestion_propose_un_lien_vers_la_page_publique(client):
     id_element = _element_publie(client, "Belote", "2026-08-01T09:00")
     page = client.get("/programme/gestion").text
     assert f'href="/programme/{id_element}"' in page
+
+
+# ===========================================================================
+# Liste de gestion — filtres type / lieu / état, publication groupée
+# ===========================================================================
+def test_lister_elements_filtre_lieu_insensible_a_la_casse_et_etat(conn):
+    a = programme.creer_element(conn, "A", lieu="Salle du fond")
+    b = programme.creer_element(conn, "B", lieu="  salle du FOND ")
+    programme.creer_element(conn, "C", lieu="Table 1")
+    programme.changer_etat(conn, b, "publie")
+    par_lieu = programme.lister_elements(conn, inclure_brouillons=True, lieu="salle du fond")
+    assert {e["id_element"] for e in par_lieu} == {a, b}
+    publies = programme.lister_elements(conn, inclure_brouillons=True, etat="publie")
+    assert [e["id_element"] for e in publies] == [b]
+
+
+def test_lieux_distincts_regroupe_les_graphies(conn):
+    programme.creer_element(conn, "A", lieu="Salle du fond")
+    programme.creer_element(conn, "B", lieu="salle du fond")
+    programme.creer_element(conn, "C", lieu="Bar")
+    programme.creer_element(conn, "D")
+    assert programme.lieux_distincts(conn) == ["Bar", "Salle du fond"]
+
+
+def test_changer_etat_en_lot_ne_touche_jamais_aux_annules(conn):
+    brouillon = programme.creer_element(conn, "Brouillon")
+    annule = programme.creer_element(conn, "Annulé")
+    programme.changer_etat(conn, annule, "publie")
+    programme.changer_etat(conn, annule, "annule")
+    deja = programme.creer_element(conn, "Déjà publié")
+    programme.changer_etat(conn, deja, "publie")
+
+    changes = programme.changer_etat_en_lot(conn, [brouillon, annule, deja, 9999], "publie")
+    assert [e["id_element"] for e in changes] == [brouillon]
+    assert programme.get_element(conn, brouillon)["etat"] == "publie"
+    assert programme.get_element(conn, annule)["etat"] == "annule"
+
+    changes = programme.changer_etat_en_lot(conn, [brouillon, annule, deja], "brouillon")
+    assert {e["id_element"] for e in changes} == {brouillon, deja}
+    assert programme.get_element(conn, annule)["etat"] == "annule"
+
+
+def test_changer_etat_en_lot_etat_non_groupable(conn):
+    e = programme.creer_element(conn, "X")
+    programme.changer_etat(conn, e, "publie")
+    assert programme.changer_etat_en_lot(conn, [e], "annule") == []
+    assert programme.get_element(conn, e)["etat"] == "publie"
+
+
+def test_changer_etat_en_lot_tout_ou_rien(conn, monkeypatch):
+    """Une erreur au milieu du lot défait les changements déjà faits."""
+    ids = [programme.creer_element(conn, f"E{i}") for i in range(3)]
+    vrai_execute = conn.execute
+    appels = {"n": 0}
+
+    class ConnPiegee:
+        in_transaction = property(lambda self: conn.in_transaction)
+
+        def execute(self, sql, *args):
+            if sql.startswith("UPDATE"):
+                appels["n"] += 1
+                if appels["n"] == 2:
+                    raise sqlite3.OperationalError("database is locked")
+            return vrai_execute(sql, *args)
+
+        def commit(self):
+            conn.commit()
+
+        def rollback(self):
+            conn.rollback()
+
+    with pytest.raises(sqlite3.OperationalError):
+        programme.changer_etat_en_lot(ConnPiegee(), ids, "publie")
+    assert all(programme.get_element(conn, i)["etat"] == "brouillon" for i in ids)
+
+
+def _creer_par_route(client, intitule, **champs):
+    client.post("/programme/nouveau", data={"intitule": intitule, **champs})
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    try:
+        return c.execute(
+            "SELECT id_element FROM programme WHERE intitule = ?", (intitule,)
+        ).fetchone()[0]
+    finally:
+        c.close()
+
+
+def _etat(id_element):
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    try:
+        return programme.get_element(c, id_element)["etat"]
+    finally:
+        c.close()
+
+
+def test_gestion_filtre_par_lieu_et_etat(client):
+    _creer_par_route(client, "Atelier bois", lieu="Salle du fond")
+    b = _creer_par_route(client, "Initiation go", lieu="Bar")
+    client.post(f"/programme/{b}/etat", data={"etat": "publie"})
+
+    r = client.get("/programme/gestion", params={"lieu": "salle du fond"})
+    assert "Atelier bois" in r.text and "Initiation go" not in r.text
+    assert "1 élément affiché sur 2" in r.text
+
+    r = client.get("/programme/gestion", params={"etat": "publie"})
+    assert "Initiation go" in r.text and "Atelier bois" not in r.text
+
+    r = client.get("/programme/gestion", params={"lieu": "Nulle part"})
+    assert "Aucun élément ne correspond à ces filtres." in r.text
+
+
+def test_gestion_filtre_par_type(client):
+    from app.tournoi import db as tdb
+    c = tdb.get_connection()
+    try:
+        id_type = programme.creer_type(c, "Tournoi", "🏆")
+    finally:
+        c.close()
+    _creer_par_route(client, "Tournoi Azul", id_type=str(id_type))
+    _creer_par_route(client, "Atelier bois")
+    r = client.get("/programme/gestion", params={"type": str(id_type)})
+    assert "Tournoi Azul" in r.text and "Atelier bois" not in r.text
+
+
+def test_tout_publier_sur_liste_filtree_avec_confirmation(client, monkeypatch):
+    lignes = []
+    from app import journal
+    monkeypatch.setattr(journal, "journaliser", lambda *a, **k: lignes.append((a[2], k.get("ref"))))
+
+    a = _creer_par_route(client, "Atelier A", lieu="Bar")
+    b = _creer_par_route(client, "Atelier B", lieu="Bar")
+    autre = _creer_par_route(client, "Ailleurs", lieu="Table 1")
+    annule = _creer_par_route(client, "Annulé", lieu="Bar")
+    client.post(f"/programme/{annule}/etat", data={"etat": "publie"})
+    client.post(f"/programme/{annule}/etat", data={"etat": "annule"})
+    lignes.clear()
+
+    gestion = client.get("/programme/gestion", params={"lieu": "Bar"})
+    assert "Tout publier (2)" in gestion.text
+
+    # La confirmation ne change rien et ne liste que les brouillons filtrés.
+    conf = client.get("/programme/gestion/en-lot", params={"vers": "publie", "lieu": "Bar"})
+    assert conf.status_code == 200
+    assert "Atelier A" in conf.text and "Atelier B" in conf.text
+    assert "Ailleurs" not in conf.text and "Annulé</li>" not in conf.text
+    assert _etat(a) == "brouillon"
+
+    r = client.post("/programme/gestion/en-lot", data={
+        "vers": "publie", "ids": [str(a), str(b)], "retour": "lieu=Bar",
+    }, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/programme/gestion?lieu=Bar&fait=publie&nb=2"
+    assert (_etat(a), _etat(b), _etat(autre), _etat(annule)) == ("publie", "publie", "brouillon", "annule")
+    # Une ligne de journal par élément, avec l'action déjà connue.
+    assert sorted(lignes) == sorted([("programme_etat_change", str(a)), ("programme_etat_change", str(b))])
+    assert "2 éléments publiés." in client.get(r.headers["location"]).text
+
+    # Et le bouton inverse.
+    r = client.post("/programme/gestion/en-lot", data={
+        "vers": "brouillon", "ids": [str(a), str(b), str(annule)], "retour": "lieu=Bar",
+    })
+    assert (_etat(a), _etat(b), _etat(annule)) == ("brouillon", "brouillon", "annule")
+
+
+def test_en_lot_sans_element_concerne_ou_cible_invalide_revient_a_la_liste(client):
+    _creer_par_route(client, "Brouillon seul")
+    r = client.get("/programme/gestion/en-lot", params={"vers": "brouillon"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/programme/gestion"
+    r = client.get("/programme/gestion/en-lot", params={"vers": "annule"}, follow_redirects=False)
+    assert r.status_code == 303
+
+
+def test_en_lot_base_occupee_donne_un_message_et_reessayer(client, monkeypatch):
+    a = _creer_par_route(client, "Atelier A")
+
+    def occupee(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(programme, "changer_etat_en_lot", occupee)
+    r = client.post("/programme/gestion/en-lot", data={"vers": "publie", "ids": [str(a)]})
+    assert r.status_code == 503
+    assert "La base était occupée" in r.text and "Réessayer" in r.text
+    assert _etat(a) == "brouillon"
+
+
+def test_en_lot_exige_le_jeton(client, monkeypatch):
+    monkeypatch.setenv("PRET_TOKEN", "jeton-programme-secret")
+    assert client.get("/programme/gestion/en-lot?vers=publie").status_code == 403
+    assert client.post("/programme/gestion/en-lot", data={"vers": "publie"}).status_code == 403
+
+
+def test_actions_de_ligne_conservent_les_filtres(client):
+    a = _creer_par_route(client, "Atelier A", lieu="Bar")
+    r = client.post(f"/programme/{a}/etat", data={"etat": "publie", "retour": "lieu=Bar&etat=brouillon"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/programme/gestion?lieu=Bar&etat=brouillon"
+
+    r = client.post(f"/programme/{a}/editer", data={"intitule": "Atelier A2", "retour": "lieu=Bar"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/programme/gestion?lieu=Bar"
+
+    edition = client.get(f"/programme/{a}/editer", params={"retour": "lieu=Bar"})
+    assert 'name="retour" value="lieu=Bar"' in edition.text
+
+    r = client.post(f"/programme/{a}/supprimer", data={"confirmation": "oui", "retour": "lieu=Bar"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/programme/gestion?lieu=Bar"
+
+
+def test_retour_ne_peut_pas_detourner_la_redirection(client):
+    a = _creer_par_route(client, "Atelier A")
+    r = client.post(f"/programme/{a}/etat", data={
+        "etat": "publie", "retour": "next=https://exemple.invalid&etat=nimporte",
+    }, follow_redirects=False)
+    assert r.headers["location"] == "/programme/gestion"

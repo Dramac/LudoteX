@@ -26,7 +26,7 @@ from datetime import date, datetime, time, timedelta
 # Repli du nom de l'association quand la route ne le transmet pas — même
 # raison que dans `tournoi/services.py` : le réglage vit dans la base de PRÊT.
 from app.config import DOMAINE_UID_ICS, NOM_ASSOCIATION
-from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant
+from app.services import FUSEAU_LOCAL, FUSEAU_UTC, maintenant, transaction
 from app.tournoi.creneau import (
     DUREE_DEFAUT_MIN,
     SLOT_MIN,
@@ -288,11 +288,15 @@ def lister_elements(
     *,
     jour: date | None = None,
     id_type: int | None = None,
+    lieu: str | None = None,
+    etat: str | None = None,
     inclure_brouillons: bool = False,
 ) -> list[dict]:
     """
     Liste les éléments de programme (heure de début croissante ; ceux sans
-    date en dernier), filtrable par jour (heure locale) et/ou par type.
+    date en dernier), filtrable par jour (heure locale), par type, par lieu
+    (comparé sans tenir compte de la casse ni des espaces de bord, comme le
+    regroupe `lieux_distincts`) et par état.
 
     `inclure_brouillons` : True pour la vue bénévole (jalon 2), False pour le
     public (brouillons masqués). Les éléments ANNULÉS restent dans la liste —
@@ -309,6 +313,10 @@ def lister_elements(
             continue
         if id_type is not None and d["id_type"] != id_type:
             continue
+        if etat is not None and d["etat"] != etat:
+            continue
+        if lieu is not None and _cle_lieu(d["lieu"]) != _cle_lieu(lieu):
+            continue
         if jour is not None:
             if not d["date_heure"]:
                 continue
@@ -319,6 +327,73 @@ def lister_elements(
                 continue
         resultat.append(d)
     return resultat
+
+
+def _cle_lieu(lieu: str | None) -> str:
+    """Clé de regroupement d'un lieu : texte libre, donc casse et bords ignorés."""
+    return (lieu or "").strip().casefold()
+
+
+def lieux_distincts(conn: sqlite3.Connection) -> list[str]:
+    """
+    Lieux déjà saisis, sans doublon, triés — options du filtre de la liste de
+    gestion. Le lieu est un texte libre : « Salle du fond » et « salle du
+    fond » forment une seule option (la première graphie rencontrée), et le
+    filtre `lister_elements(lieu=…)` les retrouve toutes les deux.
+    """
+    vus: dict[str, str] = {}
+    for (valeur,) in conn.execute(
+        "SELECT lieu FROM programme WHERE lieu IS NOT NULL ORDER BY id_element"
+    ):
+        cle = _cle_lieu(valeur)
+        if cle and cle not in vus:
+            vus[cle] = valeur.strip()
+    return sorted(vus.values(), key=str.casefold)
+
+
+# Changement d'état EN LOT (« Tout publier » / « Tout dépublier » de la liste
+# de gestion) : état visé -> SEUL état de départ concerné. Plus étroit que
+# `TRANSITIONS_PROGRAMME` à dessein : un élément ANNULÉ peut être republié un
+# par un, jamais par un bouton qui balaie toute une liste — republier par
+# mégarde un atelier annulé serait le pire résultat possible.
+SOURCES_EN_LOT = {"publie": "brouillon", "brouillon": "publie"}
+
+
+def changer_etat_en_lot(
+    conn: sqlite3.Connection, ids: list[int], nouvel_etat: str
+) -> list[dict]:
+    """
+    Fait passer à `nouvel_etat` ceux des éléments `ids` qui sont dans l'état
+    de départ prévu par `SOURCES_EN_LOT` ; les autres (annulés, déjà dans
+    l'état visé, disparus entre-temps) sont ignorés sans erreur.
+
+    TOUT OU RIEN : une seule transaction (`services.transaction`, verrou pris
+    avant la lecture). Une coupure ne laisse jamais la moitié du programme
+    publiée.
+
+    Returns:
+        Les éléments effectivement changés (tels qu'avant le changement),
+        pour que la route journalise une ligne par élément. Liste vide si
+        `nouvel_etat` n'est pas un état groupable.
+    """
+    source = SOURCES_EN_LOT.get(nouvel_etat)
+    if source is None or not ids:
+        return []
+    changes = []
+    with transaction(conn):
+        for id_element in dict.fromkeys(ids):
+            r = conn.execute(
+                "SELECT * FROM programme WHERE id_element = ? AND etat = ?",
+                (id_element, source),
+            ).fetchone()
+            if r is None:
+                continue
+            conn.execute(
+                "UPDATE programme SET etat = ? WHERE id_element = ?",
+                (nouvel_etat, id_element),
+            )
+            changes.append(dict(r))
+    return changes
 
 
 def dupliquer_element(

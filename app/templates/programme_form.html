@@ -13,6 +13,7 @@
   <form method="post"
         action="{{ '/programme/' ~ e.id_element ~ '/editer' if edition else '/programme/nouveau' }}"
         class="recherche-form">
+    {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
     <div class="champ">
       <label for="intitule">Intitulé *</label>
       <input type="text" id="intitule" name="intitule" required
@@ -67,7 +68,7 @@
   </form>
 
   <p class="lien-fiche">
-    <a class="lien" href="/programme/gestion">Annuler</a>
+    <a class="lien" href="{{ url_gestion or '/programme/gestion' }}">Annuler</a>
   </p>
 </section>
 {% endblock %}

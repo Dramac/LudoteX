@@ -15,8 +15,83 @@
     <a class="bouton bouton-principal" href="/programme/nouveau">+ Nouvel élément</a>
   </p>
   <p><a class="lien" href="/programme/aide">❓ Aide</a></p>
-  {% if not elements %}
+
+  {% if compte_rendu %}
+    <p class="resultat resultat-ok" role="status">{{ compte_rendu }}</p>
+  {% endif %}
+
+  {% if total %}
+  <details class="recherche" {% if filtres %}open{% endif %}>
+    <summary>Filtrer</summary>
+    <form method="get" action="/programme/gestion" class="recherche-form">
+      <div class="champ">
+        <label for="filtre-type">Type</label>
+        <select id="filtre-type" name="type">
+          <option value="">Tous</option>
+          {% for t in types %}
+            <option value="{{ t.id_type }}" {% if filtres.type == t.id_type|string %}selected{% endif %}>
+              {{ t.icone ~ ' ' if t.icone }}{{ t.nom }}{{ ' (archivé)' if not t.actif }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="champ">
+        <label for="filtre-lieu">Lieu</label>
+        <select id="filtre-lieu" name="lieu">
+          <option value="">Tous</option>
+          {% for l in lieux %}
+            <option value="{{ l }}" {% if filtres.lieu and filtres.lieu|lower == l|lower %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="champ">
+        <label for="filtre-etat">État</label>
+        <select id="filtre-etat" name="etat">
+          <option value="">Tous</option>
+          {% for valeur, libelle in libelles_etat.items() %}
+            <option value="{{ valeur }}" {% if filtres.etat == valeur %}selected{% endif %}>{{ libelle }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="recherche-actions">
+        <button type="submit" class="bouton-filtrer">Filtrer</button>
+        {% if filtres %}<a class="lien" href="/programme/gestion">Réinitialiser</a>{% endif %}
+      </div>
+    </form>
+  </details>
+
+  {% if puces %}
+  <div class="filtres-actifs">
+    <span class="fa-label">Filtres actifs :</span>
+    {% for c in puces %}
+      <a class="chip-filtre" href="{{ c.url }}" title="Retirer ce filtre">{{ c.label }} <span class="croix" aria-hidden="true">✕</span></a>
+    {% endfor %}
+    <a class="lien" href="/programme/gestion">Tout effacer</a>
+  </div>
+  {% endif %}
+
+  <p class="stats-note">
+    {% if filtres %}{{ elements|length }} élément{{ 's' if elements|length > 1 }} affiché{{ 's' if elements|length > 1 }} sur {{ total }}.
+    {% else %}{{ total }} élément{{ 's' if total > 1 }}.{% endif %}
+  </p>
+
+  {% if nb_brouillons or nb_publies %}
+  <p class="rangement-actions">
+    {% set qs = ('&' ~ retour) if retour else '' %}
+    {% if nb_brouillons %}
+      <a class="bouton-filtrer" href="/programme/gestion/en-lot?vers=publie{{ qs }}">Tout publier ({{ nb_brouillons }})</a>
+    {% endif %}
+    {% if nb_publies %}
+      <a class="bouton-filtrer" href="/programme/gestion/en-lot?vers=brouillon{{ qs }}">Tout dépublier ({{ nb_publies }})</a>
+    {% endif %}
+  </p>
+  <p class="stats-note">Ces deux boutons portent sur les éléments affichés ; les éléments annulés n'y sont jamais inclus. Une confirmation est demandée.</p>
+  {% endif %}
+  {% endif %}
+
+  {% if not total %}
     <p><em>Aucun élément de programme pour le moment.</em></p>
+  {% elif not elements %}
+    <p><em>Aucun élément ne correspond à ces filtres.</em></p>
   {% endif %}
 </section>
 
@@ -44,19 +119,21 @@
           <td>{{ e.lieu if e.lieu else "—" }}</td>
           <td>
             <span class="badge {{ 'badge-dispo' if e.etat == 'publie' else 'badge-sorti' }}">
-              {{ e.etat }}</span>
+              {{ libelles_etat.get(e.etat, e.etat) }}</span>
           </td>
           <td class="rangement-actions">
-            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/editer">Modifier</a>
+            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/editer{{ ('?retour=' ~ (retour|urlencode)) if retour }}">Modifier</a>
             <a class="bouton-filtrer" href="/programme/{{ e.id_element }}" title="Ce que voit le public (404 tant que l'élément n'est pas publié)">Page publique</a>
             {% if "publie" in possibles %}
               <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline">
+                {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
                 <input type="hidden" name="etat" value="publie">
                 <button type="submit" class="bouton-filtrer">Publier</button>
               </form>
             {% endif %}
             {% if "brouillon" in possibles %}
               <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline">
+                {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
                 <input type="hidden" name="etat" value="brouillon">
                 <button type="submit" class="bouton-filtrer">Repasser en brouillon</button>
               </form>
@@ -64,14 +141,16 @@
             {% if "annule" in possibles %}
               <form method="post" action="/programme/{{ e.id_element }}/etat" class="rangement-form-inline"
                     onsubmit="return confirm('Annuler « {{ e.intitule }} » ?');">
+                {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
                 <input type="hidden" name="etat" value="annule">
                 <button type="submit" class="bouton-filtrer">Annuler</button>
               </form>
             {% endif %}
             <form method="post" action="/programme/{{ e.id_element }}/dupliquer" class="rangement-form-inline">
+              {% if retour %}<input type="hidden" name="retour" value="{{ retour }}">{% endif %}
               <button type="submit" class="bouton-filtrer">Dupliquer</button>
             </form>
-            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/supprimer">Supprimer</a>
+            <a class="bouton-filtrer" href="/programme/{{ e.id_element }}/supprimer{{ ('?retour=' ~ (retour|urlencode)) if retour }}">Supprimer</a>
           </td>
         </tr>
       {% endfor %}

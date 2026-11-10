@@ -22,7 +22,11 @@ CARTE DES URL
     /programme/aide                         aide / mode d'emploi (publique)
     /programme/{id}                         page publique d'un élément (publique)
     /programme/{id}/agenda.ics              « Ajouter à mon agenda » (publique)
-    /programme/gestion         [bénévole]  liste de travail (brouillons compris)
+    /programme/gestion         [bénévole]  liste de travail (brouillons compris,
+                                           filtres type/lieu/état)
+    /programme/gestion/en-lot  [bénévole]  « Tout publier » / « Tout dépublier »
+                                           sur la liste filtrée : confirmation
+                                           (GET) + POST
     /programme/nouveau         [bénévole]  formulaire de création
     /programme/{id}/editer     [bénévole]  formulaire d'édition + POST
     /programme/{id}/etat       [bénévole]  transition d'état (POST)
@@ -44,7 +48,9 @@ PUBLIQUE de LECTURE par élément (`/programme/{id}`, ci-dessus) — patron
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date, datetime, timedelta
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -61,6 +67,7 @@ from app.services import (
 from app.templating import templates
 from app.tournoi import programme
 from app.tournoi.db import get_connection
+from app.tournoi.models import ETATS_PROGRAMME
 from app.tournoi.services import iso_utc_vers_datetime_local
 
 router = APIRouter(tags=["programme"])
@@ -254,20 +261,168 @@ def agenda_ics(request: Request, id_element: int):
 # ===========================================================================
 # BÉNÉVOLE — liste de travail, création, édition, état, duplication, suppression
 # ===========================================================================
+# ---------------------------------------------------------------------------
+# Filtres de la liste de gestion — conservés d'une action à l'autre
+# ---------------------------------------------------------------------------
+# Les actions de la liste (changer d'état, modifier, dupliquer, supprimer)
+# reviennent sur la liste AVEC ses filtres : sur une quarantaine d'éléments,
+# perdre le tri à chaque geste rendrait les filtres inutiles. Les filtres
+# voyagent dans un champ caché `retour` (chaîne de requête), relu par
+# `_filtres_depuis_retour` qui n'en garde que les trois clés connues : aucune
+# redirection ne peut donc être détournée vers une autre adresse.
+LIBELLES_ETAT = {"brouillon": "Brouillon", "publie": "Publié", "annule": "Annulé"}
+
+
+def _filtres_gestion(type: str = "", lieu: str = "", etat: str = "") -> dict:
+    """Filtres valides de la liste de gestion (clés absentes quand inactifs)."""
+    filtres = {}
+    if _int_ou_none(type) is not None:
+        filtres["type"] = str(_int_ou_none(type))
+    if (lieu or "").strip():
+        filtres["lieu"] = lieu.strip()
+    if etat in ETATS_PROGRAMME:
+        filtres["etat"] = etat
+    return filtres
+
+
+def _filtres_depuis_retour(retour: str) -> dict:
+    """Relit le champ caché `retour` ; tout ce qui n'est pas un filtre connu est ignoré."""
+    valeurs = parse_qs(retour or "")
+    return _filtres_gestion(
+        type=(valeurs.get("type") or [""])[0],
+        lieu=(valeurs.get("lieu") or [""])[0],
+        etat=(valeurs.get("etat") or [""])[0],
+    )
+
+
+def _url_gestion(filtres: dict, **extra) -> str:
+    """URL de la liste de gestion, filtres (et éventuel compte rendu) compris."""
+    params = {**filtres, **extra}
+    return "/programme/gestion" + ("?" + urlencode(params) if params else "")
+
+
+def _elements_filtres(conn, filtres: dict) -> list[dict]:
+    return programme.lister_elements(
+        conn, inclure_brouillons=True,
+        id_type=_int_ou_none(filtres.get("type", "")),
+        lieu=filtres.get("lieu"), etat=filtres.get("etat"),
+    )
+
+
 @router.get("/programme/gestion")
-def gestion(request: Request, _=Depends(exiger_jeton)):
-    """Liste de travail (brouillons compris) : toutes les actions y sont regroupées."""
+def gestion(request: Request, _=Depends(exiger_jeton),
+            type: str = "", lieu: str = "", etat: str = "",
+            fait: str = "", nb: str = ""):
+    """
+    Liste de travail (brouillons compris) : toutes les actions y sont
+    regroupées. Filtrable par type, lieu et état ; « Tout publier » et « Tout
+    dépublier » portent sur la liste telle qu'elle est filtrée.
+    """
+    filtres = _filtres_gestion(type, lieu, etat)
     conn = get_connection()
     try:
-        elements = programme.lister_elements(conn, inclure_brouillons=True)
-        types_par_id = {t["id_type"]: t for t in programme.lister_types(conn, actifs_seulement=False)}
+        elements = _elements_filtres(conn, filtres)
+        total = len(programme.lister_elements(conn, inclure_brouillons=True))
+        types = programme.lister_types(conn, actifs_seulement=False)
+        lieux = programme.lieux_distincts(conn)
     finally:
         conn.close()
+    types_par_id = {t["id_type"]: t for t in types}
+
+    # Puces de retrait : chacune ramène la liste sans CE filtre (patron du catalogue).
+    puces = []
+    if "type" in filtres:
+        t = types_par_id.get(int(filtres["type"]))
+        libelle = ((t["icone"] + " ") if t and t["icone"] else "") + (t["nom"] if t else "Type inconnu")
+        puces.append({"label": libelle, "url": _url_gestion({k: v for k, v in filtres.items() if k != "type"})})
+    if "lieu" in filtres:
+        puces.append({"label": filtres["lieu"], "url": _url_gestion({k: v for k, v in filtres.items() if k != "lieu"})})
+    if "etat" in filtres:
+        puces.append({"label": LIBELLES_ETAT[filtres["etat"]], "url": _url_gestion({k: v for k, v in filtres.items() if k != "etat"})})
+
+    compte_rendu = None
+    if fait in programme.SOURCES_EN_LOT and nb.isdigit():
+        n = int(nb)
+        verbe = "publié" if fait == "publie" else "repassé en brouillon"
+        compte_rendu = f"{n} élément{'s' if n > 1 else ''} {verbe}{'s' if n > 1 else ''}."
+
     return templates.TemplateResponse(
         request, "programme_gestion.html",
-        {"elements": elements, "types_par_id": types_par_id,
-         "transitions": programme.TRANSITIONS_PROGRAMME},
+        {"elements": elements, "types_par_id": types_par_id, "types": types,
+         "lieux": lieux, "libelles_etat": LIBELLES_ETAT,
+         "transitions": programme.TRANSITIONS_PROGRAMME,
+         "filtres": filtres, "puces": puces, "total": total,
+         "retour": urlencode(filtres),
+         "nb_brouillons": sum(1 for e in elements if e["etat"] == "brouillon"),
+         "nb_publies": sum(1 for e in elements if e["etat"] == "publie"),
+         "compte_rendu": compte_rendu},
     )
+
+
+def _page_en_lot(request: Request, vers: str, filtres: dict, *, erreur: str | None = None):
+    """Page de confirmation d'un changement d'état groupé (liste recalculée)."""
+    source = programme.SOURCES_EN_LOT[vers]
+    conn = get_connection()
+    try:
+        concernes = [e for e in _elements_filtres(conn, filtres) if e["etat"] == source]
+    finally:
+        conn.close()
+    if not concernes:
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
+    return templates.TemplateResponse(
+        request, "programme_en_lot.html",
+        {"vers": vers, "concernes": concernes, "filtres": filtres,
+         "retour": urlencode(filtres), "url_gestion": _url_gestion(filtres),
+         "erreur": erreur},
+        status_code=503 if erreur else 200,
+    )
+
+
+@router.get("/programme/gestion/en-lot")
+def en_lot_confirmation(request: Request, _=Depends(exiger_jeton), vers: str = "",
+                        type: str = "", lieu: str = "", etat: str = ""):
+    """
+    Confirmation de « Tout publier » (`vers=publie` : les brouillons affichés)
+    ou de « Tout dépublier » (`vers=brouillon` : les publiés affichés). Les
+    éléments annulés ne sont jamais concernés (`programme.SOURCES_EN_LOT`).
+    """
+    filtres = _filtres_gestion(type, lieu, etat)
+    if vers not in programme.SOURCES_EN_LOT:
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
+    return _page_en_lot(request, vers, filtres)
+
+
+@router.post("/programme/gestion/en-lot")
+def en_lot_action(request: Request, _=Depends(exiger_jeton), vers: str = Form(""),
+                  ids: list[int] = Form([]), retour: str = Form("")):
+    """
+    Applique le changement groupé aux éléments CONFIRMÉS (les identifiants de
+    la page de confirmation : ce qui change est ce qui a été montré, même si
+    quelqu'un a ajouté un brouillon entre-temps). Tout ou rien ; un verrou
+    trop long donne un message et un bouton pour réessayer, jamais une erreur
+    brute.
+    """
+    filtres = _filtres_depuis_retour(retour)
+    if vers not in programme.SOURCES_EN_LOT:
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
+    conn = get_connection()
+    try:
+        changes = programme.changer_etat_en_lot(conn, ids, vers)
+    except sqlite3.OperationalError:
+        return _page_en_lot(
+            request, vers, filtres,
+            erreur="La base était occupée, rien n'a été changé. Vous pouvez réessayer.",
+        )
+    finally:
+        conn.close()
+    # Une ligne par élément, avec l'action déjà connue du vocabulaire fermé :
+    # le journal permet toujours de retrouver qui a publié quoi.
+    for e in changes:
+        journal.journaliser(
+            request, "programme", "programme_etat_change",
+            objet=f"{e['intitule']} → {vers}", ref=str(e["id_element"]),
+        )
+    return RedirectResponse(_url_gestion(filtres, fait=vers, nb=str(len(changes))), status_code=303)
 
 
 @router.get("/programme/nouveau")
@@ -331,8 +486,10 @@ def nouveau_creer(
 
 
 @router.get("/programme/{id_element:int}/editer")
-def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton)):
+def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton),
+                      retour: str = ""):
     """Formulaire d'édition pré-rempli (début + fin déduite de la durée stockée)."""
+    filtres = _filtres_depuis_retour(retour)
     conn = get_connection()
     try:
         e = programme.get_element(conn, id_element)
@@ -340,14 +497,15 @@ def editer_formulaire(request: Request, id_element: int, _=Depends(exiger_jeton)
     finally:
         conn.close()
     if e is None:
-        return RedirectResponse("/programme/gestion", status_code=303)
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
     fin_utc = programme.fin_iso(e["date_heure"], e["duree_min"])
     return templates.TemplateResponse(
         request, "programme_form.html",
         {"e": e, "types": types,
          "valeur_date": iso_utc_vers_datetime_local(e["date_heure"]),
          "valeur_fin": iso_utc_vers_datetime_local(fin_utc),
-         "erreur": None},
+         "erreur": None,
+         "retour": urlencode(filtres), "url_gestion": _url_gestion(filtres)},
     )
 
 
@@ -364,19 +522,22 @@ def editer_action(
     lieu: str = Form(""),
     public_vise: str = Form(""),
     jauge: str = Form(""),
+    retour: str = Form(""),
 ):
-    """Applique les modifications d'un élément puis revient à la liste de gestion."""
+    """Applique les modifications d'un élément puis revient à la liste de gestion (filtres compris)."""
+    filtres = _filtres_depuis_retour(retour)
     conn = get_connection()
     try:
         e = programme.get_element(conn, id_element)
         if e is None:
-            return RedirectResponse("/programme/gestion", status_code=303)
+            return RedirectResponse(_url_gestion(filtres), status_code=303)
         if not intitule.strip():
             types = _types_pour_formulaire(conn, _int_ou_none(id_type))
             return templates.TemplateResponse(
                 request, "programme_form.html",
                 {"e": e, "types": types, "valeur_date": date_heure, "valeur_fin": heure_fin,
-                 "erreur": "L'intitulé est obligatoire."},
+                 "erreur": "L'intitulé est obligatoire.",
+                 "retour": urlencode(filtres), "url_gestion": _url_gestion(filtres)},
                 status_code=400,
             )
         debut_utc = local_vers_utc_iso(date_heure.strip() or None)
@@ -399,12 +560,13 @@ def editer_action(
         request, "programme", "programme_modifie",
         objet=intitule.strip(), ref=str(id_element),
     )
-    return RedirectResponse("/programme/gestion", status_code=303)
+    return RedirectResponse(_url_gestion(filtres), status_code=303)
 
 
 @router.post("/programme/{id_element:int}/etat")
 def changer_etat_action(request: Request, id_element: int,
-                        _=Depends(exiger_jeton), etat: str = Form("")):
+                        _=Depends(exiger_jeton), etat: str = Form(""),
+                        retour: str = Form("")):
     """Effectue une transition d'état (publier / dépublier / annuler / réinstaurer)."""
     conn = get_connection()
     try:
@@ -417,11 +579,12 @@ def changer_etat_action(request: Request, id_element: int,
         objet=f"{e['intitule']} → {etat.strip()}" if e else etat.strip(),
         ref=str(id_element), ok=bool(res), detail=None if res else "transition_refusee",
     )
-    return RedirectResponse("/programme/gestion", status_code=303)
+    return RedirectResponse(_url_gestion(_filtres_depuis_retour(retour)), status_code=303)
 
 
 @router.post("/programme/{id_element:int}/dupliquer")
-def dupliquer_action(request: Request, id_element: int, _=Depends(exiger_jeton)):
+def dupliquer_action(request: Request, id_element: int, _=Depends(exiger_jeton),
+                     retour: str = Form("")):
     """
     Duplique l'élément en un clic : la copie repart en BROUILLON, SANS date
     (contrairement à la duplication d'un tournoi, qui demande le nouvel horaire
@@ -435,34 +598,44 @@ def dupliquer_action(request: Request, id_element: int, _=Depends(exiger_jeton))
         nouveau = programme.dupliquer_element(conn, id_element, date_heure=None)
     finally:
         conn.close()
+    filtres = _filtres_depuis_retour(retour)
     if nouveau is None:
-        return RedirectResponse("/programme/gestion", status_code=303)
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
     journal.journaliser(
         request, "programme", "programme_cree",
         objet=e["intitule"] if e else None, ref=str(nouveau),
     )
-    return RedirectResponse(f"/programme/{nouveau}/editer", status_code=303)
+    suite = f"?{urlencode({'retour': urlencode(filtres)})}" if filtres else ""
+    return RedirectResponse(f"/programme/{nouveau}/editer{suite}", status_code=303)
 
 
 @router.get("/programme/{id_element:int}/supprimer")
-def supprimer_confirmation(request: Request, id_element: int, _=Depends(exiger_jeton)):
+def supprimer_confirmation(request: Request, id_element: int, _=Depends(exiger_jeton),
+                           retour: str = ""):
     """Page de confirmation de suppression (1re des deux confirmations)."""
+    filtres = _filtres_depuis_retour(retour)
     conn = get_connection()
     try:
         e = programme.get_element(conn, id_element)
     finally:
         conn.close()
     if e is None:
-        return RedirectResponse("/programme/gestion", status_code=303)
-    return templates.TemplateResponse(request, "programme_supprimer.html", {"e": e})
+        return RedirectResponse(_url_gestion(filtres), status_code=303)
+    return templates.TemplateResponse(
+        request, "programme_supprimer.html",
+        {"e": e, "retour": urlencode(filtres), "url_gestion": _url_gestion(filtres)},
+    )
 
 
 @router.post("/programme/{id_element:int}/supprimer")
 def supprimer_action(request: Request, id_element: int,
-                     _=Depends(exiger_jeton), confirmation: str = Form("")):
+                     _=Depends(exiger_jeton), confirmation: str = Form(""),
+                     retour: str = Form("")):
     """Supprime définitivement l'élément (2de confirmation : la case doit être cochée)."""
+    filtres = _filtres_depuis_retour(retour)
     if confirmation != "oui":
-        return RedirectResponse(f"/programme/{id_element}/supprimer", status_code=303)
+        suite = f"?{urlencode({'retour': urlencode(filtres)})}" if filtres else ""
+        return RedirectResponse(f"/programme/{id_element}/supprimer{suite}", status_code=303)
     conn = get_connection()
     try:
         e = programme.get_element(conn, id_element)
@@ -473,4 +646,4 @@ def supprimer_action(request: Request, id_element: int,
         request, "programme", "programme_supprime",
         objet=e["intitule"] if e else None, ref=str(id_element),
     )
-    return RedirectResponse("/programme/gestion", status_code=303)
+    return RedirectResponse(_url_gestion(filtres), status_code=303)
