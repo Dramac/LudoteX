@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.32.0 — 2026-11-13
 
 ### Annonces de l'écran de salle en table : rien à faire à la mise à jour, un geste en cas de retour arrière — facultatif
 

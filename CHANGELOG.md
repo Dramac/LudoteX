@@ -6,6 +6,14 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.32.0 — 2026-11-13
+
+- **L'écran de salle affiche plusieurs annonces à la fois** : elles défilent l'une après l'autre dans le bandeau, environ 8 secondes chacune, avec un repère « 2/4 ». Avec une seule annonce, rien ne change.
+- **Chaque annonce a sa propre durée et son bouton Effacer** : depuis « Écran de salle » comme depuis « Annonce en salle », la liste **Affichées en salle** montre tout ce qui passe, et chacun peut retirer n'importe quelle annonce d'un appui.
+- **Ajouter une annonce remplace « Remplacer l'annonce »** : une nouvelle annonce s'ajoute aux autres au lieu de les remplacer.
+- **La supervision montre la liste des annonces affichées**, texte compris, pour qu'aucune ne passe inaperçue.
+- **Une annonce très longue sans espace passe à la ligne** sur l'écran de salle au lieu d'être coupée.
+
 ## 1.31.1 — 2026-11-13
 
 - **Site de formation : la réinitialisation remarche.** Si une boîte avait été signalée pendant une séance, **Réinitialiser les données de formation** affichait une erreur et ne vidait rien. Les signalements sont désormais effacés avec le reste ; les catégories de signalement réglées par le bureau sont conservées.
