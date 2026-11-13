@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block titre %}Tombola — {{ nom_association }}{% endblock %}
+
+{#
+  Page BÉNÉVOLE de la tombola (série tombola, lot 1). Pensée téléphone, un
+  pouce, wifi lent : AUCUN JS (`autofocus` et `inputmode` n'en sont pas).
+
+  Ordre de la page, du plus fréquent au plus rare :
+  1. « Numéro présenté » + « Lot remis » : le geste répété de la journée, en
+     haut, visible sans défiler à 375 × 667. Le message de résultat vient
+     JUSTE EN DESSOUS, pour que ce bouton ne bouge jamais d'un envoi à
+     l'autre ;
+  2. les numéros en attente, groupés par tirage, le plus récent d'abord,
+     chacun avec son propre « Lot remis » (et « Erreur de saisie » pendant
+     les premières minutes) ;
+  3. la saisie d'un tirage à la main (le cas normal) ;
+  4. le tirage par l'application, en secours.
+
+  Chaque bouton répété a un NOM ACCESSIBLE PROPRE (« Lot remis : numéro
+  45 ») : le texte visible, complété en texte masqué. Patron des boutons
+  « Effacer » des annonces (_liste_annonces.html).
+
+  Aucun champ de texte libre : des numéros seulement. On ne note jamais le
+  nom d'un gagnant.
+#}
+
+{% block contenu %}
+<section class="carte tombola-gestion">
+  <h1>Tombola</h1>
+
+  <h2 class="tombola-titre-remise">Remettre un lot</h2>
+  <form method="post" action="{{ actions.remettre }}" class="tombola-remise">
+    <div class="champ">
+      <label for="numero-presente">Numéro présenté</label>
+      <input type="text" id="numero-presente" name="numero" inputmode="numeric"
+             autocomplete="off" maxlength="12" value="{{ saisie_remise }}"
+             {% if focus_remise %}autofocus{% endif %}>
+    </div>
+    <button type="submit" class="bouton bouton-principal">Lot remis</button>
+  </form>
+
+  {# Zone de résultat toujours présente, vide sans message : une zone ajoutée
+     en même temps que son texte n'est pas toujours lue (patron de
+     /live/annonce). #}
+  <div role="status">
+    {% if message %}
+      <div class="resultat {{ 'resultat-ok' if message.niveau == 'succes' else 'resultat-attention' }} tombola-message">
+        <p>{{ message.texte }}</p>
+        {% if message.en_grand %}
+          <p class="tombola-numeros-grand" aria-hidden="true">
+            {% for n in message.en_grand %}<span>{{ n }}</span>{% endfor %}
+          </p>
+        {% endif %}
+        {% if message.details %}
+          <ul class="tombola-ecartes">
+            {% for d in message.details %}<li>{{ d }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+        {% if message.annuler_id %}
+          <form method="post" action="{{ actions.annuler }}">
+            <input type="hidden" name="numero_id" value="{{ message.annuler_id }}">
+            <button type="submit" class="bouton bouton-secondaire bouton-tombola">Annuler<span class="sr-only"> la remise</span></button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <h2>Numéros en attente{% if nb_en_attente %} ({{ nb_en_attente }}){% endif %}</h2>
+  {% if groupes %}
+    {% for g in groupes %}
+      <h3 class="tombola-titre-tirage">Tirage de {{ g.heure }}{% if g.mode == mode_aleatoire %} (par l'application){% endif %}</h3>
+      <ul class="tombola-numeros">
+        {% for n in g.numeros %}
+          <li class="tombola-numero">
+            <span class="tombola-numero-valeur">{{ n.numero }}</span>
+            <form method="post" action="{{ actions.remettre }}">
+              <input type="hidden" name="numero_id" value="{{ n.id }}">
+              <button type="submit" class="bouton bouton-principal bouton-tombola">Lot remis<span class="sr-only"> : numéro {{ n.numero }}</span></button>
+            </form>
+            {% if n.erreur_possible %}
+              <form method="post" action="{{ actions.erreur }}" class="tombola-form-erreur">
+                <input type="hidden" name="numero_id" value="{{ n.id }}">
+                <button type="submit" class="bouton bouton-secondaire bouton-tombola">Erreur de saisie<span class="sr-only"> : numéro {{ n.numero }}</span></button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+    <p class="stats-note">« Erreur de saisie » retire un numéro mal tapé sans
+      compter de lot remis. Le bouton disparaît {{ delai_erreur_min }} minutes
+      après le tirage.</p>
+  {% else %}
+    <p>Aucun numéro en attente.</p>
+  {% endif %}
+
+  <h2>Saisir un tirage</h2>
+  <form method="post" action="{{ actions.tirage }}">
+    <input type="hidden" name="jeton" value="{{ jeton_manuel }}">
+    <fieldset class="tombola-cinq">
+      <legend>Numéros tirés, de 1 à 5 (entre {{ numero_min }} et {{ numero_max_borne }})</legend>
+      {% for s in saisies %}
+        <div class="champ">
+          <label for="numero-{{ loop.index }}">Numéro {{ loop.index }}</label>
+          <input type="text" id="numero-{{ loop.index }}" name="numero_{{ loop.index }}"
+                 inputmode="numeric" autocomplete="off" maxlength="12" value="{{ s }}">
+        </div>
+      {% endfor %}
+    </fieldset>
+    <button type="submit" class="bouton bouton-principal">Afficher les numéros</button>
+  </form>
+
+  <h2>Tirage par l'application</h2>
+  <p class="stats-note">En secours, si le tirage à la main est impossible.
+    Les numéros sont tirés au hasard parmi ceux qui ne sont pas encore sortis,
+    puis enregistrés et affichés dès l'appui : un tirage ne peut pas être
+    refait.</p>
+  <form method="post" action="{{ actions.aleatoire }}">
+    <input type="hidden" name="jeton" value="{{ jeton_aleatoire }}">
+    <div class="champ">
+      <label for="numero-max">Plus grand numéro vendu</label>
+      <input type="text" id="numero-max" name="numero_max" inputmode="numeric"
+             autocomplete="off" maxlength="12" value="{{ saisie_max }}">
+    </div>
+    <button type="submit" class="bouton bouton-secondaire">Tirer 5 numéros</button>
+  </form>
+</section>
+{% endblock %}

@@ -3435,13 +3435,19 @@ def cloturer_prets(request: Request):
         return garde
     conn = get_connection()
     try:
-        nb = services.cloturer_tous_les_prets(conn)
+        cloture = services.cloturer_evenement(conn)
     finally:
         conn.close()
+    nb = cloture.prets
     # Le NOMBRE est l'information : c'est ce qu'on cherche après coup (« combien
     # de boîtes étaient encore ouvertes dimanche soir ? »). Aucun détail de prêt,
     # et surtout aucun numéro de pochette — que cette action vient justement
     # d'effacer partout (D5).
+    #
+    # Le nombre de numéros de tombola non réclamés n'y figure PAS (série
+    # tombola, lot 1) : il reste en base, durablement (motif `non_reclame`),
+    # là où les statistiques le liront ; et la ligne reste identique à
+    # elle-même pour une association sans tombola.
     journal.journaliser(
         request, "pret", "cloture_prets",
         objet=f"{nb} {services.pluriel(nb, 'prêt ou sortie', 'prêts ou sorties')}",
@@ -3451,8 +3457,15 @@ def cloturer_prets(request: Request):
     # disparaissent ici plutôt que d'attendre indéfiniment un trafic suffisant
     # pour les faire tourner d'elles-mêmes.
     journal.purger_rotations_anciennes()
-    message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau "
-                         "disponible, et les annonces de l'écran de salle sont effacées.")
+    texte = (f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau "
+             "disponible, et les annonces de l'écran de salle sont effacées.")
+    # La tombola n'est nommée que si elle a laissé des numéros affichés : une
+    # base sans tombola garde exactement le message d'avant.
+    if cloture.non_reclames:
+        n = cloture.non_reclames
+        texte += (f" La tombola est terminée : {n} "
+                  f"{services.pluriel(n, 'numéro non réclamé', 'numéros non réclamés')}.")
+    message = ("succes", texte)
     return _rendre_dashboard(request, message)
 
 

@@ -350,6 +350,73 @@ summary:focus-visible,
   padding: 8px 18px;
   font-size: 1rem;
 }
+/* Page bénévole de la tombola (/tombola/gestion, série tombola). Aucune
+   couleur nouvelle : les variables du :root et les blocs de résultat
+   existants. Le haut de page est serré pour que « Lot remis » reste visible
+   sans défiler à 375 × 667, menu bénévole compris. */
+.tombola-gestion { padding: 16px; }
+.tombola-gestion h1 { margin-bottom: 4px; }
+.tombola-gestion h2 { margin: 20px 0 6px; }
+.tombola-gestion h2.tombola-titre-remise { margin-top: 4px; font-size: 1.05rem; }
+.tombola-remise { display: flex; align-items: flex-end; gap: 8px; }
+.tombola-remise .champ { flex: 1 1 auto; min-width: 0; }
+.tombola-remise .champ input { font-size: 1.4rem; font-weight: 700; }
+.tombola-remise .bouton { flex: 0 0 auto; width: auto; margin: 0; padding: 12px 18px; min-height: 48px; }
+.tombola-gestion .resultat.tombola-message { padding: 10px 14px; margin: 10px 0 0; }
+.tombola-message p { margin: 0 0 6px; }
+.tombola-message p:last-child { margin-bottom: 0; }
+.tombola-ecartes { text-align: left; margin: 6px 0; padding-left: 20px; }
+.tombola-message form { margin: 8px 0 0; }
+/* « Annuler » posé sur le fond vert clair ou orange clair du message : la
+   bordure habituelle (--bord-champ) n'y fait que 2,7:1, sous les 3:1 d'un
+   contour de composant. --gris y dépasse 5:1 (mesuré au lot tombola-1). */
+.tombola-message .bouton-secondaire { border-color: var(--gris); }
+/* Les numéros tirés, en grand, dans le message : la couleur du texte du
+   bloc (vert sur vert clair, ou orange sur orange clair), jamais une
+   valeur en dur. */
+.tombola-numeros-grand { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; }
+.tombola-numeros-grand span { font-size: 2.6rem; font-weight: 800; line-height: 1.1; }
+.resultat-ok .tombola-numeros-grand span { color: var(--vert); }
+.tombola-titre-tirage { margin: 14px 0 4px; font-size: 1rem; color: var(--gris); }
+.tombola-numeros { list-style: none; margin: 0; padding: 0; }
+.tombola-numero {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bord);
+}
+.tombola-numero form { margin: 0; }
+/* « Erreur de saisie » toujours sur sa propre ligne, sous « Lot remis » et
+   aligné à droite : à 375 px, un numéro à quatre chiffres et les deux
+   boutons ne tiennent pas sur une ligne, et des rangées qui passent à la
+   ligne selon la longueur du numéro ne s'alignent plus. */
+.tombola-numero .tombola-form-erreur { flex: 1 0 100%; display: flex; justify-content: flex-end; }
+.tombola-numero-valeur {
+  flex: 1 1 auto;
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--texte);
+  font-variant-numeric: tabular-nums;
+}
+/* Boutons à la taille de leur mot, cible tactile d'au moins 44 × 44 px
+   (patron de `.bouton-effacer-annonce`). */
+.bouton.bouton-tombola {
+  display: inline-block;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 1rem;
+}
+.tombola-cinq { border: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.tombola-cinq legend { padding: 0; margin-bottom: 6px; }
+.tombola-cinq label { font-size: 0.85rem; }
+.tombola-cinq input { min-width: 0; width: 100%; text-align: center; font-weight: 700; }
+
 /* Supervision : la liste des annonces affichées, sans puce (un texte
    par ligne, entre guillemets), dans le bloc « attention » habituel. */
 .annonces-supervision p { margin: 0; }

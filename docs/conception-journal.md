@@ -74,6 +74,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Affectation d'emplacement en lot | `POST /admin/rangement/ranger/appliquer` |
 | Annonce de l'écran de salle ajoutée (avec sa durée, **jamais son texte**) / effacée (sans objet : ni le texte, ni l'identifiant) — par le bureau, ou par un bénévole (`qui=benevole`, appareil). Un effacement sans effet (annonce déjà retirée ou expirée) n'écrit rien | `POST /admin/ecran-salle/annonce`, `POST /admin/ecran-salle/annonce/effacer`, `POST /live/annonce`, `POST /live/annonce/effacer` |
 | Annonce de l'écran de salle ouverte / fermée aux bénévoles (au changement seulement) | `POST /admin/ecran-salle/benevoles` |
+| Tombola (module `tombola`, `docs/conception-tombola.md`) : tirage enregistré (`tombola_tirage` : `objet` = le mode, `manuel` ou `aleatoire` ; `ref` = les numéros affichés), lot remis (`tombola_lot_remis`), remise annulée dans la minute (`tombola_remise_annulee`), numéro retiré pour erreur de saisie (`tombola_erreur_saisie`) — `objet` = le numéro. **Les numéros y figurent** : ils ne désignent personne, l'application ne sait pas qui détient quel billet. Un geste sans effet (double remise, formulaire envoyé deux fois, annulation tardive) n'écrit rien | `POST /tombola/gestion/tirage`, `.../tirage-aleatoire`, `.../remettre`, `.../annuler`, `.../erreur-saisie` |
 | Date de l'événement changée | `POST /admin/evenement` |
 | Purge RGPD d'une édition du planning | `POST /planning/admin/{ev}/purger` |
 | Réinitialisation des données de formation | `POST /admin/formation/reinitialiser` |
@@ -150,7 +151,7 @@ ligne dans une valeur.
 | `t` | oui | Horodatage ISO 8601 **avec décalage local** (`+02:00`) |
 | `qui` | oui | `visiteur` \| `benevole` \| `admin` \| `indetermine` |
 | `appareil` | non | Identifiant d'appareil (§4). Absent pour un visiteur |
-| `module` | oui | `pret` \| `catalogue` \| `tournois` \| `programme` \| `planning` \| `rangement` \| `live` \| `stats` \| `admin` |
+| `module` | oui | `pret` \| `catalogue` \| `tournois` \| `programme` \| `planning` \| `rangement` \| `live` \| `stats` \| `admin` \| `tombola` |
 | `action` | oui | Verbe court, vocabulaire fermé (§3.2) |
 | `objet` | non | Libellé lisible de ce sur quoi on a agi |
 | `ref` | non | Clé technique stable (`reference_titre`, `id_tournoi`…) |

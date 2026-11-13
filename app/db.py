@@ -327,6 +327,15 @@ def _creer_index_uniques(conn: sqlite3.Connection) -> list[str]:
             conn.rollback()
             nom = instruction.split("IF NOT EXISTS", 1)[-1].strip().split()[0]
             refuses.append(nom)
+            if nom.startswith("idx_tombola"):
+                # Filet de la tombola (série tombola) : même règle — avertir,
+                # ne jamais empêcher le démarrage —, autre diagnostic.
+                logging.getLogger("uvicorn.error").warning(
+                    "Filet de sécurité « %s » NON POSÉ : la tombola contient "
+                    "déjà un numéro sorti deux fois dans une édition, ou deux "
+                    "éditions ouvertes. L'application démarre normalement, "
+                    "mais sans ce garde-fou.", nom)
+                continue
             logging.getLogger("uvicorn.error").warning(
                 "Filet de sécurité « %s » NON POSÉ : la base contient déjà des "
                 "prêts en cours incohérents (deux prêts ouverts sur une même "

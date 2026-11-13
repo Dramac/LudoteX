@@ -104,7 +104,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app import db as pret_db
-from app import services, vignettes
+from app import services, tombola, vignettes
 from app.planning import db as planning_db
 from app.planning import demo as planning_demo
 from app.planning import services as planning_services
@@ -357,6 +357,11 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
     for table in ("prets", "pochettes", "signalements", "exemplaires", "titres",
                   "categories_jeu", "fiches_bgg"):
         conn.execute(f"DELETE FROM {table}")
+    # La tombola (série tombola) : ses trois tables, dans l'ordre de leurs
+    # clés étrangères (numéros, tirages, éditions — un seul domicile pour cet
+    # ordre, `tombola.vider`), et le plus grand numéro vendu retenu. Aucun
+    # texte libre : pas de `secure_delete` à poser.
+    tombola.vider(conn)
     conn.commit()
     # Les copies d'images de boîte suivent `fiches_bgg` (série « images ») :
     # le dossier est celui de CETTE instance, à côté de sa base.

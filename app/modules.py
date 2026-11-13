@@ -10,8 +10,9 @@ Quatre états par module :
 Les états sont stockés dans la table `parametres` (clé : `module_<nom>`).
 L'état par défaut s'applique si aucune ligne n'existe en base, ce qui assure
 la compatibilité avec les bases existantes sans migration. C'est "tous" pour
-tous les modules SAUF le carnet de maintenance, qui vaut "benevoles" (voir
-`etat_defaut_module` et le drapeau `jamais_public` plus bas).
+tous les modules SAUF le carnet de maintenance, qui vaut "benevoles", et la
+tombola, qui vaut "desactive" (voir `etat_defaut_module` et le drapeau
+`jamais_public` plus bas).
 
 USAGE DANS main.py
 ------------------
@@ -93,6 +94,21 @@ MODULES: dict[str, dict] = {
         "jamais_public": True,
         "etat_defaut": "benevoles",
     },
+    # Tombola (série tombola, lot 1 ; docs/conception-tombola.md).
+    # - `etat_defaut` : "desactive". Une association sans tombola, et toute
+    #   base d'avant ce module, ne voient rien changer : ni lien, ni page.
+    # - PAS `jamais_public` : la tombola ne porte aucune donnée personnelle,
+    #   et le lot 2 lui donnera une page publique.
+    # - `url` : la page de gestion des bénévoles pour l'instant. Ce champ est
+    #   un LIEN cliquable sur /admin/fonctionnalites ; « /tombola » y
+    #   renverrait une page introuvable tant que la page publique n'existe
+    #   pas. Le lot 2 le remplacera par « /tombola ».
+    "tombola": {
+        "label": "Tombola",
+        "description": "Numéros gagnants à afficher, lots remis aux visiteurs",
+        "url": "/tombola/gestion",
+        "etat_defaut": "desactive",
+    },
 }
 
 ETATS_VALIDES = ("tous", "benevoles", "discret", "desactive")
@@ -149,7 +165,8 @@ def etat_defaut_module(nom: str) -> str:
 
     `ETAT_DEFAUT` ("tous") pour tous les modules, sauf ceux qui déclarent leur
     propre `etat_defaut` — le carnet de maintenance, qui ne doit jamais
-    s'ouvrir tout seul aux visiteurs sur une base d'avant ce module.
+    s'ouvrir tout seul aux visiteurs sur une base d'avant ce module, et la
+    tombola, qui ne s'active que si le bureau le décide.
     """
     return MODULES.get(nom, {}).get("etat_defaut", ETAT_DEFAUT)
 

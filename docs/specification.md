@@ -345,6 +345,12 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   manquante, livret abîmé), rappelés au prêt suivant, consultables par les
   bénévoles et traités par le bureau ; jamais public.
   `docs/conception-signalements.md`.
+- **Tombola** — désactivée par défaut. Les bénévoles saisissent les numéros
+  tirés (à la main, ou tirés par l'application en secours, sans retour
+  possible), remettent les lots par le numéro présenté et peuvent annuler une
+  remise dans la minute ; la clôture de fin d'événement termine la tombola.
+  Des numéros et des heures, ni nom ni texte libre. L'affichage public est
+  prévu au lot suivant de la série. `docs/conception-tombola.md`.
 - **Journal d'activité** — qui a fait quoi, à quel appareil près, jamais à
   quelle personne. `docs/conception-journal.md`.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue
@@ -487,7 +493,9 @@ pièce d'identité reste physiquement au comptoir et lui est rendue au retour du
 jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un
 appareil, annonces de l'écran de salle) pourraient recevoir un nom : ils portent
 une consigne, et leur liste, avec ce que chacun garde, vit dans
-`wiki/Rgpd.md`. Cette propriété doit être préservée dans les évolutions
+`wiki/Rgpd.md`. La tombola n'en ouvre aucune : elle ne garde que des
+numéros et des heures, ne note jamais le nom d'un gagnant et n'a aucun champ
+de texte libre. Cette propriété doit être préservée dans les évolutions
 futures (§11) : **toute proposition qui ferait entrer une donnée personnelle
 se signale comme telle avant d'être écrite**. Ce qu'elle implique pour les
 obligations d'une association relève de son appréciation ; ce document ne

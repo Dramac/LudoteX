@@ -53,6 +53,8 @@ _LOGGER_AVERTISSEMENTS = "uvicorn.error"
 MODULES = {
     "pret", "catalogue", "tournois", "programme", "planning",
     "rangement", "live", "stats", "admin",
+    # Tombola (série tombola, lot 1) : tirages et remises des lots.
+    "tombola",
 }
 
 ACTIONS = {
@@ -244,6 +246,23 @@ ACTIONS = {
     "categorie_signalement_creee",
     "categorie_signalement_modifiee",
     "categorie_signalement_supprimee",
+    # --- Tombola (docs/conception-tombola.md) -------------------------------
+    # LES NUMÉROS FIGURENT AU JOURNAL, et ce n'est pas une faille : un numéro
+    # de tombola ne désigne personne. L'application ne sait pas qui détient
+    # quel billet — aucun nom n'est jamais noté, nulle part —, et le numéro est
+    # de toute façon affiché en public. Rien d'autre n'est écrit : il n'existe
+    # aucun champ de texte libre dans ce module.
+    #
+    # Un tirage : `objet` = le mode (« manuel » ou « aleatoire »), `ref` = les
+    # numéros affichés, séparés par des espaces. Un formulaire envoyé deux fois
+    # (même jeton) ne produit qu'une ligne : le second envoi n'écrit rien.
+    "tombola_tirage",
+    # Un lot remis, une remise annulée (dans la minute), un numéro retiré pour
+    # erreur de saisie (dans les cinq minutes) : `objet` = le numéro. Un geste
+    # sans effet (double remise, annulation tardive) n'écrit rien.
+    "tombola_lot_remis",
+    "tombola_remise_annulee",
+    "tombola_erreur_saisie",
 }
 
 # Longueurs de troncature (§3.3) : assainissement obligatoire, pas défensif.

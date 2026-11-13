@@ -100,7 +100,7 @@ avec son propre schéma, ses migrations et son initialisation :
 
 | Base | Schéma | Tables |
 | --- | --- | --- |
-| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg`, `annonces_ecran` |
+| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg`, `annonces_ecran`, `tombola_editions`, `tombola_tirages`, `tombola_numeros` |
 | Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme`, `publics_programme`, `programme_publics`, `programme_jeux` |
 | Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
 
@@ -131,11 +131,12 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   + timeout) — voir le correctif de course sur les numéros de pochette,
   `docs/protocole-stress-test.md`.
 - **Visibilité des modules** (`app/modules.py`) : tournois, programme, stats,
-  planning, écran de salle, « à propos » et carnet de maintenance ont chacun
+  planning, écran de salle, « à propos », carnet de maintenance et tombola ont chacun
   quatre états — *tous*, *bénévoles*, *discret* (URL ouverte, lien masqué),
   *désactivé* — réglés depuis `/admin/fonctionnalites` et stockés dans
   `parametres`. L'état par défaut est *tous*, donc aucune migration pour les
-  bases existantes. **Un module peut restreindre ces deux règles** : le carnet
+  bases existantes. **Un module peut restreindre ces deux règles** : la
+  tombola a *désactivé* pour défaut ; le carnet
   de maintenance a *bénévoles* pour défaut et refuse *tous* (drapeau
   `jamais_public`, case masquée à l'écran et valeur refusée en écriture). La
   visibilité reste un réglage d'affichage : une route qui exige un jeton porte
@@ -199,6 +200,8 @@ livré, par module :
   administrables. Consultable par les bénévoles (`/maintenance`, en cartes sur
   téléphone) comme par le bureau (`/admin/signalements`) ; les exports et les
   catégories restent derrière le mot de passe.
+- **Tombola** — en cours, lot 1 sur 2 : tirages, remise des lots et page
+  bénévole livrés ; affichage public au lot 2.
 - **Journal d'activité** — socle à vocabulaire fermé, écran `/admin/journal`,
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et
@@ -207,16 +210,12 @@ livré, par module :
   **rattachement des boîtes d'un jeu à un autre**, signalé quand deux jeux
   portent le même nom, jeu vidé supprimé après complétion),
   **données BoardGameGeek** (seul site appelé, jeton facultatif en `.env`,
-  copie datée récupérée sur demande, jamais à l'affichage, « BGG : » à côté
-  des cases, **image de la boîte copiée sur le serveur** (contrôlée,
-  réencodée en WebP, hors sauvegarde, `app/vignettes.py`), servie à
-  l'administration et, case cochée, sur la fiche publique avec « Image :
-  BoardGameGeek » ; les candidats d'une recherche restent
-  chargés chez BGG (CSP élargie dans la seule `location /admin/`),
-  reprise sans enregistrer, lien public réglable et décoché par
-  défaut ; **relier les jeux un par un** : recherche bornée et cadencée,
-  candidats comparés, enchaînement au jeu suivant, marque « pas sur BGG »
-  portée par l'export), étiquettes en lot, import/export
+  copie datée récupérée sur demande, jamais à l'affichage ; **image de la
+  boîte copiée sur le serveur**, réencodée en WebP, hors sauvegarde,
+  `app/vignettes.py`, publique seulement case cochée ; candidats d'une
+  recherche chargés chez BGG, CSP élargie dans la seule `location /admin/` ;
+  **relier les jeux un par un**, marque « pas sur BGG » portée par
+  l'export), étiquettes en lot, import/export
   du catalogue,
   **sauvegarde et restauration des trois bases**, archives du serveur
   téléchargeables (routine et filets, distingués par leur nom), supervision à

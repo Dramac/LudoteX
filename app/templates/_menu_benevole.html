@@ -34,6 +34,11 @@
   {% if module_visible(request, "maintenance") %}
   <a href="/maintenance">Carnet</a>
   {% endif %}
+  {# Tombola (série tombola) : désactivée par défaut, donc absente tant que
+     le bureau ne l'a pas activée. #}
+  {% if module_visible(request, "tombola") %}
+  <a href="/tombola/gestion">Tombola</a>
+  {% endif %}
   <a href="/aide">Aide</a>
   {% if est_admin(request) %}
   <a href="/admin">Administration</a>

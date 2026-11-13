@@ -54,7 +54,11 @@ from app.routes.admin import _garde  # noqa: F401
 PREFIXES_RESERVES = ("/admin", "/pret", "/scanner", "/maintenance",
                      # Ajouté au périmètre du prompt : l'administration du
                      # planning est de l'administration, sous un autre préfixe.
-                     "/planning/admin")
+                     "/planning/admin",
+                     # Série tombola : la page de gestion des bénévoles. Le
+                     # reste de `/tombola` est réservé à la page publique du
+                     # lot 2, d'où le préfixe complet.
+                     "/tombola/gestion")
 
 METHODES_LECTURE = frozenset({"GET", "HEAD", "OPTIONS"})
 

@@ -1572,7 +1572,21 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
     return {"numero_libere": numero, "motif": "pret", "erreur": erreur}
 
 
+class Cloture(NamedTuple):
+    """Ce que la clôture de fin d'événement a fermé."""
+    prets: int            # prêts et sorties tournoi clôturés
+    non_reclames: int     # numéros de la tombola passés en « non réclamé »
+
+
 def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
+    """
+    Clôture de fin d'événement, réduite au nombre de prêts/sorties clôturés.
+    Tout le détail est dans `cloturer_evenement`, qui fait le travail.
+    """
+    return cloturer_evenement(conn).prets
+
+
+def cloturer_evenement(conn: sqlite3.Connection) -> Cloture:
     """
     Clôture TOUS les prêts/sorties en cours et libère toutes les pochettes.
 
@@ -1598,10 +1612,20 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
     silencieuse et ne touche que ce qui date de plus d'un an — l'appareil d'un
     bénévole qui revient d'une édition sur l'autre garde donc son libellé.
 
+    LA TOMBOLA EST TERMINÉE dans la même transaction (série tombola, lot 1,
+    décision 6) : l'édition ouverte est close et ses numéros encore affichés
+    passent en « non réclamé » (`tombola.terminer_edition`). TOUJOURS, même
+    module désactivé : une édition restée ouverte se rouvrirait l'année
+    suivante avec les numéros de l'an passé. Sans effet sur une base qui n'a
+    jamais tiré.
+
     Returns:
-        Le nombre de prêts/sorties clôturés (le registre, lui, n'intéresse pas
+        `Cloture(prets, non_reclames)` : les prêts/sorties clôturés et les
+        numéros de tombola non réclamés (le registre, lui, n'intéresse pas
         l'écran de fin d'événement : il n'a rien à voir avec les prêts).
     """
+    from app import tombola  # différé : app.tombola importe ce module
+
     with transaction(conn):
         cur = conn.execute(
             "UPDATE prets SET date_retour = ?, numero_pochette = NULL "
@@ -1612,7 +1636,8 @@ def cloturer_tous_les_prets(conn: sqlite3.Connection) -> int:
         conn.execute("UPDATE pochettes SET occupe = 0")
         effacer_toutes_les_annonces(conn)
         purger_appareils_anciens(conn)
-    return nb
+        non_reclames = tombola.terminer_edition(conn)
+    return Cloture(nb, non_reclames)
 
 
 def derniere_operation_pret(conn: sqlite3.Connection) -> str | None:

@@ -172,8 +172,11 @@
   <p>Au tableau de bord, section <em>Fin d'événement</em>,
      <strong>Clôturer tous les prêts en cours</strong> marque comme rendus les
      jeux encore sortis, libère toutes les pochettes et efface les annonces
-     de l'écran de salle. L'historique et les statistiques sont conservés, les
-     réglages de l'écran de salle aussi.</p>
+     de l'écran de salle.{% if module_visible(request, "tombola") %} Elle
+     termine aussi la tombola : les numéros encore en attente passent en
+     « non réclamés », et le premier tirage suivant ouvre une nouvelle
+     tombola.{% endif %} L'historique et les statistiques sont
+     conservés, les réglages de l'écran de salle aussi.</p>
   <p>Un point à connaître : la clôture <strong>efface les numéros de
      pochette</strong> des prêts terminés. C'est voulu — un numéro de pochette
      indique où se trouve une pièce d'identité, il n'a plus lieu d'être une

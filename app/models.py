@@ -24,6 +24,9 @@ docs/conception-signalements.md) :
     appareils               registre des appareils ayant activé un accès en écriture.
     fiches_bgg              copie datée des fiches BoardGameGeek reliées aux titres.
     annonces_ecran          annonces de l'écran de salle (texte libre, éphémère).
+    tombola_editions        éditions de la tombola (une ouverte à la fois).
+    tombola_tirages         tirages d'une édition (saisie manuelle ou par l'application).
+    tombola_numeros         numéros gagnants tirés, de l'affichage à la remise du lot.
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -459,7 +462,8 @@ CREATE INDEX IF NOT EXISTS idx_signalements_ouverts
 """
 
 # ---------------------------------------------------------------------------
-# Index UNIQUE partiels — le FILET de sécurité sur les prêts EN COURS.
+# Index UNIQUE partiels — le FILET de sécurité sur les prêts EN COURS, et sur
+# les numéros de la tombola (les deux derniers, commentés à part).
 # ---------------------------------------------------------------------------
 # Ils ne corrigent rien par eux-mêmes : la correction est dans
 # services.transaction (BEGIN IMMEDIATE), qui rend « lire puis écrire »
@@ -497,6 +501,27 @@ SCHEMA_INDEXES_UNIQUES = (
        AND numero_pochette IS NOT NULL
        AND numero_pochette <> 0
     """,
+    # Tombola (série tombola, lot 1) : un numéro ne sort qu'UNE fois par
+    # édition, sauf s'il a été retiré pour erreur de saisie — il peut alors
+    # être ressaisi correctement. Même principe que les deux filets
+    # ci-dessus : la vraie protection est la transaction du tirage
+    # (`tombola._enregistrer_tirage`, sous `BEGIN IMMEDIATE`), qui lit les
+    # numéros déjà sortis avant d'écrire ; l'index rend un chemin qui nous
+    # échapperait visible au lieu de silencieux. La création ne peut échouer
+    # que sur une base déjà incohérente — avertir et continuer, comme pour
+    # les prêts.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tombola_numero_unique
+        ON tombola_numeros (edition_id, numero)
+     WHERE motif IS NULL OR motif <> 'erreur_saisie'
+    """,
+    # Une seule édition OUVERTE à la fois. L'expression indexée vaut 1 pour
+    # toute ligne sans `close_le` : deux éditions ouvertes la répéteraient.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tombola_une_edition_ouverte
+        ON tombola_editions ((close_le IS NULL))
+     WHERE close_le IS NULL
+    """,
 )
 
 # Ordre d'exécution imposé par les clés étrangères : les tables référencées
@@ -528,6 +553,74 @@ CREATE TABLE IF NOT EXISTS annonces_ecran (
 );
 """
 
+# ---------------------------------------------------------------------------
+# Tombola (série tombola, lot 1 ; docs/conception-tombola.md)
+# ---------------------------------------------------------------------------
+# Trois tables, dans l'ordre des clés étrangères : une ÉDITION contient des
+# TIRAGES, un tirage des NUMÉROS. AUCUNE DONNÉE PERSONNELLE et AUCUN TEXTE
+# LIBRE : des numéros, des heures, des codes fermés. On ne note jamais le nom
+# d'un gagnant ni la nature d'un lot — un champ « remarque » serait une porte
+# (CLAUDE.md, « Règles métier »).
+#
+# `AUTOINCREMENT` sur les trois, pour la raison des annonces : un bouton
+# resté ouvert (« Lot remis », « Annuler », « Erreur de saisie ») porte
+# l'identifiant d'une ligne, qui ne doit jamais désigner une autre ligne
+# après une réinitialisation.
+#
+# Une édition est OUVERTE tant que `close_le` est NULL ; la clôture de fin
+# d'événement la ferme (`tombola.terminer_edition`), et le premier tirage
+# suivant en ouvre une nouvelle. Une seule ouverte à la fois : voir
+# `SCHEMA_INDEXES_UNIQUES`.
+SCHEMA_TOMBOLA_EDITIONS = """
+CREATE TABLE IF NOT EXISTS tombola_editions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ouverte_le  TEXT NOT NULL,   -- UTC ISO, heure du premier tirage
+    close_le    TEXT             -- UTC ISO, clôture de fin d'événement ; NULL = ouverte
+);
+"""
+
+# Un tirage = un envoi de formulaire. `jeton_formulaire` est la valeur
+# aléatoire du champ caché, renouvelée à chaque affichage de la page : UNIQUE,
+# elle fait d'un double appui (deux envois du même formulaire) un seul tirage.
+# Leçon de la 1.32, où deux envois simultanés avaient produit deux annonces ;
+# ici, un double appui en mode aléatoire tirerait dix numéros au lieu de cinq.
+# `numero_max` n'est rempli qu'en mode `aleatoire` : il dit parmi combien de
+# numéros on a tiré (statistiques du lot 2).
+SCHEMA_TOMBOLA_TIRAGES = """
+CREATE TABLE IF NOT EXISTS tombola_tirages (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    edition_id        INTEGER NOT NULL REFERENCES tombola_editions (id),
+    tire_le           TEXT NOT NULL,   -- UTC ISO
+    mode              TEXT NOT NULL CHECK (mode IN ('manuel', 'aleatoire')),
+    numero_max        INTEGER,         -- mode aléatoire seulement, sinon NULL
+    jeton_formulaire  TEXT NOT NULL UNIQUE
+);
+"""
+
+# Un numéro gagnant, de son affichage à sa sortie de l'affichage.
+# - `motif IS NULL` : affiché, lot en attente ;
+# - `remis` : lot remis ; `sorti_le - affiche_le` est le DÉLAI DE REMISE ;
+# - `erreur_saisie` : retiré parce que mal tapé ; hors statistiques, et hors
+#   de l'unicité (`idx_tombola_numero_unique`), pour pouvoir être ressaisi ;
+# - `non_reclame` : encore affiché à la clôture de fin d'événement.
+#   `sorti_le` y est l'heure de la clôture : ce n'est PAS un délai de remise,
+#   et les statistiques ne lisent le délai que sur les `remis`.
+# `edition_id` est recopié du tirage : c'est ce qui permet l'index unique par
+# édition (un index ne traverse pas une jointure).
+SCHEMA_TOMBOLA_NUMEROS = """
+CREATE TABLE IF NOT EXISTS tombola_numeros (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tirage_id   INTEGER NOT NULL REFERENCES tombola_tirages (id),
+    edition_id  INTEGER NOT NULL REFERENCES tombola_editions (id),
+    numero      INTEGER NOT NULL CHECK (numero BETWEEN 1 AND 9999),
+    affiche_le  TEXT NOT NULL,   -- UTC ISO
+    sorti_le    TEXT,            -- UTC ISO ; NULL tant que le numéro est affiché
+    motif       TEXT CHECK (motif IN ('remis', 'erreur_saisie', 'non_reclame'))
+);
+CREATE INDEX IF NOT EXISTS idx_tombola_numeros_affiches
+    ON tombola_numeros (edition_id) WHERE motif IS NULL;
+"""
+
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
     SCHEMA_CATEGORIES_JEU,
@@ -541,5 +634,8 @@ SCHEMA_STATEMENTS = (
     SCHEMA_APPAREILS,
     SCHEMA_FICHES_BGG,
     SCHEMA_ANNONCES_ECRAN,
+    SCHEMA_TOMBOLA_EDITIONS,
+    SCHEMA_TOMBOLA_TIRAGES,
+    SCHEMA_TOMBOLA_NUMEROS,
     SCHEMA_INDEXES,
 )
