@@ -6,6 +6,10 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.31.1 — 2026-11-13
+
+- **Site de formation : la réinitialisation remarche.** Si une boîte avait été signalée pendant une séance, **Réinitialiser les données de formation** affichait une erreur et ne vidait rien. Les signalements sont désormais effacés avec le reste ; les catégories de signalement réglées par le bureau sont conservées.
+
 ## 1.31.0 — 2026-11-10
 
 - **Les bénévoles peuvent afficher l'annonce de l'écran de salle**, si le bureau l'a permis : cochez **Les bénévoles peuvent afficher une annonce** dans « Écran de salle ». La case est décochée par défaut : sans ce geste, rien ne change.
