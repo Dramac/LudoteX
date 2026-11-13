@@ -347,9 +347,15 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
     ON DELETE CASCADE (`models.SCHEMA_CATEGORIES_JEU`), vider `titres` la vide.
     `categories_jeu` vient APRÈS : sa propre clé est sans cascade, une
     catégorie encore portée ne se supprime pas.
+
+    `signalements` vient AVANT `exemplaires` : sa clé vers l'exemplaire est
+    sans cascade. Oubliée, un seul signalement posé pendant une formation
+    faisait échouer toute réinitialisation (`FOREIGN KEY constraint failed`).
+    Les catégories de signalement, elles, sont gardées : ce sont des réglages
+    du bureau, pas des données de démonstration.
     """
-    for table in ("prets", "pochettes", "exemplaires", "titres", "categories_jeu",
-                  "fiches_bgg"):
+    for table in ("prets", "pochettes", "signalements", "exemplaires", "titres",
+                  "categories_jeu", "fiches_bgg"):
         conn.execute(f"DELETE FROM {table}")
     conn.commit()
     # Les copies d'images de boîte suivent `fiches_bgg` (série « images ») :

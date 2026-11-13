@@ -137,6 +137,36 @@ def test_peupler_pret_idempotent(bases):
         conn.close()
 
 
+def test_peupler_pret_vide_les_signalements(bases):
+    """Un signalement posé pendant la formation n'empêche pas de réinitialiser.
+
+    Sa clé vers l'exemplaire est sans cascade : tant que `signalements`
+    n'était pas vidée avant `exemplaires`, la réinitialisation échouait sur
+    `FOREIGN KEY constraint failed`. Les catégories, réglage du bureau, restent.
+    """
+    from app import formation, services
+    from app.db import get_connection
+
+    conn = get_connection()
+    try:
+        formation.peupler_pret(conn)
+        id_ex = conn.execute("SELECT id_exemplaire FROM exemplaires LIMIT 1").fetchone()[0]
+        id_cat = conn.execute(
+            "SELECT id_categorie FROM categories_signalement LIMIT 1").fetchone()
+        services.creer_signalement(conn, id_ex, id_cat[0] if id_cat else None, "test")
+        conn.commit()
+        nb_categories = conn.execute(
+            "SELECT COUNT(*) FROM categories_signalement").fetchone()[0]
+
+        formation.peupler_pret(conn)
+
+        assert conn.execute("SELECT COUNT(*) FROM signalements").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM categories_signalement").fetchone()[0] == nb_categories
+    finally:
+        conn.close()
+
+
 def test_peupler_tournoi_couvre_etats_et_modes(bases):
     from app import formation
     from app.tournoi.db import get_connection
