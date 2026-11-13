@@ -160,11 +160,53 @@
       gap: 0.7em;
     }
     .bandeau-annonce .puce-annonce { font-size: 1.2em; }
+    /* PLUSIEURS ANNONCES défilent dans cette bande unique (série annonce,
+       lot 2). Elles sont TOUTES dans le DOM, EMPILÉES dans la même cellule
+       de grille ; une seule est visible. Une annonce masquée l'est par
+       `visibility`, qui garde sa place : la bande prend donc la hauteur de
+       la PLUS LONGUE, sans aucune mesure en JS, et la carte des chiffres
+       juste dessous ne saute plus à chaque changement d'annonce. */
+    .bandeau-annonce .pile-annonces {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
     /* 200 caractères tiennent en deux lignes à cette largeur ; au-delà, on
-       borne plutôt que de laisser l'annonce manger la carte des chiffres. */
-    .bandeau-annonce span[id] {
+       borne plutôt que de laisser l'annonce manger la carte des chiffres.
+       Trois lignes au plus PAR ANNONCE. Un texte sans espace se coupe où il
+       peut au lieu de sortir du cadre. */
+    .bandeau-annonce .annonce-item {
+      grid-area: 1 / 1;
       display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
       overflow: hidden;
+      overflow-wrap: anywhere;
+      /* Fondu de 300 ms en tout, sans chevauchement : l'annonce sortante
+         s'efface en 150 ms, puis l'entrante apparaît en 150 ms. */
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 150ms ease, visibility 0s linear 150ms;
+    }
+    .bandeau-annonce .annonce-item.courante {
+      visibility: visible;
+      opacity: 1;
+      transition: opacity 150ms ease 150ms, visibility 0s linear 0s;
+    }
+    /* Repère « 2/4 » : seulement à partir de deux annonces (masqué en JS
+       sinon, l'écran à une annonce reste celui d'avant). Mêmes couleurs que
+       la bande, aucune couleur nouvelle. */
+    .bandeau-annonce .repere-annonces {
+      display: none;
+      flex: 0 0 auto;
+      margin-left: auto;
+      font-size: 0.7em;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    /* Mouvement réduit : on change d'annonce d'un coup, sans fondu. */
+    @media (prefers-reduced-motion: reduce) {
+      .bandeau-annonce .annonce-item,
+      .bandeau-annonce .annonce-item.courante { transition: none; }
     }
 
     /* --- Bandeau d'alerte tournoi (« rapportez les exemplaires »), piloté
@@ -374,8 +416,11 @@
         <section class="bandeau-alerte" id="bandeau-alerte-tournoi">
           <span class="puce-alerte">⏰</span><span id="alerte-tournoi-texte"></span>
         </section>
+        {# Pas d'aria-live ici, volontairement : un lecteur d'écran lirait un
+           texte toutes les huit secondes. /live est un affichage de
+           projection. #}
         <section class="bandeau-annonce" id="bandeau-annonce">
-          <span class="puce-annonce">📣</span><span id="annonce-texte"></span>
+          <span class="puce-annonce">📣</span><span class="pile-annonces" id="pile-annonces"></span><span class="repere-annonces" id="repere-annonces"></span>
         </section>
 
         <section class="barre-chiffres" id="barre-chiffres">
@@ -432,6 +477,10 @@
     // Données initiales rendues côté serveur (évite un écran vide au chargement).
     let DONNEES = {{ data | tojson }};
     const INTERVALLE_MS = 10000;   // rafraîchissement des données toutes les 10 s
+    // Durée d'affichage de chaque annonce quand plusieurs défilent : la
+    // constante Python `live.DUREE_DEFILEMENT_S`, transmise par le gabarit
+    // (un seul domicile, jamais recopiée ici).
+    const DUREE_DEFILEMENT_MS = {{ duree_defilement_s }} * 1000;
     // Au-delà de ce nombre d'échecs consécutifs (~30 s), l'écran se déclare
     // "hors ligne" plutôt que de continuer à paraître vivant figé.
     const SEUIL_ECHECS_HORS_LIGNE = 3;
@@ -581,16 +630,80 @@
       marque.textContent = `et ${caches} autre${caches > 1 ? "s" : ""}…`;
     }
 
-    function rendreAnnonce(texte) {
-      // Apparition/disparition sans rechargement. textContent uniquement
-      // (jamais innerHTML) : le texte vient d'une saisie libre en admin.
-      const el = document.getElementById("bandeau-annonce");
-      if (texte) {
-        document.getElementById("annonce-texte").textContent = texte;
-        el.style.display = "flex";
+    // --- Défilement des annonces (série annonce, lot 2) ---
+    // L'état du défilement vit HORS de rendre() : /live/data est relu toutes
+    // les 10 s, et un défilement remis à zéro à chaque rafraîchissement ne
+    // dépasserait jamais la première annonce. L'annonce courante est repérée
+    // par son IDENTIFIANT, jamais par sa position : une annonce ajoutée ou
+    // retirée ailleurs dans la liste ne déplace pas ce qui est à l'écran.
+    // Les identifiants croissent avec l'ordre de pose (AUTOINCREMENT côté
+    // serveur) : « la suivante » est la première annonce posée après la
+    // courante, et une annonce ajoutée rejoint la fin du tour.
+    let annonces = [];          // [{id, texte}], dans l'ordre de pose
+    let idCourant = null;       // identifiant de l'annonce visible
+    let alerteVisible = false;  // D8 : l'alerte suspend le défilement
+
+    function suivante(liste, id) {
+      return liste.find(a => a.id > id) || liste[0];
+    }
+
+    function synchroniserPile(liste) {
+      // Un élément par annonce, créé une fois et gardé d'un rafraîchissement
+      // à l'autre : le fondu en cours n'est jamais interrompu. textContent
+      // uniquement (jamais innerHTML) : le texte vient d'une saisie libre.
+      const pile = document.getElementById("pile-annonces");
+      const ids = new Set(liste.map(a => a.id));
+      pile.querySelectorAll(".annonce-item").forEach(el => {
+        if (!ids.has(Number(el.dataset.id))) el.remove();
+      });
+      liste.forEach(a => {
+        let el = pile.querySelector(`.annonce-item[data-id="${a.id}"]`);
+        if (!el) {
+          el = document.createElement("span");
+          el.className = "annonce-item";
+          el.dataset.id = a.id;
+          const apres = Array.from(pile.children).find(e => Number(e.dataset.id) > a.id);
+          pile.insertBefore(el, apres || null);
+        }
+        if (el.textContent !== a.texte) el.textContent = a.texte;
+      });
+    }
+
+    function montrerCourante() {
+      document.querySelectorAll("#pile-annonces .annonce-item").forEach(el => {
+        el.classList.toggle("courante", Number(el.dataset.id) === idCourant);
+      });
+      // Repère « 2/4 » à partir de deux annonces seulement.
+      const repere = document.getElementById("repere-annonces");
+      if (annonces.length >= 2) {
+        const rang = annonces.findIndex(a => a.id === idCourant) + 1;
+        repere.textContent = `${rang}/${annonces.length}`;
+        repere.style.display = "inline";
       } else {
-        el.style.display = "none";
+        repere.textContent = "";
+        repere.style.display = "none";
       }
+    }
+
+    function rendreAnnonces(liste) {
+      annonces = liste || [];
+      synchroniserPile(annonces);
+      // L'annonce courante a disparu (effacée, expirée) : on passe à la
+      // suivante, sans attendre la fin de ses huit secondes.
+      if (!annonces.some(a => a.id === idCourant)) {
+        idCourant = annonces.length ? suivante(annonces, idCourant ?? 0).id : null;
+      }
+      montrerCourante();
+      document.getElementById("bandeau-annonce").style.display =
+        (annonces.length && !alerteVisible) ? "flex" : "none";
+    }
+
+    function avancer() {
+      // Minuterie INDÉPENDANTE de rafraichir(). Pendant l'alerte tournoi, le
+      // défilement est suspendu : il reprend ensuite là où il en était.
+      if (alerteVisible || annonces.length < 2) return;
+      idCourant = suivante(annonces, idCourant).id;
+      montrerCourante();
     }
 
     function rendreAlerteTournoi(texte) {
@@ -607,13 +720,15 @@
       }
     }
 
-    function rendreBandeauInfo(alerteTexte, annonceTexte) {
-      // L'alerte tournoi l'emporte sur l'annonce libre quand les deux sont
-      // présentes (D8) : une seule bande visible à la fois, jamais les deux
-      // empilées. L'annonce du bureau reprend d'elle-même dès que l'alerte
-      // s'efface (fenêtre expirée ou tournoi lancé) : rien à faire côté admin.
+    function rendreBandeauInfo(alerteTexte, listeAnnonces) {
+      // L'alerte tournoi passe devant le défilement des annonces (D8) : une
+      // seule bande visible à la fois, jamais deux empilées. Les annonces
+      // reprennent d'elles-mêmes dès que l'alerte s'efface (fenêtre expirée
+      // ou tournoi lancé), là où le défilement s'était arrêté : rien à faire
+      // côté saisie. Elles restent synchronisées pendant l'alerte.
+      alerteVisible = !!alerteTexte;
       rendreAlerteTournoi(alerteTexte);
-      rendreAnnonce(alerteTexte ? null : annonceTexte);
+      rendreAnnonces(listeAnnonces);
     }
 
     function afficher(id, visible, mode) {
@@ -633,7 +748,7 @@
         document.getElementById("titre").textContent = d.titre;
         document.title = d.titre + " — Tableau de bord";
       }
-      rendreBandeauInfo(d.alerte_tournoi, d.annonce);
+      rendreBandeauInfo(d.alerte_tournoi, d.annonces);
 
       // --- Barre de chiffres ---
       afficher("barre-chiffres", !!p.chiffres, "flex");
@@ -670,7 +785,8 @@
       const montreTournois = !!p.tournois && (tournois.length > 0 || aVenir.length > 0);
       const montreProgramme = !!p.programme && animations.length > 0;
       const montreMouvements = !!p.mouvements;
-      const montreInfo = !!p.chiffres || !!d.annonce || !!d.alerte_tournoi;
+      const montreInfo = !!p.chiffres || !!(d.annonces && d.annonces.length)
+        || !!d.alerte_tournoi;
 
       afficher("bloc-info", montreInfo, "flex");
       afficher("panneau-mouvements", montreMouvements, "flex");
@@ -724,6 +840,7 @@
     tiquerHorloge();
     setInterval(tiquerHorloge, 1000);       // horloge locale, indépendante du réseau
     setInterval(rafraichir, INTERVALLE_MS); // puis mise à jour des données en boucle
+    setInterval(avancer, DUREE_DEFILEMENT_MS); // défilement, indépendant des données
     // Un redimensionnement (rotation d'écran, changement de résolution TV)
     // change ce qui tient à l'écran : on recalcule la troncature.
     window.addEventListener("resize", () => rendre(DONNEES));

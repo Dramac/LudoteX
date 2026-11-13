@@ -6,8 +6,8 @@
   <h1>Écran de salle</h1>
   <p class="stats-note">
     Réglages du <strong>tableau de bord projeté en salle</strong>
-    (<a class="lien" href="/live">/live</a>) : les panneaux affichés, l'annonce
-    du moment, et le rappel automatique avant un tournoi (plus bas).
+    (<a class="lien" href="/live">/live</a>) : les annonces du moment, les
+    panneaux affichés, et le rappel automatique avant un tournoi (plus bas).
   </p>
 
   {# Le titre n'est plus un réglage de cette page : il vaut le nom de
@@ -25,33 +25,76 @@
     </p>
   {% endif %}
 
-  {% if alerte_affichee or annonce_affichee %}
-    <p class="stats-note">Aperçu de ce qui est affiché en salle en ce moment :</p>
-  {% endif %}
-  {# L'alerte de tournoi l'emporte sur l'annonce : une seule bande est visible
-     en salle (décision D8). L'aperçu doit donc montrer l'alerte, PUIS dire ce
-     qu'il advient de l'annonce — sans cette phrase et son heure de reprise, un
-     membre du bureau conclut que son annonce a été perdue. #}
+  {# L'alerte de tournoi passe devant le défilement des annonces : une seule
+     bande est visible en salle (décision D8). L'aperçu montre donc l'alerte,
+     PUIS dit ce qu'il advient des annonces — sans cette phrase et son heure de
+     reprise, un membre du bureau conclut qu'elles ont été perdues. Sans
+     alerte, l'aperçu de ce qui défile EST la liste « Affichées en salle »,
+     plus bas. #}
   {% if alerte_affichee %}
+    <p class="stats-note">Affiché en salle en ce moment :</p>
     <div class="apercu-annonce-salle apercu-alerte-salle">
       <span class="apercu-annonce-puce">⏰</span>
       <span>{{ alerte_affichee }}</span>
     </div>
-    {% if annonce_affichee %}
+    {% if annonces %}
       <p class="stats-note">
-        Une alerte de tournoi occupe le bandeau
-        {% if alerte_reprise %}jusqu'à {{ alerte_reprise }}{% endif %} ; votre
-        annonce (« {{ annonce_affichee }} ») <strong>n'est pas perdue</strong>
-        et reprendra ensuite toute seule, sans rien à faire.
+        L'alerte de tournoi occupe le bandeau
+        {% if alerte_reprise %}jusqu'à {{ alerte_reprise }}{% endif %} :
+        {% if annonces | length == 1 %}l'annonce reprendra ensuite, toute
+        seule. Elle <strong>n'est pas perdue</strong>.{% else %}les
+        {{ annonces | length }} annonces reprendront ensuite, toutes seules.
+        Elles <strong>ne sont pas perdues</strong>.{% endif %}
       </p>
     {% endif %}
-  {% elif annonce_affichee %}
-    <div class="apercu-annonce-salle">
-      <span class="apercu-annonce-puce">📣</span>
-      <span>{{ annonce_affichee }}</span>
-    </div>
   {% endif %}
 
+  <h2>Ajouter une annonce</h2>
+  <form method="post" action="/admin/ecran-salle/annonce" class="recherche-form">
+    <div class="champ">
+      <label for="annonce">Texte de l'annonce</label>
+      <textarea id="annonce" name="annonce" maxlength="{{ longueur_annonce }}" rows="2"
+                aria-describedby="annonce-consigne"
+                placeholder="Ex. : Tombola à 15 h, stand accueil.">{{ saisie_annonce.texte or '' }}</textarea>
+      {# Consigne partagée avec la page bénévole /live/annonce. #}
+      {% include "_consigne_annonce.html" %}
+    </div>
+
+    <div class="champ">
+      <label for="annonce_duree">Durée d'affichage (minutes)</label>
+      <input type="number" id="annonce_duree" name="annonce_duree" min="1"
+             max="{{ annonce_duree_max }}"
+             aria-describedby="annonce-duree-note"
+             value="{{ annonce_duree }}">
+      <p class="stats-note" id="annonce-duree-note">Obligatoire, 12 heures au
+        plus, propre à chaque annonce. Passé ce délai, l'annonce disparaît de
+        l'écran de salle et son texte est effacé : il faudra la retaper pour
+        la reposer.</p>
+      <p class="duree-rapide">
+        <button type="button" class="bouton-filtrer" data-min="15">15 min</button>
+        <button type="button" class="bouton-filtrer" data-min="30">30 min</button>
+        <button type="button" class="bouton-filtrer" data-min="60">1 h</button>
+        <button type="button" class="bouton-filtrer" data-min="240">4 h</button>
+        <button type="button" class="bouton-filtrer" data-min="{{ annonce_duree_max }}">12 h</button>
+      </p>
+      {# Ces boutons écrivent dans le champ en JS : sans cette zone, un
+         lecteur d'écran n'entendait rien. Vide au chargement (une zone
+         ajoutée en même temps que son texte n'est pas toujours lue). #}
+      <p class="sr-only" role="status" id="annonce-duree-statut"></p>
+    </div>
+
+    <button type="submit" class="bouton bouton-principal">Ajouter une annonce</button>
+  </form>
+
+  {% include "_liste_annonces.html" %}
+</section>
+
+{# Panneaux : formulaire À PART depuis la série annonce, lot 2. Il
+   enregistrait autrefois l'annonce avec les cases, ce qui obligeait le bouton
+   d'effacement à rejouer les cases en champs cachés pour ne pas éteindre
+   l'écran (une case décochée n'est pas transmise). #}
+<section class="carte">
+  <h2>Panneaux affichés</h2>
   <form method="post" action="/admin/ecran-salle" class="recherche-form">
     {# <fieldset>/<legend> (patron d'admin_evenement.html) : l'ancien
        <label> ne visait aucun champ, et un lecteur d'écran l'annonçait seul,
@@ -88,8 +131,8 @@
       {% endfor %}
       {% if not (panneaux.chiffres or panneaux.tournois or panneaux.programme or panneaux.mouvements) %}
         <p class="stats-note">Aucun panneau coché : l'écran de salle n'affichera
-          que le titre, l'horloge et l'annonce. C'est possible (écran d'annonces
-          seules), mais vérifiez que c'est bien ce que vous voulez.</p>
+          que le titre, l'horloge et les annonces. C'est possible (écran
+          d'annonces seules), mais vérifiez que c'est bien ce que vous voulez.</p>
       {% endif %}
       <p class="stats-note">Un panneau décoché disparaît de l'écran projeté ;
         les autres s'élargissent pour occuper la place. Ce réglage ne change
@@ -98,72 +141,12 @@
         <a class="lien" href="/admin/fonctionnalites">Fonctionnalités</a>.</p>
     </fieldset>
 
-    <div class="champ">
-      <label for="annonce">Annonce affichée en bandeau sur /live</label>
-      <textarea id="annonce" name="annonce" maxlength="{{ longueur_annonce }}" rows="2"
-                aria-describedby="annonce-consigne"
-                placeholder="Ex. : Tombola à 15 h, stand accueil.">{{ annonce or '' }}</textarea>
-      {# Consigne partagée avec la page bénévole /live/annonce. #}
-      {% include "_consigne_annonce.html" %}
-    </div>
-
-    <div class="champ">
-      <label for="annonce_duree">Durée d'affichage (minutes)</label>
-      <input type="number" id="annonce_duree" name="annonce_duree" min="1"
-             max="{{ annonce_duree_max }}"
-             aria-describedby="annonce-duree-note"
-             value="{{ annonce_duree }}">
-      <p class="stats-note" id="annonce-duree-note">Obligatoire, 12 heures au
-        plus. Passé ce délai, l'annonce disparaît de l'écran de salle et son
-        texte est effacé : il faudra la retaper pour la reposer.</p>
-      <p class="duree-rapide">
-        <button type="button" class="bouton-filtrer" data-min="15">15 min</button>
-        <button type="button" class="bouton-filtrer" data-min="30">30 min</button>
-        <button type="button" class="bouton-filtrer" data-min="60">1 h</button>
-        <button type="button" class="bouton-filtrer" data-min="240">4 h</button>
-        <button type="button" class="bouton-filtrer" data-min="{{ annonce_duree_max }}">12 h</button>
-      </p>
-      {# Ces boutons écrivent dans le champ en JS : sans cette zone, un
-         lecteur d'écran n'entendait rien. Vide au chargement (une zone
-         ajoutée en même temps que son texte n'est pas toujours lue). #}
-      <p class="sr-only" role="status" id="annonce-duree-statut"></p>
-    </div>
-
-    {% if annonce %}
-      <p class="stats-note">
-        Affichée en salle jusqu'à {{ annonce_expire_iso | heure_local }}.
-      </p>
-    {% elif annonce_expiree %}
-      <p class="stats-note">
-        L'annonce précédente {% if annonce_expiree_iso %}a expiré à
-        {{ annonce_expiree_iso | heure_local }}{% else %}n'avait pas de durée
-        d'affichage{% endif %} : elle n'est plus affichée en salle et son texte
-        sera effacé. Pour la reposer, retapez-la.
-      </p>
-    {% endif %}
-
-    <button type="submit" class="bouton bouton-principal">Enregistrer</button>
+    <button type="submit" class="bouton bouton-principal">Enregistrer les panneaux</button>
   </form>
-
-  {% if annonce %}
-    <form method="post" action="/admin/ecran-salle" class="recherche-form">
-      <input type="hidden" name="annonce" value="">
-      <input type="hidden" name="annonce_duree" value="">
-      {# Les panneaux sont rejoués à l'identique : effacer une annonce ne doit
-         jamais éteindre l'affichage de la salle au passage. #}
-      {% if panneaux.chiffres %}<input type="hidden" name="panneau_chiffres" value="1">{% endif %}
-      {% if panneaux.tournois %}<input type="hidden" name="panneau_tournois" value="1">{% endif %}
-      {% if panneaux.programme %}<input type="hidden" name="panneau_programme" value="1">{% endif %}
-      {% if panneaux.mouvements %}<input type="hidden" name="panneau_mouvements" value="1">{% endif %}
-      <button type="submit" class="bouton bouton-secondaire">Effacer l'annonce</button>
-    </form>
-  {% endif %}
-
 </section>
 
 {# Interrupteur de l'annonce par les bénévoles (série annonce) : formulaire À
-   PART, pour qu'« Effacer l'annonce » ne le referme jamais au passage (une
-   case décochée n'est pas transmise). Fermé par défaut. #}
+   PART (une case décochée n'est pas transmise). Fermé par défaut. #}
 <section class="carte">
   <h2>Annonce par les bénévoles</h2>
   <form method="post" action="/admin/ecran-salle/benevoles" class="recherche-form">
@@ -174,10 +157,12 @@
                {% if annonce_benevoles %}checked{% endif %}>
         Les bénévoles peuvent afficher une annonce
       </label>
-      <p class="stats-note" id="annonce-benevoles-note">Une annonce posée par un
-        bénévole remplace la vôtre, et inversement. Le journal indique
-        l'appareil, jamais le texte. Décocher cette case ne retire pas
-        l'annonce déjà affichée : effacez-la avec le bouton prévu, plus haut.</p>
+      <p class="stats-note" id="annonce-benevoles-note">Les annonces des
+        bénévoles s'ajoutent aux vôtres et défilent avec elles. Chacun peut
+        effacer celles des autres : les bénévoles les vôtres, vous les leurs.
+        Le journal indique l'appareil, jamais le texte. Décocher cette case ne
+        retire aucune annonce déjà affichée : effacez-les une à une, avec leur
+        bouton « Effacer », plus haut.</p>
       <p class="stats-note">Case cochée, les bénévoles trouvent
         « Annonce en salle » dans leur menu.</p>
     </div>
@@ -196,10 +181,10 @@
     à la fois — le plus proche.
   </p>
   <p class="stats-note">
-    Pendant qu'une alerte est affichée, elle <strong>prend la place de
-    l'annonce</strong> ci-dessus : l'écran de salle ne montre qu'une bande à la
-    fois, pour rester lisible de loin. L'annonce revient d'elle-même dès que
-    l'alerte s'efface.
+    Pendant qu'une alerte est affichée, elle <strong>prend la place des
+    annonces</strong> ci-dessus : l'écran de salle ne montre qu'une bande à la
+    fois, pour rester lisible de loin. Les annonces reprennent leur défilement
+    d'elles-mêmes dès que l'alerte s'efface.
   </p>
 
   <form method="post" action="/admin/ecran-salle/alerte" class="recherche-form">

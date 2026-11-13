@@ -318,7 +318,7 @@ def test_cohabitation_le_json_porte_les_deux(client, tmp_path, monkeypatch):
 
     d = client.get("/live/data").json()
     assert d["alerte_tournoi"] == "Rapportez Catan !"
-    assert d["annonce"] == "Tombola à 15 h"
+    assert [a["texte"] for a in d["annonces"]] == ["Tombola à 15 h"]
 
 
 def test_module_tournois_desactive_aucune_alerte(client, tmp_path, monkeypatch):
@@ -358,6 +358,21 @@ def _enregistrer_alerte(admin, message="", mini="", maxi=""):
     return admin.post("/admin/ecran-salle/alerte",
                       data={"alerte_message": message,
                             "alerte_delai_min": mini, "alerte_delai_max": maxi})
+
+
+def _ajouter_annonce(admin, texte):
+    return admin.post("/admin/ecran-salle/annonce",
+                      data={"annonce": texte, "annonce_duree": ""})
+
+
+def _annonces_en_base():
+    from app import db as pret_db
+
+    conn = pret_db.get_connection()
+    try:
+        return [t for (t,) in conn.execute("SELECT texte FROM annonces_ecran ORDER BY id")]
+    finally:
+        conn.close()
 
 
 def _reglage(cle):
@@ -498,10 +513,8 @@ def test_cohabitation_signalee_avec_l_heure_de_reprise(admin, tmp_path, monkeypa
     from datetime import datetime as _dt
 
     debut = _dt.now(FUSEAU_UTC) + timedelta(minutes=5)
-    admin.post("/admin/ecran-salle",
-               data={"annonce": "Tombola à 15 h", "annonce_duree": "",
-                     "panneau_chiffres": "1", "panneau_tournois": "1",
-                     "panneau_programme": "1", "panneau_mouvements": "1"})
+    _ajouter_annonce(admin, "Tombola à 15 h")
+    _ajouter_annonce(admin, "Vestiaire fermé à 18 h")
     _enregistrer_alerte(admin, "Rapportez {jeu} !")
     _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Catan",
                               date_heure=debut.isoformat())
@@ -509,16 +522,25 @@ def test_cohabitation_signalee_avec_l_heure_de_reprise(admin, tmp_path, monkeypa
     page = admin.get("/admin/ecran-salle")
     assert "occupe le bandeau" in page.text
     assert live._heure_locale(debut.isoformat()) in page.text   # heure LOCALE
-    assert "n'est pas perdue" in page.text
+    texte = " ".join(page.text.split())
+    assert "les 2 annonces reprendront ensuite, toutes seules" in texte
+    assert "ne sont pas perdues" in texte
     assert "Tombola à 15 h" in page.text
-    # Les deux réglages coexistent en base : rien n'a été effacé.
-    assert _reglage(live.CLE_ANNONCE) == "Tombola à 15 h"
+    # Les réglages coexistent en base : rien n'a été effacé.
+    assert _annonces_en_base() == ["Tombola à 15 h", "Vestiaire fermé à 18 h"]
+
+
+def test_cohabitation_une_seule_annonce_au_singulier(admin, tmp_path, monkeypatch):
+    _ajouter_annonce(admin, "Tombola à 15 h")
+    _enregistrer_alerte(admin, "Rapportez {jeu} !")
+    _creer_tournoi_qualifiant(tmp_path, monkeypatch, jeu="Catan")
+    texte = " ".join(admin.get("/admin/ecran-salle").text.split())
+    assert "l'annonce reprendra ensuite, toute seule" in texte
+    assert "n'est pas perdue" in texte
 
 
 def test_sans_alerte_l_apercu_reste_celui_de_l_annonce(admin):
-    admin.post("/admin/ecran-salle",
-               data={"annonce": "Tombola à 15 h", "annonce_duree": "",
-                     "panneau_chiffres": "1"})
+    _ajouter_annonce(admin, "Tombola à 15 h")
     page = admin.get("/admin/ecran-salle")
     assert "Tombola à 15 h" in page.text
     assert "occupe le bandeau" not in page.text
@@ -527,19 +549,17 @@ def test_sans_alerte_l_apercu_reste_celui_de_l_annonce(admin):
 # --- Les deux formulaires sont indépendants (raison d'être du second POST) ---
 def test_enregistrer_l_annonce_ne_touche_pas_a_l_alerte(admin):
     _enregistrer_alerte(admin, "Rapportez {jeu} !", "20", "120")
-    admin.post("/admin/ecran-salle",
-               data={"annonce": "Tombola", "annonce_duree": "",
-                     "panneau_chiffres": "1"})
+    _ajouter_annonce(admin, "Tombola")
     assert _reglage(live.CLE_ALERTE_MESSAGE) == "Rapportez {jeu} !"
     assert _reglage(live.CLE_ALERTE_DELAI_MIN) == "20"
 
 
 def test_enregistrer_l_alerte_ne_touche_ni_a_l_annonce_ni_aux_panneaux(admin):
     admin.post("/admin/ecran-salle",
-               data={"annonce": "Tombola", "annonce_duree": "",
-                     "panneau_chiffres": "1", "panneau_mouvements": "1"})
+               data={"panneau_chiffres": "1", "panneau_mouvements": "1"})
+    _ajouter_annonce(admin, "Tombola")
     _enregistrer_alerte(admin, "Rapportez {jeu} !")
-    assert _reglage(live.CLE_ANNONCE) == "Tombola"
+    assert _annonces_en_base() == ["Tombola"]
     panneaux = admin.get("/live/data").json()["panneaux"]
     assert panneaux["chiffres"] is True and panneaux["mouvements"] is True
     assert panneaux["tournois"] is False and panneaux["programme"] is False

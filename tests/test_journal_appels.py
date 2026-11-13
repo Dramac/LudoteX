@@ -358,57 +358,87 @@ def test_rangement_lot_emplacement_vide_journalise_le_refus(client, _journal_iso
 # Écran de salle — annonce posée / effacée
 # ===========================================================================
 def _poster_ecran_salle(client, **champs):
-    data = {"titre": "Écran", "annonce": "", "annonce_duree": "",
-            "panneau_chiffres": "on", "panneau_tournois": "on",
+    """Le formulaire des PANNEAUX (série annonce, lot 2 : sans l'annonce)."""
+    data = {"titre": "Écran", "panneau_chiffres": "on", "panneau_tournois": "on",
             "panneau_programme": "on", "panneau_mouvements": "on"}
     data.update(champs)
     return client.post("/admin/ecran-salle", data=data)
+
+
+def _ajouter_annonce(client, texte, duree=""):
+    return client.post("/admin/ecran-salle/annonce",
+                       data={"annonce": texte, "annonce_duree": duree})
+
+
+def _effacer_annonce(client, identifiant):
+    return client.post("/admin/ecran-salle/annonce/effacer",
+                       data={"annonce_id": str(identifiant)})
+
+
+def _derniere_annonce_id():
+    from app import db as pret_db
+
+    conn = pret_db.get_connection()
+    try:
+        return conn.execute("SELECT MAX(id) FROM annonces_ecran").fetchone()[0]
+    finally:
+        conn.close()
 
 
 def test_annonce_posee_puis_effacee(client, _journal_isole):
     """
     L'annonce est une saisie libre servie au public (RGPD-01) : le journal dit
     qu'elle a été posée, pour combien de temps, puis retirée — JAMAIS ce
-    qu'elle disait, ni à la pose, ni à l'effacement.
+    qu'elle disait, ni à la pose, ni à l'effacement (alors que le message
+    d'effacement, lui, la nomme à l'écran).
     """
     _connexion(client)
 
-    _poster_ecran_salle(client, annonce="Tombola à 15 h", annonce_duree="45")
+    _ajouter_annonce(client, "Tombola à 15 h", "45")
     posee = _derniere(_journal_isole, "annonce_posee")
     assert posee["module"] == "live" and posee["objet"] == "45 min"
 
-    _poster_ecran_salle(client, annonce="")
+    r = _effacer_annonce(client, _derniere_annonce_id())
+    assert "Tombola à 15 h" in r.text
     effacee = _derniere(_journal_isole, "annonce_effacee")
     assert effacee["module"] == "live" and "objet" not in effacee
     assert "Tombola" not in _journal_isole.read_text(encoding="utf-8")
 
 
-def test_titre_seul_sans_annonce_n_ecrit_rien(client, _journal_isole):
-    """Sans cette précaution, chaque passage sur la page produirait une ligne
-    « annonce effacée » alors qu'il n'y a jamais eu d'annonce."""
+def test_panneaux_seuls_n_ecrivent_rien_sur_l_annonce(client, _journal_isole):
+    """Enregistrer les panneaux ne produit aucune ligne d'annonce."""
     _connexion(client)
-    _poster_ecran_salle(client, titre="Nouveau titre", annonce="")
+    _ajouter_annonce(client, "Tombola à 15 h")
+    _poster_ecran_salle(client, titre="Nouveau titre")
     assert _actions(_journal_isole, "annonce_effacee") == []
+    assert len(_actions(_journal_isole, "annonce_posee")) == 1
+
+
+def test_texte_vide_n_ecrit_rien(client, _journal_isole):
+    _connexion(client)
+    _ajouter_annonce(client, "   ")
     assert _actions(_journal_isole, "annonce_posee") == []
+    assert _actions(_journal_isole, "annonce_effacee") == []
 
 
 def test_annonce_expiree_effacee_en_silence(client, _journal_isole):
     """
-    Un texte expiré effacé par un enregistrement des panneaux n'est pas une
+    Un texte expiré retiré par son bouton (page restée ouverte) n'est pas une
     « annonce effacée » : personne ne l'a retirée de l'écran, elle n'y était
     plus. Aucune ligne.
     """
-    from app import db as pret_db, services
+    from app import db as pret_db
 
     _connexion(client)
     conn = pret_db.get_connection()
     try:
-        services.ecrire_parametre(conn, services.CLE_ANNONCE, "Tombola à 15 h")
-        services.ecrire_parametre(conn, services.CLE_ANNONCE_EXPIRE,
-                                  "2020-01-01T00:00:00+00:00")
+        conn.execute("INSERT INTO annonces_ecran (texte, posee_le, expire_le) VALUES "
+                     "('Tombola à 15 h', '2020-01-01T00:00:00+00:00', "
+                     "'2020-01-01T00:30:00+00:00')")
+        conn.commit()
     finally:
         conn.close()
-    _poster_ecran_salle(client, annonce="")
+    _effacer_annonce(client, _derniere_annonce_id())
     assert _actions(_journal_isole, "annonce_effacee") == []
 
 

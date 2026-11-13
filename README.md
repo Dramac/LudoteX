@@ -57,8 +57,9 @@ jamais ouvrir de terminal.
   grille publique.
 - **Planning des bénévoles** — questionnaire de disponibilités, préremplissage
   automatique, grille d'ajustement, export « mon planning ».
-- **Écran de salle** — tableau de bord à projeter, annonces du bureau, rappel
-  automatique avant chaque tournoi.
+- **Écran de salle** — tableau de bord à projeter, annonces du bureau (et des
+  bénévoles, s'il le permet) qui défilent, rappel automatique avant chaque
+  tournoi.
 - **Rangement et carnet de maintenance** — où va chaque boîte, ce qu'il y a à
   réparer ou à racheter.
 - **Administration** — étiquettes QR à imprimer, import/export du catalogue,
@@ -78,8 +79,8 @@ chaque point : qui écrit, qui lit, combien de temps, ce qui efface.
   retour et le numéro de pochette, effacé au retour et à la clôture de fin
   d'événement. Trois champs libres : le **détail d'un signalement** (lisible
   des bénévoles et du bureau, conservé sans limite), le **libellé d'un
-  appareil** (lisible du bureau) et l'**annonce de l'écran de salle**
-  (publique, 12 heures au plus, puis effacée).
+  appareil** (lisible du bureau) et les **annonces de l'écran de salle**
+  (publiques, 12 heures au plus chacune, puis effacées).
 - **Tournois** — un **pseudo** par inscription, et les pseudos des membres
   d'une équipe, affichés sur la page publique du tournoi et gardés jusqu'à sa
   suppression. Aucun e-mail. Un pseudo peut être un vrai nom : c'est le choix

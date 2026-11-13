@@ -1047,8 +1047,8 @@ def test_confirmations_reformulees_m9(client, monkeypatch):
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
     dashboard = client.get("/admin").text
     assert ("Clôturer tous les prêts et sorties en cours ? Tout redeviendra "
-            "disponible, sans rien perdre de l\\'historique, et l\\'annonce de "
-            "l\\'écran de salle sera effacée.") in dashboard
+            "disponible, sans rien perdre de l\\'historique, et les annonces de "
+            "l\\'écran de salle seront effacées.") in dashboard
     # L'ancienne formulation technique (parenthèse) a bien disparu.
     assert "(L\\'historique et les statistiques sont conservés.)" not in dashboard
 
@@ -1784,97 +1784,122 @@ def test_admin_ecran_salle_garde(client, monkeypatch):
     assert r2.status_code == 303 and r2.headers["location"] == "/admin"
 
 
+EFFACER_ANNONCE = 'action="/admin/ecran-salle/annonce/effacer"'
+
+
+def _id_annonce(texte):
+    from app import db as pret_db
+
+    conn = pret_db.get_connection()
+    try:
+        (identifiant,) = conn.execute(
+            "SELECT id FROM annonces_ecran WHERE texte = ?", (texte,)).fetchone()
+    finally:
+        conn.close()
+    return str(identifiant)
+
+
 def test_admin_ecran_salle_annonce_configurable(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
 
-    # Rien au départ : pas de bouton d'effacement.
-    assert "Effacer l'annonce" not in client.get("/admin/ecran-salle").text
+    # Rien au départ : aucune annonce, donc aucun bouton d'effacement.
+    page = client.get("/admin/ecran-salle").text
+    assert EFFACER_ANNONCE not in page
+    assert "Aucune annonce n'est affichée." in page
 
-    # Enregistrement sans durée -> jamais illimité (RGPD-01) : la durée par
-    # défaut s'applique, et le message le dit. Répercuté sur /live.
-    r = client.post("/admin/ecran-salle",
-                     data={"titre": "", "annonce": "Tombola à 15 h", "annonce_duree": ""})
-    assert "Effacer l'annonce" in r.text
+    # Ajout sans durée -> jamais illimité (RGPD-01) : la durée par défaut
+    # s'applique, et le message le dit. Répercuté sur /live.
+    r = client.post("/admin/ecran-salle/annonce",
+                    data={"annonce": "Tombola à 15 h", "annonce_duree": ""})
+    assert EFFACER_ANNONCE in r.text
     assert "Aucune durée indiquée : affichage limité à 30 minutes." in r.text
     assert "sans limite de durée" not in r.text
-    assert client.get("/live/data").json()["annonce"] == "Tombola à 15 h"
+    assert client.get("/live/data").json()["annonces"][0]["texte"] == "Tombola à 15 h"
 
-    # Champ vidé puis enregistré efface (même route, même résultat que le
-    # bouton dédié).
-    r2 = client.post("/admin/ecran-salle",
-                      data={"titre": "", "annonce": "", "annonce_duree": ""})
-    assert "Annonce effacée." in r2.text
-    assert "annonce" not in client.get("/live/data").json()
-    assert "Effacer l'annonce" not in r2.text
+    # Le bouton « Effacer » de l'annonce la retire, et le message la nomme.
+    r2 = client.post("/admin/ecran-salle/annonce/effacer",
+                     data={"annonce_id": _id_annonce("Tombola à 15 h")})
+    assert "Annonce retirée de l&#39;écran : « Tombola à 15 h »." in r2.text
+    assert "annonces" not in client.get("/live/data").json()
+    assert EFFACER_ANNONCE not in r2.text
 
 
-def test_admin_ecran_salle_bouton_effacer_annonce(client, monkeypatch):
-    # Le bouton "Effacer l'annonce" (mini-formulaire dédié) mène au même
-    # résultat qu'un champ vidé.
+def test_admin_ecran_salle_ancien_formulaire_reste_compatible(client, monkeypatch):
+    """
+    Une page d'administration chargée AVANT la mise à jour envoie encore
+    l'annonce avec les panneaux, sur l'ancien POST : le texte tapé est ajouté
+    (pas perdu), et un texte vide n'efface plus rien. Compatibilité d'une
+    version, à retirer avec les deux champs.
+    """
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    client.post("/admin/ecran-salle",
-                data={"titre": "", "annonce": "À effacer", "annonce_duree": ""})
-    assert client.get("/live/data").json()["annonce"] == "À effacer"
-
-    r = client.post("/admin/ecran-salle", data={"titre": "", "annonce": "", "annonce_duree": ""})
-    assert "annonce" not in client.get("/live/data").json()
-    assert "Effacer l'annonce" not in r.text
+    r = client.post("/admin/ecran-salle",
+                    data={"titre": "", "annonce": "À garder", "annonce_duree": "",
+                          "panneau_chiffres": "1"})
+    assert "Panneaux enregistrés. Annonce ajoutée" in r.text
+    client.post("/admin/ecran-salle", data={"titre": "", "annonce": "", "annonce_duree": "",
+                                            "panneau_chiffres": "1"})
+    assert [a["texte"] for a in client.get("/live/data").json()["annonces"]] == ["À garder"]
 
 
 def test_admin_ecran_salle_annonce_longueur_bornee(client, monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    client.post("/admin/ecran-salle",
-                data={"titre": "", "annonce": "x" * 300, "annonce_duree": ""})
-    assert len(client.get("/live/data").json()["annonce"]) == 200
+    client.post("/admin/ecran-salle/annonce", data={"annonce": "x" * 300, "annonce_duree": ""})
+    assert len(client.get("/live/data").json()["annonces"][0]["texte"]) == 200
 
 
 def test_admin_ecran_salle_duree_auto_masquage(client, monkeypatch):
     # Une durée dépassée masque l'annonce sur /live. Depuis RGPD-01, elle n'est
-    # plus « rappelable » : l'écran d'administration ne repropose pas son
-    # texte, dit qu'elle a expiré, et n'offre plus de bouton d'effacement
-    # (il n'y a plus rien d'affiché à effacer).
+    # plus « rappelable » : l'écran d'administration ne la liste plus, et
+    # n'offre plus de bouton d'effacement (il n'y a plus rien d'affiché).
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    client.post("/admin/ecran-salle",
-                data={"titre": "", "annonce": "Encore un peu de temps", "annonce_duree": "30"})
-    assert client.get("/live/data").json()["annonce"] == "Encore un peu de temps"
+    client.post("/admin/ecran-salle/annonce",
+                data={"annonce": "Encore un peu de temps", "annonce_duree": "30"})
+    assert client.get("/live/data").json()["annonces"][0]["texte"] == "Encore un peu de temps"
 
     # On simule l'écoulement du délai en réécrivant directement l'échéance.
     from datetime import datetime, timedelta, timezone
-    from app import db as pret_db, services
+    from app import db as pret_db
 
     conn = pret_db.get_connection()
     try:
         passee = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")
-        services.ecrire_parametre(conn, "live_annonce_expire", passee)
+        conn.execute("UPDATE annonces_ecran SET expire_le = ?", (passee,))
+        conn.commit()
     finally:
         conn.close()
 
-    assert "annonce" not in client.get("/live/data").json()
+    assert "annonces" not in client.get("/live/data").json()
     r = client.get("/admin/ecran-salle")
     assert "Encore un peu de temps" not in r.text
-    assert "Effacer l'annonce" not in r.text
-    assert "a expiré à" in r.text
-    assert "Pour la reposer, retapez-la." in r.text
-    assert "Affichée en salle jusqu'à" not in r.text
+    assert EFFACER_ANNONCE not in r.text
+    assert "Aucune annonce n'est affichée." in r.text
 
 
 def test_admin_supervision_rappel_annonce(client, monkeypatch):
-    # Rappel (idée 5.2, décision 5) : la carte Supervision signale une
-    # annonce active, et seulement dans ce cas.
+    # Rappel (idée 5.2, décision 5) : la carte Supervision signale les
+    # annonces actives, texte compris, et seulement dans ce cas.
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
 
-    assert "Annonce affichée en salle" not in client.get("/admin/supervision").text
-    assert "Annonce affichée en salle" not in client.get("/admin").text
+    assert "affichée en salle" not in client.get("/admin/supervision").text
+    assert "affichées en salle" not in client.get("/admin").text
 
-    client.post("/admin/ecran-salle",
-                data={"titre": "", "annonce": "Portefeuille trouvé", "annonce_duree": ""})
-    assert "Portefeuille trouvé" in client.get("/admin/supervision").text
+    client.post("/admin/ecran-salle/annonce",
+                data={"annonce": "Portefeuille trouvé", "annonce_duree": ""})
+    page = client.get("/admin/supervision").text
+    assert "Annonce affichée en salle jusqu" in page
+    assert "« Portefeuille trouvé »" in page
     assert "Portefeuille trouvé" in client.get("/admin").text
+
+    client.post("/admin/ecran-salle/annonce",
+                data={"annonce": "Vestiaire fermé à 18 h", "annonce_duree": "120"})
+    page = " ".join(client.get("/admin/supervision").text.split())
+    assert "2 annonces affichées en salle, la dernière jusqu" in page
+    assert "« Portefeuille trouvé »" in page and "« Vestiaire fermé à 18 h »" in page
 
 
 # ---------------------------------------------------------------------------
@@ -2076,24 +2101,22 @@ def test_live_module_programme_desactive_masque_les_animations(client, tmp_path)
 
 
 def test_admin_effacer_annonce_ne_reinitialise_pas_les_panneaux(client, monkeypatch):
-    # Piège des cases à cocher : une case décochée n'est pas transmise. Le
-    # mini-formulaire « Effacer l'annonce » doit donc rejouer les panneaux en
-    # champs cachés, sinon effacer une annonce éteindrait tout l'écran.
+    # Piège des cases à cocher : une case décochée n'est pas transmise.
+    # Depuis la série annonce, lot 2, les annonces ont leurs propres
+    # formulaires : effacer une annonce n'envoie plus aucune case, et ne
+    # touche donc plus aux panneaux — sans champs cachés à rejouer.
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
-    r = client.post("/admin/ecran-salle",
-                    data={"titre": "", "annonce": "Tombola à 15 h", "annonce_duree": "",
-                          "panneau_chiffres": "1", "panneau_mouvements": "1"})
-    assert '<input type="hidden" name="panneau_chiffres" value="1">' in r.text
-    assert '<input type="hidden" name="panneau_mouvements" value="1">' in r.text
-    assert 'name="panneau_tournois"' not in r.text.split("Effacer l'annonce")[0][-800:]
-
-    # On rejoue exactement ce que le formulaire d'effacement envoie.
     client.post("/admin/ecran-salle",
-                data={"titre": "", "annonce": "", "annonce_duree": "",
-                      "panneau_chiffres": "1", "panneau_mouvements": "1"})
+                data={"panneau_chiffres": "1", "panneau_mouvements": "1"})
+    r = client.post("/admin/ecran-salle/annonce",
+                    data={"annonce": "Tombola à 15 h", "annonce_duree": ""})
+    assert '<input type="hidden" name="panneau_' not in r.text
+
+    client.post("/admin/ecran-salle/annonce/effacer",
+                data={"annonce_id": _id_annonce("Tombola à 15 h")})
     d = client.get("/live/data").json()
-    assert "annonce" not in d
+    assert "annonces" not in d
     assert d["panneaux"] == {"chiffres": True, "tournois": False,
                              "programme": False, "mouvements": True}
 

@@ -2,14 +2,14 @@
 {% block titre %}Annonce en salle — {{ nom_association }}{% endblock %}
 
 {#
-  Page BÉNÉVOLE de l'annonce de l'écran de salle (série annonce, lot 1).
-  Pensée téléphone, un pouce, wifi lent : AUCUN JS. La durée est en boutons
-  radio, le bouton principal suit le champ, l'annonce en cours est au-dessus
-  (on remplace en un tap, sans page de confirmation : on a sous les yeux ce
-  qu'on remplace).
+  Page BÉNÉVOLE des annonces de l'écran de salle (série annonce, lots 1 et 2).
+  Pensée téléphone, un pouce, wifi lent : AUCUN JS. Le formulaire « Ajouter
+  une annonce » vient en premier (le geste principal, son bouton doit rester
+  visible sans défiler) ; la liste des annonces qui défilent en salle vient
+  dessous, la plus récente d'abord, chacune avec son bouton « Effacer ».
 
-  Jamais publique : la route porte son `exiger_jeton` en propre
-  (app/routes/live.py), et ne fait rien tant que le bureau n'a pas ouvert
+  Jamais publique : les routes portent leur `exiger_jeton` en propre
+  (app/routes/live.py), et ne font rien tant que le bureau n'a pas ouvert
   l'annonce aux bénévoles.
 #}
 
@@ -23,8 +23,9 @@
     <p class="stats-note">Pour une information urgente à faire passer sur
       l'écran de la salle, adressez-vous au bureau.</p>
     {% if est_admin(request) %}
-      <p><a class="lien" href="/admin/ecran-salle">Poser l'annonce, ou l'ouvrir
-        aux bénévoles, depuis l'écran de salle de l'administration</a></p>
+      <p><a class="lien" href="/admin/ecran-salle">Poser une annonce, ou ouvrir
+        les annonces aux bénévoles, depuis l'écran de salle de
+        l'administration</a></p>
     {% endif %}
     <p class="lien-fiche"><a class="lien" href="/scanner">← Retour au scanner</a></p>
   {% else %}
@@ -38,35 +39,22 @@
       {% endif %}
     </div>
 
-    {# Pas de sous-titre « En cours » : la ligne qui le dit porte aussi
-       l'heure de fin. Chaque ligne gagnée garde le bouton principal visible
-       sans défiler sur téléphone. #}
-    {% if annonce %}
-      <p class="annonce-benevole-fin">En cours, affichée en salle jusqu'à
-        <strong>{{ annonce_fin }}</strong>&nbsp;:</p>
-      <div class="apercu-annonce-salle">
-        <span class="apercu-annonce-puce" aria-hidden="true">📣</span>
-        <span>{{ annonce }}</span>
-      </div>
-    {% else %}
-      <p class="annonce-benevole-fin">Aucune annonce n'est affichée.</p>
-    {% endif %}
-
-    {# L'alerte tournoi l'emporte sur l'annonce (une seule bande en salle) :
-       sans cette phrase, une annonce posée maintenant semblerait perdue. #}
+    {# L'alerte tournoi passe devant le défilement (une seule bande en
+       salle, D8) : sans cette phrase, une annonce posée maintenant
+       semblerait perdue. #}
     {% if alerte_active %}
       <p class="resultat resultat-attention">
         Une alerte de tournoi occupe le bandeau de la salle{% if alerte_reprise %}
-        jusqu'à {{ alerte_reprise }}{% endif %} : l'annonce s'affichera ensuite,
-        toute seule.
+        jusqu'à {{ alerte_reprise }}{% endif %} : les annonces s'afficheront
+        ensuite, toutes seules.
       </p>
     {% endif %}
 
     <form method="post" action="/live/annonce" class="recherche-form">
       <div class="champ">
-        <label for="annonce">{% if annonce %}Nouvelle annonce, à la place de celle-ci{% else %}Texte de l'annonce{% endif %}</label>
+        <label for="annonce">Texte de l'annonce</label>
         <textarea id="annonce" name="annonce" maxlength="{{ longueur_annonce }}" rows="2"
-                  aria-describedby="annonce-consigne"></textarea>
+                  aria-describedby="annonce-consigne">{{ saisie_texte }}</textarea>
         {% include "_consigne_annonce.html" %}
       </div>
 
@@ -83,18 +71,10 @@
         </div>
       </fieldset>
 
-      <button type="submit" class="bouton bouton-principal">
-        {% if annonce %}Remplacer l'annonce{% else %}Afficher en salle{% endif %}
-      </button>
+      <button type="submit" class="bouton bouton-principal">Ajouter une annonce</button>
     </form>
 
-    {% if annonce %}
-      <form method="post" action="/live/annonce" class="recherche-form">
-        <input type="hidden" name="annonce" value="">
-        <input type="hidden" name="annonce_duree" value="">
-        <button type="submit" class="bouton bouton-secondaire">Effacer l'annonce</button>
-      </form>
-    {% endif %}
+    {% include "_liste_annonces.html" %}
 
     <p class="lien-fiche"><a class="lien" href="/live">Voir l'écran de la salle</a></p>
   {% endif %}

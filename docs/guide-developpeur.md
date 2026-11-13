@@ -85,6 +85,11 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
   BoardGameGeek, clé `bgg_id` (jamais `reference_titre`), hors export CSV ;
   elle garde l'adresse de la vignette de la boîte, jamais l'image (sa copie
   est un fichier, `app/vignettes.py`, voir §10).
+- `annonces_ecran` (PK `id` en `AUTOINCREMENT` : un identifiant n'est jamais
+  réutilisé, le bouton « Effacer » d'une page restée ouverte ne peut pas viser
+  une autre annonce) : les annonces de l'écran de salle, texte libre public,
+  effacées sous `secure_delete` et retirées de toute archive. Règles dans
+  `services`, section « Annonces de l'écran de salle ».
 - `categories_jeu` (vocabulaire, `cle` UNIQUE) et `titres_categories`
   (liaison ordonnée par `rang`) : les catégories de jeu en liste. Découpage
   d'une case et clé de rapprochement dans `app/categories_jeu.py`, module pur ;

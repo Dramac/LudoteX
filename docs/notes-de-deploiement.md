@@ -83,6 +83,48 @@ est installée.
 
 ---
 
+## À paraître
+
+### Annonces de l'écran de salle en table : rien à faire à la mise à jour, un geste en cas de retour arrière — facultatif
+
+**À la mise à jour : aucun geste.** Le premier démarrage qui suit
+`update.sh` crée la table `annonces_ecran` et y reprend l'annonce en cours,
+avec la même heure de fin ; une annonce expirée n'est pas reprise. Les deux
+anciennes clés de `parametres` sont supprimées au passage.
+
+**En cas de retour arrière vers une 1.31.x : vider la table AVANT de revenir.**
+La 1.31.x ignore la table `annonces_ecran` : elle n'affiche plus ces annonces
+(elles disparaissent de l'écran sans bruit), mais elle ne les purge pas non
+plus, et sa sauvegarde ne les retire pas des archives. Mesuré sur une base de
+la 1.32 ouverte puis sauvegardée par la 1.31.1 : les textes restaient dans la
+base **et** dans l'archive produite, sans fin de vie. Une table vidée avant le
+retour arrière ne laisse rien, ni dans la base ni dans l'archive.
+
+Deux façons de la vider, au choix, **avant** de réinstaller l'ancienne
+version :
+
+1. Sans terminal : dans **Écran de salle**, appuyer sur **Effacer** sous
+   chaque annonce, jusqu'à lire « Aucune annonce n'est affichée. ».
+2. En ligne de commande, pour la production puis, s'il y a lieu, la
+   formation :
+   ```bash
+   sudo -u pretjeux sqlite3 /var/lib/ludotex/pret-jeux.db "PRAGMA secure_delete=ON; DELETE FROM annonces_ecran;"
+   sudo -u pretjeux sqlite3 /var/lib/ludotex-formation/pret-jeux.db "PRAGMA secure_delete=ON; DELETE FROM annonces_ecran;"
+   ```
+   *À voir :* aucune sortie. Vérification :
+   ```bash
+   sudo -u pretjeux sqlite3 "file:/var/lib/ludotex/pret-jeux.db?mode=ro" "SELECT count(*) FROM annonces_ecran;"
+   ```
+   *À voir :* `0`.
+
+Les archives déjà écrites par la 1.32 ne contiennent aucune annonce : rien à
+y faire. Si le geste a été oublié et que la 1.31.x tourne déjà, il reste
+valable : la commande 2 vide la table, et les archives suivantes ne portent
+plus les textes (celles écrites entre-temps les portent, et vivent leur durée
+normale).
+
+---
+
 ## 1.28.0 — 2026-10-21
 
 ### Images de boîte copiées sur le serveur : rien à faire, deux vérifications — facultatif

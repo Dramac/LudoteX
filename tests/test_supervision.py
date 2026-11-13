@@ -361,7 +361,7 @@ def test_etat_supervision_rassemble_tout(bases):
     finally:
         conn.close()
     assert set(etat) == {
-        "bases", "disque", "sauvegarde", "jeton", "annonce", "journal", "version",
+        "bases", "disque", "sauvegarde", "jeton", "annonces", "journal", "version",
     }
     assert len(etat["bases"]) == 3
 

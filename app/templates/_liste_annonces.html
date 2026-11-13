@@ -1,0 +1,50 @@
+{# Fragment PARTAGÉ : la liste des annonces affichées en salle, chacune avec
+   son bouton « Effacer » (série annonce, lot 2). Incluse par admin_live.html
+   (le bureau) et live_annonce.html (les bénévoles) : un seul domicile pour la
+   carte d'une annonce, son nom accessible et le « Tour complet ».
+
+   Attend dans le contexte :
+   - `annonces` : `live.annonces_pour_liste`, la plus récente d'abord,
+     chacune `{id, texte, posee, fin}` (heures locales « HH:MM ») ;
+   - `action_effacer` : l'adresse du POST d'effacement de la page ;
+   - `tour_complet` : `live.duree_tour(nombre d'annonces)`.
+
+   Le texte s'affiche dans l'aperçu ambre de la salle (même rendu que
+   l'aperçu du bureau) ; l'heure et le bouton restent sur le fond blanc de la
+   carte, où la bordure du bouton secondaire est lisible.
+
+   Le bouton « Effacer » a un NOM ACCESSIBLE PROPRE à chaque annonce : texte
+   visible « Effacer », complété en texte masqué par le début de l'annonce et
+   son heure de pose (« Effacer l'annonce « Vestiaire fermé à 18 h », posée à
+   14:02 »). Le nom commence par ce qu'on voit, il ne le contredit pas. Le
+   texte, et pas seulement l'heure : à l'essai, trois annonces posées la même
+   minute portaient trois noms identiques. Il est déjà public ; tronqué à
+   40 caractères, il départage sans faire lire 200 caractères à chaque
+   bouton. Un tap, sans confirmation : le message qui suit nomme l'annonce
+   retirée. #}
+<h2 class="annonces-titre">Affichées en salle{% if annonces %} ({{ annonces | length }}){% endif %}</h2>
+{% if annonces %}
+  <ul class="liste-annonces">
+    {% for a in annonces %}
+      <li class="annonce-carte">
+        <div class="apercu-annonce-salle">
+          <span class="apercu-annonce-puce" aria-hidden="true">📣</span>
+          <span>{{ a.texte }}</span>
+        </div>
+        <div class="annonce-carte-pied">
+          <p class="annonce-carte-heures">Posée à {{ a.posee }}, affichée jusqu'à {{ a.fin }}</p>
+          <form method="post" action="{{ action_effacer }}">
+            <input type="hidden" name="annonce_id" value="{{ a.id }}">
+            <button type="submit" class="bouton bouton-secondaire bouton-effacer-annonce">Effacer<span class="sr-only"> l'annonce « {{ a.texte | truncate(40, true, '…', 0) }} », posée à {{ a.posee }}</span></button>
+          </form>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if annonces | length > 1 %}
+    <p class="stats-note">Tour complet de l'écran : {{ tour_complet }}. Les
+      annonces défilent l'une après l'autre dans le bandeau.</p>
+  {% endif %}
+{% else %}
+  <p class="annonce-benevole-fin">Aucune annonce n'est affichée.</p>
+{% endif %}

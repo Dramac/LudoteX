@@ -333,7 +333,9 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   `docs/conception-planning.md`.
 - **Écran de salle** — tableau de bord projeté (chiffres du prêt, derniers
   mouvements, tournois, programme), annonces limitées dans le temps — posées
-  par le bureau et, s'il l'a permis, par les bénévoles —, alerte « rapportez
+  par le bureau et, s'il l'a permis, par les bénévoles ; plusieurs à la fois,
+  elles défilent dans un même bandeau, et chacun peut effacer celles des
+  autres —, alerte « rapportez
   les exemplaires » avant chaque tournoi. Aucun numéro de pochette n'y
   apparaît. `docs/conception-alerte-tournoi.md`.
 - **Rangement** — où ranger chaque boîte, selon deux contextes
@@ -483,7 +485,7 @@ Par conception, le modèle de données du prêt **ne prévoit aucune donnée
 personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa
 pièce d'identité reste physiquement au comptoir et lui est rendue au retour du
 jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un
-appareil, annonce de l'écran de salle) pourraient recevoir un nom : ils portent
+appareil, annonces de l'écran de salle) pourraient recevoir un nom : ils portent
 une consigne, et leur liste, avec ce que chacun garde, vit dans
 `wiki/Rgpd.md`. Cette propriété doit être préservée dans les évolutions
 futures (§11) : **toute proposition qui ferait entrer une donnée personnelle

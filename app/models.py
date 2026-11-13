@@ -23,6 +23,7 @@ docs/conception-signalements.md) :
     parametres              réglages persistants (clé/valeur).
     appareils               registre des appareils ayant activé un accès en écriture.
     fiches_bgg              copie datée des fiches BoardGameGeek reliées aux titres.
+    annonces_ecran          annonces de l'écran de salle (texte libre, éphémère).
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -502,6 +503,31 @@ SCHEMA_INDEXES_UNIQUES = (
 # (titres, emplacements_rangement, categories_signalement, exemplaires) AVANT
 # celles qui les référencent (titres_categories a besoin de titres,
 # signalements des deux dernières), puis les index.
+# annonces_ecran — les annonces de l'écran de salle (/live), série annonce,
+# lot 2 : plusieurs à la fois, qui défilent dans la bande unique. Remplace les
+# deux clés `live_annonce` / `live_annonce_expire` de `parametres`, reprises
+# par `db._migrer_annonce_vers_table`.
+#
+# TEXTE LIBRE SERVI AU PUBLIC : une porte à donnée personnelle, refermée par
+# les règles de `services` (section « Annonce de l'écran de salle ») — durée
+# obligatoire, jamais au journal, effacée sous `secure_delete`, absente de
+# toute archive. Aucune colonne d'origine (bureau ou bénévole) : rien ne dit
+# QUI a posé l'annonce, le journal porte l'appareil.
+#
+# `AUTOINCREMENT` n'est PAS décoratif. Sans lui, SQLite réattribue le plus
+# grand identifiant supprimé : le bouton « Effacer » d'une page restée
+# ouverte, qui porte l'identifiant en champ caché, pourrait alors retirer une
+# AUTRE annonce posée entre-temps sous le même numéro. Avec lui, un numéro
+# n'est jamais réutilisé, et l'ordre des identifiants est l'ordre de pose.
+SCHEMA_ANNONCES_ECRAN = """
+CREATE TABLE IF NOT EXISTS annonces_ecran (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    texte      TEXT NOT NULL,   -- saisie libre, 200 caractères au plus (services.LONGUEUR_ANNONCE)
+    posee_le   TEXT NOT NULL,   -- UTC ISO, heure de pose
+    expire_le  TEXT NOT NULL    -- UTC ISO, échéance (12 h au plus après la pose)
+);
+"""
+
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
     SCHEMA_CATEGORIES_JEU,
@@ -514,5 +540,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_PARAMETRES,
     SCHEMA_APPAREILS,
     SCHEMA_FICHES_BGG,
+    SCHEMA_ANNONCES_ECRAN,
     SCHEMA_INDEXES,
 )

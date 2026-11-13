@@ -1,15 +1,20 @@
 """
-Annonce de l'écran de salle posée par les BÉNÉVOLES — `/live/annonce`
-(série annonce, lot 1).
+Annonces de l'écran de salle posées par les BÉNÉVOLES — `/live/annonce`
+(série annonce, lots 1 et 2).
 
 Ce qui est propre à l'ouverture aux bénévoles :
 
 - l'accès : jeton exigé en propre (le garde du module `live` ne règle que la
-  visibilité), et l'interrupteur du bureau, FERMÉ par défaut ;
+  visibilité), et l'interrupteur du bureau, FERMÉ par défaut — pour ajouter
+  comme pour effacer ;
 - le lien « Annonce en salle » du menu bénévole, qui suit les deux règles ;
-- la dernière annonce posée l'emporte, d'où qu'elle vienne ;
+- les annonces s'AJOUTENT, d'où qu'elles viennent, et chacun peut effacer
+  celles des autres, une par une ;
 - la durée en boutons, bornée côté serveur quoi qu'on envoie ;
-- la redirection 303 qui ne porte jamais le texte ;
+- la redirection 303 qui ne porte jamais le texte, sauf deux rendus directs
+  (garde-fou atteint, saisie conservée ; retrait, annonce nommée) ;
+- la liste : la plus récente d'abord, un bouton « Effacer » au nom
+  accessible propre à chaque annonce ;
 - la consigne, un seul domicile pour les deux pages.
 
 Le journal sans le texte est verrouillé par tests/test_journal_interdits.py
@@ -24,8 +29,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from markupsafe import escape
 
 from app import services
+from app.routes import live
 
 JETON = "jeton-test-secret-32-caracteres"
 MOT_DE_PASSE = "secret-admin-123"
@@ -106,8 +113,17 @@ def _parametre(cle):
         conn.close()
 
 
+def _lignes():
+    conn = _conn()
+    try:
+        return [dict(l) for l in conn.execute(
+            "SELECT id, texte, expire_le FROM annonces_ecran ORDER BY id")]
+    finally:
+        conn.close()
+
+
 def _minutes_jusqua_echeance():
-    echeance = datetime.fromisoformat(_parametre(services.CLE_ANNONCE_EXPIRE))
+    echeance = datetime.fromisoformat(_lignes()[-1]["expire_le"])
     return round((echeance - datetime.now(timezone.utc)).total_seconds() / 60)
 
 
@@ -118,8 +134,22 @@ def _poser(client, texte, duree="30", **kwargs):
     return client.post("/live/annonce", data=donnees, **kwargs)
 
 
-def _annonce_en_salle(client):
-    return client.get("/live/data").json().get("annonce")
+def _effacer(client, identifiant, **kwargs):
+    return client.post("/live/annonce/effacer", data={"annonce_id": str(identifiant)},
+                       **kwargs)
+
+
+def _poser_au_bureau(admin, texte, duree="60"):
+    return admin.post("/admin/ecran-salle/annonce",
+                      data={"annonce": texte, "annonce_duree": duree})
+
+
+def _en_salle(client):
+    return [a["texte"] for a in client.get("/live/data").json().get("annonces", [])]
+
+
+def _id(texte):
+    return next(l["id"] for l in _lignes() if l["texte"] == texte)
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +163,7 @@ def test_sans_jeton_page_acces_reserve_et_rien_d_ecrit(visiteur):
     r = _poser(visiteur, "Tombola à 15 h")
     assert r.status_code == 403
     assert "Accès réservé aux bénévoles" in r.text
-    assert _parametre(services.CLE_ANNONCE) is None
+    assert _lignes() == []
 
 
 def test_module_live_sur_tous_n_ouvre_pas_la_page(visiteur):
@@ -176,13 +206,22 @@ def test_interrupteur_ferme_lien_absent_page_claire_post_sans_effet(benevole):
     r = _poser(benevole, "Tombola à 15 h", follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"] == "/live/annonce"
-    assert _parametre(services.CLE_ANNONCE) is None
-    assert _annonce_en_salle(benevole) is None
+    assert _lignes() == []
+    assert _en_salle(benevole) == []
+
+
+def test_interrupteur_ferme_effacer_refuse_aussi(admin, benevole):
+    """Arbitrage du lot 2 : même règle pour effacer que pour poser."""
+    _poser_au_bureau(admin, "Tombola à 15 h")
+    r = _effacer(benevole, _id("Tombola à 15 h"), follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/live/annonce"
+    assert _en_salle(admin) == ["Tombola à 15 h"]
 
 
 def test_interrupteur_ferme_rien_au_journal(benevole, _journal_isole):
     _poser(benevole, "Tombola à 15 h")
-    _poser(benevole, "")
+    _effacer(benevole, 1)
     texte = _journal_isole.read_text(encoding="utf-8") if _journal_isole.exists() else ""
     assert "annonce" not in texte
 
@@ -193,7 +232,7 @@ def test_interrupteur_ferme_admin_connecte_ne_pose_pas_non_plus(admin):
     assert "Le bureau n'a pas ouvert l'annonce aux bénévoles" in r.text
     assert 'href="/admin/ecran-salle"' in r.text
     _poser(admin, "Tombola à 15 h")
-    assert _parametre(services.CLE_ANNONCE) is None
+    assert _lignes() == []
     assert LIEN_MENU not in admin.get("/admin").text
 
 
@@ -202,9 +241,9 @@ def test_interrupteur_ouvert_lien_present_et_pose_effective(benevole):
     assert LIEN_MENU in benevole.get("/catalogue").text
     r = _poser(benevole, "Tombola à 15 h, stand accueil", "15")
     assert r.status_code == 200  # redirection suivie
-    assert _annonce_en_salle(benevole) == "Tombola à 15 h, stand accueil"
+    assert _en_salle(benevole) == ["Tombola à 15 h, stand accueil"]
     assert abs(_minutes_jusqua_echeance() - 15) <= 1
-    assert "Annonce enregistrée, affichée en salle jusqu&#39;à" in r.text
+    assert "Annonce ajoutée, affichée en salle jusqu&#39;à" in r.text
     assert "resultat-ok" in r.text
 
 
@@ -236,7 +275,7 @@ def test_module_live_desactive_lien_absent_route_refusee(benevole):
     assert "Module indisponible" in r.text
     r = _poser(benevole, "Tombola à 15 h")
     assert r.status_code == 404
-    assert _parametre(services.CLE_ANNONCE) is None
+    assert _lignes() == []
 
 
 # ---------------------------------------------------------------------------
@@ -271,59 +310,187 @@ def test_l_interrupteur_exige_le_mot_de_passe(benevole):
     assert _parametre(services.CLE_ANNONCE_BENEVOLES) is None
 
 
-def test_effacer_l_annonce_du_bureau_ne_ferme_pas_l_interrupteur(admin):
+def test_retirer_une_annonce_ne_ferme_pas_l_interrupteur(admin):
     _ouvrir()
-    admin.post("/admin/ecran-salle", data={"annonce": "Tombola", "annonce_duree": "30",
-                                           **PANNEAUX})
-    admin.post("/admin/ecran-salle", data={"annonce": "", "annonce_duree": "", **PANNEAUX})
+    _poser_au_bureau(admin, "Tombola")
+    admin.post("/admin/ecran-salle/annonce/effacer", data={"annonce_id": str(_id("Tombola"))})
     assert _parametre(services.CLE_ANNONCE_BENEVOLES) == "1"
 
 
-def test_fermer_l_interrupteur_ne_retire_pas_l_annonce_en_cours(admin, benevole):
+def test_fermer_l_interrupteur_ne_retire_aucune_annonce(admin, benevole):
     _ouvrir()
     _poser(benevole, "Tombola à 15 h")
+    _poser(benevole, "Vestiaire fermé à 18 h")
     r = admin.post("/admin/ecran-salle/benevoles", data={})
-    assert "reste en place" in r.text
-    assert _annonce_en_salle(admin) == "Tombola à 15 h"
-    # Le bénévole, lui, ne peut plus la toucher.
-    _poser(benevole, "")
-    assert _annonce_en_salle(admin) == "Tombola à 15 h"
+    assert "restent en place" in r.text
+    assert _en_salle(admin) == ["Tombola à 15 h", "Vestiaire fermé à 18 h"]
+    # Le bénévole, lui, ne peut plus y toucher.
+    _effacer(benevole, _id("Tombola à 15 h"))
+    assert _en_salle(admin) == ["Tombola à 15 h", "Vestiaire fermé à 18 h"]
+
+
+def test_la_note_de_l_interrupteur_dit_que_les_annonces_s_ajoutent(admin):
+    page = admin.get("/admin/ecran-salle").text
+    note = page[page.index('id="annonce-benevoles-note"'):]
+    note = " ".join(note[:note.index("</p>")].split())
+    assert "s&#39;ajoutent aux vôtres" in note or "s'ajoutent aux vôtres" in note
+    assert "effacer celles des autres" in note
+    assert "ne retire aucune annonce" in note
+    assert "remplace" not in note
 
 
 # ---------------------------------------------------------------------------
-# 4. La dernière l'emporte
+# 4. Les annonces s'ajoutent ; chacun efface celles des autres
 # ---------------------------------------------------------------------------
-def test_le_benevole_remplace_l_annonce_du_bureau(admin, benevole):
+def test_le_benevole_ajoute_a_l_annonce_du_bureau(admin, benevole):
     _ouvrir()
-    admin.post("/admin/ecran-salle", data={"annonce": "Tombola à 15 h",
-                                           "annonce_duree": "240", **PANNEAUX})
+    _poser_au_bureau(admin, "Tombola à 15 h", "240")
     page = benevole.get("/live/annonce").text
-    # L'annonce en cours est sous les yeux, et le bouton dit ce qu'il fait.
+    # Les annonces qui défilent sont sous les yeux, et le bouton dit ce
+    # qu'il fait.
     assert "Tombola à 15 h" in page
-    assert "En cours, affichée en salle jusqu&#39;à" in page \
-        or "En cours, affichée en salle jusqu'à" in page
-    assert "Remplacer l&#39;annonce" in page or "Remplacer l'annonce" in page
+    assert "Ajouter une annonce" in page
+    assert "Remplacer l" not in page and "Afficher en salle" not in page
     _poser(benevole, "Tournoi déplacé en salle B", "30")
-    assert _annonce_en_salle(benevole) == "Tournoi déplacé en salle B"
+    assert _en_salle(benevole) == ["Tombola à 15 h", "Tournoi déplacé en salle B"]
     assert abs(_minutes_jusqua_echeance() - 30) <= 1
 
 
-def test_le_bureau_remplace_l_annonce_du_benevole(admin, benevole):
+def test_le_benevole_efface_l_annonce_du_bureau(admin, benevole, _journal_isole):
+    _ouvrir()
+    _poser_au_bureau(admin, "Tombola à 15 h")
+    _poser(benevole, "Tournoi déplacé en salle B")
+    r = _effacer(benevole, _id("Tombola à 15 h"))
+    assert r.status_code == 200
+    assert "Annonce retirée de l&#39;écran : « Tombola à 15 h »." in r.text
+    assert _en_salle(benevole) == ["Tournoi déplacé en salle B"]
+    ligne = [json.loads(l) for l in _journal_isole.read_text(encoding="utf-8").splitlines()
+             if '"annonce_effacee"' in l][-1]
+    assert ligne["qui"] == "benevole" and ligne.get("appareil")
+    assert "objet" not in ligne and "detail" not in ligne
+
+
+def test_le_bureau_efface_l_annonce_du_benevole(admin, benevole):
     _ouvrir()
     _poser(benevole, "Tournoi déplacé en salle B", "15")
-    admin.post("/admin/ecran-salle", data={"annonce": "Tombola à 15 h",
-                                           "annonce_duree": "60", **PANNEAUX})
-    assert _annonce_en_salle(benevole) == "Tombola à 15 h"
-    page = admin.get("/admin/ecran-salle").text
-    assert "Tombola à 15 h" in page
+    r = admin.post("/admin/ecran-salle/annonce/effacer",
+                   data={"annonce_id": str(_id("Tournoi déplacé en salle B"))})
+    assert "Annonce retirée de l&#39;écran : « Tournoi déplacé en salle B »." in r.text
+    assert _en_salle(benevole) == []
+
+
+def test_effacer_deux_fois_message_neutre(admin, benevole, _journal_isole):
+    """
+    Un onglet du bureau a effacé l'annonce ; le téléphone, resté sur sa liste,
+    la retire à son tour (ou recharge la page après un retrait : le
+    navigateur renvoie le même formulaire).
+    """
+    _ouvrir()
+    _poser(benevole, "Tombola à 15 h")
+    identifiant = _id("Tombola à 15 h")
+    admin.post("/admin/ecran-salle/annonce/effacer", data={"annonce_id": str(identifiant)})
+    avant = _journal_isole.read_text(encoding="utf-8")
+    r = _effacer(benevole, identifiant)
+    assert r.status_code == 200
+    assert str(escape(live.MESSAGE_PLUS_AFFICHEE)) in r.text
+    assert _journal_isole.read_text(encoding="utf-8") == avant
+
+
+@pytest.mark.parametrize("valeur", ["999", "abc", "", "1;DROP", "-3"])
+def test_identifiant_forge_jamais_d_erreur(benevole, valeur):
+    _ouvrir()
+    _poser(benevole, "Tombola à 15 h")
+    r = benevole.post("/live/annonce/effacer", data={"annonce_id": valeur})
+    assert r.status_code == 200
+    assert str(escape(live.MESSAGE_PLUS_AFFICHEE)) in r.text
+    assert _en_salle(benevole) == ["Tombola à 15 h"]
+
+
+def test_effacer_sans_jeton_refuse(visiteur):
+    _ouvrir()
+    conn = _conn()
+    try:
+        services.poser_annonce(conn, "Tombola à 15 h", 30)
+    finally:
+        conn.close()
+    r = _effacer(visiteur, _id("Tombola à 15 h"))
+    assert r.status_code == 403
+    assert len(_lignes()) == 1
+
+
+def test_l_adresse_d_effacement_en_get_ramene_a_la_page(benevole):
+    _ouvrir()
+    r = benevole.get("/live/annonce/effacer", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/live/annonce"
 
 
 def test_page_sans_annonce(benevole):
     _ouvrir()
     page = benevole.get("/live/annonce").text
     assert "Aucune annonce n&#39;est affichée" in page or "Aucune annonce n'est affichée" in page
-    assert "Afficher en salle" in page
-    assert "Effacer l&#39;annonce" not in page and "Effacer l'annonce" not in page
+    assert "Ajouter une annonce" in page
+    assert 'action="/live/annonce/effacer"' not in page
+    assert "Tour complet" not in page
+
+
+# ---------------------------------------------------------------------------
+# 4 bis. La liste : la plus récente d'abord, et l'ordre de la page
+# ---------------------------------------------------------------------------
+def test_liste_la_plus_recente_d_abord_avec_heures(benevole):
+    _ouvrir()
+    _poser(benevole, "Tombola à 15 h", "15")
+    _poser(benevole, "Vestiaire fermé à 18 h", "60")
+    page = benevole.get("/live/annonce").text
+    assert page.index("Vestiaire fermé à 18 h") < page.index("Tombola à 15 h")
+    assert page.count("Posée à ") == 2
+    assert page.count(", affichée jusqu&#39;à ") + page.count(", affichée jusqu'à ") == 2
+    assert f"Tour complet de l'écran : {live.duree_tour(2)}." in page
+
+
+def test_formulaire_avant_la_liste(benevole):
+    """Le geste principal en haut : son bouton reste visible sans défiler."""
+    _ouvrir()
+    _poser(benevole, "Tombola à 15 h")
+    page = benevole.get("/live/annonce").text
+    assert page.index("Ajouter une annonce</button>") < page.index("Affichées en salle")
+    assert page.index("Affichées en salle") < page.index("Tombola à 15 h")
+
+
+def test_chaque_bouton_effacer_a_un_nom_accessible_distinct(benevole):
+    """
+    Plusieurs boutons « Effacer » identiques ne se distinguent pas au lecteur
+    d'écran. L'heure seule ne suffit pas (mesuré à l'essai : trois annonces
+    posées la même minute) : le nom porte le début du texte, déjà public.
+    """
+    import re
+
+    _ouvrir()
+    _poser(benevole, "Tombola à 15 h")
+    _poser(benevole, "Vestiaire fermé à 18 h")
+    _poser(benevole, "x" * 120)
+    page = benevole.get("/live/annonce").text
+    boutons = re.findall(r'<button type="submit" class="bouton bouton-secondaire '
+                         r'bouton-effacer-annonce">(.*?)</button>', page, re.S)
+    assert len(boutons) == 3
+    noms = [re.sub(r"<[^>]+>", "", b) for b in boutons]
+    assert len(set(noms)) == 3
+    for b in boutons:
+        # Texte visible « Effacer », complété en texte masqué ; pas
+        # d'aria-label qui contredirait le texte visible.
+        assert b.startswith('Effacer<span class="sr-only"> l\'annonce « ')
+        assert "aria-label" not in b
+    assert any("Vestiaire fermé à 18 h », posée à " in n for n in noms)
+    # Tronqué à 40 caractères : jamais 200 caractères lus à chaque bouton.
+    assert any("x" * 39 + "… »" in n for n in noms)
+
+
+def test_cible_tactile_du_bouton_effacer():
+    css = (Path(__file__).resolve().parent.parent / "app" / "static" / "css"
+           / "style.css").read_text(encoding="utf-8")
+    regle = css[css.index(".bouton.bouton-effacer-annonce {"):]
+    regle = regle[:regle.index("}")]
+    assert "min-width: 44px;" in regle and "min-height: 44px;" in regle
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +508,7 @@ def test_duree_forgee_bornee_jamais_refusee(benevole, saisie, attendue):
     r = _poser(benevole, "Tombola à 15 h", saisie, follow_redirects=False)
     assert r.status_code == 303
     assert "corrigee=1" in r.headers["location"]
-    assert _annonce_en_salle(benevole) == "Tombola à 15 h"
+    assert _en_salle(benevole) == ["Tombola à 15 h"]
     assert abs(_minutes_jusqua_echeance() - attendue) <= 1
     page = benevole.get(r.headers["location"]).text
     assert "resultat-attention" in page
@@ -382,36 +549,44 @@ def test_texte_borne_comme_au_bureau(benevole):
     page = benevole.get("/live/annonce").text
     assert f'maxlength="{services.LONGUEUR_ANNONCE}"' in page
     _poser(benevole, "x" * (services.LONGUEUR_ANNONCE + 50))
-    assert len(_annonce_en_salle(benevole)) == services.LONGUEUR_ANNONCE
+    assert len(_en_salle(benevole)[0]) == services.LONGUEUR_ANNONCE
 
 
 # ---------------------------------------------------------------------------
-# 6. Effacer : saisie vide, journal seulement si une annonce était affichée
+# 6. Texte vide : sans effet ; garde-fou : la saisie n'est pas perdue
 # ---------------------------------------------------------------------------
-def test_texte_vide_efface_et_journalise_seulement_si_affichee(benevole, _journal_isole):
+def test_texte_vide_sans_effet_ni_journal(benevole, _journal_isole):
     _ouvrir()
-
-    def _effacees():
-        if not _journal_isole.exists():
-            return []
-        return [json.loads(l) for l in _journal_isole.read_text(encoding="utf-8").splitlines()
-                if '"annonce_effacee"' in l]
-
-    # Rien d'affiché : effacer ne laisse aucune ligne fictive.
-    r = _poser(benevole, "", "")
-    assert "Annonce effacée." in r.text
-    assert _effacees() == []
-
     _poser(benevole, "Tombola à 15 h")
-    page = benevole.get("/live/annonce").text
-    assert "Effacer l&#39;annonce" in page or "Effacer l'annonce" in page
-    _poser(benevole, "   ", "")
-    assert _annonce_en_salle(benevole) is None
-    assert _parametre(services.CLE_ANNONCE) is None
-    assert _parametre(services.CLE_ANNONCE_EXPIRE) is None
-    lignes = _effacees()
-    assert len(lignes) == 1
-    assert lignes[0]["qui"] == "benevole" and lignes[0].get("appareil")
+    r = _poser(benevole, "   ", "", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/live/annonce?ok=vide"
+    page = benevole.get(r.headers["location"]).text
+    assert str(escape(live.MESSAGE_TEXTE_VIDE)) in page
+    assert _en_salle(benevole) == ["Tombola à 15 h"]
+    assert "annonce_effacee" not in _journal_isole.read_text(encoding="utf-8")
+
+
+def test_plafond_atteint_page_rendue_saisie_et_duree_conservees(benevole, _journal_isole):
+    _ouvrir()
+    conn = _conn()
+    try:
+        for i in range(services.ANNONCES_MAX_ACTIVES):
+            services.poser_annonce(conn, f"Annonce numéro {i}", 30)
+    finally:
+        conn.close()
+    avant = _journal_isole.read_text(encoding="utf-8") if _journal_isole.exists() else ""
+    r = _poser(benevole, "Tournoi déplacé en salle B", "60", follow_redirects=False)
+    # Pas de redirection : l'adresse ne pourrait pas porter la saisie.
+    assert r.status_code == 200
+    assert str(escape(live.MESSAGE_PLAFOND)) in r.text
+    assert ">Tournoi déplacé en salle B</textarea>" in r.text
+    coche = r.text[r.text.index('name="annonce_duree" value="60"'):][:60]
+    assert "checked" in coche.split(">")[0]
+    assert r.text.count("checked") == 1
+    assert len(_lignes()) == services.ANNONCES_MAX_ACTIVES
+    apres = _journal_isole.read_text(encoding="utf-8") if _journal_isole.exists() else ""
+    assert apres == avant
 
 
 def test_journal_de_la_pose_benevole(benevole, _journal_isole):
@@ -441,7 +616,7 @@ def test_redirection_303_sans_le_texte(benevole):
         assert fragment not in location
     r = _poser(benevole, "", "", follow_redirects=False)
     assert r.status_code == 303
-    assert r.headers["location"] == "/live/annonce?ok=effacee"
+    assert r.headers["location"] == "/live/annonce?ok=vide"
 
 
 @pytest.mark.parametrize("adresse", [
@@ -454,7 +629,7 @@ def test_adresse_forgee_aucun_message_jamais_d_erreur(benevole, adresse):
     _ouvrir()
     r = benevole.get(adresse)
     assert r.status_code == 200
-    assert "Annonce enregistrée" not in r.text
+    assert "Annonce ajoutée" not in r.text
     assert "Appelez le bureau" not in r.text
 
 
@@ -486,6 +661,7 @@ def test_alerte_tournoi_signalee_avec_l_heure_de_reprise(benevole):
     page = benevole.get("/live/annonce").text
     assert "Une alerte de tournoi occupe le bandeau de la salle" in page
     assert f"jusqu&#39;à {reprise}" in page or f"jusqu'à {reprise}" in page
+    assert "les annonces s&#39;afficheront" in page or "les annonces s'afficheront" in page
 
 
 def test_alerte_muette_si_module_tournois_desactive(benevole):
@@ -519,8 +695,10 @@ def test_texte_de_la_consigne_a_un_seul_domicile():
 
 def test_accessibilite_de_la_page(benevole):
     _ouvrir()
-    page = benevole.get("/live/annonce?ok=effacee").text
+    _poser(benevole, "Tombola à 15 h")
+    page = _effacer(benevole, _id("Tombola à 15 h")).text
     assert page.count("<h1") == 1
+    assert page.count("<h2") == 1
     assert '<div role="status">' in page
     statut = page[page.index('<div role="status">'):]
-    assert "Annonce effacée." in statut[:400]
+    assert "Annonce retirée de l&#39;écran" in statut[:400]

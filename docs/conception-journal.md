@@ -72,7 +72,7 @@ savoir qu'elles ont eu lieu, ni quand, ni combien de fois.
 | Module activé / désactivé | `POST /admin/fonctionnalites` |
 | Contexte ou visibilité de rangement changés | `POST /admin/rangement/contexte`, `.../visibilite` |
 | Affectation d'emplacement en lot | `POST /admin/rangement/ranger/appliquer` |
-| Annonce de l'écran de salle posée (avec sa durée, **jamais son texte**) / effacée — par le bureau, ou par un bénévole (`qui=benevole`, appareil) | `POST /admin/ecran-salle`, `POST /live/annonce` |
+| Annonce de l'écran de salle ajoutée (avec sa durée, **jamais son texte**) / effacée (sans objet : ni le texte, ni l'identifiant) — par le bureau, ou par un bénévole (`qui=benevole`, appareil). Un effacement sans effet (annonce déjà retirée ou expirée) n'écrit rien | `POST /admin/ecran-salle/annonce`, `POST /admin/ecran-salle/annonce/effacer`, `POST /live/annonce`, `POST /live/annonce/effacer` |
 | Annonce de l'écran de salle ouverte / fermée aux bénévoles (au changement seulement) | `POST /admin/ecran-salle/benevoles` |
 | Date de l'événement changée | `POST /admin/evenement` |
 | Purge RGPD d'une édition du planning | `POST /planning/admin/{ev}/purger` |

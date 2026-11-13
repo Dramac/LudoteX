@@ -229,3 +229,28 @@ Section ajoutée après coup ; elle ne réécrit rien de ce qui précède.
    que la salle affiche à l'instant. Corriger cela suppose d'ouvrir la base
    des tournois depuis `app/supervision.py`, qui ne connaît aujourd'hui que
    celle du prêt. L'écran qui porte le réglage, lui, dit la vérité complète.
+
+## 11. Écart daté — plusieurs annonces en défilement (série annonce, lot 2, 2026-11-13)
+
+Section ajoutée après coup ; elle ne réécrit pas D8, qui **tient toujours**.
+
+- **D8 vise désormais un défilement, plus une annonce.** L'annonce unique
+  (`live_annonce` / `live_annonce_expire` dans `parametres`) est devenue une
+  table, `annonces_ecran`, et plusieurs annonces peuvent être actives : elles
+  défilent l'une après l'autre dans la **même** bande (`live.DUREE_DEFILEMENT_S`
+  chacune, repère « 2/4 »). L'alerte passe devant **tout le défilement** :
+  une seule bande visible, comme avant.
+- **Reprise.** Pendant l'alerte, le défilement est suspendu, pas remis à zéro
+  (`avancer()` dans `live.html`) : quand l'alerte s'efface, il reprend sur
+  l'annonce qui était à l'écran.
+- **§5, au pluriel.** La phrase de l'écran d'administration devient « L'alerte
+  de tournoi occupe le bandeau jusqu'à HH:MM : les N annonces reprendront
+  ensuite, toutes seules. Elles ne sont pas perdues. » (au singulier avec une
+  seule annonce). La page bénévole `/live/annonce` dit : « les annonces
+  s'afficheront ensuite, toutes seules ».
+- **D10 et l'annonce.** L'analogie de D10 (« champ vidé ⇒ plus rien sur
+  `/live` ») ne vaut plus pour les annonces : un texte vide n'efface plus
+  rien, chaque annonce a son bouton **Effacer**. D10 elle-même est inchangée
+  pour l'alerte.
+- `live.annonce_active()`, cité aux §2 et §6, n'existe plus : la lecture est
+  `services.lister_annonces_actives()` (via `live.annonces_affichees()`).

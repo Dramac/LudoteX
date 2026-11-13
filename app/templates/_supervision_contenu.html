@@ -1,6 +1,6 @@
 {#
   Fragment RÉUTILISABLE : contenu de la supervision légère (bases, disque,
-  sauvegarde, jeton, annonce, journal, version). Entrée : {{ etat }} (voir supervision.etat_supervision).
+  sauvegarde, jeton, annonces, journal, version). Entrée : {{ etat }} (voir supervision.etat_supervision).
   Utilisé par admin_supervision.html (page dédiée, sous h1) et admin_dashboard.html
   (colonne latérale grand écran, sous h2 "Supervision") — titres ici en h3 pour
   rester cohérent dans les deux contextes.
@@ -132,12 +132,23 @@
 <p class="stats-note">Pour le lien d'activation, le prolonger ou le réinitialiser,
    voir <a class="lien" href="/admin/jeton">Accès bénévole</a>.</p>
 
-{% if etat.annonce %}
+{# La LISTE, texte compris, et pas seulement le nombre : c'est le texte qui
+   fait réagir le bureau (un nom posé par mégarde, y compris par un
+   bénévole). La plus lointaine des échéances dit jusqu'à quand l'écran
+   portera encore une annonce si personne n'y touche. #}
+{% if etat.annonces %}
+{% set nb_annonces = etat.annonces | length %}
 <h3>Écran de salle</h3>
-<p class="resultat resultat-attention">
-  Annonce affichée en salle : « {{ etat.annonce }} ».
-</p>
-<p class="stats-note">Pour la modifier ou l'effacer,
+<div class="resultat resultat-attention annonces-supervision">
+  <p>{% if nb_annonces == 1 %}Annonce affichée en salle jusqu'à
+    {{ etat.annonces[0].expire_le | heure_local }} :{% else %}{{ nb_annonces }}
+    annonces affichées en salle, la dernière jusqu'à
+    {{ etat.annonces | map(attribute='expire_le') | max | heure_local }} :{% endif %}</p>
+  <ul class="liste-annonces-supervision">
+    {% for a in etat.annonces %}<li>« {{ a.texte }} »</li>{% endfor %}
+  </ul>
+</div>
+<p class="stats-note">Pour en effacer une,
    voir <a class="lien" href="/admin/ecran-salle">Écran de salle</a>.</p>
 {% endif %}
 

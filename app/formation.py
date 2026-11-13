@@ -441,12 +441,18 @@ def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dic
     services.ecrire_parametre(
         conn, "evenement_date", datetime.now(FUSEAU_LOCAL).date().isoformat()
     )
-    # L'annonce de l'écran de salle, elle, est effacée : la réinitialisation
-    # est la « clôture » du site de formation, et une annonce tapée en mise en
-    # situation y restait en ligne indéfiniment (constat RGPD-01). Seules ses
-    # deux clés partent — le reste de `parametres` (mot de passe admin,
-    # identité, jeton) est conservé.
-    services.effacer_annonce(conn)
+    # Les annonces de l'écran de salle, elles, sont effacées : la
+    # réinitialisation est la « clôture » du site de formation, et une annonce
+    # tapée en mise en situation y restait en ligne indéfiniment (constat
+    # RGPD-01). Toute la table `annonces_ecran` part ; `parametres` (mot de
+    # passe admin, identité, jeton) est conservée.
+    #
+    # Ici et non dans `_vider_base_pret` : celle-ci vide le catalogue et les
+    # prêts sans `secure_delete`, alors qu'effacer un texte libre se prouve
+    # sur les octets — la règle a un seul domicile,
+    # `services.effacer_toutes_les_annonces`, le même que la clôture. La
+    # table n'a aucune clé étrangère : l'ordre des suppressions n'y joue pas.
+    services.effacer_toutes_les_annonces(conn)
 
     return {
         "jeux": len(ids_exemplaires),

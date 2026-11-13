@@ -246,7 +246,9 @@ def scenario(client, bases, _journal_isole):
     # --- Bénévole : l'annonce de l'écran de salle (série annonce) ----------
     # Le même texte, posé puis effacé par la page bénévole, interrupteur du
     # bureau ouvert : la porte s'élargit, le journal doit rester muet sur le
-    # texte. Durée en minutes d'un bouton de la page (15).
+    # texte. Durée en minutes d'un bouton de la page (15). L'effacement passe
+    # par le bouton de l'annonce (série annonce, lot 2) : son message NOMME
+    # l'annonce, le journal jamais.
     conn = db.get_connection()
     try:
         services.ecrire_annonce_benevoles(conn, True)
@@ -254,8 +256,7 @@ def scenario(client, bases, _journal_isole):
         conn.close()
     client.post("/live/annonce", data={"annonce": TEXTE_ANNONCE, "annonce_duree": "15"},
                 follow_redirects=False)
-    client.post("/live/annonce", data={"annonce": "", "annonce_duree": ""},
-                follow_redirects=False)
+    client.post("/live/annonce/effacer", data={"annonce_id": _id_annonce(db)})
 
     # --- Administration : connexion, puis restauration de sauvegarde -------
     client.post("/admin/login", data={"mot_de_passe": MOT_DE_PASSE})
@@ -264,12 +265,10 @@ def scenario(client, bases, _journal_isole):
     client.post(f"/admin/signalements/{id_signalement}/traiter")
     # Annonce de l'écran de salle : posée PUIS effacée — les deux lignes
     # portaient autrefois le texte entier (RGPD-01).
-    panneaux = {"panneau_chiffres": "1", "panneau_tournois": "1",
-                "panneau_programme": "1", "panneau_mouvements": "1"}
-    client.post("/admin/ecran-salle",
-                data={"annonce": TEXTE_ANNONCE, "annonce_duree": "20", **panneaux})
-    client.post("/admin/ecran-salle",
-                data={"annonce": "", "annonce_duree": "", **panneaux})
+    client.post("/admin/ecran-salle/annonce",
+                data={"annonce": TEXTE_ANNONCE, "annonce_duree": "20"})
+    client.post("/admin/ecran-salle/annonce/effacer",
+                data={"annonce_id": _id_annonce(db)})
     client.post(f"/planning/admin/{ev}/purger")
 
     from app import sauvegarde
@@ -283,6 +282,16 @@ def scenario(client, bases, _journal_isole):
     texte = (_journal_isole.read_text(encoding="utf-8")
              if _journal_isole.exists() else "")
     return texte, secrets
+
+
+def _id_annonce(db):
+    """Identifiant de la dernière annonce posée (le champ caché du bouton)."""
+    conn = db.get_connection()
+    try:
+        (identifiant,) = conn.execute("SELECT MAX(id) FROM annonces_ecran").fetchone()
+    finally:
+        conn.close()
+    return str(identifiant)
 
 
 def _lignes(texte):
@@ -437,13 +446,32 @@ def test_l_annonce_des_benevoles_dit_l_appareil_jamais_le_texte(scenario):
     assert all("detail" not in l for l in lignes)
 
 
+# Ce qui écrit ou efface une annonce, au sens du contrôle statique ci-dessous :
+# les services de la table `annonces_ecran`, les deux domiciles de la route
+# `live` qui journalisent, et tout nom qui désigne la table ou les clés de
+# l'annonce d'avant la 1.32. Une route qui APPELLE `enregistrer_annonce` ou
+# `retirer_annonce` est donc vue dès qu'elle journalise elle-même — la lacune
+# relevée au lot annonce-1 (la route bénévole échappait au contrôle).
+ECRITURES_ANNONCE = {
+    "poser_annonce", "effacer_annonce", "effacer_toutes_les_annonces",
+    "purger_annonces_expirees", "enregistrer_annonce", "retirer_annonce",
+    "CLES_ANNONCE_HISTORIQUES",
+}
+# Les SEULS noms qu'une ligne de journal peut citer dans ces fonctions : la
+# durée retenue. Une liste d'autorisation, et non une recherche du mot
+# « annonce » dans les noms : `objet=texte` ou `objet=retiree["texte"]`
+# passaient sous le contrôle d'avant.
+NOMS_JOURNALISABLES = {"duree_min"}
+
+
 def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
     """
     GARDE-FOU DE CLASSE, pour les routes à venir : le scénario ci-dessus ne
-    connaît que la route d'aujourd'hui. Toute fonction de `app/` qui ÉCRIT
-    l'annonce (`poser_annonce`, `effacer_annonce`, ou une clé `CLE_ANNONCE`)
-    ne doit passer au journal — ni en `objet`, ni en `ref`, ni en `detail` —
-    aucune expression qui mentionne une variable d'annonce.
+    connaît que les routes d'aujourd'hui. Toute fonction de `app/` qui ÉCRIT
+    ou EFFACE une annonce (`ECRITURES_ANNONCE`, ou la table `annonces_ecran`
+    nommée dans une requête) ET journalise ne doit passer au journal — ni en
+    `objet`, ni en `ref`, ni en `detail` — aucune expression qui cite un
+    autre nom que la durée (`NOMS_JOURNALISABLES`).
 
     Lecture statique (AST) plutôt qu'appel : elle attrape aussi une branche
     que personne n'aurait pensé à exercer.
@@ -452,8 +480,7 @@ def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
     from pathlib import Path
 
     racine = Path(__file__).resolve().parent.parent / "app"
-    ecritures = {"poser_annonce", "effacer_annonce", "CLE_ANNONCE"}
-    fonctions_vues = []
+    fonctions_vues = set()
     for fichier in racine.rglob("*.py"):
         arbre = ast.parse(fichier.read_text(encoding="utf-8"))
         for fonction in ast.walk(arbre):
@@ -462,9 +489,11 @@ def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
             noms = {n.attr if isinstance(n, ast.Attribute) else n.id
                     for n in ast.walk(fonction)
                     if isinstance(n, (ast.Attribute, ast.Name))}
-            if not (noms & ecritures) or "journaliser" not in noms:
+            table = any(isinstance(n, ast.Constant) and isinstance(n.value, str)
+                        and "annonces_ecran" in n.value for n in ast.walk(fonction))
+            if not ((noms & ECRITURES_ANNONCE) or table) or "journaliser" not in noms:
                 continue
-            fonctions_vues.append(f"{fichier.name}:{fonction.name}")
+            fonctions_vues.add(f"{fichier.name}:{fonction.name}")
             for appel in ast.walk(fonction):
                 if not (isinstance(appel, ast.Call)
                         and getattr(appel.func, "attr", getattr(appel.func, "id", None))
@@ -474,16 +503,18 @@ def test_aucune_route_qui_ecrit_l_annonce_ne_journalise_son_texte():
                     if mot.arg not in ("objet", "ref", "detail"):
                         continue
                     suspects = [n.id for n in ast.walk(mot.value)
-                                if isinstance(n, ast.Name) and "annonce" in n.id.lower()]
+                                if isinstance(n, ast.Name)
+                                and n.id not in NOMS_JOURNALISABLES]
                     assert not suspects, (
                         f"{fichier.name}:{fonction.name} journalise {suspects} "
                         f"en `{mot.arg}` — le texte d'une annonce ne va jamais "
-                        f"au journal (RGPD-01)."
+                        f"au journal (RGPD-01), seule la durée y va."
                     )
-    # Non-vacuité : le domicile d'aujourd'hui doit être vu, sinon ce test ne
-    # garde plus rien. Depuis la série annonce, le bureau (/admin/ecran-salle)
-    # et les bénévoles (/live/annonce) passent tous deux par cette fonction.
-    assert "live.py:enregistrer_annonce" in fonctions_vues
+    # Non-vacuité : les domiciles d'aujourd'hui doivent être vus, sinon ce
+    # test ne garde plus rien. Le bureau (/admin/ecran-salle) et les bénévoles
+    # (/live/annonce) passent tous deux par ces deux fonctions, pour ajouter
+    # et pour retirer.
+    assert {"live.py:enregistrer_annonce", "live.py:retirer_annonce"} <= fonctions_vues
 
 
 def test_aucune_adresse_ip_ni_query_string_brute(scenario):

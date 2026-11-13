@@ -3051,24 +3051,6 @@ def evenement_enregistrer(
     )
 
 
-def _minutes_restantes(expire_iso: str | None) -> int | None:
-    """
-    Minutes restantes avant l'expiration d'une annonce (arrondi supérieur), ou
-    None si aucune expiration n'est réglée ou qu'elle est déjà dépassée. Sert
-    à préremplir le champ « durée » lors du réaffichage du formulaire, pour
-    qu'enregistrer sans y toucher reconduise approximativement la même
-    échéance.
-    """
-    if not expire_iso:
-        return None
-    try:
-        reste = datetime.fromisoformat(expire_iso) - datetime.now(timezone.utc)
-    except (TypeError, ValueError):
-        return None
-    minutes = -(-int(reste.total_seconds()) // 60)  # arrondi supérieur
-    return minutes if minutes > 0 else None
-
-
 def _reglages_alerte(conn) -> dict:
     """
     Les trois réglages de l'alerte tournoi tels qu'ils sont en base, avec les
@@ -3089,23 +3071,26 @@ def _reglages_alerte(conn) -> dict:
     }
 
 
-def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None = None):
+def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None = None,
+                      saisie_annonce: dict | None = None):
     """
-    Rendu commun de /admin/ecran-salle : la page a maintenant trois points
-    d'entrée (l'affichage, l'enregistrement de l'annonce et des panneaux,
-    celui de l'alerte tournoi) pour un seul écran. Patron de `_page_donnees`
-    et de `_rendre_dashboard`, qui ont réglé la même triplication.
+    Rendu commun de /admin/ecran-salle : la page a plusieurs points d'entrée
+    (l'affichage, l'ajout et le retrait d'une annonce, les panneaux, l'alerte
+    tournoi, l'interrupteur des bénévoles) pour un seul écran. Patron de
+    `_page_donnees` et de `_rendre_dashboard`.
 
     Tout est RELU en base après écriture : l'aperçu doit montrer ce qui est
     réellement projeté en salle, pas ce qu'on croit venir d'écrire.
 
-    `saisie_alerte` n'est renseigné que lorsqu'un enregistrement d'alerte a été
-    REFUSÉ : le formulaire réaffiche alors la saisie du bureau plutôt que la
-    valeur en base — sans quoi le texte à corriger serait perdu, ce qui est
-    exactement ce qu'un refus ne doit jamais faire.
+    `saisie_alerte` / `saisie_annonce` ne sont renseignés que lorsqu'un
+    enregistrement a été REFUSÉ (jeton d'alerte inconnu, garde-fou des
+    annonces atteint) : le formulaire réaffiche alors la saisie du bureau —
+    sans quoi le texte à corriger serait perdu, ce qui est exactement ce qu'un
+    refus ne doit jamais faire.
     """
     from app.routes.live import (
-        JETONS_ALERTE, MESSAGE_ALERTE_PROPOSE, annonce_active,
+        DUREE_DEFILEMENT_S, JETONS_ALERTE, MESSAGE_ALERTE_PROPOSE,
+        annonces_affichees, annonces_pour_liste, duree_tour,
         lire_alerte_detaillee, panneaux_actifs, reglages_panneaux, titre_ecran,
     )
 
@@ -3114,21 +3099,17 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
         # Le titre ne se règle plus ici (il vaut le nom de l'événement) : on ne
         # l'affiche qu'à titre indicatif, avec un lien pour aller le changer.
         titre = titre_ecran(conn)
-        # Le formulaire ne repropose QUE l'annonce encore affichée : une annonce
-        # expirée n'est plus « rappelable » (son texte est effacé, voir
-        # `services.purger_annonce_expiree`). Ce GET n'efface rien lui-même :
-        # il se contente de dire qu'elle a expiré, et à quelle heure.
-        texte_en_base = services.lire_parametre(conn, services.CLE_ANNONCE, None)
-        annonce_expire_iso = services.lire_parametre(
-            conn, services.CLE_ANNONCE_EXPIRE, None)
         # Réglages tels que saisis (le formulaire réaffiche le choix du
         # bureau), et panneaux réellement affichés (pour signaler qu'un module
         # désactivé prend le dessus).
         panneaux = reglages_panneaux(conn)
         panneaux_reels = panneaux_actifs(conn)
         # Aperçu (point C) : ce qui est RÉELLEMENT affiché en salle en ce
-        # moment, donc calculé avec la même fonction que /live.
-        annonce_affichee = annonce_active(conn)
+        # moment, donc calculé avec la même fonction que /live. Un texte
+        # expiré n'est plus « rappelable » : il n'apparaît pas, et il est
+        # effacé aux moments d'écriture de `services.purger_annonces_expirees`
+        # (ce GET n'efface rien lui-même).
+        annonces = annonces_affichees(conn)
         alerte = _reglages_alerte(conn)
         # Même chose pour l'alerte tournoi, précédence de module comprise : un
         # module tournois désactivé n'a plus de tournoi à annoncer, et /live se
@@ -3144,25 +3125,22 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
     return templates.TemplateResponse(
         request, "admin_live.html",
         {"titre": titre,
-         "annonce": annonce_affichee,
-         "annonce_duree": ((_minutes_restantes(annonce_expire_iso) if annonce_affichee
-                            else None) or services.DUREE_ANNONCE_DEFAUT_MIN),
+         "annonces": annonces_pour_liste(annonces),
+         "tour_complet": duree_tour(len(annonces)),
+         "duree_defilement_s": DUREE_DEFILEMENT_S,
+         "action_effacer": "/admin/ecran-salle/annonce/effacer",
+         "saisie_annonce": saisie_annonce or {},
+         "annonce_duree": ((saisie_annonce or {}).get("duree")
+                           or services.DUREE_ANNONCE_DEFAUT_MIN),
          "annonce_duree_max": services.DUREE_ANNONCE_MAX_MIN,
          "longueur_annonce": services.LONGUEUR_ANNONCE,
          "annonce_benevoles": benevoles,
-         "annonce_expire_iso": annonce_expire_iso if annonce_affichee else None,
-         "annonce_affichee": annonce_affichee,
-         # Un texte encore en base mais plus affiché : la page le dit, sans
-         # le montrer (il va être effacé).
-         "annonce_expiree": bool(texte_en_base) and not annonce_affichee,
-         "annonce_expiree_iso": (annonce_expire_iso
-                                 if texte_en_base and not annonce_affichee else None),
          "panneaux": panneaux, "panneaux_reels": panneaux_reels,
          "alerte": alerte,
          "alerte_affichee": detail_alerte[0] if detail_alerte else None,
-         # Heure à laquelle le bandeau se libère : l'annonce du bureau reprend
-         # alors d'elle-même. C'est la seule information qui empêche de croire
-         # qu'une annonce a été perdue (contrepartie de D8).
+         # Heure à laquelle le bandeau se libère : les annonces reprennent
+         # alors d'elles-mêmes. C'est la seule information qui empêche de
+         # croire qu'une annonce a été perdue (contrepartie de D8).
          "alerte_reprise": detail_alerte[1] if detail_alerte else None,
          "jetons_alerte": ["{" + jeton + "}" for jeton in JETONS_ALERTE],
          "message_propose": MESSAGE_ALERTE_PROPOSE,
@@ -3172,10 +3150,54 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
 
 @router.get("/ecran-salle")
 def ecran_salle_formulaire(request: Request):
-    """Réglages de l'écran de salle (/live) : annonce, panneaux, alerte tournoi."""
+    """Réglages de l'écran de salle (/live) : annonces, panneaux, alerte tournoi."""
     if (garde := _garde(request)):
         return garde
     return _page_ecran_salle(request)
+
+
+@router.post("/ecran-salle/annonce")
+def ecran_salle_annonce(request: Request, annonce: str = Form(""),
+                        annonce_duree: str = Form("")):
+    """
+    AJOUTE une annonce à l'écran de salle, par la même fonction que les
+    bénévoles (`live.enregistrer_annonce`) : normalisation, durée obligatoire
+    et bornée, garde-fou, journal sans le texte.
+
+    FORMULAIRE À PART des panneaux (arbitrage de la série annonce, lot 2) :
+    l'ancien formulaire unique enregistrait l'annonce ET les quatre cases, et
+    obligeait le bouton d'effacement à rejouer les cases en champs cachés pour
+    ne pas éteindre l'écran au passage. Séparés, aucun des deux ne peut plus
+    toucher à l'autre.
+
+    Garde-fou atteint : la page est rendue avec la saisie dans le champ.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.live import AJOUT_PLAFOND, enregistrer_annonce, message_annonce
+
+    resultat = enregistrer_annonce(request, annonce, annonce_duree)
+    saisie = ({"texte": annonce[:services.LONGUEUR_ANNONCE], "duree": annonce_duree}
+              if resultat.issue == AJOUT_PLAFOND else None)
+    return _page_ecran_salle(request, message=message_annonce(resultat),
+                             saisie_annonce=saisie)
+
+
+@router.post("/ecran-salle/annonce/effacer")
+def ecran_salle_annonce_effacer(request: Request, annonce_id: str = Form("")):
+    """
+    Retire UNE annonce de l'écran, n'importe laquelle — y compris une annonce
+    posée par un bénévole —, par la même fonction que les bénévoles
+    (`live.retirer_annonce`). Un tap, sans confirmation ; le message nomme
+    l'annonce retirée. Identifiant inconnu, forgé ou déjà effacé : message
+    neutre, rien d'écrit, jamais une erreur.
+    """
+    if (garde := _garde(request)):
+        return garde
+    from app.routes.live import message_retrait, retirer_annonce
+
+    return _page_ecran_salle(
+        request, message=message_retrait(retirer_annonce(request, annonce_id)))
 
 
 @router.post("/ecran-salle")
@@ -3189,43 +3211,35 @@ def ecran_salle_enregistrer(
     panneau_mouvements: str = Form(""),
 ):
     """
-    Enregistre l'annonce et les panneaux de l'écran de salle.
-    - Annonce vide (champ vidé, ou bouton « Effacer l'annonce ») => l'annonce
-      est EFFACÉE de la base, pas seulement masquée — y compris un texte
-      expiré qui y traînait encore.
-    - Durée OBLIGATOIRE, bornée (`services.duree_annonce`) : une saisie vide,
-      nulle, négative, illisible ou trop longue n'est jamais refusée (geste
-      d'urgence) mais corrigée, et le message le dit. Plus aucune annonce
-      n'est enregistrée sans échéance.
+    Enregistre les PANNEAUX de l'écran de salle. Les annonces ont leurs
+    propres formulaires (`ecran_salle_annonce`, `ecran_salle_annonce_effacer`).
+
+    COMPATIBILITÉ, le temps d'une version (1.32.x) : une page
+    d'administration chargée AVANT la mise à jour envoie encore ici l'annonce
+    avec les panneaux. Un texte non vide est alors AJOUTÉ (même fonction que
+    le formulaire d'ajout), pour ne pas perdre ce qui venait d'être tapé ;
+    un texte vide ne fait rien — il n'efface plus. À retirer à la version
+    suivante, avec les deux champs.
 
     Le TITRE ne se règle plus ici : il vaut le nom de l'événement (voir
-    `live.titre_ecran`). Cette page ne l'affiche qu'à titre indicatif.
-
-    L'ALERTE TOURNOI a son propre formulaire (voir `ecran_salle_alerte`) :
-    cette route n'y touche jamais.
+    `live.titre_ecran`). L'ALERTE TOURNOI a son propre formulaire (voir
+    `ecran_salle_alerte`) : cette route n'y touche jamais.
     """
     if (garde := _garde(request)):
         return garde
-    from app.routes.live import CLES_PANNEAUX, enregistrer_annonce, message_annonce
+    from app.routes.live import (
+        AJOUT_VIDE, CLES_PANNEAUX, enregistrer_annonce, message_annonce,
+    )
 
     # Cases à cocher : une case décochée n'est pas transmise par le navigateur,
-    # d'où la lecture par présence. Les deux formulaires qui atteignent CETTE
-    # route envoient TOUJOURS les quatre cases (le mini-formulaire « Effacer
-    # l'annonce » les rejoue en champs cachés) : effacer une annonce ne doit
-    # jamais éteindre silencieusement les panneaux.
+    # d'où la lecture par présence. Seul le formulaire des panneaux atteint
+    # désormais cette route : il envoie toujours les quatre cases.
     choix_panneaux = {
         "chiffres": bool(panneau_chiffres),
         "tournois": bool(panneau_tournois),
         "programme": bool(panneau_programme),
         "mouvements": bool(panneau_mouvements),
     }
-
-    # L'annonce elle-même (normalisation, bornes, journal sans le texte,
-    # heure de fin) a un seul domicile, partagé avec la page bénévole
-    # /live/annonce : `live.enregistrer_annonce`. Cette route ne garde en
-    # propre que les panneaux et l'avertissement « aucun panneau ».
-    resultat = enregistrer_annonce(request, annonce, annonce_duree)
-    niveau, partie_annonce = message_annonce(resultat)
     conn = get_connection()
     try:
         for nom, cle in CLES_PANNEAUX.items():
@@ -3233,17 +3247,20 @@ def ecran_salle_enregistrer(
     finally:
         conn.close()
 
+    niveau, texte = "succes", "Panneaux enregistrés."
+    resultat = enregistrer_annonce(request, annonce, annonce_duree)
+    if resultat.issue != AJOUT_VIDE:
+        niveau, partie_annonce = message_annonce(resultat)
+        texte = f"{texte} {partie_annonce}"
+
     # Tout éteindre est un choix légitime (écran d'annonces seules), donc on
     # avertit sans bloquer — comme partout dans le projet.
     if not any(choix_panneaux.values()):
-        message = ("attention",
-                   f"{partie_annonce} Attention : aucun panneau "
-                   "n'est affiché — l'écran de salle ne montrera plus que le "
-                   "titre, l'horloge et l'annonce.")
-    else:
-        message = (niveau, partie_annonce)
-
-    return _page_ecran_salle(request, message=message)
+        niveau = "attention"
+        texte = (f"{texte} Attention : aucun panneau n'est affiché — l'écran "
+                 "de salle ne montrera plus que le titre, l'horloge et les "
+                 "annonces.")
+    return _page_ecran_salle(request, message=(niveau, texte))
 
 
 @router.post("/ecran-salle/alerte")
@@ -3377,15 +3394,12 @@ def ecran_salle_benevoles(request: Request, annonce_benevoles: str = Form("")):
     Ouvre ou ferme aux bénévoles l'annonce de l'écran de salle (page
     /live/annonce et son lien dans le menu bénévole).
 
-    FORMULAIRE SÉPARÉ, comme l'alerte et pour la même raison : une case
-    décochée n'est pas transmise par le navigateur. Fondue dans le formulaire
-    de l'annonce, elle aurait dû être rejouée en champ caché par le
-    mini-formulaire « Effacer l'annonce » — sans quoi effacer l'annonce
-    aurait fermé l'accès des bénévoles sans le dire.
+    FORMULAIRE SÉPARÉ, comme l'alerte et les annonces, et pour la même
+    raison : une case décochée n'est pas transmise par le navigateur.
 
-    Fermer NE RETIRE PAS l'annonce en cours, même posée par un bénévole : le
-    bureau a le bouton d'effacement juste au-dessus, et un réglage d'accès qui
-    effacerait aussi l'écran ferait deux choses sous un seul geste.
+    Fermer NE RETIRE AUCUNE annonce, même posée par un bénévole : le bureau a
+    un bouton « Effacer » par annonce, et un réglage d'accès qui effacerait
+    aussi l'écran ferait deux choses sous un seul geste.
 
     Journal : contrairement aux panneaux (un réglage d'affichage, non
     journalisé), ce réglage dit QUI peut écrire un texte servi au public. Il
@@ -3408,9 +3422,9 @@ def ecran_salle_benevoles(request: Request, annonce_benevoles: str = Form("")):
         texte = ("Les bénévoles peuvent afficher une annonce : le lien "
                  "« Annonce en salle » apparaît dans leur menu.")
     else:
-        texte = ("Les bénévoles ne peuvent plus afficher d'annonce. Une annonce "
-                 "déjà affichée reste en place jusqu'à son heure de fin, ou "
-                 "jusqu'à ce que vous l'effaciez.")
+        texte = ("Les bénévoles ne peuvent plus afficher d'annonce. Les annonces "
+                 "déjà affichées restent en place jusqu'à leur heure de fin, ou "
+                 "jusqu'à ce que vous les effaciez.")
     return _page_ecran_salle(request, message=("succes", texte))
 
 
@@ -3438,7 +3452,7 @@ def cloturer_prets(request: Request):
     # pour les faire tourner d'elles-mêmes.
     journal.purger_rotations_anciennes()
     message = ("succes", f"{nb} prêt(s)/sortie(s) clôturé(s). Tout est de nouveau "
-                         "disponible, et l'annonce de l'écran de salle est effacée.")
+                         "disponible, et les annonces de l'écran de salle sont effacées.")
     return _rendre_dashboard(request, message)
 
 

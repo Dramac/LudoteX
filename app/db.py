@@ -493,29 +493,78 @@ def _seed_categories_signalement(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _purger_annonce_ecran_salle(conn: sqlite3.Connection) -> None:
+def _migrer_annonce_vers_table(conn: sqlite3.Connection) -> None:
     """
-    Efface l'annonce de l'écran de salle si elle n'est plus affichable :
-    expirée, ou enregistrée SANS ÉCHÉANCE avant que la durée devienne
-    obligatoire (constat RGPD-01).
+    Reprend l'annonce UNIQUE d'avant la 1.32 (deux clés de `parametres`) dans
+    la table `annonces_ecran`, puis supprime les deux clés. Idempotente : les
+    clés disparaissent dans la même transaction que la reprise, un second
+    passage ne trouve plus rien.
 
-    POURQUOI AU DÉMARRAGE. Une annonce « illimitée » posée avant la mise à jour
-    ne peut pas deviner son âge : elle peut dater de la veille comme d'un test
-    oublié il y a des semaines. Elle n'est plus affichée depuis cette version
-    (`services.annonce_affichable`), et elle est effacée ici, à la première
-    ouverture de la base par le nouveau code — le redémarrage qui suit
-    `update.sh`. La reconduire pour une durée par défaut la ferait revenir à
-    l'écran après la mise à jour, ce qui est l'inverse du but.
+    - Annonce encore AFFICHABLE (texte et échéance lisible non dépassée) :
+      une ligne, avec LA MÊME ÉCHÉANCE. Une base d'avant se comporte comme
+      avant : ce qui était à l'écran au moment de la mise à jour y reste
+      jusqu'à son heure de fin, et rien d'autre ne change.
+    - Annonce expirée, sans échéance ou à l'échéance illisible : NON reprise.
+      Elle n'était plus affichée ; la reprendre la ferait revenir à l'écran.
+    - Dans tous les cas, les deux clés sont supprimées sous `secure_delete` :
+      le texte ne reste ni en clair dans `parametres`, ni dans ses pages
+      libres.
 
-    Le texte n'est JAMAIS écrit dans les journaux du serveur, seulement le fait.
+    HEURE DE POSE : inconnue, les clés ne la portaient pas. On retient
+    l'instant de la migration, c'est-à-dire le redémarrage qui suit
+    `update.sh`. C'est la seule valeur VRAIE disponible (« affichée au plus
+    tard à cette heure-là ») ; une heure reconstituée (échéance moins une
+    durée par défaut) serait inventée, et pourrait même tomber AVANT une
+    annonce que l'on sait plus ancienne. Elle n'est lue qu'à l'affichage
+    (« Posée à HH:MM »), jamais dans une règle.
+
+    Repasse aussi après une RESTAURATION (`sauvegarde._migrer_bases_restaurees`
+    rejoue `init_db`) : une archive d'avant la 1.16.0 peut encore porter les
+    deux clés, sans échéance — elles sont alors supprimées sans reprise.
+
+    Le texte n'est JAMAIS écrit dans les journaux du serveur.
     """
     from app import services  # différé : les règles de l'annonce y vivent
 
+    cle_texte, cle_echeance = services.CLES_ANNONCE_HISTORIQUES
+    texte = services.lire_parametre(conn, cle_texte, None)
+    echeance = services.lire_parametre(conn, cle_echeance, None)
+    if texte is None and echeance is None:
+        return
+    reprise = bool(texte) and services.annonce_affichable(echeance)
+    conn.execute("PRAGMA secure_delete = ON")
+    with services.transaction(conn):
+        if reprise:
+            conn.execute(
+                "INSERT INTO annonces_ecran (texte, posee_le, expire_le) "
+                "VALUES (?, ?, ?)",
+                (texte[:services.LONGUEUR_ANNONCE], services.maintenant(), echeance),
+            )
+        conn.execute(
+            "DELETE FROM parametres WHERE cle IN (?, ?)",
+            services.CLES_ANNONCE_HISTORIQUES,
+        )
+    logging.getLogger("uvicorn.error").info(
+        "Annonce d'écran de salle d'avant la 1.32 : %s.",
+        "reprise dans la table des annonces" if reprise
+        else "expirée ou sans durée d'affichage, texte effacé")
 
-    if services.purger_annonce_expiree(conn):
+
+def _purger_annonce_ecran_salle(conn: sqlite3.Connection) -> None:
+    """
+    Efface les annonces de l'écran de salle qui ne sont plus affichables
+    (expirées, ou à l'échéance illisible) : le démarrage est l'un des moments
+    d'écriture de `services.purger_annonces_expirees`.
+
+    Le texte n'est JAMAIS écrit dans les journaux du serveur, seulement le
+    nombre.
+    """
+    from app import services  # différé : les règles de l'annonce y vivent
+
+    nb = services.purger_annonces_expirees(conn)
+    if nb:
         logging.getLogger("uvicorn.error").info(
-            "Annonce d'écran de salle expirée ou sans durée d'affichage : "
-            "texte effacé.")
+            "Annonces d'écran de salle expirées : %d texte(s) effacé(s).", nb)
 
 
 def init_db(conn: sqlite3.Connection | None = None) -> None:
@@ -553,6 +602,10 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
         # Après les migrations de colonnes (la liaison lit `titres`, qu'elles
         # mettent à niveau) ; n'écrit que les titres pas encore rattachés.
         _migrer_categories_jeu(conn)
+        # La reprise de l'annonce unique (clés de `parametres`) AVANT la
+        # purge : une annonce reprise est affichable par construction, la
+        # purge ne la touche pas ; une annonce expirée n'est pas reprise.
+        _migrer_annonce_vers_table(conn)
         _purger_annonce_ecran_salle(conn)
         _seed_emplacements_rangement(conn)
         _seed_categories_signalement(conn)

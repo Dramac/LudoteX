@@ -210,27 +210,37 @@ def _copie_a_chaud(source: Path, destination: Path) -> None:
 
 def _retirer_annonce(copie: Path) -> None:
     """
-    Retire de la COPIE de la base de prêt l'annonce de l'écran de salle.
+    Retire de la COPIE de la base de prêt TOUTES les annonces de l'écran de
+    salle : la table `annonces_ecran` entière, et les deux clés de
+    `parametres` qui portaient l'annonce unique jusqu'à la 1.31.x
+    (`services.CLES_ANNONCE_HISTORIQUES`) — une base restaurée depuis une
+    vieille archive peut encore les porter, tant que le démarrage ne les a pas
+    reprises.
 
-    POURQUOI. L'annonce est un texte libre servi au public, éphémère par
-    construction (voir `services`, « Annonce de l'écran de salle »). Une
+    POURQUOI. Une annonce est un texte libre servi au public, éphémère par
+    construction (voir `services`, « Annonces de l'écran de salle »). Une
     archive de routine, elle, est gardée un mois : une annonce copiée dedans y
     survivrait trente jours à son effacement. Elle n'a d'ailleurs aucune
     valeur à la restauration — une annonce d'il y a trois jours n'a rien à
     refaire à l'écran. Elle est donc absente de TOUTE archive : routine,
     filets et téléchargement manuel passent tous par ici. Le `VACUUM` qui suit
-    (`_compacter`) fait disparaître les octets de la ligne supprimée.
+    (`_compacter`) fait disparaître les octets des lignes supprimées.
+
+    Chaque table n'est visée que si elle existe : une copie d'une base
+    antérieure à l'une ou l'autre est archivée telle quelle.
     """
     conn = sqlite3.connect(copie)
     try:
-        if conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'parametres'"
-        ).fetchone():
+        tables = {nom for (nom,) in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "annonces_ecran" in tables:
+            conn.execute("DELETE FROM annonces_ecran")
+        if "parametres" in tables:
             conn.execute(
                 "DELETE FROM parametres WHERE cle IN (?, ?)",
-                (services.CLE_ANNONCE, services.CLE_ANNONCE_EXPIRE),
+                services.CLES_ANNONCE_HISTORIQUES,
             )
-            conn.commit()
+        conn.commit()
     finally:
         conn.close()
 
@@ -258,7 +268,7 @@ def creer_zip_sauvegarde() -> bytes:
     """
     Crée une sauvegarde complète des 3 bases (+ `INFO.txt`) et renvoie le
     contenu de l'archive zip (bytes), prêt à être servi en téléchargement ou
-    écrit sur disque. L'annonce de l'écran de salle n'y figure jamais (voir
+    écrit sur disque. Aucune annonce de l'écran de salle n'y figure (voir
     `_retirer_annonce`), ni rien de ce qui a été supprimé avant la copie (voir
     `_compacter`).
     """
@@ -464,26 +474,26 @@ def ecrire_archive(nature: str, dossier: Path, maintenant: datetime | None = Non
 
 def _purger_annonce_expiree() -> None:
     """
-    Efface de la base VIVANTE une annonce d'écran de salle expirée, à chaque
+    Efface de la base VIVANTE les annonces d'écran de salle expirées, à chaque
     passage de `deploy/sauvegarde.sh` (3 h et 15 h, et avant une mise à jour).
 
     C'est ce qui BORNE DANS LE TEMPS la survie d'un texte expiré : les autres
-    moments d'effacement (formulaire, clôture, redémarrage) dépendent d'un
+    moments d'effacement (pose, bouton, clôture, redémarrage) dépendent d'un
     geste humain, celui-ci non. Sur une instance sauvegardée par le minuteur
     (la production), un texte expiré ne reste donc jamais plus de douze
     heures en base. Une écriture dans une tâche planifiée, pas sur un
-    chemin de lecture : `annonce_active` et `/live/data` restent en lecture
-    seule.
+    chemin de lecture : `/live` et `/live/data` restent en lecture seule.
 
-    Ne fait JAMAIS échouer la sauvegarde : une base verrouillée ou absente
-    laisse le ménage au passage suivant — l'archive, elle, compte davantage.
+    Ne fait JAMAIS échouer la sauvegarde : une base verrouillée, absente ou
+    encore sans la table (base jamais ouverte par la 1.32) laisse le ménage
+    au passage suivant — l'archive, elle, compte davantage.
     """
     if not pret_db.get_database_path().exists():
         return
     try:
         conn = pret_db.get_connection()
         try:
-            services.purger_annonce_expiree(conn)
+            services.purger_annonces_expirees(conn)
         finally:
             conn.close()
     except sqlite3.Error:

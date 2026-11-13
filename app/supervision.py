@@ -298,18 +298,20 @@ def etat_sauvegarde(maintenant: datetime | None = None) -> dict:
     }
 
 
-def annonce_ecran_salle(conn: sqlite3.Connection) -> str | None:
+def annonces_ecran_salle(conn: sqlite3.Connection) -> list[dict]:
     """
-    Annonce actuellement affichée sur l'écran de salle (/live), ou None. Réutilise
-    `app.routes.live.annonce_active` (import différé, même motif que
-    `routes/admin.py`, pour éviter tout souci d'import circulaire) plutôt que
-    de dupliquer la lecture/logique d'expiration ici. Objectif (idée 5.2) :
-    qu'une annonce ne puisse pas rester affichée toute la journée sans que le
-    bureau ne la voie côté admin.
-    """
-    from app.routes.live import annonce_active
+    Les annonces actuellement affichées sur l'écran de salle (/live), dans
+    l'ordre de pose — liste vide s'il n'y en a pas. Même lecture que /live
+    (`services.lister_annonces_actives`), sans rien dupliquer de la logique
+    d'expiration.
 
-    return annonce_active(conn)
+    Objectif (idée 5.2) : qu'une annonce ne puisse pas rester affichée toute
+    la journée sans que le bureau la voie côté admin. Depuis qu'il y en a
+    plusieurs, et que les bénévoles peuvent en poser, la supervision montre
+    leur LISTE, texte compris, et pas seulement leur nombre : c'est le texte
+    qui fait réagir (un nom posé par mégarde), pas le chiffre.
+    """
+    return services.lister_annonces_actives(conn)
 
 
 # ===========================================================================
@@ -421,7 +423,7 @@ def etat_supervision(conn: sqlite3.Connection) -> dict:
     Rassemble toutes les informations affichées sur la page de supervision.
 
     Les quatre blocs contrôlés (bases, disque, sauvegarde, journal) passent par
-    `_sans_exception`. Le jeton et l'annonce restent appelés tels quels : un
+    `_sans_exception`. Le jeton et les annonces restent appelés tels quels : un
     repli `{"erreur": True}` ferait dire au bloc « Jeton » qu'aucun jeton n'est
     défini, ce qui serait un mensonge.
     """
@@ -434,7 +436,7 @@ def etat_supervision(conn: sqlite3.Connection) -> dict:
         "disque": _sans_exception("Espace disque", espace_disque),
         "sauvegarde": _sans_exception("Sauvegarde", etat_sauvegarde),
         "jeton": etat_jeton(conn),
-        "annonce": annonce_ecran_salle(conn),
+        "annonces": annonces_ecran_salle(conn),
         "journal": _sans_exception("Journal d'activité", etat_journal, derniere_operation),
         "version": version_deployee(),
     }

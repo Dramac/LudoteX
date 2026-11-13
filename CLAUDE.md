@@ -84,8 +84,8 @@ worker). Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
   champ de texte libre est une porte** : quelqu'un finira par y taper un nom.
   Portes ouvertes, chacune avec sa consigne sous le champ : détail d'un
   signalement (jamais public, jamais journalisé, jamais purgé), libellé
-  d'appareil (bureau), annonce de l'écran de salle (publique, 12 h au plus,
-  jamais journalisée ni archivée). Données personnelles assumées : le planning
+  d'appareil (bureau), annonces de l'écran de salle (publiques, 12 h au plus,
+  jamais journalisées ni archivées). Données personnelles assumées : le planning
   (base séparée, finalité unique, purge par le bureau) et le pseudo de
   tournoi. Les textes que le bureau publie (identité, programme, tournois)
   et les noms d'objets ne sont pas des portes. Liste complète, avec qui lit
@@ -100,7 +100,7 @@ avec son propre schéma, ses migrations et son initialisation :
 
 | Base | Schéma | Tables |
 | --- | --- | --- |
-| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg` |
+| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg`, `annonces_ecran` |
 | Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme`, `publics_programme`, `programme_publics`, `programme_jeux` |
 | Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
 
@@ -189,8 +189,10 @@ livré, par module :
   grille d'ajustement **sans JS**, export « mon planning » en `.ics`.
 - **Écran de salle** (`/live`) — tableau de bord temps réel pour projecteur,
   annonces libres du bureau — et des bénévoles, depuis `/live/annonce`, si le
-  bureau l'a permis (interrupteur fermé par défaut) —, **alerte automatique
-  « rapportez les exemplaires »** avant chaque tournoi.
+  bureau l'a permis (interrupteur fermé par défaut) —, plusieurs à la fois,
+  qui **défilent** dans un même bandeau, chacune avec sa durée et son bouton
+  d'effacement, **alerte automatique « rapportez les exemplaires »** avant
+  chaque tournoi, qui passe devant le défilement.
 - **Rangement** — emplacements, deux contextes interchangeables, affectation en
   lot, mode rangement visible sur toutes les pages.
 - **Carnet de maintenance** — signalements d'état des boîtes et catégories
