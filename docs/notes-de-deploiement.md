@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.33.0 — 2026-11-14
 
 ### Tombola : rien à faire à la mise à jour, ni en cas de retour arrière
 

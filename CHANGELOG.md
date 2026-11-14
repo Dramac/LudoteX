@@ -6,6 +6,15 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.33.0 — 2026-11-14
+
+- **Nouveau module Tombola**, désactivé au départ : les bénévoles saisissent les numéros gagnants tirés à la main (ou, en secours, tirés par l'application) et remettent les lots par le numéro présenté.
+- **Les numéros à retirer s'affichent sur l'écran de salle**, un tirage à la fois ; un nouveau tirage passe devant, marqué « Nouveau ».
+- **Une page de la tombola et un bloc sur l'accueil** montrent aux visiteurs les numéros en attente.
+- **Une remise faite par erreur s'annule dans la minute**, et un numéro mal tapé se remplace par le bon, dans le même tirage.
+- **La clôture de fin d'événement termine la tombola** : les numéros restants passent en « non réclamés ».
+- **Les statistiques ont une section Tombola** (délai médian de remise, par tirage, par mode), reprise dans les exports Excel et PDF.
+
 ## 1.32.0 — 2026-11-13
 
 - **L'écran de salle affiche plusieurs annonces à la fois** : elles défilent l'une après l'autre dans le bandeau, environ 8 secondes chacune, avec un repère « 2/4 ». Avec une seule annonce, rien ne change.
