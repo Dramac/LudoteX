@@ -515,6 +515,17 @@ SCHEMA_INDEXES_UNIQUES = (
         ON tombola_numeros (edition_id, numero)
      WHERE motif IS NULL OR motif <> 'erreur_saisie'
     """,
+    # Un numéro retiré pour erreur de saisie n'est REMPLACÉ qu'une fois
+    # (série tombola, lot 2, `tombola.remplacer_numero`). C'est la protection
+    # contre le double appui sur « Remplacer » — et contre deux bénévoles qui
+    # corrigent la même faute en même temps : le second envoi trouve la
+    # correction déjà faite. Une donnée, pas un jeton de formulaire : elle
+    # dit aussi, après coup, quel numéro a corrigé lequel.
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tombola_un_remplacement
+        ON tombola_numeros (remplace_id)
+     WHERE remplace_id IS NOT NULL
+    """,
     # Une seule édition OUVERTE à la fois. L'expression indexée vaut 1 pour
     # toute ligne sans `close_le` : deux éditions ouvertes la répéteraient.
     """
@@ -615,7 +626,11 @@ CREATE TABLE IF NOT EXISTS tombola_numeros (
     numero      INTEGER NOT NULL CHECK (numero BETWEEN 1 AND 9999),
     affiche_le  TEXT NOT NULL,   -- UTC ISO
     sorti_le    TEXT,            -- UTC ISO ; NULL tant que le numéro est affiché
-    motif       TEXT CHECK (motif IN ('remis', 'erreur_saisie', 'non_reclame'))
+    motif       TEXT CHECK (motif IN ('remis', 'erreur_saisie', 'non_reclame')),
+    -- Correction d'une faute de frappe (série tombola, lot 2) : la ligne
+    -- `erreur_saisie` que ce numéro REMPLACE dans le même tirage, sinon NULL.
+    -- Au plus un remplacement par ligne retirée (`idx_tombola_un_remplacement`).
+    remplace_id INTEGER REFERENCES tombola_numeros (id)
 );
 CREATE INDEX IF NOT EXISTS idx_tombola_numeros_affiches
     ON tombola_numeros (edition_id) WHERE motif IS NULL;

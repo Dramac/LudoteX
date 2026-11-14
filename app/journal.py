@@ -263,6 +263,13 @@ ACTIONS = {
     "tombola_lot_remis",
     "tombola_remise_annulee",
     "tombola_erreur_saisie",
+    # Faute de frappe corrigée dans le tirage d'origine (lot 2) : `objet` =
+    # « ancien → nouveau » (« 87 → 78 »), lisible d'un coup d'œil sur
+    # /admin/journal ; `ref` = le numéro affiché. Action PROPRE plutôt qu'un
+    # `tombola_tirage` de plus : ce n'est pas un tirage, et la compter comme
+    # tel fausserait toute lecture du journal par tirage. Un second envoi du
+    # même formulaire n'écrit rien.
+    "tombola_numero_remplace",
 }
 
 # Longueurs de troncature (§3.3) : assainissement obligatoire, pas défensif.

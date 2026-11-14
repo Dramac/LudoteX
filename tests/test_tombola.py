@@ -210,8 +210,12 @@ def test_desactive_par_defaut_sans_ligne_en_base(bases):
 
 
 def test_url_du_module_ne_mene_pas_a_une_page_introuvable(bases):
-    """Le champ `url` est un lien cliquable de /admin/fonctionnalites."""
-    assert MODULES["tombola"]["url"] == "/tombola/gestion"
+    """
+    Le champ `url` est un lien cliquable de /admin/fonctionnalites : depuis
+    le lot 2, la page publique (qui répond, voir test_tombola_affichage.py).
+    """
+    from app.routes.tombola import URL_PUBLIQUE
+    assert MODULES["tombola"]["url"] == URL_PUBLIQUE == "/tombola"
 
 
 def test_module_desactive_page_indisponible(benevole):
@@ -242,8 +246,10 @@ def test_gestion_refusee_sans_jeton_dans_chacun_des_quatre_etats(visiteur, etat)
     assert _tirages() == [] and _parametre(tombola.CLE_NUMERO_MAX) is None
 
 
-def test_tombola_reste_libre_pour_le_lot_2(benevole, actif):
-    assert benevole.get("/tombola").status_code == 404
+def test_tombola_est_la_page_publique_du_lot_2(benevole, actif):
+    # Lot 1 : `/tombola` restait libre. Lot 2 : c'est la page publique.
+    r = benevole.get("/tombola")
+    assert r.status_code == 200 and "<h1>Tombola</h1>" in r.text
 
 
 def test_page_de_gestion_ordre_et_titres(benevole, actif):
@@ -713,7 +719,8 @@ def test_erreur_de_saisie_dans_les_cinq_minutes(bases):
     assert g.issue == tombola.RETRAIT_FAIT and g.ecrit
     assert _numeros()[0]["motif"] == "erreur_saisie"
     assert tombola.message_retrait(g).texte == \
-        "Numéro 45 retiré : erreur de saisie. Il peut être saisi à nouveau."
+        ("Numéro 45 retiré : erreur de saisie. Tapez le numéro correct pour le "
+         "remplacer dans le même tirage.")
 
 
 def test_erreur_de_saisie_au_dela_refusee(bases):

@@ -25,6 +25,20 @@
   </nav>
 </section>
 
+{# Tombola (série tombola, lot 2) : entre la carte d'accueil et le programme.
+   TOUS les numéros en attente, groupés par tirage (arbitrage du lot, mesuré
+   à 375 × 667) : couper aux deux derniers tirages ferait croire à un
+   visiteur que son numéro n'a pas été tiré. Absent quand il n'y a rien. #}
+{% if tirages_tombola %}
+<section class="carte tombola-public">
+  <h2 class="dispo-titre">Tombola — numéros à retirer</h2>
+  {% set niveau_titre = 3 %}
+  {% set tirages = tirages_tombola %}
+  {% include "_tombola_tirages.html" %}
+  <p class="tombola-public-lien"><a class="lien" href="/tombola">Voir la page de la tombola</a></p>
+</section>
+{% endif %}
+
 {% if planning_non_vide %}
 <section class="carte">
   <h2 class="dispo-titre">Programme du week-end</h2>

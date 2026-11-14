@@ -3089,7 +3089,8 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
     refus ne doit jamais faire.
     """
     from app.routes.live import (
-        DUREE_DEFILEMENT_S, JETONS_ALERTE, MESSAGE_ALERTE_PROPOSE,
+        CHAMP_VERSION_PANNEAUX, DUREE_DEFILEMENT_S, JETONS_ALERTE,
+        MESSAGE_ALERTE_PROPOSE, VERSION_PANNEAUX,
         annonces_affichees, annonces_pour_liste, duree_tour,
         lire_alerte_detaillee, panneaux_actifs, reglages_panneaux, titre_ecran,
     )
@@ -3136,6 +3137,8 @@ def _page_ecran_salle(request: Request, message=None, saisie_alerte: dict | None
          "longueur_annonce": services.LONGUEUR_ANNONCE,
          "annonce_benevoles": benevoles,
          "panneaux": panneaux, "panneaux_reels": panneaux_reels,
+         "champ_version_panneaux": CHAMP_VERSION_PANNEAUX,
+         "version_panneaux": VERSION_PANNEAUX,
          "alerte": alerte,
          "alerte_affichee": detail_alerte[0] if detail_alerte else None,
          # Heure à laquelle le bandeau se libère : les annonces reprennent
@@ -3209,6 +3212,8 @@ def ecran_salle_enregistrer(
     panneau_tournois: str = Form(""),
     panneau_programme: str = Form(""),
     panneau_mouvements: str = Form(""),
+    panneau_tombola: str = Form(""),
+    panneaux_v: str = Form(""),
 ):
     """
     Enregistre les PANNEAUX de l'écran de salle. Les annonces ont leurs
@@ -3228,20 +3233,29 @@ def ecran_salle_enregistrer(
     if (garde := _garde(request)):
         return garde
     from app.routes.live import (
-        AJOUT_VIDE, CLES_PANNEAUX, enregistrer_annonce, message_annonce,
+        AJOUT_VIDE, CLES_PANNEAUX, PANNEAUX_DEPUIS_V2, VERSION_PANNEAUX,
+        enregistrer_annonce, message_annonce, reglages_panneaux,
     )
 
     # Cases à cocher : une case décochée n'est pas transmise par le navigateur,
     # d'où la lecture par présence. Seul le formulaire des panneaux atteint
-    # désormais cette route : il envoie toujours les quatre cases.
+    # désormais cette route : il envoie toujours ses cinq cases.
     choix_panneaux = {
         "chiffres": bool(panneau_chiffres),
         "tournois": bool(panneau_tournois),
         "programme": bool(panneau_programme),
         "mouvements": bool(panneau_mouvements),
+        "tombola": bool(panneau_tombola),
     }
     conn = get_connection()
     try:
+        # Page d'administration ouverte AVANT la mise à jour (pas de marqueur
+        # `panneaux_v`) : elle ne connaît pas les panneaux nés depuis, dont
+        # l'absence ne vaut donc PAS « décoché ». Ils gardent leur valeur.
+        if panneaux_v.strip() != VERSION_PANNEAUX:
+            actuels = reglages_panneaux(conn)
+            for nom in PANNEAUX_DEPUIS_V2:
+                choix_panneaux[nom] = actuels[nom]
         for nom, cle in CLES_PANNEAUX.items():
             services.ecrire_parametre(conn, cle, "1" if choix_panneaux[nom] else "0")
     finally:

@@ -1,0 +1,16 @@
+{#
+  Les tirages en attente, tels que les voit le PUBLIC (série tombola, lot 2) :
+  un seul domicile pour la page /tombola et le bloc de l'accueil. Reçoit
+  `tirages` (`tombola.numeros_affiches`, le plus récent d'abord) et
+  `niveau_titre` (2 sur /tombola, 3 sur l'accueil, sous le h2 du bloc) :
+  la hiérarchie des titres ne saute jamais de niveau.
+
+  Les numéros sont une LISTE (lue « liste, 5 éléments » par un lecteur
+  d'écran) en très grand. Aucun identifiant de ligne, aucun bouton.
+#}
+{% for t in tirages %}
+  <h{{ niveau_titre }} class="tombola-public-titre">Tirage de {{ t.heure }}</h{{ niveau_titre }}>
+  <ul class="tombola-public-numeros">
+    {% for n in t.numeros %}<li>{{ n }}</li>{% endfor %}
+  </ul>
+{% endfor %}

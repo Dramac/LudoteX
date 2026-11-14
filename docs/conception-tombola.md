@@ -1,8 +1,9 @@
 # Note de conception — Tombola
 
-**Statut :** décisions actées avec Simon avant tout développement. Le lot 1
-(données, saisie des tirages, remise des lots, page bénévole) est livré ; le
-lot 2 (affichage public et statistiques) s'appuie sur cette note.
+**Statut :** décisions actées avec Simon avant tout développement. Les deux
+lots de la série sont livrés : le lot 1 (données, saisie des tirages, remise
+des lots, page bénévole) et le lot 2 (écran de salle, page publique, accueil,
+correction d'une faute de frappe, statistiques et exports).
 
 À lire avec `docs/specification.md` §2 (« ne jamais bloquer ») et §9.1
 (aucune donnée personnelle), `docs/conception-journal.md` (vocabulaire fermé)
@@ -52,7 +53,7 @@ Les visiteurs viennent chercher leur lot au fil de la journée. Il faut :
 
 | Question | Arbitrage | Pourquoi |
 | --- | --- | --- |
-| Champ `url` du module | `/tombola/gestion` jusqu'au lot 2, puis `/tombola` | Le champ est un **lien cliquable** de `/admin/fonctionnalites` ; `/tombola` y mènerait à une page introuvable tant que la page publique n'existe pas. |
+| Champ `url` du module | `/tombola/gestion` au lot 1, `/tombola` depuis le lot 2 | Le champ est un **lien cliquable** de `/admin/fonctionnalites` ; `/tombola` y mènerait à une page introuvable tant que la page publique n'existe pas. |
 | Corriger un numéro mal tapé | Bouton **Erreur de saisie** sur chaque numéro, pendant **5 minutes** après le tirage (`tombola.DELAI_ERREUR_SAISIE_S`) | Une faute de frappe se voit à la relecture du tirage. Un bouton toujours présent deviendrait un moyen d'effacer un gagnant sans trace claire. Le retrait est journalisé. |
 | Après un envoi : redirection ou rendu direct | **Rendu direct** de la page | La saisie à corriger est réaffichée dans ses champs et le message nomme ce qui a été écarté, ce qu'une adresse ne porte pas. Le rechargement d'un envoi est inoffensif par construction (§5). |
 | Module désactivé à la clôture | La clôture **termine la tombola dans tous les cas** | Une édition restée ouverte se rouvrirait l'année suivante avec les numéros de l'an passé. Sans effet sur une base qui n'a jamais tiré. |
@@ -72,7 +73,8 @@ tombola_tirages   id, edition_id → editions, tire_le, mode (manuel | aleatoire
                   numero_max (aléatoire seulement), jeton_formulaire UNIQUE
 tombola_numeros   id, tirage_id → tirages, edition_id → editions (recopié),
                   numero (1 à 9999), affiche_le, sorti_le,
-                  motif (NULL | remis | erreur_saisie | non_reclame)
+                  motif (NULL | remis | erreur_saisie | non_reclame),
+                  remplace_id → tombola_numeros (lot 2, NULL sauf correction)
 ```
 
 **Le réglage** `tombola_numero_max` (table `parametres`) retient le plus
@@ -87,6 +89,7 @@ stateDiagram-v2
     Affiche --> Remis : Lot remis
     Remis --> Affiche : Annuler (moins d'une minute)
     Affiche --> ErreurSaisie : Erreur de saisie (moins de 5 minutes)
+    ErreurSaisie --> Affiche : Remplacer (le numéro correct, même tirage)
     Affiche --> NonReclame : clôture de fin d'événement
     Remis --> [*]
     ErreurSaisie --> [*]
@@ -102,11 +105,17 @@ avertit sans empêcher le démarrage) :
   être ressaisi correctement ;
 - `idx_tombola_une_edition_ouverte` : une seule édition sans `close_le`.
 
+Un troisième, au lot 2 : `idx_tombola_un_remplacement` (`remplace_id` unique
+quand il est renseigné) — une ligne retirée pour erreur de saisie n'est
+remplacée qu'une fois (§9).
+
 La vraie protection reste la transaction (§5) ; les index rendent visible un
 chemin d'écriture qui nous échapperait.
 
 **Migrations** : trois tables neuves, donc un simple `CREATE TABLE IF NOT
-EXISTS`. Une base d'avant ne reçoit que des tables vides ; la restauration
+EXISTS` ; la colonne `remplace_id` du lot 2 est aussi ajoutée par
+`db._MIGRATIONS_COLONNES`, pour les bases d'essai qui avaient déjà la table
+du lot 1. Une base d'avant ne reçoit que des tables vides ; la restauration
 d'une archive antérieure repasse par `init_db` (`sauvegarde`) et les crée.
 
 **Sauvegarde** : les tables partent dans les archives comme les prêts. Il n'y
@@ -167,26 +176,86 @@ Les phrases ont un seul domicile : les fonctions `message_*` de
 - **Réinitialisation du site de formation** : les trois tables (numéros,
   tirages, éditions) et le réglage du plus grand numéro sont vidés
   (`tombola.vider`).
-- **Journal** : module `tombola`, quatre actions (`tombola_tirage`,
-  `tombola_lot_remis`, `tombola_remise_annulee`, `tombola_erreur_saisie`).
+- **Journal** : module `tombola`, cinq actions (`tombola_tirage`,
+  `tombola_lot_remis`, `tombola_remise_annulee`, `tombola_erreur_saisie`,
+  et au lot 2 `tombola_numero_remplace`).
   Les numéros y figurent : ils ne désignent personne. Un geste sans effet
   (double remise, jeton rejoué, annulation tardive) n'écrit rien. Détail :
   `docs/conception-journal.md`.
 
-## 8. Réservé au lot 2
+## 8. Ce que voit le public (lot 2)
 
-- le **panneau défilant** de l'écran de salle (`/live`) ;
-- le **bloc de la page d'accueil** ;
-- la **page publique `/tombola`**, et le champ `url` du module qui pointera
-  vers elle ;
-- les **statistiques** et les **exports**.
+**Une seule lecture** : `tombola.numeros_affiches`, sœur publique de
+`numeros_en_attente`. Elle renvoie, pour l'édition ouverte, `{tirage_id,
+heure, numeros: [int], nouveau}` par tirage, le plus récent d'abord — **sans
+aucun identifiant de ligne ni drapeau de gestion**. Trois lecteurs : l'écran
+de salle, la page `/tombola`, l'accueil. Lecture seule, relue toutes les dix
+secondes par `/live/data`.
 
-Ce que ces écrans liront, sans migration supplémentaire :
+| Question | Arbitrage | Pourquoi |
+| --- | --- | --- |
+| Clé de défilement | `tirage_id` | Patron des annonces ; ce n'est pas une donnée sensible. |
+| Ordre | Récent d'abord sur l'accueil et `/tombola` ; **ancien d'abord** dans `/live/data` | Le défilement suit l'ordre des tirages, un nouveau tirage rejoint la fin du tour — et la page **saute dessus** dès qu'il apparaît. |
+| Emplacement sur `/live` | **Troisième bloc de la zone basse** (option a) | Mesuré : la zone basse (405 × 397 px à 1280 × 720) affiche cinq numéros à quatre chiffres en 59 px sans troncature ; la zone haute (un tiers de la hauteur) n'en aurait permis qu'une fraction. Contrepartie mesurée et corrigée : tournois et animations n'ont plus qu'un tiers de la largeur, la jauge passe alors sous le nom (classe `avec-tombola`, posée seulement quand le panneau est affiché). |
+| Durée d'une page | **12 s**, `live.DUREE_PAGE_TOMBOLA_S`, constante sœur | Une annonce se lit ; un tirage se **cherche** (on compare cinq numéros à son ticket). |
+| Marque « Nouveau » | **5 minutes**, `tombola.DUREE_NOUVEAU_TIRAGE_S`, calculée par le **serveur** | L'horloge du poste de projection n'entre pas en jeu. Un mot, pas une couleur seule. |
+| Taille des numéros | Très grands, puis **réduits par paliers en JS** si un tirage ne tient pas | Un numéro coupé est le défaut à éviter : un gagnant qui ne lit pas son numéro ne vient pas chercher son lot. |
+| Page admin restée ouverte avant la mise à jour | **Marqueur caché** `panneaux_v=2` (option a) | Les cases se lisent par présence : sans marqueur, une case `tombola` absente garde sa valeur au lieu d'être décochée. |
+| Rafraîchir `/tombola` | Un lien **Actualiser** et l'heure de mise à jour, **pas** de `meta refresh` | WCAG 2.2.1 : un rechargement automatique fait perdre sa position à un lecteur d'écran. |
+| Accueil : combien de numéros | **Tous** | Mesuré à 375 × 667 : 30 numéros en 7 tirages font un bloc de 849 px. Couper aux deux derniers tirages ferait croire à un visiteur que son numéro n'est pas sorti. |
+| Accueil : pour qui | `module_visible` (fiche A3) | Pour un visiteur, le bloc n'apparaît qu'en état « tous ». En « discret », `/tombola` répond mais l'accueil ne la montre pas. |
 
-- **numéros affichés** : `motif IS NULL` dans l'édition ouverte
-  (`tombola.numeros_en_attente`, ou une lecture sœur sans les drapeaux de la
-  page bénévole) ; index partiel `idx_tombola_numeros_affiches` ;
-- **délai de remise** : `sorti_le − affiche_le`, pour les seuls `remis` ;
-- **statistiques** par tirage (`tirage_id`), par mode (`tombola_tirages.mode`,
-  `numero_max`) et par édition (`edition_id`) ; les `erreur_saisie` sont hors
-  statistiques, les `non_reclame` se comptent à part.
+**Panneau de l'écran de salle** : cinquième entrée de
+`live.CLES_PANNEAUX`, cochée par défaut, éteinte seulement par l'état
+« désactivé » du module (règle de projection : les états « bénévoles » et
+« discret » le laissent allumé). Il n'apparaît **que** s'il reste des numéros
+à retirer : sans tombola, l'écran est identique au pixel près (mesuré). Il ne
+touche jamais le bandeau des annonces ni l'alerte tournoi (D8).
+
+## 9. Corriger une faute de frappe dans le tirage d'origine (lot 2)
+
+Au lot 1, « 87 » retiré pour erreur de saisie puis « 78 » ressaisi devenait un
+**nouveau tirage** d'un numéro, à une autre heure : deux pages sur l'écran,
+deux lignes dans les statistiques. Arbitrage (a) : **remplacer dans le tirage
+d'origine**.
+
+- Le message du bouton **Erreur de saisie** porte un champ **Numéro correct**
+  et un bouton **Remplacer**. Le numéro correct entre **dans le même tirage**,
+  avec `affiche_le` = maintenant — l'instant où le gagnant peut le lire, qui
+  compte pour le délai de remise.
+- **Fenêtre** : `DELAI_ERREUR_SAISIE_S` **après le retrait** (écart au
+  prompt, qui disait « pendant la fenêtre de l'erreur de saisie ») : comptée
+  depuis l'affichage d'origine, un retrait fait à 4 min 50 ne laisserait que
+  dix secondes pour taper le bon numéro.
+- **Double appui** : **au plus un remplacement par ligne retirée**
+  (`remplace_id`, index unique partiel), plutôt qu'un jeton de formulaire.
+  Un jeton aurait demandé une colonne lui aussi ; la donnée protège en plus
+  contre deux bénévoles qui corrigent la même faute, et dit après coup quel
+  numéro a corrigé lequel. Un second envoi du même numéro est un rejeu
+  (message de succès, rien d'écrit).
+- Un numéro déjà sorti est refusé ; sans saisie, rien ne se passe ; le
+  formulaire revient tant que la correction reste possible.
+- **Journal** : action propre `tombola_numero_remplace`, `objet` =
+  « 87 → 78 », `ref` = le numéro affiché. Pas un `tombola_tirage` de plus :
+  ce n'est pas un tirage.
+
+## 10. Statistiques et exports (lot 2)
+
+`tombola.statistiques(conn, debut_utc, fin_utc)` ; c'est la **route** qui la
+lit, seulement si `module_visible`, et la transmet aux exports (comme la
+couleur). Section absente sans tirage dans la période.
+
+- **Période** : sur `tombola_tirages.tire_le` ; un numéro compte dans la
+  période de son tirage.
+- **Compteurs** : tirés (hors erreurs de saisie), remis, encore affichés, non
+  réclamés ; erreurs de saisie **à part**, hors de tous les autres chiffres.
+- **Délai médian de remise** : `statistics.median` sur `sorti_le −
+  affiche_le` des seuls `remis`, formaté par `services.format_duree` ; « — »
+  sans aucun remis. **Jamais** les `non_reclame`. Un délai **négatif**
+  (horloge du serveur revenue en arrière) est **écarté et compté** : le
+  ramener à zéro tirerait la médiane vers le bas sans rien dire.
+- **Par tirage**, **par mode** ; **par édition** seulement quand la période en
+  couvre au moins deux (sinon le tableau répéterait la synthèse).
+- **Excel** : feuille « Tombola », cellules écrites par `ecrire_cellule`.
+  **PDF** : section cochable `tombola`, cochée par défaut seulement quand
+  elle existe ; la case n'apparaît sur la page qu'à la même condition.

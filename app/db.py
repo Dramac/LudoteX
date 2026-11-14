@@ -131,6 +131,11 @@ _MIGRATIONS_COLONNES = [
     # d'avant, « jamais lue » (`models.SCHEMA_FICHES_BGG`) — aucune vignette ne
     # s'affiche tant que la récupération par lots ne les a pas complétées.
     ("fiches_bgg", "vignette", "TEXT"),
+    # Correction d'une faute de frappe dans la tombola (série tombola, lot 2) :
+    # NULL sur les numéros d'avant, qui n'ont remplacé personne. La table est
+    # née au lot 1, jamais déployé seul : cette ligne ne sert qu'aux bases
+    # d'essai qui l'ont déjà créée.
+    ("tombola_numeros", "remplace_id", "INTEGER REFERENCES tombola_numeros (id)"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

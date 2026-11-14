@@ -1,5 +1,6 @@
 """
-Tombola — tirages, remise des lots, édition (série tombola, lot 1).
+Tombola — tirages, remise des lots, édition, lectures publiques et
+statistiques (série tombola, lots 1 et 2).
 
 Toute la logique du module vit ICI ; `routes/tombola.py` ne fait qu'assembler
 (lire le formulaire, appeler, journaliser, rendre). Conception complète :
@@ -9,7 +10,7 @@ POURQUOI UN MODULE À PART, ET PAS UNE SECTION DE `services.py`
 -------------------------------------------------------------
 `services.py` dépasse cinq mille lignes et porte le cœur du prêt. La tombola
 a ses trois tables, son vocabulaire (édition, tirage, remise) et ses propres
-constantes ; le lot 2 y ajoutera les lectures du panneau, de l'accueil et des
+constantes ; le lot 2 y a ajouté les lectures du panneau, de l'accueil et des
 statistiques. Un module dédié, comme `app/carnet.py`, garde ce domaine
 lisible d'un bloc. Il s'appuie sur `services` pour ce qui est commun
 (`transaction`, `lire_parametre`) ; `services.cloturer_evenement`, à
@@ -36,6 +37,7 @@ from __future__ import annotations
 import re
 import secrets
 import sqlite3
+import statistics
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple, Sequence
 
@@ -66,6 +68,12 @@ DELAI_ANNULATION_REMISE_S = 60
 # relecture du tirage ; plus tard, un bouton toujours présent deviendrait un
 # moyen d'effacer un gagnant sans trace claire.
 DELAI_ERREUR_SAISIE_S = 300
+
+# Un tirage apparu depuis moins de cinq minutes porte la marque « Nouveau »
+# sur l'écran de salle (série tombola, lot 2). Calculée par le SERVEUR à
+# partir de l'heure du tirage : l'horloge du poste de projection n'entre pas
+# en jeu.
+DUREE_NOUVEAU_TIRAGE_S = 300
 
 # Le plus grand numéro vendu, retenu d'un tirage par l'application à l'autre
 # pour préremplir le champ. Aucune valeur par défaut écrite en base.
@@ -570,6 +578,93 @@ def retirer_erreur_saisie(conn: sqlite3.Connection, numero_id: int,
 
 
 # ---------------------------------------------------------------------------
+# Corriger une faute de frappe dans le tirage d'origine (lot 2, POINT 5)
+# ---------------------------------------------------------------------------
+REMPLACEMENT_FAIT = "remplace"
+REMPLACEMENT_REJOUE = "rejoue"           # même numéro déjà mis à sa place
+REMPLACEMENT_DEJA = "deja_remplace"      # un autre numéro a déjà pris la place
+REMPLACEMENT_VIDE = "vide"               # rien de tapé : le retrait seul reste
+REMPLACEMENT_ILLISIBLE = "illisible"
+REMPLACEMENT_DEJA_SORTI = "deja_sorti"
+REMPLACEMENT_TROP_TARD = "trop_tard"
+REMPLACEMENT_IMPOSSIBLE = "impossible"   # ligne inconnue, pas en erreur, édition close
+
+
+class Remplacement(NamedTuple):
+    """Issue d'un « Remplacer » : le numéro retiré, et celui qui le remplace."""
+    issue: str
+    ancien: int | None = None
+    nouveau: int | None = None
+    retire_id: int | None = None     # ligne retirée : le formulaire peut revenir
+    ecrit: bool = False
+
+
+def remplacer_numero(conn: sqlite3.Connection, retire_id: int,
+                     saisie: str | None, instant: datetime | None = None
+                     ) -> Remplacement:
+    """
+    Met le numéro correct à la place d'un numéro retiré pour erreur de
+    saisie, DANS LE MÊME TIRAGE : un tirage de 15:02 reste un seul tirage sur
+    l'écran de salle et dans les statistiques, au lieu d'en devenir deux.
+
+    - `affiche_le` = maintenant : c'est l'instant réel où le gagnant peut lire
+      son numéro, et c'est lui qui compte pour le délai de remise.
+    - Possible pendant `DELAI_ERREUR_SAISIE_S` après le RETRAIT (arbitrage du
+      lot 2) : compté depuis l'affichage d'origine, un retrait fait à 4 min 50
+      ne laisserait que dix secondes pour taper le bon numéro.
+    - Au plus UN remplacement par ligne retirée (`remplace_id`, index unique
+      partiel) : un double appui, ou deux bénévoles qui corrigent la même
+      faute, trouvent la correction déjà faite. Un second envoi du MÊME
+      numéro est un rejeu (rien d'écrit, message de succès).
+    - Un numéro déjà sorti dans l'édition est refusé, comme à la saisie.
+    - Sans saisie, rien ne se passe : le retrait seul reste valable.
+    """
+    moment = _instant(instant)
+    texte = (saisie or "").strip()
+    with services.transaction(conn):
+        ligne = conn.execute(
+            "SELECT n.id, n.numero, n.tirage_id, n.edition_id, n.sorti_le, n.motif, "
+            "       e.close_le IS NULL AS edition_ouverte "
+            "FROM tombola_numeros n JOIN tombola_editions e ON e.id = n.edition_id "
+            "WHERE n.id = ?",
+            (retire_id,),
+        ).fetchone()
+        if (ligne is None or ligne["motif"] != MOTIF_ERREUR_SAISIE
+                or not ligne["edition_ouverte"]):
+            return Remplacement(REMPLACEMENT_IMPOSSIBLE,
+                                ligne["numero"] if ligne else None)
+        base = {"ancien": ligne["numero"], "retire_id": ligne["id"]}
+        deja = conn.execute(
+            "SELECT numero FROM tombola_numeros WHERE remplace_id = ?",
+            (ligne["id"],),
+        ).fetchone()
+        numero = lire_numero(texte)
+        if deja is not None:
+            issue = REMPLACEMENT_REJOUE if deja[0] == numero else REMPLACEMENT_DEJA
+            return Remplacement(issue, ligne["numero"], deja[0])
+        if not texte:
+            return Remplacement(REMPLACEMENT_VIDE, **base)
+        if numero is None:
+            return Remplacement(REMPLACEMENT_ILLISIBLE, **base)
+        ecart = _ecart_s(ligne["sorti_le"], moment)
+        if ecart is None or not 0 <= ecart < DELAI_ERREUR_SAISIE_S:
+            return Remplacement(REMPLACEMENT_TROP_TARD, ligne["numero"], numero)
+        if numero in _numeros_sortis(conn, ligne["edition_id"]):
+            return Remplacement(REMPLACEMENT_DEJA_SORTI, nouveau=numero, **base)
+        try:
+            conn.execute(
+                "INSERT INTO tombola_numeros (tirage_id, edition_id, numero, "
+                "affiche_le, remplace_id) VALUES (?, ?, ?, ?, ?)",
+                (ligne["tirage_id"], ligne["edition_id"], numero, _iso(moment),
+                 ligne["id"]),
+            )
+        except sqlite3.IntegrityError:
+            # Filets des index : ne devrait pas arriver sous le verrou.
+            return Remplacement(REMPLACEMENT_DEJA_SORTI, nouveau=numero, **base)
+    return Remplacement(REMPLACEMENT_FAIT, ligne["numero"], numero, ecrit=True)
+
+
+# ---------------------------------------------------------------------------
 # Lecture pour la page de gestion
 # ---------------------------------------------------------------------------
 def numeros_en_attente(conn: sqlite3.Connection,
@@ -607,6 +702,160 @@ def numeros_en_attente(conn: sqlite3.Connection,
 
 
 # ---------------------------------------------------------------------------
+# Lecture PUBLIQUE — écran de salle, page /tombola, accueil (lot 2, POINT 1)
+# ---------------------------------------------------------------------------
+def numeros_affiches(conn: sqlite3.Connection,
+                     instant: datetime | None = None) -> list[dict]:
+    """
+    Les numéros AFFICHÉS de l'édition ouverte, groupés par tirage, le plus
+    récent d'abord ; dans un tirage, par ordre croissant. Chaque groupe :
+    `{tirage_id, heure, numeros: [int, …], nouveau}`. LECTURE SEULE, sans
+    aucune écriture : `/live/data` la relit toutes les dix secondes.
+
+    Sœur publique de `numeros_en_attente`, et SEUL domicile de ce que voit le
+    public : ni identifiant de ligne, ni drapeau de gestion (`erreur_possible`),
+    ni mode du tirage. `tirage_id` sert au défilement de l'écran de salle à
+    reconnaître la page courante d'un rafraîchissement à l'autre (patron des
+    annonces) ; ce n'est pas une donnée sensible. `nouveau` : tirage de moins
+    de `DUREE_NOUVEAU_TIRAGE_S`.
+    """
+    moment = _instant(instant)
+    edition_id = edition_ouverte(conn)
+    if edition_id is None:
+        return []
+    groupes: dict[int, dict] = {}
+    for ligne in conn.execute(
+        "SELECT n.numero, t.id AS tirage_id, t.tire_le "
+        "FROM tombola_numeros n JOIN tombola_tirages t ON t.id = n.tirage_id "
+        "WHERE n.edition_id = ? AND n.motif IS NULL "
+        "ORDER BY t.id DESC, n.numero",
+        (edition_id,),
+    ):
+        groupe = groupes.get(ligne["tirage_id"])
+        if groupe is None:
+            ecart = _ecart_s(ligne["tire_le"], moment)
+            groupe = groupes[ligne["tirage_id"]] = {
+                "tirage_id": ligne["tirage_id"],
+                "heure": heure_locale(ligne["tire_le"]),
+                "numeros": [],
+                "nouveau": ecart is not None and 0 <= ecart < DUREE_NOUVEAU_TIRAGE_S,
+            }
+        groupe["numeros"].append(ligne["numero"])
+    return list(groupes.values())
+
+
+# ---------------------------------------------------------------------------
+# Statistiques (lot 2, POINT 6) — page /stats et ses deux exports
+# ---------------------------------------------------------------------------
+LIBELLES_MODE = {MODE_MANUEL: "à la main", MODE_ALEATOIRE: "par l'application"}
+
+
+def _mediane(delais: list[float]) -> str:
+    """Médiane formatée (`services.format_duree`), « — » sans aucun délai."""
+    return services.format_duree(statistics.median(delais)) if delais else "—"
+
+
+def statistiques(conn: sqlite3.Connection, debut_utc: str | None = None,
+                 fin_utc: str | None = None) -> dict | None:
+    """
+    Les chiffres de la tombola pour une période (bornes UTC ISO, `fin`
+    exclusive, comme `services.collecter_stats`), ou None s'il n'y a eu
+    AUCUN tirage dans la période : la section n'apparaît alors nulle part.
+
+    Un numéro compte dans la période de SON TIRAGE (`tire_le`), quelle que
+    soit l'heure de sa remise ou de son remplacement.
+
+    - `tires` : numéros tirés, hors erreurs de saisie ;
+    - `remis`, `affiches`, `non_reclames` : leur partage (somme = `tires`) ;
+    - `erreurs_saisie` : comptées à part, hors de TOUS les autres chiffres ;
+    - `delai_median` : `sorti_le − affiche_le` sur les seuls `remis` — jamais
+      les `non_reclame`, dont `sorti_le` est l'heure de la clôture. Un délai
+      négatif (horloge du serveur revenue en arrière) est ÉCARTÉ et compté
+      dans `delais_ecartes` : le ramener à zéro tirerait la médiane vers le
+      bas sans que rien ne le dise ;
+    - `par_tirage`, `par_mode`, `par_edition` : mêmes règles, ventilées.
+      `par_edition` n'a de sens qu'à partir de deux éditions dans la période
+      (le gabarit ne l'affiche qu'alors).
+
+    Aucun identifiant de ligne n'en sort : les tirages sont désignés par leur
+    heure.
+    """
+    conditions, params = [], []
+    if debut_utc:
+        conditions.append("t.tire_le >= ?")
+        params.append(debut_utc)
+    if fin_utc:
+        conditions.append("t.tire_le < ?")
+        params.append(fin_utc)
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    lignes = conn.execute(
+        "SELECT t.id AS tirage_id, t.tire_le, t.mode, t.edition_id, "
+        "       e.ouverte_le, e.close_le, n.motif, n.affiche_le, n.sorti_le "
+        "FROM tombola_tirages t "
+        "JOIN tombola_editions e ON e.id = t.edition_id "
+        "JOIN tombola_numeros n ON n.tirage_id = t.id"
+        f"{where} ORDER BY t.tire_le, t.id",
+        params,
+    ).fetchall()
+    if not lignes:
+        return None
+
+    def compteur() -> dict:
+        return {"tires": 0, "remis": 0, "affiches": 0, "non_reclames": 0,
+                "erreurs_saisie": 0, "delais": [], "tirages": set()}
+
+    total = compteur()
+    ecartes = 0
+    par_tirage: dict[int, dict] = {}
+    par_mode: dict[str, dict] = {}
+    par_edition: dict[int, dict] = {}
+    for l in lignes:
+        tirage = par_tirage.setdefault(l["tirage_id"], {
+            **compteur(), "quand": services.format_local(l["tire_le"]),
+            "mode": LIBELLES_MODE.get(l["mode"], l["mode"])})
+        mode = par_mode.setdefault(l["mode"], {
+            **compteur(), "mode": LIBELLES_MODE.get(l["mode"], l["mode"])})
+        edition = par_edition.setdefault(l["edition_id"], {
+            **compteur(), "ouverte": services.format_local(l["ouverte_le"]),
+            "close": services.format_local(l["close_le"]) if l["close_le"] else ""})
+        cibles = (total, tirage, mode, edition)
+        for c in cibles:
+            c["tirages"].add(l["tirage_id"])
+        if l["motif"] == MOTIF_ERREUR_SAISIE:
+            for c in cibles:
+                c["erreurs_saisie"] += 1
+            continue
+        champ = {None: "affiches", MOTIF_REMIS: "remis",
+                 MOTIF_NON_RECLAME: "non_reclames"}.get(l["motif"])
+        for c in cibles:
+            c["tires"] += 1
+            if champ:
+                c[champ] += 1
+        if l["motif"] == MOTIF_REMIS:
+            debut, fin = _depuis_iso(l["affiche_le"]), _depuis_iso(l["sorti_le"])
+            if debut is None or fin is None or fin < debut:
+                ecartes += 1
+                continue
+            delai = (fin - debut).total_seconds()
+            for c in cibles:
+                c["delais"].append(delai)
+
+    def figer(c: dict) -> dict:
+        resultat = {k: v for k, v in c.items() if k not in ("delais", "tirages")}
+        resultat["nb_tirages"] = len(c["tirages"])
+        resultat["delai_median"] = _mediane(c["delais"])
+        return resultat
+
+    resultat = figer(total)
+    resultat["delais_ecartes"] = ecartes
+    resultat["par_tirage"] = [figer(t) for t in par_tirage.values()]
+    resultat["par_mode"] = [figer(par_mode[m]) for m in (MODE_MANUEL, MODE_ALEATOIRE)
+                            if m in par_mode]
+    resultat["par_edition"] = [figer(e) for e in par_edition.values()]
+    return resultat
+
+
+# ---------------------------------------------------------------------------
 # Messages — un seul domicile pour les phrases ; (niveau, texte, numéros en
 # grand). Aucun n'est une erreur : « succes » ou « attention ».
 # ---------------------------------------------------------------------------
@@ -616,6 +865,7 @@ class Message(NamedTuple):
     details: tuple[str, ...] = ()    # une phrase par numéro écarté
     en_grand: tuple[int, ...] = ()   # numéros à afficher en grand
     annuler_id: int | None = None    # bouton « Annuler » de la remise
+    remplacer_id: int | None = None  # formulaire « Numéro correct » (lot 2)
 
 
 def _liste(numeros: Sequence[int]) -> str:
@@ -708,8 +958,9 @@ def message_retrait(g: Geste) -> Message:
     """La phrase qui suit « Erreur de saisie »."""
     if g.issue == RETRAIT_FAIT:
         return Message("succes",
-                       f"Numéro {g.numero} retiré : erreur de saisie. Il peut être "
-                       "saisi à nouveau.")
+                       f"Numéro {g.numero} retiré : erreur de saisie. Tapez le "
+                       "numéro correct pour le remplacer dans le même tirage.",
+                       remplacer_id=g.numero_id)
     if g.issue == RETRAIT_DEJA:
         return Message("attention", f"Le numéro {g.numero} a déjà été retiré : erreur de saisie.")
     if g.issue == RETRAIT_TROP_TARD:
@@ -720,3 +971,38 @@ def message_retrait(g: Geste) -> Message:
     if g.issue == RETRAIT_PLUS_AFFICHE:
         return Message("attention", f"Le numéro {g.numero} n'est plus affiché.")
     return Message("attention", "Ce numéro n'est plus dans la tombola en cours.")
+
+
+def message_remplacement(r: Remplacement) -> Message:
+    """La phrase qui suit « Remplacer ». Le formulaire revient tant qu'on peut corriger."""
+    if r.issue == REMPLACEMENT_FAIT:
+        return Message("succes",
+                       f"Numéro {r.nouveau} affiché à la place du {r.ancien}, "
+                       "dans le même tirage.", en_grand=(r.nouveau,))
+    if r.issue == REMPLACEMENT_REJOUE:
+        return Message("succes",
+                       f"Numéro {r.nouveau} affiché à la place du {r.ancien}. Le "
+                       "formulaire est parti deux fois : un seul remplacement a "
+                       "été enregistré.", en_grand=(r.nouveau,))
+    if r.issue == REMPLACEMENT_DEJA:
+        return Message("attention",
+                       f"Le numéro {r.ancien} a déjà été remplacé par le {r.nouveau}.")
+    if r.issue == REMPLACEMENT_VIDE:
+        return Message("attention",
+                       f"Aucun numéro tapé : le {r.ancien} reste retiré, rien n'a "
+                       "été ajouté.", remplacer_id=r.retire_id)
+    if r.issue == REMPLACEMENT_ILLISIBLE:
+        return Message("attention",
+                       f"Tapez un numéro {BORNES} pour remplacer le {r.ancien}.",
+                       remplacer_id=r.retire_id)
+    if r.issue == REMPLACEMENT_DEJA_SORTI:
+        return Message("attention",
+                       f"Le numéro {r.nouveau} est déjà sorti pendant cette tombola : "
+                       f"il ne peut pas remplacer le {r.ancien}.",
+                       remplacer_id=r.retire_id)
+    if r.issue == REMPLACEMENT_TROP_TARD:
+        return Message("attention",
+                       f"Le numéro {r.ancien} a été retiré il y a plus de "
+                       f"{DELAI_ERREUR_SAISIE_S // 60} minutes : saisissez le "
+                       "numéro correct comme un nouveau tirage.")
+    return Message("attention", "Ce numéro ne peut plus être remplacé.")

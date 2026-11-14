@@ -27,6 +27,7 @@
 {% block contenu %}
 <section class="carte tombola-gestion">
   <h1>Tombola</h1>
+  <p class="stats-note tombola-lien-public"><a class="lien" href="{{ url_publique }}">Voir la page publique</a></p>
 
   <h2 class="tombola-titre-remise">Remettre un lot</h2>
   <form method="post" action="{{ actions.remettre }}" class="tombola-remise">
@@ -55,6 +56,20 @@
           <ul class="tombola-ecartes">
             {% for d in message.details %}<li>{{ d }}</li>{% endfor %}
           </ul>
+        {% endif %}
+        {# Correction d'une faute de frappe (lot 2) : le numéro correct entre
+           DANS LE MÊME TIRAGE. Sans saisie, rien ne se passe : le retrait
+           seul reste valable. #}
+        {% if message.remplacer_id %}
+          <form method="post" action="{{ actions.remplacer }}" class="tombola-remplacer">
+            <input type="hidden" name="numero_id" value="{{ message.remplacer_id }}">
+            <div class="champ">
+              <label for="numero-correct">Numéro correct</label>
+              <input type="text" id="numero-correct" name="numero" inputmode="numeric"
+                     autocomplete="off" maxlength="12" value="{{ saisie_remplacement }}">
+            </div>
+            <button type="submit" class="bouton bouton-secondaire bouton-tombola">Remplacer</button>
+          </form>
         {% endif %}
         {% if message.annuler_id %}
           <form method="post" action="{{ actions.annuler }}">

@@ -200,8 +200,9 @@ livré, par module :
   administrables. Consultable par les bénévoles (`/maintenance`, en cartes sur
   téléphone) comme par le bureau (`/admin/signalements`) ; les exports et les
   catégories restent derrière le mot de passe.
-- **Tombola** — en cours, lot 1 sur 2 : tirages, remise des lots et page
-  bénévole livrés ; affichage public au lot 2.
+- **Tombola** — tirages à la main ou par l'application, remise des lots,
+  panneau de l'écran de salle, page `/tombola`, bloc de l'accueil,
+  statistiques ; désactivée par défaut.
 - **Journal d'activité** — socle à vocabulaire fermé, écran `/admin/journal`,
   outil terminal `scripts/journal.py`, registre des appareils.
 - **Administration** (`/admin`, mot de passe distinct du jeton) — jeton et

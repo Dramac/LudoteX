@@ -79,7 +79,7 @@ app.include_router(stats.router,            dependencies=[garde_module("stats")]
 # `Depends(exiger_jeton)` que chaque route de ce module porte en propre
 # (app/routes/maintenance.py). Les deux ne font pas le même travail.
 app.include_router(maintenance.router,      dependencies=[garde_module("maintenance")])  # /maintenance
-app.include_router(tombola.router,          dependencies=[garde_module("tombola")])    # /tombola/gestion (bénévole)
+app.include_router(tombola.router,          dependencies=[garde_module("tombola")])    # /tombola (public), /tombola/gestion (bénévole)
 app.include_router(live.router,             dependencies=[garde_module("live")])       # /live, /live/data
 app.include_router(tournoi_routes.router,   dependencies=[garde_module("tournois")])   # /tournois, /tournoi/*
 app.include_router(routes_programme.router, dependencies=[garde_module("programme")])  # /programme, /programme/*

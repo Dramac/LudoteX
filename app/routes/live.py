@@ -20,7 +20,8 @@ Et une page BÉNÉVOLE, la seule écriture de ce module (série annonce) :
                    bureau (`services.CLE_ANNONCE_BENEVOLES`, fermé par défaut).
 
 Comme partout dans le projet, AUCUNE logique métier ici : on délègue à
-`app.services` (prêt) et `app.tournoi.services` (tournois), on assemble, on rend.
+`app.services` (prêt), `app.tombola` (tombola, base de prêt) et
+`app.tournoi.services` (tournois), on assemble, on rend.
 """
 
 import re
@@ -30,7 +31,7 @@ from typing import NamedTuple
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
-from app import journal, services
+from app import journal, services, tombola
 from app.auth import exiger_jeton
 from app.db import get_connection
 from app.modules import lire_etat_module
@@ -67,6 +68,14 @@ NB_MOUVEMENTS = 8
 # lire deux lignes de loin, sans qu'une salle qui attend une information la
 # guette trop longtemps.
 DUREE_DEFILEMENT_S = 8
+
+# Durée d'affichage de CHAQUE TIRAGE quand plusieurs défilent dans le panneau
+# « Tombola » (série tombola, lot 2). Constante SŒUR, et non
+# `DUREE_DEFILEMENT_S` : une annonce se lit, un tirage se CHERCHE — chacun
+# compare cinq numéros à son ticket, et la salle n'a pas les yeux sur
+# l'écran au moment où la page change. Même règle : transmise au gabarit,
+# jamais recopiée en JS (verrouillé par un test).
+DUREE_PAGE_TOMBOLA_S = 12
 
 # Alerte tournoi « rapportez les exemplaires » (docs/conception-alerte-tournoi.md).
 # Calcul à la lecture, aucune écriture en base : exactement le patron de
@@ -116,7 +125,20 @@ CLES_PANNEAUX = {
     "tournois":   "live_panneau_tournois",
     "programme":  "live_panneau_programme",
     "mouvements": "live_panneau_mouvements",
+    # Série tombola, lot 2 : affiché seulement s'il y a des numéros à
+    # retirer — sans tombola, l'écran reste celui d'avant.
+    "tombola":    "live_panneau_tombola",
 }
+
+# Le formulaire des panneaux (`POST /admin/ecran-salle`) lit ses cases PAR
+# PRÉSENCE. Une page d'administration ouverte AVANT la mise à jour n'a pas la
+# case « Tombola » : sans précaution, son prochain envoi éteindrait le panneau
+# sans que le bureau l'ait voulu. Le formulaire porte donc ce marqueur caché ;
+# sans lui, les panneaux nés après la version 1 (`PANNEAUX_DEPUIS_V2`)
+# gardent leur valeur actuelle.
+CHAMP_VERSION_PANNEAUX = "panneaux_v"
+VERSION_PANNEAUX = "2"
+PANNEAUX_DEPUIS_V2 = ("tombola",)
 
 
 def titre_ecran(conn) -> str:
@@ -169,6 +191,11 @@ def panneaux_actifs(conn) -> dict[str, bool]:
         actifs["tournois"] = False
     if lire_etat_module(conn, "programme") == "desactive":
         actifs["programme"] = False
+    # Seul l'état « désactivé » éteint le panneau, comme pour les tournois et
+    # le programme : en « bénévoles » ou « discret », la salle voit quand même
+    # les numéros (règle de projection, pas celle des liens).
+    if lire_etat_module(conn, "tombola") == "desactive":
+        actifs["tombola"] = False
     return actifs
 
 
@@ -517,6 +544,10 @@ def _collecter_donnees() -> dict:
                 if panneaux["chiffres"] else None)
         mouvements = (services.derniers_mouvements(conn, NB_MOUVEMENTS)
                       if panneaux["mouvements"] else [])
+        # Tombola : la lecture PUBLIQUE, seul domicile de ce que voit la salle
+        # (aucun identifiant de ligne, aucun drapeau de gestion).
+        tirages_tombola = (tombola.numeros_affiches(conn)
+                           if panneaux["tombola"] else [])
     finally:
         conn.close()
 
@@ -648,6 +679,13 @@ def _collecter_donnees() -> dict:
         # reçoit la plus récente et continue d'afficher une annonce au lieu
         # d'un bandeau vide. À retirer à la version suivante.
         resultat["annonce"] = annonces[-1]["texte"]
+    # Tombola : absente quand le panneau est éteint ou qu'il n'y a rien.
+    # Ordre du DÉFILEMENT : du plus ancien au plus récent, comme les annonces
+    # — un tour de l'écran suit l'ordre des tirages, et un nouveau tirage
+    # rejoint la fin du tour. La page SAUTE dessus dès qu'il apparaît : c'est
+    # lui que la salle attend.
+    if tirages_tombola:
+        resultat["tombola"] = list(reversed(tirages_tombola))
     # Même règle pour l'alerte tournoi : absente du JSON quand il n'y a rien à
     # dire. Les clés peuvent cohabiter dans le JSON (chacune calculée
     # indépendamment) — c'est au gabarit de trancher quelle bande s'affiche
@@ -662,7 +700,8 @@ def live(request: Request):
     """Page du tableau de bord (rendue une fois ; le contenu se met à jour en JS)."""
     return templates.TemplateResponse(
         request, "live.html",
-        {"data": _collecter_donnees(), "duree_defilement_s": DUREE_DEFILEMENT_S})
+        {"data": _collecter_donnees(), "duree_defilement_s": DUREE_DEFILEMENT_S,
+         "duree_page_tombola_s": DUREE_PAGE_TOMBOLA_S})
 
 
 @router.get("/live/data")

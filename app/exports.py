@@ -42,6 +42,55 @@ def _libelle_metrique(metrique: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tombola (série tombola, lot 2) — un seul domicile pour les libellés des
+# deux exports. Les données viennent de `tombola.statistiques`, lues et
+# transmises par la ROUTE (comme la couleur) : None quand la section n'a pas
+# lieu d'être (module masqué, aucun tirage dans la période).
+# ---------------------------------------------------------------------------
+def synthese_tombola(t: dict) -> list[tuple[str, object]]:
+    """Les lignes de synthèse de la tombola, (libellé, valeur), mêmes pour les deux exports."""
+    lignes = [
+        ("Tirages", t["nb_tirages"]),
+        ("Numéros tirés", t["tires"]),
+        ("Lots remis", t["remis"]),
+        ("Numéros encore affichés", t["affiches"]),
+        ("Numéros non réclamés", t["non_reclames"]),
+        ("Délai médian de remise (lots remis seulement)", t["delai_median"]),
+        ("Erreurs de saisie (hors chiffres ci-dessus)", t["erreurs_saisie"]),
+    ]
+    if t.get("delais_ecartes"):
+        lignes.append(("Délais écartés (horloge incohérente)", t["delais_ecartes"]))
+    return lignes
+
+
+ENTETES_TOMBOLA_TIRAGE = ["Tirage", "Mode", "Numéros", "Remis", "Délai médian"]
+ENTETES_TOMBOLA_MODE = ["Mode", "Tirages", "Numéros", "Remis", "Délai médian"]
+ENTETES_TOMBOLA_EDITION = ["Édition ouverte le", "Close le", "Tirages", "Numéros",
+                           "Remis", "Délai médian"]
+
+
+def tableaux_tombola(t: dict) -> list[tuple[str, list[str], list[list]]]:
+    """
+    Les tableaux de la tombola, (titre, en-têtes, lignes) : par tirage, par
+    mode, et par édition seulement à partir de deux éditions dans la période.
+    """
+    tableaux = [
+        ("Par tirage", ENTETES_TOMBOLA_TIRAGE,
+         [[x["quand"], x["mode"], x["tires"], x["remis"], x["delai_median"]]
+          for x in t["par_tirage"]]),
+        ("Par mode de tirage", ENTETES_TOMBOLA_MODE,
+         [[x["mode"], x["nb_tirages"], x["tires"], x["remis"], x["delai_median"]]
+          for x in t["par_mode"]]),
+    ]
+    if len(t["par_edition"]) > 1:
+        tableaux.append(("Par édition", ENTETES_TOMBOLA_EDITION,
+                         [[x["ouverte"], x["close"] or "en cours", x["nb_tirages"],
+                           x["tires"], x["remis"], x["delai_median"]]
+                          for x in t["par_edition"]]))
+    return tableaux
+
+
+# ---------------------------------------------------------------------------
 # Neutralisation des formules (SEC-06) — SEUL domicile
 # ---------------------------------------------------------------------------
 # Un tableur interprète comme une formule une cellule qui commence par l'un de
@@ -151,9 +200,11 @@ def tableau_xlsx(entetes: list[str], lignes: list[dict],
     return buf.getvalue()
 
 
-def construire_xlsx(data: dict, periode_txt: str) -> bytes:
+def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -> bytes:
     """
-    Construit un classeur Excel à trois feuilles : Synthèse, Palmarès, Détail.
+    Construit un classeur Excel à trois feuilles : Synthèse, Palmarès, Détail
+    — et une quatrième, « Tombola », quand `tombola` est fourni (voir
+    `synthese_tombola`).
 
     La feuille « Détail » ne porte PAS de colonne « numéro de pochette » : ce
     détail couvre une période, donc essentiellement des prêts clos, dont le
@@ -228,9 +279,35 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
         wd.cell(row=i, column=4, value=p["retour_local"] or "en cours")
         wd.cell(row=i, column=5, value=p["duree_txt"])
 
+    largeurs_feuilles = [(ws, [24, 14]), (wp, [40, 10, 12, 12]),
+                         (wd, [40, 12, 18, 18, 12, 14])]
+
+    # --- Feuille 4 : Tombola (synthèse puis tableaux), si elle a lieu ---
+    if tombola:
+        wt = wb.create_sheet("Tombola")
+        wt["A1"] = "Tombola"
+        wt["A1"].font = gras
+        wt["A2"] = f"Période : {periode_txt}"
+        ligne = 4
+        for lib, val in synthese_tombola(tombola):
+            ecrire_cellule(wt, ligne, 1, lib)
+            ecrire_cellule(wt, ligne, 2, val)
+            ligne += 1
+        for titre_tableau, entetes, lignes_tableau in tableaux_tombola(tombola):
+            ligne += 1
+            wt.cell(row=ligne, column=1, value=titre_tableau).font = gras
+            ligne += 1
+            for col, entete in enumerate(entetes, start=1):
+                wt.cell(row=ligne, column=col, value=entete).font = gras
+            ligne += 1
+            for valeurs in lignes_tableau:
+                for col, val in enumerate(valeurs, start=1):
+                    ecrire_cellule(wt, ligne, col, val)
+                ligne += 1
+        largeurs_feuilles.append((wt, [44, 18, 12, 12, 12, 14]))
+
     # Largeurs de colonnes lisibles.
-    for feuille, largeurs in ((ws, [24, 14]), (wp, [40, 10, 12, 12]),
-                              (wd, [40, 12, 18, 18, 12, 14])):
+    for feuille, largeurs in largeurs_feuilles:
         for idx, larg in enumerate(largeurs):
             feuille.column_dimensions[chr(65 + idx)].width = larg
 
@@ -239,13 +316,16 @@ def construire_xlsx(data: dict, periode_txt: str) -> bytes:
     return buf.getvalue()
 
 
-# Sections possibles du PDF, dans l'ordre d'apparition.
-SECTIONS_PDF = ("synthese", "plus", "moins", "detail")
+# Sections possibles du PDF, dans l'ordre d'apparition. « tombola » avant le
+# détail des prêts, qui peut courir sur des pages ; elle n'apparaît que si la
+# route a transmis ses données.
+SECTIONS_PDF = ("synthese", "plus", "moins", "tombola", "detail")
 
 
 def construire_pdf(data: dict, periode_txt: str,
                    sections: "set[str] | None" = None,
-                   couleur: str = COULEUR_ASSOCIATION_DEFAUT) -> bytes:
+                   couleur: str = COULEUR_ASSOCIATION_DEFAUT,
+                   tombola: dict | None = None) -> bytes:
     """
     Construit un PDF de bilan, avec sections au choix.
 
@@ -261,6 +341,8 @@ def construire_pdf(data: dict, periode_txt: str,
             transmise par la route — voir la note en tête de ce fichier.
             Défaut explicite (l'anthracite) : un appel qui l'oublie produit un
             PDF cohérent, jamais une exception.
+        tombola: statistiques de la tombola (`tombola.statistiques`), lues
+            et transmises par la route ; None = pas de section, même cochée.
 
     Returns:
         Le contenu binaire du fichier .pdf.
@@ -335,6 +417,22 @@ def construire_pdf(data: dict, periode_txt: str,
                    f"{j['par_exemplaire']:.2f}"] for j in jeux]
         elements.append(tableau(["Jeu", "Prêts", "Ex.", "Par ex."],
                                 lignes, [9 * cm, 2 * cm, 2 * cm, 2.5 * cm]))
+        elements.append(Spacer(1, 0.4 * cm))
+
+    # Tombola (série tombola, lot 2)
+    if "tombola" in sections and tombola:
+        elements.append(Paragraph("Tombola", styles["Heading2"]))
+        elements.append(tableau(
+            ["Indicateur", "Valeur"],
+            [[lib, str(val)] for lib, val in synthese_tombola(tombola)],
+            [8 * cm, 4 * cm]))
+        for titre_tableau, entetes, lignes_tableau in tableaux_tombola(tombola):
+            elements.append(Spacer(1, 0.25 * cm))
+            elements.append(Paragraph(titre_tableau, styles["Heading3"]))
+            largeur = 17 * cm / len(entetes)
+            elements.append(tableau(entetes,
+                                    [[str(v) for v in l] for l in lignes_tableau],
+                                    [largeur] * len(entetes)))
         elements.append(Spacer(1, 0.4 * cm))
 
     # Détail des prêts

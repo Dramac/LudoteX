@@ -21,6 +21,13 @@
          │ tournois           │ animations          │  zone basse  (2 parts)
          └────────────────────┴─────────────────────┘
 
+       TOMBOLA (série tombola, lot 2) : un TROISIÈME bloc de la zone basse,
+       à droite des animations, et seulement tant qu'il reste des numéros à
+       retirer. La zone basse a la hauteur qu'il faut pour cinq numéros à
+       quatre chiffres en très grand ; la zone haute (un tiers de la
+       hauteur, un tiers de la largeur pour les mouvements) ne l'a pas.
+       Sans tombola, rien ne bouge : le bloc est absent.
+
        Le flux des prêts occupait auparavant une colonne pleine hauteur, au
        détriment des tournois et des animations — l'information qu'un visiteur
        vient chercher. Il partage désormais la zone haute avec les chiffres.
@@ -400,6 +407,87 @@
       font-variant-numeric: tabular-nums; white-space: nowrap;
     }
     .mouv:last-child { border-bottom: none; }
+
+    /* --- Panneau Tombola (série tombola, lot 2) ---
+       Une PAGE par tirage, qui défilent avec leur propre minuterie. Toutes
+       les pages sont dans le DOM, EMPILÉES dans la même cellule de grille
+       (patron du bandeau d'annonces) : une page masquée l'est par
+       `visibility`, sans jamais changer la hauteur de quoi que ce soit. Le
+       panneau, lui, a la hauteur de la zone basse : ses voisins ne bougent
+       pas d'une page à l'autre.
+       Couleurs : celles de l'écran, aucune nouvelle. */
+    .pile-tombola {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .page-tombola {
+      grid-area: 1 / 1;
+      min-height: 0;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 150ms ease, visibility 0s linear 150ms;
+    }
+    .page-tombola.courante {
+      visibility: visible;
+      opacity: 1;
+      transition: opacity 150ms ease 150ms, visibility 0s linear 0s;
+    }
+    .page-tombola .tete {
+      flex: 0 0 auto;
+      display: flex; align-items: baseline; gap: 0.6em; flex-wrap: wrap;
+    }
+    .page-tombola .quand {
+      font-size: 1.3em; font-weight: 700; color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    /* « Nouveau » est un MOT, pas une couleur seule : lisible en niveaux de
+       gris comme par un daltonien. */
+    .page-tombola .nouveau {
+      font-size: 0.85em; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--orange); color: var(--fond);
+      border-radius: 0.3em; padding: 0.05em 0.45em;
+    }
+    .repere-tombola {
+      margin-left: auto;
+      font-size: 0.9em; color: var(--attenue);
+      font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    /* Les numéros : TRÈS grands, jamais coupés (`white-space: nowrap`), et
+       ramenés en JS (`ajusterTombola`) si un tirage ne tient pas — un
+       gagnant qui ne lit pas son numéro ne vient pas chercher son lot. */
+    .page-tombola .numeros {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex; flex-wrap: wrap; align-content: center;
+      justify-content: center;
+      gap: 0.1em 0.55em;
+      font-size: 3.4em; font-weight: 800; line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+    }
+    .page-tombola .numeros span { white-space: nowrap; }
+    /* Avec la tombola, tournois et animations n'ont plus qu'un TIERS de la
+       largeur : la jauge (« inscriptions ouvertes », « 4 places libres / 12 »)
+       et le nombre de joueurs, insécables, mangeaient le nom du tournoi
+       (« To F… », mesuré à l'essai). Elles passent alors SOUS le nom, à
+       droite. Classe posée seulement quand le panneau est affiché : sans
+       tombola, l'écran ne change pas d'un pixel. */
+    .zone-basse.avec-tombola .ligne { flex-wrap: wrap; row-gap: 0; }
+    .zone-basse.avec-tombola .ligne .places,
+    .zone-basse.avec-tombola .ligne .meta { flex: 1 0 100%; text-align: right; }
+    .consigne-tombola {
+      flex: 0 0 auto;
+      font-size: 0.95em; color: var(--attenue); text-align: center;
+      padding-top: 0.3vw;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .page-tombola, .page-tombola.courante { transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -470,6 +558,14 @@
         <div class="bloc-titre">Prochaines (2 h)</div>
         <div class="liste" id="p-a-venir"></div>
       </div>
+
+      {# Pas d'aria-live, comme le bandeau des annonces : un lecteur d'écran
+         lirait une page toutes les douze secondes. #}
+      <div class="panneau" id="panneau-tombola">
+        <h2>🎟️ Tombola</h2>
+        <div class="pile-tombola" id="pile-tombola"></div>
+        <div class="consigne-tombola">Présentez votre ticket pour retirer votre lot.</div>
+      </div>
     </section>
   </div>
 
@@ -481,6 +577,9 @@
     // constante Python `live.DUREE_DEFILEMENT_S`, transmise par le gabarit
     // (un seul domicile, jamais recopiée ici).
     const DUREE_DEFILEMENT_MS = {{ duree_defilement_s }} * 1000;
+    // Durée de chaque page du panneau Tombola : `live.DUREE_PAGE_TOMBOLA_S`,
+    // transmise par le gabarit elle aussi.
+    const DUREE_PAGE_TOMBOLA_MS = {{ duree_page_tombola_s }} * 1000;
     // Au-delà de ce nombre d'échecs consécutifs (~30 s), l'écran se déclare
     // "hors ligne" plutôt que de continuer à paraître vivant figé.
     const SEUIL_ECHECS_HORS_LIGNE = 3;
@@ -731,6 +830,135 @@
       rendreAnnonces(listeAnnonces);
     }
 
+    // --- Défilement de la tombola (série tombola, lot 2) ---
+    // Patron du défilement des annonces, mais avec SON PROPRE ÉTAT : aucune
+    // variable partagée, une minuterie à lui. La page courante est repérée
+    // par l'identifiant du tirage, jamais par sa position. Les tirages
+    // arrivent du plus ancien au plus récent (ordre du tour).
+    let tirages = [];            // [{tirage_id, heure, numeros, nouveau}]
+    let tirageCourant = null;    // identifiant du tirage affiché
+    let tiragesVus = null;       // identifiants déjà vus (null : 1er rendu)
+
+    function tirageSuivant(liste, id) {
+      return liste.find(t => t.tirage_id > id) || liste[0];
+    }
+
+    function synchroniserTombola(liste) {
+      // Une page par tirage, créée une fois puis tenue à jour : le fondu en
+      // cours n'est jamais interrompu. textContent UNIQUEMENT, même pour des
+      // entiers : aucun chemin de ce panneau n'injecte de balisage.
+      const pile = document.getElementById("pile-tombola");
+      const ids = new Set(liste.map(t => t.tirage_id));
+      pile.querySelectorAll(".page-tombola").forEach(el => {
+        if (!ids.has(Number(el.dataset.id))) el.remove();
+      });
+      liste.forEach(t => {
+        let page = pile.querySelector(`.page-tombola[data-id="${t.tirage_id}"]`);
+        if (!page) {
+          page = document.createElement("div");
+          page.className = "page-tombola";
+          page.dataset.id = t.tirage_id;
+          const tete = document.createElement("div");
+          tete.className = "tete";
+          const quand = document.createElement("span");
+          quand.className = "quand";
+          const nouveau = document.createElement("span");
+          nouveau.className = "nouveau";
+          nouveau.textContent = "Nouveau";
+          const repere = document.createElement("span");
+          repere.className = "repere-tombola";
+          tete.append(quand, nouveau, repere);
+          const numeros = document.createElement("div");
+          numeros.className = "numeros";
+          page.append(tete, numeros);
+          const apres = Array.from(pile.children)
+            .find(e => Number(e.dataset.id) > t.tirage_id);
+          pile.insertBefore(page, apres || null);
+        }
+        const titre = `Tirage de ${t.heure}`;
+        const quand = page.querySelector(".quand");
+        if (quand.textContent !== titre) quand.textContent = titre;
+        page.querySelector(".nouveau").style.display = t.nouveau ? "" : "none";
+        const texte = t.numeros.join(" ");
+        const boite = page.querySelector(".numeros");
+        if (boite.dataset.texte !== texte) {
+          boite.dataset.texte = texte;
+          boite.replaceChildren(...t.numeros.map(n => {
+            const s = document.createElement("span");
+            s.textContent = String(n);
+            return s;
+          }));
+          boite.style.fontSize = "";   // la taille sera réajustée
+        }
+      });
+    }
+
+    function montrerTirage() {
+      document.querySelectorAll("#pile-tombola .page-tombola").forEach(el => {
+        el.classList.toggle("courante", Number(el.dataset.id) === tirageCourant);
+        // Repère « 2/3 » à partir de deux tirages seulement.
+        const rang = tirages.findIndex(t => t.tirage_id === Number(el.dataset.id)) + 1;
+        el.querySelector(".repere-tombola").textContent =
+          tirages.length >= 2 ? `${rang}/${tirages.length}` : "";
+      });
+    }
+
+    function ajusterTombola() {
+      // Filet contre la troncature : si les numéros d'un tirage ne tiennent
+      // pas dans le panneau (écran bas, colonne étroite), on réduit LEUR
+      // taille par paliers, page par page, jusqu'à ce qu'ils tiennent. Jamais
+      // un numéro coupé ou caché.
+      document.querySelectorAll("#pile-tombola .numeros").forEach(boite => {
+        boite.style.fontSize = "";
+        let taille = parseFloat(getComputedStyle(boite).fontSize);
+        let essais = 0;
+        while (essais < 30 && taille > 10 &&
+               (boite.scrollHeight > boite.clientHeight + 1 ||
+                boite.scrollWidth > boite.clientWidth + 1)) {
+          taille *= 0.92;
+          boite.style.fontSize = taille + "px";
+          essais += 1;
+        }
+      });
+    }
+
+    function rendreTombola(liste) {
+      tirages = liste || [];
+      synchroniserTombola(tirages);
+      const nouveaux = tiragesVus === null ? []
+        : tirages.filter(t => !tiragesVus.has(t.tirage_id));
+      if (tiragesVus === null && tirages.length) {
+        // Premier affichage : le tirage le plus récent d'abord.
+        tirageCourant = tirages[tirages.length - 1].tirage_id;
+      } else if (nouveaux.length) {
+        // Un tirage vient d'apparaître : on SAUTE dessus. C'est lui que la
+        // salle attend ; le tour reprend ensuite depuis lui.
+        tirageCourant = nouveaux[nouveaux.length - 1].tirage_id;
+        redemarrerTombola();
+      } else if (!tirages.some(t => t.tirage_id === tirageCourant)) {
+        // Tirage courant vidé (tous ses lots remis) : on passe au suivant.
+        tirageCourant = tirages.length
+          ? tirageSuivant(tirages, tirageCourant ?? 0).tirage_id : null;
+      }
+      tiragesVus = new Set(tirages.map(t => t.tirage_id));
+      montrerTirage();
+    }
+
+    function avancerTombola() {
+      // Minuterie INDÉPENDANTE de rafraichir() et du défilement des annonces.
+      if (tirages.length < 2) return;
+      tirageCourant = tirageSuivant(tirages, tirageCourant).tirage_id;
+      montrerTirage();
+    }
+
+    let minuterieTombola = null;
+    function redemarrerTombola() {
+      // Un nouveau tirage a droit à une page entière, pas au reste de celle
+      // qui était à l'écran.
+      if (minuterieTombola) clearInterval(minuterieTombola);
+      minuterieTombola = setInterval(avancerTombola, DUREE_PAGE_TOMBOLA_MS);
+    }
+
     function afficher(id, visible, mode) {
       const el = document.getElementById(id);
       if (el) el.style.display = visible ? (mode || "block") : "none";
@@ -775,6 +1003,9 @@
       }
       if (p.programme) rendreAnimations(animations);
       if (p.mouvements) rendreMouvements(d.mouvements || []);
+      // Tombola : le serveur omet la clé quand le panneau est éteint ou vide.
+      const tombola = d.tombola || [];
+      rendreTombola(tombola);
 
       // --- Ce qui est visible ---
       // Un panneau garde sa place s'il est ACTIVÉ et a quelque chose à
@@ -785,6 +1016,7 @@
       const montreTournois = !!p.tournois && (tournois.length > 0 || aVenir.length > 0);
       const montreProgramme = !!p.programme && animations.length > 0;
       const montreMouvements = !!p.mouvements;
+      const montreTombola = tombola.length > 0;
       const montreInfo = !!p.chiffres || !!(d.annonces && d.annonces.length)
         || !!d.alerte_tournoi;
 
@@ -792,16 +1024,19 @@
       afficher("panneau-mouvements", montreMouvements, "flex");
       afficher("panneau-tournois", montreTournois, "flex");
       afficher("panneau-programme", montreProgramme, "flex");
+      afficher("panneau-tombola", montreTombola, "flex");
       // Une zone entièrement éteinte disparaît et rend sa hauteur à l'autre ;
       // à l'intérieur d'une zone, le bloc restant s'étend de lui-même (flex).
       // Tout éteindre est un usage assumé (écran d'annonces seules).
       afficher("zone-haute", montreInfo || montreMouvements, "flex");
-      afficher("zone-basse", montreTournois || montreProgramme, "flex");
+      afficher("zone-basse", montreTournois || montreProgramme || montreTombola, "flex");
+      document.getElementById("zone-basse").classList.toggle("avec-tombola", montreTombola);
 
       // Troncature APRÈS mise en place : les hauteurs ne sont connues qu'une
       // fois les panneaux visibles et dimensionnés.
       ["mouvements", "t-en-cours", "t-a-venir", "p-a-venir"]
         .forEach(id => tronquer(document.getElementById(id)));
+      if (montreTombola) ajusterTombola();
     }
 
     function tiquerHorloge() {
@@ -841,6 +1076,7 @@
     setInterval(tiquerHorloge, 1000);       // horloge locale, indépendante du réseau
     setInterval(rafraichir, INTERVALLE_MS); // puis mise à jour des données en boucle
     setInterval(avancer, DUREE_DEFILEMENT_MS); // défilement, indépendant des données
+    redemarrerTombola();                    // pages de la tombola, à leur rythme
     // Un redimensionnement (rotation d'écran, changement de résolution TV)
     // change ce qui tient à l'écran : on recalcule la troncature.
     window.addEventListener("resize", () => rendre(DONNEES));

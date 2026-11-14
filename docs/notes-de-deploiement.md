@@ -83,6 +83,25 @@ est installée.
 
 ---
 
+## À paraître
+
+### Tombola : rien à faire à la mise à jour, ni en cas de retour arrière
+
+**À la mise à jour : aucun geste.** Les trois tables de la tombola sont
+neuves ; le premier démarrage les crée vides, et le module reste désactivé
+tant que le bureau ne l'a pas activé.
+
+**En cas de retour arrière vers une 1.32.x : aucun geste.** La 1.32 ignore
+ces tables sans les toucher. Elles ne contiennent ni texte libre ni donnée
+personnelle — des numéros et des heures —, donc rien à purger. Mesuré sur une
+base de la 1.33 ouverte puis sauvegardée par la 1.32.0 : pages servies,
+archive valide, tables de la tombola intactes.
+
+**Une page d'administration « Écran de salle » restée ouverte pendant la mise
+à jour** ne connaît pas la case **Tombola** : son prochain envoi ne
+l'éteint pas (le formulaire porte désormais un marqueur de version ; sans
+lui, la case garde sa valeur).
+
 ## 1.32.0 — 2026-11-13
 
 ### Annonces de l'écran de salle en table : rien à faire à la mise à jour, un geste en cas de retour arrière — facultatif

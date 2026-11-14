@@ -93,7 +93,9 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 - `tombola_editions`, `tombola_tirages`, `tombola_numeros` (toutes en
   `AUTOINCREMENT`) : la tombola, des numéros et des heures sans aucun texte
   libre. Logique dans `app/tombola.py`, conception dans
-  `docs/conception-tombola.md`.
+  `docs/conception-tombola.md`. Ce que voit le public (écran de salle,
+  `/tombola`, accueil) passe par une seule lecture,
+  `tombola.numeros_affiches`, sans identifiant de ligne.
 - `categories_jeu` (vocabulaire, `cle` UNIQUE) et `titres_categories`
   (liaison ordonnée par `rang`) : les catégories de jeu en liste. Découpage
   d'une case et clé de rapprochement dans `app/categories_jeu.py`, module pur ;

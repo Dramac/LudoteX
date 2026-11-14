@@ -98,15 +98,11 @@ MODULES: dict[str, dict] = {
     # - `etat_defaut` : "desactive". Une association sans tombola, et toute
     #   base d'avant ce module, ne voient rien changer : ni lien, ni page.
     # - PAS `jamais_public` : la tombola ne porte aucune donnée personnelle,
-    #   et le lot 2 lui donnera une page publique.
-    # - `url` : la page de gestion des bénévoles pour l'instant. Ce champ est
-    #   un LIEN cliquable sur /admin/fonctionnalites ; « /tombola » y
-    #   renverrait une page introuvable tant que la page publique n'existe
-    #   pas. Le lot 2 le remplacera par « /tombola ».
+    #   et elle a une page publique (`/tombola`, lot 2).
     "tombola": {
         "label": "Tombola",
         "description": "Numéros gagnants à afficher, lots remis aux visiteurs",
-        "url": "/tombola/gestion",
+        "url": "/tombola",
         "etat_defaut": "desactive",
     },
 }

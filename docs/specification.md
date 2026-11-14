@@ -349,8 +349,10 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   tirés (à la main, ou tirés par l'application en secours, sans retour
   possible), remettent les lots par le numéro présenté et peuvent annuler une
   remise dans la minute ; la clôture de fin d'événement termine la tombola.
-  Des numéros et des heures, ni nom ni texte libre. L'affichage public est
-  prévu au lot suivant de la série. `docs/conception-tombola.md`.
+  Des numéros et des heures, ni nom ni texte libre. Les numéros à retirer
+  s'affichent sur l'écran de salle, sur la page publique `/tombola` et sur
+  l'accueil ; une faute de frappe se corrige dans le tirage d'origine ; les
+  statistiques donnent le délai médian de remise. `docs/conception-tombola.md`.
 - **Journal d'activité** — qui a fait quoi, à quel appareil près, jamais à
   quelle personne. `docs/conception-journal.md`.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue

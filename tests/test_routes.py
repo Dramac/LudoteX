@@ -1911,7 +1911,9 @@ def test_live_panneaux_tous_actifs_par_defaut(client):
     # l'introduction du réglage (non-régression des installations existantes).
     d = client.get("/live/data").json()
     assert d["panneaux"] == {"chiffres": True, "tournois": True,
-                             "programme": True, "mouvements": True}
+                             "programme": True, "mouvements": True,
+                             # Module désactivé par défaut : il l'emporte.
+                             "tombola": False}
     assert "jeux" in d and "mouvements" in d
     assert "tournois_en_cours" in d and "nb_tournois_en_cours" in d
     assert d["animations"] == []          # panneau actif, rien à annoncer
@@ -1941,13 +1943,18 @@ def test_admin_ecran_salle_tous_panneaux_eteints(client, monkeypatch):
     # bloquant, jamais silencieux).
     monkeypatch.setenv("ADMIN_PASSWORD", "secret-admin-123")
     client.post("/admin/login", data={"mot_de_passe": "secret-admin-123"})
+    # Le formulaire d'aujourd'hui porte le marqueur de version : sans lui, la
+    # case Tombola absente garderait sa valeur (série tombola, lot 2).
+    from app.routes.live import CHAMP_VERSION_PANNEAUX, VERSION_PANNEAUX
     r = client.post("/admin/ecran-salle",
-                    data={"titre": "", "annonce": "", "annonce_duree": ""})
+                    data={"titre": "", "annonce": "", "annonce_duree": "",
+                          CHAMP_VERSION_PANNEAUX: VERSION_PANNEAUX})
     assert "aucun panneau" in r.text.lower()
 
     d = client.get("/live/data").json()
     assert d["panneaux"] == {"chiffres": False, "tournois": False,
-                             "programme": False, "mouvements": False}
+                             "programme": False, "mouvements": False,
+                             "tombola": False}
     for absent in ("jeux", "mouvements", "tournois_en_cours",
                    "nb_tournois_en_cours", "animations"):
         assert absent not in d
@@ -2118,7 +2125,9 @@ def test_admin_effacer_annonce_ne_reinitialise_pas_les_panneaux(client, monkeypa
     d = client.get("/live/data").json()
     assert "annonces" not in d
     assert d["panneaux"] == {"chiffres": True, "tournois": False,
-                             "programme": False, "mouvements": True}
+                             "programme": False, "mouvements": True,
+                             # Module désactivé par défaut : il l'emporte.
+                             "tombola": False}
 
 
 # ---------------------------------------------------------------------------

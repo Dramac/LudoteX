@@ -1,5 +1,12 @@
 """
-Tombola — page BÉNÉVOLE de gestion (`/tombola/gestion`), série tombola, lot 1.
+Tombola — page PUBLIQUE (`/tombola`, lot 2) et page BÉNÉVOLE de gestion
+(`/tombola/gestion`, lot 1).
+
+`/tombola` montre les numéros à retirer, sans JS ni rafraîchissement
+automatique (un lien « Actualiser » ; WCAG 2.2.1). Elle n'a PAS de
+`exiger_jeton` : la garde du module au routeur suffit (« tous » et
+« discret » : ouverte ; « bénévoles » : bénévoles seulement ;
+« désactivé » : page « module indisponible »).
 
 Saisir un tirage (à la main, ou par l'application en secours), remettre un
 lot, annuler une remise dans la minute, retirer un numéro mal tapé dans les
@@ -7,14 +14,12 @@ cinq minutes. Toute la logique est dans `app/tombola.py` ; ce module lit les
 formulaires, appelle, JOURNALISE (seules les routes journalisent,
 docs/conception-journal.md § 5.2) et rend la page.
 
-`/tombola` reste LIBRE : c'est l'adresse de la page publique du lot 2.
-
 ⚠️ DEUX GARDES, COMME LE CARNET DE MAINTENANCE (`routes/maintenance.py`)
 ------------------------------------------------------------------------
 `main.py` enregistre ce routeur derrière `garde_module("tombola")` : c'est la
 VISIBILITÉ, réglée par le bureau (désactivée par défaut). Chaque route porte
 en plus son `Depends(exiger_jeton)` : c'est l'AUTORISATION d'accès. Le module
-n'est pas `jamais_public` (le lot 2 lui donnera une page publique) : sans
+n'est pas `jamais_public` (il a une page publique) : sans
 cette seconde garde, le régler sur « visible par tous » ouvrirait la saisie
 des tirages au premier visiteur venu.
 
@@ -51,6 +56,8 @@ URL_TIRAGE_ALEATOIRE = "/tombola/gestion/tirage-aleatoire"
 URL_REMETTRE = "/tombola/gestion/remettre"
 URL_ANNULER = "/tombola/gestion/annuler"
 URL_ERREUR = "/tombola/gestion/erreur-saisie"
+URL_REMPLACER = "/tombola/gestion/remplacer"
+URL_PUBLIQUE = "/tombola"
 
 
 def _entier(valeur: str | None) -> int | None:
@@ -62,7 +69,8 @@ def _entier(valeur: str | None) -> int | None:
 
 def _page(request: Request, message: tombola.Message | None = None, *,
           saisies: list[str] | None = None, saisie_max: str | None = None,
-          saisie_remise: str = "", focus_remise: bool = True):
+          saisie_remise: str = "", focus_remise: bool = True,
+          saisie_remplacement: str = ""):
     """
     Rendu commun : le GET et chaque envoi. Deux jetons de formulaire NEUFS à
     chaque rendu, un par formulaire de tirage — un jeton partagé ferait d'un
@@ -90,6 +98,7 @@ def _page(request: Request, message: tombola.Message | None = None, *,
          "saisie_max": saisie_max if saisie_max is not None
                        else (str(numero_max) if numero_max else ""),
          "saisie_remise": saisie_remise,
+         "saisie_remplacement": saisie_remplacement,
          "focus_remise": focus_remise,
          "jeton_manuel": tombola.nouveau_jeton(),
          "jeton_aleatoire": tombola.nouveau_jeton(),
@@ -99,12 +108,37 @@ def _page(request: Request, message: tombola.Message | None = None, *,
          "mode_aleatoire": tombola.MODE_ALEATOIRE,
          "actions": {"tirage": URL_TIRAGE, "aleatoire": URL_TIRAGE_ALEATOIRE,
                      "remettre": URL_REMETTRE, "annuler": URL_ANNULER,
-                     "erreur": URL_ERREUR}},
+                     "erreur": URL_ERREUR, "remplacer": URL_REMPLACER},
+         "url_publique": URL_PUBLIQUE},
     )
 
 
 def _retour():
     return RedirectResponse(URL_GESTION, status_code=303)
+
+
+@router.get("")
+def page_publique(request: Request):
+    """
+    La page publique : les tirages en attente, du plus récent au plus ancien,
+    numéros en grand. Même lecture que l'écran de salle et l'accueil
+    (`tombola.numeros_affiches`), sans identifiant de ligne.
+    """
+    from datetime import datetime
+
+    from app.services import FUSEAU_LOCAL
+
+    conn = get_connection()
+    try:
+        tirages = tombola.numeros_affiches(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "tombola.html",
+        {"tirages": tirages,
+         "mis_a_jour": datetime.now(FUSEAU_LOCAL).strftime("%H:%M"),
+         "url_publique": URL_PUBLIQUE, "url_gestion": URL_GESTION},
+    )
 
 
 @router.get("/gestion")
@@ -219,7 +253,34 @@ def erreur_saisie(request: Request, numero_id: str = Form(""),
     return _page(request, tombola.message_retrait(g), focus_remise=False)
 
 
+@router.post("/gestion/remplacer")
+def remplacer(request: Request, numero_id: str = Form(""), numero: str = Form(""),
+              _=Depends(exiger_jeton)):
+    """
+    « Remplacer » : met le numéro correct à la place d'un numéro retiré pour
+    erreur de saisie, dans le même tirage (`tombola.remplacer_numero`). Le
+    formulaire n'apparaît que dans le message qui suit « Erreur de saisie »,
+    et y revient tant que la correction reste possible (saisie illisible,
+    numéro déjà sorti), la saisie remise dans le champ.
+    """
+    identifiant = _entier(numero_id)
+    conn = get_connection()
+    try:
+        r = (tombola.remplacer_numero(conn, identifiant, numero)
+             if identifiant is not None
+             else tombola.Remplacement(tombola.REMPLACEMENT_IMPOSSIBLE))
+    finally:
+        conn.close()
+    if r.ecrit:
+        journal.journaliser(request, "tombola", "tombola_numero_remplace",
+                            objet=f"{r.ancien} → {r.nouveau}", ref=str(r.nouveau))
+    message = tombola.message_remplacement(r)
+    return _page(request, message, focus_remise=False,
+                 saisie_remplacement=numero[:20] if message.remplacer_id else "")
+
+
 @router.get("/gestion/tirage")
+@router.get("/gestion/remplacer")
 @router.get("/gestion/tirage-aleatoire")
 @router.get("/gestion/remettre")
 @router.get("/gestion/annuler")

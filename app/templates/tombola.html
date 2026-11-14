@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titre %}Tombola — {{ nom_association }}{% endblock %}
+
+{#
+  Page PUBLIQUE de la tombola (série tombola, lot 2). Aucun JS, aucun
+  rafraîchissement automatique : un `<meta http-equiv="refresh">` ferait
+  perdre sa position de lecture à un lecteur d'écran et recharger la page
+  sous le doigt (WCAG 2.2.1). Un lien « Actualiser » et l'heure de mise à
+  jour à la place : le visiteur sait de quand date ce qu'il lit.
+
+  La phrase d'explication est FIXE et sans lieu : un lieu propre à une
+  association serait une donnée à paramétrer, pas un texte en dur.
+#}
+
+{% block contenu %}
+<section class="carte tombola-public">
+  <h1>Tombola</h1>
+  <p>Votre numéro est affiché ? Présentez votre ticket aux bénévoles pour
+    retirer votre lot.</p>
+  <p class="stats-note">Mis à jour à {{ mis_a_jour }} ·
+    <a class="lien" href="{{ url_publique }}">Actualiser</a>
+    {% if est_benevole(request) %} · <a class="lien" href="{{ url_gestion }}">Gérer la tombola</a>{% endif %}</p>
+
+  {% if tirages %}
+    {% set niveau_titre = 2 %}
+    {% include "_tombola_tirages.html" %}
+  {% else %}
+    <p>Aucun numéro en attente pour le moment.</p>
+  {% endif %}
+</section>
+{% endblock %}

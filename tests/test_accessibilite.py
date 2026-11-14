@@ -350,7 +350,10 @@ def test_les_panneaux_de_l_ecran_de_salle_forment_un_groupe_legende(client):
     groupe = re.search(r"<fieldset[^>]*>(.*?)</fieldset>", page, re.S)
     assert groupe, "aucun fieldset sur la page"
     assert re.search(r"<legend>\s*Panneaux affichés en salle\s*</legend>", groupe.group(1))
-    assert len(re.findall(r'type="checkbox" name="panneau_', groupe.group(1))) == 4
+    # Une case par panneau réglable (cinq depuis la série tombola, lot 2).
+    from app.routes.live import CLES_PANNEAUX
+    assert len(re.findall(r'type="checkbox" name="panneau_', groupe.group(1))) \
+        == len(CLES_PANNEAUX)
     # Le patron d'admin_evenement.html, dont le CSS retire bordure et marges.
     assert 'class="champ champ-groupe"' in groupe.group(0)
 

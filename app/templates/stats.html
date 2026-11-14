@@ -80,6 +80,9 @@
       <label class="case"><input type="checkbox" name="sections" value="synthese" checked> Synthèse</label>
       <label class="case"><input type="checkbox" name="sections" value="plus" checked> Palmarès des plus prêtés</label>
       <label class="case"><input type="checkbox" name="sections" value="moins" checked> Palmarès des moins prêtés</label>
+      {# Tombola (série tombola, lot 2) : la case n'existe que si la section
+         existe — module visible et au moins un tirage dans la période. #}
+      {% if tombola %}<label class="case"><input type="checkbox" name="sections" value="tombola" checked> Tombola</label>{% endif %}
       <label class="case"><input type="checkbox" name="sections" value="detail"> Détail des prêts</label>
       <div><button type="submit" class="bouton-filtrer">Télécharger le PDF</button></div>
     </form>
@@ -150,6 +153,61 @@
     <p>Aucun prêt sur la période.</p>
   {% endif %}
 </section>
+
+{# Tombola (série tombola, lot 2) : absente quand le module est masqué pour
+   ce visiteur ou qu'aucun tirage n'a eu lieu dans la période. Un numéro
+   compte dans la période de son tirage. #}
+{% if tombola %}
+<section class="carte" id="tombola">
+  <h2>Tombola</h2>
+  <div class="stats-chiffres">
+    <div class="chiffre"><span class="chiffre-val">{{ tombola.tires }}</span><span class="chiffre-lib">{{ pluriel(tombola.tires, 'numéro tiré', 'numéros tirés') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ tombola.remis }}</span><span class="chiffre-lib">{{ pluriel(tombola.remis, 'lot remis', 'lots remis') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ tombola.affiches }}</span><span class="chiffre-lib">encore {{ pluriel(tombola.affiches, 'affiché', 'affichés') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ tombola.non_reclames }}</span><span class="chiffre-lib">non {{ pluriel(tombola.non_reclames, 'réclamé', 'réclamés') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val" title="Temps entre l'affichage d'un numéro et la remise de son lot, sur les seuls lots remis.">{{ tombola.delai_median }}</span><span class="chiffre-lib">délai médian de remise</span></div>
+    <div class="chiffre"><span class="chiffre-val" title="Numéros mal tapés, retirés de l'affichage. Non comptés dans les chiffres ci-dessus.">{{ tombola.erreurs_saisie }}</span><span class="chiffre-lib">{{ pluriel(tombola.erreurs_saisie, 'erreur de saisie', 'erreurs de saisie') }}</span></div>
+  </div>
+  <p class="stats-note">Le délai médian se calcule sur les seuls lots remis :
+    la moitié des gagnants est venue plus vite, l'autre moitié plus tard. Les
+    numéros non réclamés à la clôture n'y entrent pas.{% if tombola.delais_ecartes %}
+    {{ tombola.delais_ecartes }} {{ pluriel(tombola.delais_ecartes, 'délai écarté', 'délais écartés') }} : l'horloge du serveur donnait une remise avant l'affichage.{% endif %}</p>
+
+  <h3>Par tirage <small>({{ tombola.par_tirage | length }})</small></h3>
+  <table class="detail">
+    <thead><tr><th>Tirage</th><th>Mode</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
+    <tbody>
+      {% for t in tombola.par_tirage %}
+        <tr><td>{{ t.quand }}</td><td>{{ t.mode }}</td><td>{{ t.tires }}</td><td>{{ t.remis }}</td><td>{{ t.delai_median }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Par mode de tirage</h3>
+  <table class="detail">
+    <thead><tr><th>Mode</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
+    <tbody>
+      {% for m in tombola.par_mode %}
+        <tr><td>{{ m.mode }}</td><td>{{ m.nb_tirages }}</td><td>{{ m.tires }}</td><td>{{ m.remis }}</td><td>{{ m.delai_median }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# Une ligne par édition seulement quand la période en couvre plusieurs :
+     sinon le tableau répéterait la synthèse. #}
+  {% if tombola.par_edition | length > 1 %}
+  <h3>Par édition</h3>
+  <table class="detail">
+    <thead><tr><th>Ouverte le</th><th>Close le</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
+    <tbody>
+      {% for e in tombola.par_edition %}
+        <tr><td>{{ e.ouverte }}</td><td>{{ e.close or "en cours" }}</td><td>{{ e.nb_tirages }}</td><td>{{ e.tires }}</td><td>{{ e.remis }}</td><td>{{ e.delai_median }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
 
 <section class="carte">
   <h2>Détail des prêts <small>({{ prets | length }})</small></h2>

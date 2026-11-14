@@ -412,6 +412,31 @@ summary:focus-visible,
   padding: 8px 14px;
   font-size: 1rem;
 }
+/* Correction d'une faute de frappe (lot 2) : même rangée que « Numéro
+   présenté » / « Lot remis », dans le message vert du retrait. */
+.tombola-remplacer { display: flex; align-items: flex-end; gap: 8px; text-align: left; }
+.tombola-remplacer .champ { flex: 1 1 auto; min-width: 0; margin: 0; }
+.tombola-remplacer .champ input { font-weight: 700; }
+.tombola-remplacer .bouton { flex: 0 0 auto; }
+.tombola-lien-public { margin: 0 0 8px; }
+
+/* Numéros PUBLICS de la tombola (/tombola et bloc de l'accueil, lot 2) :
+   texte courant sur le blanc de la carte, en très grand. À 375 px, trois
+   numéros à quatre chiffres par rangée (mesuré : un tirage de cinq tient
+   en deux rangées) ; au-delà, la rangée passe à la ligne sans jamais
+   couper un numéro (`white-space: nowrap`). */
+.tombola-public-titre { margin: 14px 0 2px; font-size: 1rem; color: var(--gris); }
+.tombola-public h2.tombola-public-titre { font-size: 1.05rem; }
+.tombola-public-numeros {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 2px 14px;
+}
+.tombola-public-numeros li {
+  font-size: 2rem; font-weight: 800; line-height: 1.15;
+  font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--texte);
+}
+.tombola-public-lien { margin: 12px 0 0; }
+
 .tombola-cinq { border: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .tombola-cinq legend { padding: 0; margin-bottom: 6px; }
 .tombola-cinq label { font-size: 0.85rem; }

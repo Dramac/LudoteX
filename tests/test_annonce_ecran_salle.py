@@ -466,7 +466,9 @@ def test_echeance_illisible_masque_plutot_qu_afficher(client):
 def test_live_data_n_expose_plus_un_texte_expire(client):
     _inserer_expiree("Tombola à 15 h")
     assert "annonces" not in client.get("/live/data").json()
-    assert "Tombola" not in client.get("/live").text
+    # Le texte exact : depuis la série tombola, « Tombola » est aussi le
+    # titre (masqué) d'un panneau de l'écran.
+    assert "Tombola à 15 h" not in client.get("/live").text
 
 
 def test_les_lectures_n_ecrivent_jamais(client):
@@ -730,7 +732,8 @@ def test_chemin_cloture_efface_tout_sur_les_octets_et_laisse_les_panneaux(client
     d = client.get("/live/data").json()
     assert "annonces" not in d
     assert d["panneaux"] == avant == {"chiffres": True, "tournois": False,
-                                      "programme": False, "mouvements": True}
+                                      "programme": False, "mouvements": True,
+                                      "tombola": False}
     octets = _octets_de_la_base(chemins)
     for marque in marques + ["TemoinClotureExpireeY9TG"]:
         assert marque.encode() not in octets

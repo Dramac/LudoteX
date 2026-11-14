@@ -55,9 +55,9 @@ PREFIXES_RESERVES = ("/admin", "/pret", "/scanner", "/maintenance",
                      # Ajouté au périmètre du prompt : l'administration du
                      # planning est de l'administration, sous un autre préfixe.
                      "/planning/admin",
-                     # Série tombola : la page de gestion des bénévoles. Le
-                     # reste de `/tombola` est réservé à la page publique du
-                     # lot 2, d'où le préfixe complet.
+                     # Série tombola : la page de gestion des bénévoles.
+                     # `/tombola` seul est la page PUBLIQUE (lot 2), sans
+                     # jeton par construction : d'où le préfixe complet.
                      "/tombola/gestion")
 
 METHODES_LECTURE = frozenset({"GET", "HEAD", "OPTIONS"})

@@ -23,14 +23,33 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import exports, services
+from app import exports, services, tombola
 from app.db import get_connection
+from app.modules import module_visible
 from app.templating import templates
 
 router = APIRouter(tags=["stats"])
 
 # Limite de la liste détaillée AFFICHÉE (l'export, lui, prend tout).
 LIMITE_PRETS_PAGE = 1000
+
+# Sections du PDF cochées par défaut. « tombola » s'y ajoute seulement quand
+# la section existe (`_tombola`).
+SECTIONS_PDF_DEFAUT = ("synthese", "plus", "moins")
+
+
+def _tombola(request: Request, conn, debut_utc: str | None,
+             fin_utc: str | None) -> dict | None:
+    """
+    Les statistiques de la tombola pour la période, ou None : module non
+    visible pour ce visiteur (fiche A3 : on ne calcule pas les données d'un
+    module masqué), ou aucun tirage dans la période. C'est la ROUTE qui lit
+    et transmet à `exports`, comme pour la couleur. Même règle pour la page
+    et les deux exports.
+    """
+    if not module_visible(request, "tombola"):
+        return None
+    return tombola.statistiques(conn, debut_utc, fin_utc)
 
 
 def _joli(saisie: str | None) -> str:
@@ -74,6 +93,7 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
         # Vue « actuellement sortis » : indépendante du filtre de période, inclut
         # les tournois (état du parc à l'instant T).
         en_cours = services.lister_prets_en_cours(conn)
+        stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
     finally:
         conn.close()
 
@@ -88,31 +108,37 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
          "metrique": metrique, "prets": data["prets"],
          "debut": debut or "", "fin": fin or "",
          "periode_txt": _periode_txt(debut, fin), "qs": qs,
-         "sortis_pret": en_cours["pret"], "sortis_tournoi": en_cours["tournoi"]},
+         "sortis_pret": en_cours["pret"], "sortis_tournoi": en_cours["tournoi"],
+         "tombola": stats_tombola},
     )
 
 
-def _exporter(tri: str, debut: str | None, fin: str | None):
-    """Collecte les données complètes (toutes lignes) pour un export."""
+def _exporter(request: Request, tri: str, debut: str | None, fin: str | None):
+    """
+    Collecte les données complètes (toutes lignes) pour un export, et celles
+    de la tombola (None si la section n'a pas lieu d'être).
+    """
     metrique, debut, fin = _params(tri, debut, fin)
+    debut_utc = services.local_vers_utc_iso(debut)
+    fin_utc = services.local_vers_utc_iso(fin)
     conn = get_connection()
     try:
         data = services.collecter_stats(
-            conn, metrique,
-            services.local_vers_utc_iso(debut), services.local_vers_utc_iso(fin),
+            conn, metrique, debut_utc, fin_utc,
             limite_prets=None,  # toutes les lignes dans l'export
         )
+        stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
     finally:
         conn.close()
-    return data, _periode_txt(debut, fin)
+    return data, _periode_txt(debut, fin), stats_tombola
 
 
 @router.get("/stats/export.xlsx")
-def export_xlsx(tri: str = "total", debut: str | None = None,
+def export_xlsx(request: Request, tri: str = "total", debut: str | None = None,
                 fin: str | None = None):
     """Télécharge les statistiques au format Excel (.xlsx)."""
-    data, periode = _exporter(tri, debut, fin)
-    contenu = exports.construire_xlsx(data, periode)
+    data, periode, stats_tombola = _exporter(request, tri, debut, fin)
+    contenu = exports.construire_xlsx(data, periode, tombola=stats_tombola)
     return Response(
         content=contenu,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -127,17 +153,22 @@ def export_pdf(request: Request, tri: str = "total", debut: str | None = None,
     Télécharge les statistiques au format PDF, avec sections au choix.
 
     Les sections à inclure sont passées en paramètres `sections` (multivalués) :
-    synthese, plus, moins, detail. Par défaut (aucune fournie), on inclut
-    synthèse + les deux palmarès (détail décoché par défaut côté page).
+    synthese, plus, moins, tombola, detail. Par défaut (aucune fournie), on
+    inclut synthèse + les deux palmarès, et la tombola quand elle a des
+    tirages dans la période et que son module est visible (détail décoché
+    par défaut côté page). Une section « tombola » demandée sans données ne
+    produit rien.
     """
-    sections = set(request.query_params.getlist("sections")) or {"synthese", "plus", "moins"}
+    data, periode, stats_tombola = _exporter(request, tri, debut, fin)
+    defaut = set(SECTIONS_PDF_DEFAUT) | ({"tombola"} if stats_tombola else set())
+    sections = set(request.query_params.getlist("sections")) or defaut
     sections &= set(exports.SECTIONS_PDF)  # ne garder que les sections connues
-    data, periode = _exporter(tri, debut, fin)
     # Couleur d'identité (lot 3c) : la ROUTE la lit et la transmet — voir la
     # note en tête d'app/exports.py. `theme_association()` ne lève jamais et
     # renvoie toujours un `#rrggbb` effectif (l'anthracite par défaut).
     couleur = services.theme_association()["couleur"]
-    contenu = exports.construire_pdf(data, periode, sections, couleur)
+    contenu = exports.construire_pdf(data, periode, sections, couleur,
+                                     tombola=stats_tombola)
     return Response(
         content=contenu,
         media_type="application/pdf",

@@ -90,11 +90,27 @@ def accueil(request: Request):
         finally:
             conn_t.close()
 
+    # Tombola (série tombola, lot 2) : même règle que la fiche A3, et dans la
+    # base de PRÊT (jamais mêlée à la connexion des tournois ci-dessus). Pour
+    # un visiteur, le bloc n'apparaît donc qu'en état « tous » : en
+    # « discret », /tombola répond mais l'accueil ne la montre pas (« lien
+    # masqué »), et en « bénévoles » seuls les bénévoles la voient.
+    tirages_tombola = []
+    if module_visible(request, "tombola"):
+        from app import tombola
+
+        conn = get_connection()
+        try:
+            tirages_tombola = tombola.numeros_affiches(conn)
+        finally:
+            conn.close()
+
     planning_non_vide = any(not j["vide"] for j in planning)
     return templates.TemplateResponse(
         request, "accueil.html",
         {"total": total, "disponible": disponible, "imminents": imminents,
-         "planning": planning, "planning_non_vide": planning_non_vide},
+         "planning": planning, "planning_non_vide": planning_non_vide,
+         "tirages_tombola": tirages_tombola},
     )
 
 

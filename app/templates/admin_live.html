@@ -96,6 +96,10 @@
 <section class="carte">
   <h2>Panneaux affichés</h2>
   <form method="post" action="/admin/ecran-salle" class="recherche-form">
+    {# Marqueur de version du formulaire (série tombola, lot 2) : sans lui,
+       la route sait que l'envoi vient d'une page ouverte avant la case
+       « Tombola », et n'éteint pas ce panneau. #}
+    <input type="hidden" name="{{ champ_version_panneaux }}" value="{{ version_panneaux }}">
     {# <fieldset>/<legend> (patron d'admin_evenement.html) : l'ancien
        <label> ne visait aucun champ, et un lecteur d'écran l'annonçait seul,
        sans le rattacher aux quatre cases. La légende est lue avant chacune. #}
@@ -121,7 +125,12 @@
                {% if panneaux.mouvements %}checked{% endif %}>
         Panneau Derniers prêts &amp; retours
       </label>
-      {% for nom, libelle in [("tournois", "Tournois"), ("programme", "Animations")] %}
+      <label class="case">
+        <input type="checkbox" name="panneau_tombola" value="1"
+               {% if panneaux.tombola %}checked{% endif %}>
+        Panneau Tombola (numéros à retirer, seulement s'il y en a)
+      </label>
+      {% for nom, libelle in [("tournois", "Tournois"), ("programme", "Animations"), ("tombola", "Tombola")] %}
         {% if panneaux[nom] and not panneaux_reels[nom] %}
           <p class="stats-note">Le panneau {{ libelle }} est coché, mais son
             module est désactivé dans
@@ -129,7 +138,7 @@
             il ne s'affichera pas en salle tant que le module reste désactivé.</p>
         {% endif %}
       {% endfor %}
-      {% if not (panneaux.chiffres or panneaux.tournois or panneaux.programme or panneaux.mouvements) %}
+      {% if not (panneaux.chiffres or panneaux.tournois or panneaux.programme or panneaux.mouvements or panneaux.tombola) %}
         <p class="stats-note">Aucun panneau coché : l'écran de salle n'affichera
           que le titre, l'horloge et les annonces. C'est possible (écran
           d'annonces seules), mais vérifiez que c'est bien ce que vous voulez.</p>
