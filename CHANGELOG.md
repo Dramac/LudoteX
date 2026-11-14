@@ -6,6 +6,13 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.34.0 — 2026-11-15
+
+- **Choisir une autre pochette que celle proposée** : juste après **Prêter**, **Utiliser une autre pochette** permet de taper le numéro de la pochette que vous avez en main. Si un autre prêt l'occupe déjà, l'application le dit et ne change rien.
+- **Sur un jeu sorti, « Rendre et prêter un nouveau jeu sans retour PI » passe en premier**, en vert ; **Rendre** vient ensuite, en orange.
+- **La fiche d'un jeu montre aux bénévoles chacune de ses boîtes** : disponible, ou sortie depuis combien de temps.
+- **Chercher un jeu sorti** : la liste des jeux actuellement sortis, dans les statistiques, se filtre par le nom du jeu ou le code de la boîte.
+
 ## 1.33.0 — 2026-11-14
 
 - **Nouveau module Tombola**, désactivé au départ : les bénévoles saisissent les numéros gagnants tirés à la main (ou, en secours, tirés par l'application) et remettent les lots par le numéro présenté.

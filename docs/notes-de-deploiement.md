@@ -83,6 +83,18 @@ est installée.
 
 ---
 
+## 1.34.0 — 2026-11-15
+
+### Rien à faire à la mise à jour, ni en cas de retour arrière
+
+**À la mise à jour : aucun geste.** Aucune table ni colonne nouvelle.
+
+**En cas de retour arrière vers une 1.33.x : aucun geste.** Un numéro de
+pochette choisi à la main reste un prêt ordinaire pour la 1.33 ; les numéros
+intermédiaires créés libres sont des pochettes libres comme les autres, que
+le plus petit numéro libre réutilise. La ligne de journal
+`pochette_changee` est simplement relue telle quelle.
+
 ## 1.33.0 — 2026-11-14
 
 ### Tombola : rien à faire à la mise à jour, ni en cas de retour arrière
