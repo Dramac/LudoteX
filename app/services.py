@@ -984,6 +984,28 @@ def lister_prets_en_cours(conn: sqlite3.Connection) -> dict:
     return groupes
 
 
+def filtrer_sortis(en_cours: dict, recherche: str | None) -> dict:
+    """
+    Restreint la vue « Jeux actuellement sortis » (`lister_prets_en_cours`)
+    aux lignes dont le NOM du jeu ou le CODE de la boîte contient la
+    recherche — ni la casse ni les accents ne comptent (« ecl » trouve
+    « Éclipse »). Recherche vide : tout, inchangé. Filtrage en Python et pas
+    en SQL : la liste est celle des boîtes dehors à l'instant, quelques
+    centaines au plus, et `LIKE` de SQLite ne plie pas les accents.
+
+    Le pliage est celui des catégories (`categories_jeu.cle`), réutilisé
+    plutôt que réécrit : même besoin, « comparer comme un humain lit ».
+    """
+    from app.categories_jeu import cle
+
+    aiguille = cle(recherche)
+    if not aiguille:
+        return en_cours
+    return {motif: [d for d in lignes
+                    if aiguille in cle(d["nom"]) or aiguille in cle(d["id_exemplaire"])]
+            for motif, lignes in en_cours.items()}
+
+
 def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
                     debut: str | None = None, fin: str | None = None,
                     limite_palmares: int = 15,

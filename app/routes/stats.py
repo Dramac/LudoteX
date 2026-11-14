@@ -79,8 +79,15 @@ def _params(tri: str, debut: str | None, fin: str | None) -> tuple[str, str | No
 
 @router.get("/stats")
 def stats(request: Request, tri: str = "total", debut: str | None = None,
-          fin: str | None = None):
-    """Page des statistiques (avec filtre de période et liste détaillée)."""
+          fin: str | None = None, q: str | None = None):
+    """
+    Page des statistiques (avec filtre de période et liste détaillée).
+
+    `q` ne filtre QUE la vue « Jeux actuellement sortis » (nom du jeu ou code
+    de la boîte, retour terrain 1.34) — ni les totaux, ni les palmarès, ni
+    les exports.
+    """
+    q = (q or "").strip()
     metrique, debut, fin = _params(tri, debut, fin)
     # Conversion des bornes locales saisies -> UTC pour interroger la base.
     debut_utc = services.local_vers_utc_iso(debut)
@@ -93,6 +100,8 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
         # Vue « actuellement sortis » : indépendante du filtre de période, inclut
         # les tournois (état du parc à l'instant T).
         en_cours = services.lister_prets_en_cours(conn)
+        nb_sortis = sum(len(lignes) for lignes in en_cours.values())
+        en_cours = services.filtrer_sortis(en_cours, q)
         stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
     finally:
         conn.close()
@@ -109,6 +118,7 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
          "debut": debut or "", "fin": fin or "",
          "periode_txt": _periode_txt(debut, fin), "qs": qs,
          "sortis_pret": en_cours["pret"], "sortis_tournoi": en_cours["tournoi"],
+         "q": q, "nb_sortis": nb_sortis, "tri": tri,
          "tombola": stats_tombola},
     )
 
