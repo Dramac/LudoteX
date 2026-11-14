@@ -1413,6 +1413,80 @@ def preter_si_disponible(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
         return {"numero": preter(conn, id_exemplaire)}
 
 
+def changer_pochette(conn: sqlite3.Connection, id_exemplaire: str,
+                     numero_voulu: int) -> dict:
+    """
+    Remplace le numéro de pochette du prêt EN COURS par celui que le bénévole
+    a choisi (retour terrain : la pochette proposée est introuvable, abîmée,
+    ou le bénévole en tient déjà une autre en main).
+
+    Le prêt n'est ni clos ni rouvert : seule sa pochette change. L'ancien
+    numéro redevient libre, le nouveau est marqué occupé.
+
+    Refus, toujours sans rien écrire :
+    - le numéro est déjà détenu par un AUTRE prêt ouvert → `occupee`, avec le
+      nom du jeu qui la tient. On ne libère jamais ce prêt-là d'office : deux
+      pièces d'identité dans une même pochette, c'est précisément ce que la
+      règle anti-vol interdit ;
+    - la boîte n'est plus sortie, ou c'est une sortie tournoi (pas de
+      pochette) → `rien_a_changer`.
+
+    Un numéro au-delà du plus grand jamais créé est accepté (aucun plafond) :
+    les numéros intermédiaires sont créés LIBRES, sinon `plus_petit_numero_libre`
+    — qui crée `MAX + 1` quand aucun n'est libre — les sauterait pour toujours.
+
+    Contrôle et écriture sous `transaction(conn)`, comme le prêt : deux
+    bénévoles qui visent le même numéro au même instant ne peuvent pas
+    l'obtenir tous les deux.
+
+    Args:
+        numero_voulu: entier ≥ 1, validé par la route.
+
+    Returns:
+        {"statut": "change", "ancien": a, "numero": n}
+        {"statut": "inchange", "numero": n}
+        {"statut": "occupee", "numero": n, "nom": "<jeu qui la tient>"}
+        {"statut": "rien_a_changer"}
+    """
+    with transaction(conn):
+        courant = pret_en_cours(conn, id_exemplaire)
+        if courant is None or courant["motif"] != "pret":
+            return {"statut": "rien_a_changer"}
+        ancien = courant["numero_pochette"]
+        if ancien == numero_voulu:
+            return {"statut": "inchange", "numero": numero_voulu}
+        occupant = conn.execute(
+            """
+            SELECT t.nom FROM prets p
+            JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
+            JOIN titres t ON t.reference_titre = e.reference_titre
+            WHERE p.numero_pochette = ? AND p.date_retour IS NULL
+            LIMIT 1
+            """,
+            (numero_voulu,),
+        ).fetchone()
+        if occupant is not None:
+            return {"statut": "occupee", "numero": numero_voulu,
+                    "nom": occupant[0]}
+        plus_grand = conn.execute(
+            "SELECT COALESCE(MAX(numero_pochette), 0) FROM pochettes"
+        ).fetchone()[0]
+        conn.executemany(
+            "INSERT INTO pochettes (numero_pochette, occupe) VALUES (?, 0)",
+            [(n,) for n in range(plus_grand + 1, numero_voulu + 1)],
+        )
+        conn.execute(
+            "UPDATE pochettes SET occupe = 1 WHERE numero_pochette = ?",
+            (numero_voulu,),
+        )
+        liberer_numero(conn, ancien)
+        conn.execute(
+            "UPDATE prets SET numero_pochette = ? WHERE id_pret = ?",
+            (numero_voulu, courant["id_pret"]),
+        )
+    return {"statut": "change", "ancien": ancien, "numero": numero_voulu}
+
+
 # Numéro de pochette « factice » pour les sorties tournoi (pas d'emplacement).
 NUMERO_TOURNOI = 0
 

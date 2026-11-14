@@ -2,6 +2,23 @@
 {% from "_pochette_oubliee.html" import verifier_pochette, pochette_pas_vide %}
 {% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour — {{ nom_association }}{% endblock %}
 
+{# Changer le numéro de pochette proposé (retour terrain, 1.34) : replié par
+   défaut sous le grand numéro, pour que le cas courant — on prend le numéro
+   proposé — ne voie qu'une ligne de plus. Ouvert d'office après un refus.
+   `inputmode="numeric"` : clavier chiffres sur téléphone. #}
+{% macro forcer_pochette(id_exemplaire, ouvert) %}
+  <details class="pochette-forcer"{% if ouvert %} open{% endif %}>
+    <summary>Utiliser une autre pochette</summary>
+    <form method="post" action="/pret/{{ id_exemplaire }}/pochette" class="pochette-forcer-form">
+      <label class="champ">Numéro de la pochette
+        <input type="text" name="numero" inputmode="numeric" pattern="[0-9]*"
+               autocomplete="off" required>
+      </label>
+      <button type="submit" class="bouton bouton-principal">Changer</button>
+    </form>
+  </details>
+{% endmacro %}
+
 {% block contenu %}
 {% if info is none %}
   <section class="carte">
@@ -95,11 +112,38 @@
 
   {# --- Bandeau de résultat après une action --- #}
   {% if resultat %}
-    {% if resultat.type == "prete" %}
+    {% if resultat.type in ("prete", "pochette_changee") %}
       <section class="resultat resultat-ok">
         <p class="resultat-libelle">Pochette n°</p>
         <p class="pochette-num">{{ resultat.numero }}</p>
         <p class="resultat-consigne">Glissez-y la pièce d'identité.</p>
+        {% if resultat.type == "pochette_changee" %}
+          <p class="resultat-consigne">Numéro changé : la pochette n°{{ resultat.ancien }}
+             reste libre pour le prochain emprunt.</p>
+        {% endif %}
+        {{ forcer_pochette(info.id_exemplaire, false) }}
+      </section>
+    {% elif resultat.type in ("pochette_occupee", "pochette_invalide") %}
+      {# Refus du changement de pochette : RIEN n'a été écrit, le prêt reste
+         sur son numéro d'origine — le redire en grand, c'est la consigne
+         utile ; le formulaire reste ouvert pour un autre essai. #}
+      <section class="resultat resultat-attention" role="status">
+        <p>
+          {% if resultat.type == "pochette_occupee" %}
+            <strong>La pochette n°{{ resultat.voulu }} est déjà prise</strong>
+            par {{ resultat.nom }}. Rien n'a été modifié.
+          {% elif resultat.saisie %}
+            <strong>« {{ resultat.saisie }} » n'est pas un numéro de pochette</strong>
+            (un nombre entre 1 et {{ resultat.max }}). Rien n'a été modifié.
+          {% else %}
+            <strong>Aucun numéro saisi.</strong> Rien n'a été modifié.
+          {% endif %}
+        </p>
+        {% if resultat.numero %}
+          <p class="resultat-consigne">Le prêt reste sur la pochette
+             n°<strong>{{ resultat.numero }}</strong>.</p>
+          {{ forcer_pochette(info.id_exemplaire, true) }}
+        {% endif %}
       </section>
     {% elif resultat.type == "repret" %}
       {# Le re-prêt clôt un prêt qu'on n'a jamais scanné en retour : le

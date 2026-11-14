@@ -100,7 +100,7 @@ router = APIRouter(prefix="/pret", tags=["pret"])
 # historiques pour ne garder qu'UN SEUL endroit qui décide de ce qui compte
 # comme un échec dans le journal (docs/conception-journal.md §2.3).
 _ECHECS = {"deja_sorti", "deja_disponible", "occupe",
-           "transfert_impossible", "nouveau_sorti"}
+           "transfert_impossible", "nouveau_sorti", "pochette_occupee"}
 
 
 def _journaliser_pret(request: Request, action: str, info: dict, resultat: dict) -> None:
@@ -445,6 +445,61 @@ def action_repreter(request: Request, id_exemplaire: str, _=Depends(exiger_jeton
     finally:
         conn.close()
     _journaliser_pret(request, "re_pret", info, resultat)
+    return _rendu(request, id_exemplaire, resultat)
+
+
+# Garde-fou de FRAPPE, pas un plafond de pochettes (il n'y en a aucun, la
+# règle vaut pour l'attribution automatique) : un « 70000 » tapé pour « 7 »
+# créerait autant de lignes libres dans `pochettes`. Aucun événement n'en
+# approche le dixième.
+NUMERO_POCHETTE_SAISI_MAX = 9999
+
+
+@router.post("/{id_exemplaire}/pochette")
+def action_changer_pochette(request: Request, id_exemplaire: str,
+                            numero: str = Form(""), _=Depends(exiger_jeton)):
+    """
+    Remplace le numéro de pochette proposé par celui que le bénévole choisit
+    (services.changer_pochette). Proposé sous le grand numéro, juste après
+    « Prêter » : le cas courant reste à un seul tap, la correction en coûte
+    un de plus.
+
+    Saisie vide, non numérique, nulle ou démesurée → message et formulaire
+    de nouveau proposé, rien d'écrit (« ne jamais bloquer »).
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return _rendu(request, id_exemplaire)
+        saisie = numero.strip()
+        if not saisie.isdigit() or not 1 <= int(saisie) <= NUMERO_POCHETTE_SAISI_MAX:
+            courant = services.pret_en_cours(conn, id_exemplaire)
+            return _rendu(request, id_exemplaire,
+                          {"type": "pochette_invalide", "saisie": saisie,
+                           "max": NUMERO_POCHETTE_SAISI_MAX,
+                           "numero": courant["numero_pochette"] if courant else None})
+
+        def ecrire():
+            res = services.changer_pochette(conn, id_exemplaire, int(saisie))
+            statut = res["statut"]
+            if statut == "change":
+                return {"type": "pochette_changee", "numero": res["numero"],
+                        "ancien": res["ancien"]}
+            if statut == "inchange":
+                return {"type": "prete", "numero": res["numero"]}
+            if statut == "occupee":
+                courant = services.pret_en_cours(conn, id_exemplaire)
+                return {"type": "pochette_occupee", "voulu": res["numero"],
+                        "nom": res["nom"],
+                        "numero": courant["numero_pochette"] if courant else None}
+            return {"type": "deja_disponible"}
+
+        resultat = _sans_conflit(conn, id_exemplaire, ecrire)
+    finally:
+        conn.close()
+    if resultat["type"] in ("pochette_changee", "pochette_occupee", "deja_disponible", "occupe"):
+        _journaliser_pret(request, "pochette_changee", info, resultat)
     return _rendu(request, id_exemplaire, resultat)
 
 

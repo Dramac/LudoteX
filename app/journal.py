@@ -235,6 +235,10 @@ ACTIONS = {
     # pour être relisible sans ambiguïté dans /admin/journal, où le nom brut
     # s'affiche (il n'existe pas de table de libellés).
     "transfert_avec_cloture",
+    # Le bénévole remplace le numéro proposé par un autre, juste après le
+    # prêt (services.changer_pochette). Le numéro lui-même n'est JAMAIS
+    # journalisé, comme pour toutes les actions de prêt.
+    "pochette_changee",
     # --- Carnet de maintenance (docs/conception-signalements.md §10) --------
     # Le geste bénévole et sa clôture par le bureau. Le CRUD des catégories
     # relève, lui, de la configuration : mêmes trois verbes que les types de

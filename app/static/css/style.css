@@ -173,6 +173,16 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
    « Rendre et prêter un nouveau jeu ». Couleur sémantique, non thématisée ;
    texte blanc sur --orange : 5,9:1. */
 .bouton-orange { background: var(--orange); }
+
+/* « Utiliser une autre pochette » sous le grand numéro (pret.html). Le
+   texte hérite de la couleur du bandeau (vert ou orange), lisible sur son
+   fond clair ; le champ et le bouton restent sur une ligne à 375 px. */
+.pochette-forcer { margin-top: 12px; text-align: left; }
+.pochette-forcer > summary { cursor: pointer; font-weight: 600; text-decoration: underline; min-height: 44px; display: flex; align-items: center; }
+.pochette-forcer-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
+.pochette-forcer-form .champ { flex: 1 1 auto; min-width: 0; margin: 0; }
+.pochette-forcer-form .champ input { font-size: 1.4rem; font-weight: 700; }
+.pochette-forcer-form .bouton { flex: 0 0 auto; width: auto; margin: 0; padding: 12px 18px; min-height: 48px; font-size: 1.1rem; }
 /* Bouton désactivé (générique, tout usage) : avant cette règle, chaque écran
    qui en avait besoin réinventait son propre gris en style inline
    (voir admin_fonctionnalites.html) faute de composant partagé. */

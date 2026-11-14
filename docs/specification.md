@@ -393,9 +393,15 @@ plafond** : on ne refuse jamais un prêt.
   manuelle au retour — précisément le goulet à supprimer.
 - Le numéro identifie *la PI déposée*, pas la personne : **un seul jeu par PI
   et par numéro**.
-- **Une seule exception, assumée : le transfert** (§5.1) réutilise le numéro
+- **Deux exceptions, assumées.** Le **transfert** (§5.1) réutilise le numéro
   du prêt qu'il clôt, même si un plus petit est libre — la pochette n'a jamais
-  été vidée (`docs/conception-transfert-pochette.md` §3).
+  été vidée (`docs/conception-transfert-pochette.md` §3). Et juste après un
+  prêt, le bénévole peut **remplacer le numéro proposé** par celui de la
+  pochette qu'il a réellement en main (« Utiliser une autre pochette ») :
+  refusé, sans rien écrire, si un autre prêt ouvert tient déjà ce numéro ;
+  l'ancien numéro redevient libre. Le numéro choisi peut dépasser le plus
+  grand jamais attribué (les numéros intermédiaires sont créés libres) ; seul
+  un garde-fou de frappe écarte les valeurs au-delà de 9999.
 - Deux bénévoles qui prêtent au même instant ne peuvent pas recevoir le même
   numéro : l'attribution se fait dans une transaction exclusive
   (`docs/protocole-stress-test.md`).
