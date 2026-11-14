@@ -644,3 +644,27 @@ def test_apres_la_seconde_issue_la_premiere_reste_possible(client):
 
     assert r.status_code == 200
     assert _pret_en_cours("001") is None
+
+
+# ---------------------------------------------------------------------------
+# Ordre des boutons sur une boîte sortie (retour terrain, version 1.34)
+# ---------------------------------------------------------------------------
+def test_boite_sortie_transfert_en_premier_rendre_en_orange(client):
+    # Demande des bénévoles après usage en salle : « Rendre et prêter un
+    # nouveau jeu » d'abord, en vert ; « Rendre » ensuite, en orange.
+    client.post("/pret/001/preter")
+    page = client.get("/pret/001").text
+
+    transfert = page.index('class="bouton bouton-principal" href="/pret/001/transfert"')
+    rendre = page.index('action="/pret/001/rendre"')
+    assert transfert < rendre
+    assert 'class="bouton bouton-orange" type="submit">\n          Rendre' in page
+
+
+def test_sortie_tournoi_garde_rendre_en_vert(client):
+    # Pas de transfert possible sur une sortie tournoi : « Rendre » y reste
+    # l'unique action, donc le bouton vert.
+    client.post("/pret/003/tournoi")
+    page = client.get("/pret/003").text
+    assert "bouton-orange" not in page
+    assert 'class="bouton bouton-principal" type="submit">\n          Rendre' in page

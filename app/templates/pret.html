@@ -269,20 +269,25 @@
       </form>
     {% elif pret_actuel %}
       <p class="etat etat-sorti">Sorti — pochette n°{{ pret_actuel.numero_pochette }}</p>
-      <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
-        <button class="bouton bouton-principal" type="submit">
-          Rendre <span class="bouton-sous">libère la pochette n°{{ pret_actuel.numero_pochette }}</span>
-        </button>
-      </form>
-      {# Transfert de pochette (docs/conception-transfert-pochette.md) :
+      {# Ordre demandé par les bénévoles après usage en salle : le transfert
+         d'abord (vert), le retour simple ensuite (orange). Un tap de travers
+         sur le premier ne coûte rien : c'est un LIEN qui ouvre l'écran de
+         scan, il n'écrit rien.
+
+         Transfert de pochette (docs/conception-transfert-pochette.md) :
          UNIQUEMENT pour un prêt au public — jamais pour une sortie tournoi,
          qui n'a pas de pièce d'identité (branche juste au-dessus). Un lien,
          pas un bouton POST : il OUVRE un écran, il n'écrit rien (§2 des
          trois pièges de la note d'implémentation). #}
-      <a class="bouton bouton-secondaire" href="/pret/{{ info.id_exemplaire }}/transfert">
+      <a class="bouton bouton-principal" href="/pret/{{ info.id_exemplaire }}/transfert">
         Rendre et prêter un nouveau jeu sans retour PI
         <span class="bouton-sous">la pièce d'identité reste dans la pochette n°{{ pret_actuel.numero_pochette }}</span>
       </a>
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
+        <button class="bouton bouton-orange" type="submit">
+          Rendre <span class="bouton-sous">libère la pochette n°{{ pret_actuel.numero_pochette }}</span>
+        </button>
+      </form>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/repreter">
         <button class="bouton bouton-secondaire" type="submit">
           Le re-prêter <span class="bouton-sous">oubli de scan : nouveau prêt</span>

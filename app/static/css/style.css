@@ -168,6 +168,11 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 }
 .bouton-principal { background: var(--vert); }
 .bouton-secondaire { background: #fff; color: var(--gris); border: 2px solid var(--bord-champ); }
+/* Variante orange (docs/ui-composants.md §2 bis) : une action principale qui
+   n'est PAS celle qu'on attend en premier sur l'écran — « Rendre » sous
+   « Rendre et prêter un nouveau jeu ». Couleur sémantique, non thématisée ;
+   texte blanc sur --orange : 5,9:1. */
+.bouton-orange { background: var(--orange); }
 /* Bouton désactivé (générique, tout usage) : avant cette règle, chaque écran
    qui en avait besoin réinventait son propre gris en style inline
    (voir admin_fonctionnalites.html) faute de composant partagé. */

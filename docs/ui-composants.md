@@ -43,6 +43,19 @@ Action alternative de poids réel (« Le re-prêter » à côté de « Rendre »
 « Dupliquer » à côté de « Éditer »), jamais pour une simple navigation de
 retour (voir `.lien` au § 5).
 
+## 2 bis. Bouton orange — `.bouton.bouton-orange`
+
+```html
+<button type="submit" class="bouton bouton-orange">Rendre</button>
+```
+
+Même gabarit que le bouton principal, fond `--orange` (couleur sémantique,
+non thématisée ; texte blanc à 5,9:1). Pour une **seconde action de poids
+réel** placée sous le bouton vert, quand les deux doivent rester d'un seul
+coup d'œil distinguables au comptoir. Seul emploi : `pret.html`, boîte
+sortie — « Rendre et prêter un nouveau jeu » (vert) puis « Rendre » (orange),
+ordre demandé par les bénévoles après usage en salle.
+
 ## 3. Bouton compact — `.bouton-filtrer`
 
 ```html
