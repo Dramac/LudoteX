@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Query, Request
 
-from app import bgg, bgg_api, categories_jeu, services, vignettes
+from app import auth, bgg, bgg_api, categories_jeu, services, vignettes
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -213,8 +213,13 @@ def fiche(request: Request, id_exemplaire: str):
         lien_bgg = None
         image_boite = None
         categories = []
+        boites = []
         if info is not None:
             total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
+            # État de chaque boîte, avec la durée de sortie : bénévoles
+            # seulement (retour terrain, 1.34). Pas de requête pour le public.
+            if auth.peut_ecrire(request):
+                boites = services.exemplaires_du_titre(conn, info["reference_titre"])
             categories = services.categories_du_titre(conn, info["reference_titre"])
             # Lien vers la fiche BoardGameGeek : seulement si l'instance l'a
             # choisi (/admin/identite, décoché par défaut). Un simple lien,
@@ -253,7 +258,7 @@ def fiche(request: Request, id_exemplaire: str):
         {"id_exemplaire": id_exemplaire, "info": info,
          "total": total, "disponible": disponible, "emplacement": emplacement,
          "lien_bgg": lien_bgg, "image_boite": image_boite,
-         "liens_categories": liens_categories},
+         "liens_categories": liens_categories, "boites": boites},
         status_code=200 if info else 404,
     )
 

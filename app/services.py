@@ -1202,6 +1202,43 @@ def derniers_achats(conn: sqlite3.Connection, n: int = 10) -> list[dict]:
     return out
 
 
+def exemplaires_du_titre(conn: sqlite3.Connection, reference_titre: str) -> list[dict]:
+    """
+    Chaque boîte d'un titre et son état, pour la fiche vue par un BÉNÉVOLE
+    (retour terrain, 1.34 : « depuis combien de temps chaque exemplaire est
+    sorti »). La route ne l'appelle que derrière le jeton.
+
+    Jamais le numéro de pochette : la fiche est la page publique ouverte par
+    le QR, un écran qu'on montre volontiers au visiteur.
+
+    Returns:
+        Liste triée par code de boîte, de dicts {id_exemplaire, motif,
+        heure_sortie, duree_txt} ; `motif` vaut None pour une boîte
+        disponible (les deux autres clés sont alors vides), sinon le motif du
+        prêt en cours (« pret », « tournoi »).
+    """
+    rows = conn.execute(
+        """
+        SELECT e.id_exemplaire, p.motif, p.date_sortie
+        FROM exemplaires e
+        LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
+                         AND p.date_retour IS NULL
+        WHERE e.reference_titre = ?
+        ORDER BY e.id_exemplaire
+        """,
+        (reference_titre,),
+    ).fetchall()
+    resultat = []
+    for r in rows:
+        d = {"id_exemplaire": r["id_exemplaire"], "motif": r["motif"],
+             "heure_sortie": "", "duree_txt": ""}
+        if r["date_sortie"]:
+            d["heure_sortie"] = format_local(r["date_sortie"])[-5:]
+            d["duree_txt"] = format_duree(_duree_secondes(r["date_sortie"], None))
+        resultat.append(d)
+    return resultat
+
+
 def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int, int]:
     """
     Disponibilité d'un titre donné (utilisé par la fiche d'un exemplaire).

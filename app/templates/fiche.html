@@ -33,6 +33,27 @@
       </a>
     {% endif %}
 
+    {# État de chaque boîte, BÉNÉVOLES seulement (la route ne remplit
+       `boites` que derrière le jeton) : depuis combien de temps chacune est
+       sortie, pour aller chercher celle qui traîne. Jamais le numéro de
+       pochette — cette page est celle qu'ouvre le QR, on la montre au
+       visiteur. La boîte qu'on vient de scanner est nommée « cette boîte ».
+       Placé sous le bouton de prêt, qui ne doit jamais descendre. #}
+    {% if boites %}
+      <h2 class="boites-titre">{{ pluriel(boites | length, 'La boîte', 'Les boîtes') }} de ce jeu</h2>
+      <ul class="boites-etat">
+        {% for b in boites %}
+          <li>
+            <strong>{{ b.id_exemplaire }}</strong>{% if b.id_exemplaire == info.id_exemplaire %} <span class="stats-note">(cette boîte)</span>{% endif %} —
+            {% if b.motif is none %}disponible
+            {% elif b.motif == "tournoi" %}<span class="boites-sortie">en tournoi depuis {{ b.duree_txt }}</span> <span class="stats-note">(à {{ b.heure_sortie }})</span>
+            {% else %}<span class="boites-sortie">sortie depuis {{ b.duree_txt }}</span> <span class="stats-note">(à {{ b.heure_sortie }})</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
     {# Image de la boîte (série « images », lot 2) : seulement si le bureau
        l'a choisi et que la copie locale existe — sinon rien, pas même un
        cadre. APRÈS le bouton de prêt : un bénévole touche ce bouton des
