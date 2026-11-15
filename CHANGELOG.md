@@ -6,6 +6,11 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.35.0 — 2026-11-15
+
+- **Une pochette ignorée n'est plus proposée** : quand vous choisissez une autre pochette que celle proposée, celle-ci n'est plus proposée jusqu'à la fin de l'événement. Pour la reprendre, il suffit de la choisir à la main.
+- **La clôture de fin d'événement remet toutes les pochettes en service.**
+
 ## 1.34.0 — 2026-11-15
 
 - **Choisir une autre pochette que celle proposée** : juste après **Prêter**, **Utiliser une autre pochette** permet de taper le numéro de la pochette que vous avez en main. Si un autre prêt l'occupe déjà, l'application le dit et ne change rien.

@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.35.0 — 2026-11-15
 
 ### Pochettes écartées : rien à faire à la mise à jour, ni en cas de retour arrière
 
