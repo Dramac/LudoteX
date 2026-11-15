@@ -1380,8 +1380,10 @@ def plus_petit_numero_libre(conn: sqlite3.Connection) -> int:
     Returns:
         Le numéro de pochette attribué (entier ≥ 1).
     """
+    # Les numéros ÉCARTÉS (voir changer_pochette) ne sont plus proposés
+    # jusqu'à la clôture ; s'ils étaient les seuls libres, on crée MAX + 1.
     libre = conn.execute(
-        "SELECT MIN(numero_pochette) FROM pochettes WHERE occupe = 0"
+        "SELECT MIN(numero_pochette) FROM pochettes WHERE occupe = 0 AND ecartee = 0"
     ).fetchone()[0]
     if libre is not None:
         conn.execute(
@@ -1490,6 +1492,14 @@ def changer_pochette(conn: sqlite3.Connection, id_exemplaire: str,
     - la boîte n'est plus sortie, ou c'est une sortie tournoi (pas de
       pochette) → `rien_a_changer`.
 
+    Le numéro QUITTÉ est ÉCARTÉ (`pochettes.ecartee`, 1.35) : il n'est plus
+    proposé par `plus_petit_numero_libre` jusqu'à la clôture de fin
+    d'événement. Si le bénévole renonce à une pochette proposée, c'est le plus
+    souvent qu'elle manque ou qu'elle est abîmée — la reproposer au prêt
+    suivant ferait refaire le même détour. Le numéro CHOISI, lui, est remis en
+    service s'il était écarté : c'est le rattrapage en un geste d'un numéro
+    écarté par erreur.
+
     Un numéro au-delà du plus grand jamais créé est accepté (aucun plafond) :
     les numéros intermédiaires sont créés LIBRES, sinon `plus_petit_numero_libre`
     — qui crée `MAX + 1` quand aucun n'est libre — les sauterait pour toujours.
@@ -1535,10 +1545,13 @@ def changer_pochette(conn: sqlite3.Connection, id_exemplaire: str,
             [(n,) for n in range(plus_grand + 1, numero_voulu + 1)],
         )
         conn.execute(
-            "UPDATE pochettes SET occupe = 1 WHERE numero_pochette = ?",
+            "UPDATE pochettes SET occupe = 1, ecartee = 0 WHERE numero_pochette = ?",
             (numero_voulu,),
         )
-        liberer_numero(conn, ancien)
+        conn.execute(
+            "UPDATE pochettes SET occupe = 0, ecartee = 1 WHERE numero_pochette = ?",
+            (ancien,),
+        )
         conn.execute(
             "UPDATE prets SET numero_pochette = ? WHERE id_pret = ?",
             (numero_voulu, courant["id_pret"]),
@@ -1766,7 +1779,9 @@ def cloturer_evenement(conn: sqlite3.Connection) -> Cloture:
             (maintenant(),),
         )
         nb = cur.rowcount
-        conn.execute("UPDATE pochettes SET occupe = 0")
+        # Les numéros écartés (changer_pochette) reviennent en service : la
+        # liste ne vaut que pour l'événement qui se termine.
+        conn.execute("UPDATE pochettes SET occupe = 0, ecartee = 0")
         effacer_toutes_les_annonces(conn)
         purger_appareils_anciens(conn)
         non_reclames = tombola.terminer_edition(conn)

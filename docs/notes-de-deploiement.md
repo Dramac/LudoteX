@@ -83,6 +83,18 @@ est installée.
 
 ---
 
+## À paraître
+
+### Pochettes écartées : rien à faire à la mise à jour, ni en cas de retour arrière
+
+**À la mise à jour : aucun geste.** La colonne `ecartee` de la table des
+pochettes est ajoutée au premier démarrage, à 0 : aucun numéro écarté,
+attribution identique à avant.
+
+**En cas de retour arrière vers une 1.34.x : aucun geste.** La 1.34 ignore la
+colonne : les numéros écartés redeviennent simplement proposables. À la
+remontée, ils sont de nouveau écartés jusqu'à la clôture.
+
 ## 1.34.0 — 2026-11-15
 
 ### Rien à faire à la mise à jour, ni en cas de retour arrière

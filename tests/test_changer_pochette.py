@@ -87,15 +87,69 @@ def test_changer_vers_un_numero_libre(client):
 
     assert r.status_code == 200
     assert '<p class="pochette-num">4</p>' in r.text
-    assert "la pochette n°1" in r.text and "reste libre" in r.text
+    assert "la pochette n°1" in r.text
+    assert "ne sera plus proposée jusqu'à la fin de l'événement" in r.text
     assert _pochette_du_pret("001") == 4
     # 2 et 3 créés LIBRES : sinon le prochain prêt partirait sur 5.
     assert _pochettes() == {1: 0, 2: 0, 3: 0, 4: 1}
 
 
-def test_le_numero_libere_repart_au_pret_suivant(client):
-    client.post("/pret/001/preter")
+def _ecartees():
+    return [n for (n,) in _lire(
+        "SELECT numero_pochette FROM pochettes WHERE ecartee = 1 ORDER BY 1")]
+
+
+def test_le_numero_ignore_n_est_plus_propose(client):
+    # Retour terrain : la pochette proposée manque ou est abîmée ; la
+    # reproposer au prêt suivant ferait refaire le même détour.
+    client.post("/pret/001/preter")                  # proposé : 1
     client.post("/pret/001/pochette", data={"numero": "3"})
+    assert _ecartees() == [1]
+    r = client.post("/pret/002/preter")
+    assert '<p class="pochette-num">2</p>' in r.text
+
+
+def test_le_numero_ignore_reste_ecarte_apres_les_retours(client):
+    client.post("/pret/001/preter")                  # 1 → changé en 2
+    client.post("/pret/001/pochette", data={"numero": "2"})
+    client.post("/pret/001/rendre")                  # 2 libre
+    r = client.post("/pret/002/preter")
+    assert '<p class="pochette-num">2</p>' in r.text  # pas 1
+    client.post("/pret/002/rendre")
+    client.post("/pret/003/preter")
+    assert _pochette_du_pret("003") == 2
+
+
+def test_seuls_libres_ecartes_on_cree_le_suivant(client):
+    client.post("/pret/001/preter")                  # 1
+    client.post("/pret/001/pochette", data={"numero": "2"})   # 1 écartée
+    r = client.post("/pret/002/preter")
+    assert '<p class="pochette-num">3</p>' in r.text
+
+
+def test_choisir_a_la_main_un_numero_ecarte_le_remet_en_service(client):
+    client.post("/pret/001/preter")
+    client.post("/pret/001/pochette", data={"numero": "4"})   # 1 écartée
+    client.post("/pret/002/preter")                           # 2
+    client.post("/pret/002/pochette", data={"numero": "1"})   # reprend 1
+    assert _pochette_du_pret("002") == 1
+    assert _ecartees() == [2]
+    client.post("/pret/002/rendre")
+    r = client.post("/pret/003/preter")
+    assert '<p class="pochette-num">1</p>' in r.text
+
+
+def test_la_cloture_remet_les_numeros_ecartes_en_service(client):
+    from app import db, services
+    client.post("/pret/001/preter")
+    client.post("/pret/001/pochette", data={"numero": "5"})
+    assert _ecartees() == [1]
+    conn = db.get_connection()
+    try:
+        services.cloturer_evenement(conn)
+    finally:
+        conn.close()
+    assert _ecartees() == []
     r = client.post("/pret/002/preter")
     assert '<p class="pochette-num">1</p>' in r.text
 
@@ -110,14 +164,16 @@ def test_numero_inferieur_deja_cree_et_libre(client):
     client.post("/pret/003/pochette", data={"numero": "2"})
     assert _pochette_du_pret("003") == 2
     assert _pochettes() == {1: 0, 2: 1}
+    assert _ecartees() == [1]
 
 
 def test_meme_numero_ne_change_rien(client):
     client.post("/pret/001/preter")
     r = client.post("/pret/001/pochette", data={"numero": "1"})
     assert '<p class="pochette-num">1</p>' in r.text
-    assert "reste libre" not in r.text
+    assert "ne sera plus proposée" not in r.text
     assert _pochettes() == {1: 1}
+    assert _ecartees() == []
 
 
 def test_le_retour_libere_le_numero_choisi(client):
@@ -193,5 +249,41 @@ def test_journal_sans_numero(client, _journal_isole):
     changees = [l for l in lignes if l["action"] == "pochette_changee"]
     assert len(changees) == 1
     assert changees[0]["objet"] == "Catan"
-    assert "7" not in json.dumps(changees[0], ensure_ascii=False).replace(
-        changees[0].get("horodatage", ""), "")
+    # Ni clé ni valeur ne porte le numéro (l'horodatage `t` est écarté : il
+    # peut contenir un 7 par hasard).
+    sans_heure = {k: v for k, v in changees[0].items() if k != "t"}
+    assert "7" not in json.dumps(sans_heure, ensure_ascii=False)
+
+
+def test_un_refus_n_ecarte_rien(client):
+    client.post("/pret/001/preter")                  # 1
+    client.post("/pret/002/preter")                  # 2
+    client.post("/pret/002/pochette", data={"numero": "1"})   # occupée
+    client.post("/pret/002/pochette", data={"numero": "abc"})
+    assert _ecartees() == []
+
+
+def test_migration_d_une_base_sans_la_colonne(tmp_path, monkeypatch):
+    # Base d'avant la 1.35 : la colonne arrive à 0, l'attribution est
+    # exactement celle d'avant.
+    import sqlite3
+    from app import db, services
+
+    chemin = tmp_path / "ancienne.db"
+    ancienne = sqlite3.connect(chemin)
+    ancienne.execute("CREATE TABLE pochettes (numero_pochette INTEGER PRIMARY KEY, "
+                     "occupe INTEGER NOT NULL DEFAULT 0)")
+    ancienne.executemany("INSERT INTO pochettes VALUES (?, ?)", [(1, 1), (2, 0)])
+    ancienne.commit()
+    ancienne.close()
+
+    monkeypatch.setattr(db, "get_database_path", lambda: chemin)
+    conn = db.get_connection()
+    try:
+        db.init_db(conn)
+        colonnes = [r[1] for r in conn.execute("PRAGMA table_info(pochettes)")]
+        assert "ecartee" in colonnes
+        with services.transaction(conn):
+            assert services.plus_petit_numero_libre(conn) == 2
+    finally:
+        conn.close()

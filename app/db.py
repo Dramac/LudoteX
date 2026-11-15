@@ -136,6 +136,9 @@ _MIGRATIONS_COLONNES = [
     # née au lot 1, jamais déployé seul : cette ligne ne sert qu'aux bases
     # d'essai qui l'ont déjà créée.
     ("tombola_numeros", "remplace_id", "INTEGER REFERENCES tombola_numeros (id)"),
+    # Pochette écartée par un changement de numéro (1.35) : 0 sur une base
+    # existante, aucun numéro écarté, attribution identique à avant.
+    ("pochettes", "ecartee", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

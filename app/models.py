@@ -309,10 +309,17 @@ CREATE TABLE IF NOT EXISTS prets (
 # Une ligne est créée à la première attribution d'un numéro, puis réutilisée :
 # `occupe` bascule 1 (prêt) / 0 (retour). On attribue toujours le plus petit
 # numéro libre (voir services.plus_petit_numero_libre).
+#
+# `ecartee` (1.35) : le bénévole a remplacé ce numéro, proposé par
+# l'application, par une autre pochette (services.changer_pochette) — souvent
+# parce qu'elle manque ou qu'elle est abîmée. Il n'est plus PROPOSÉ jusqu'à la
+# clôture de fin d'événement, qui remet tout à 0 ; on peut toujours le
+# choisir à la main, ce qui le remet en service.
 SCHEMA_POCHETTES = """
 CREATE TABLE IF NOT EXISTS pochettes (
     numero_pochette  INTEGER PRIMARY KEY,         -- numéro (recyclé)
-    occupe           INTEGER NOT NULL DEFAULT 0   -- 0 = libre, 1 = occupé
+    occupe           INTEGER NOT NULL DEFAULT 0,  -- 0 = libre, 1 = occupé
+    ecartee          INTEGER NOT NULL DEFAULT 0   -- 1 = plus proposé jusqu'à la clôture
 );
 """
 

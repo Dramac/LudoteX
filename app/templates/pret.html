@@ -119,7 +119,7 @@
         <p class="resultat-consigne">Glissez-y la pièce d'identité.</p>
         {% if resultat.type == "pochette_changee" %}
           <p class="resultat-consigne">Numéro changé : la pochette n°{{ resultat.ancien }}
-             reste libre pour le prochain emprunt.</p>
+             ne sera plus proposée jusqu'à la fin de l'événement.</p>
         {% endif %}
         {{ forcer_pochette(info.id_exemplaire, false) }}
       </section>

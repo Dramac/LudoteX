@@ -399,7 +399,9 @@ plafond** : on ne refuse jamais un prêt.
   prêt, le bénévole peut **remplacer le numéro proposé** par celui de la
   pochette qu'il a réellement en main (« Utiliser une autre pochette ») :
   refusé, sans rien écrire, si un autre prêt ouvert tient déjà ce numéro ;
-  l'ancien numéro redevient libre. Le numéro choisi peut dépasser le plus
+  l'ancien numéro redevient libre mais est **écarté** : il n'est plus proposé
+  jusqu'à la clôture de fin d'événement (la pochette manque ou est abîmée,
+  le plus souvent). Le choisir à la main le remet en service. Le numéro choisi peut dépasser le plus
   grand jamais attribué (les numéros intermédiaires sont créés libres) ; seul
   un garde-fou de frappe écarte les valeurs au-delà de 9999.
 - Deux bénévoles qui prêtent au même instant ne peuvent pas recevoir le même
