@@ -324,24 +324,43 @@ def test_stats_n_a_plus_la_section(quatre_sorties):
 
 
 def test_stats_lien_vers_la_page_pour_un_benevole_seulement(quatre_sorties):
+    # Statistiques publiques : sinon le visiteur serait refusé (bilan-2) et
+    # l'absence du lien ne prouverait rien.
+    from app import modules
+    conn = _conn()
+    modules.ecrire_etat_module(conn, "stats", "tous")
+    conn.close()
     assert 'href="/sortis"' in quatre_sorties.get("/stats").text
     quatre_sorties.cookies.delete("jeton_pret")
-    html = quatre_sorties.get("/stats").text
-    assert 'href="/sortis"' not in html
+    r = quatre_sorties.get("/stats")
+    assert r.status_code == 200
+    assert 'href="/sortis"' not in r.text
 
 
+# Une recherche enregistrée en 1.34 l'a été par un bénévole : depuis bilan-2,
+# /stats est réservée aux bénévoles par défaut, et c'est eux qu'on redirige.
 def test_stats_q_redirige_vers_la_nouvelle_page(client):
-    r = client.get("/stats", params={"q": "Éclipse", "tri": "exemplaire"},
+    r = _benevole(client).get("/stats", params={"q": "Éclipse", "tri": "exemplaire"},
                    follow_redirects=False)
     assert r.status_code == 307
     assert r.headers["location"] == "/sortis?q=%C3%89clipse"
 
 
 def test_stats_q_vide_redirige_aussi(client):
-    r = client.get("/stats?q=", follow_redirects=False)
+    r = _benevole(client).get("/stats?q=", follow_redirects=False)
     assert r.status_code == 307 and r.headers["location"] == "/sortis?q="
 
 
 def test_stats_sans_q_ne_redirige_pas(client):
-    r = client.get("/stats", params={"tri": "exemplaire"}, follow_redirects=False)
+    r = _benevole(client).get("/stats", params={"tri": "exemplaire"}, follow_redirects=False)
     assert r.status_code == 200
+
+
+def test_stats_q_visiteur_refuse_sans_detour(client):
+    """
+    Un visiteur n'est pas redirigé : la garde du module passe avant. Il
+    aurait de toute façon été refusé sur /sortis ; il a la même page.
+    """
+    r = client.get("/stats", params={"q": "Éclipse"}, follow_redirects=False)
+    assert r.status_code == 403
+    assert "Accès réservé aux bénévoles" in r.text

@@ -1,5 +1,9 @@
 """
-Route des STATISTIQUES (post-événement) — page publique + exports.
+Route des STATISTIQUES (post-événement) — page + exports.
+
+Accès réglé par la visibilité du module « stats » (`garde_module` dans
+main.py) : réservé aux bénévoles par défaut, ouvrable au public par le bureau
+(lot bilan-2 ; le pourquoi est en commentaire de `MODULES["stats"]`).
 
 Agrégations sans donnée personnelle (spec §7) : total des prêts, palmarès des
 jeux les plus / les moins prêtés (par titre, jamais-sortis inclus), histogramme

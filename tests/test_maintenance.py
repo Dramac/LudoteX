@@ -397,7 +397,9 @@ def test_etat_par_defaut_du_module_sur_une_base_existante(client):
     conn = db.get_connection()
     try:
         assert modules.lire_etat_module(conn, "maintenance") == "benevoles"
-        assert modules.lire_etat_module(conn, "stats") == "tous"
+        # Contraste avec un module au défaut global (les statistiques, qui
+        # servaient d'exemple, ont leur propre défaut depuis le lot bilan-2).
+        assert modules.lire_etat_module(conn, "tournois") == modules.ETAT_DEFAUT == "tous"
     finally:
         conn.close()
 

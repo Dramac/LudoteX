@@ -16,7 +16,7 @@ CARTE DES URL
     /                 -> page d'accueil publique (outils + dispo + tournois) [public]
     /catalogue        -> liste publique des jeux (+ recherche/filtres)   [public]
     /jeu/<id>         -> fiche d'un exemplaire (encodée dans le QR)       [public]
-    /stats            -> statistiques de prêt                             [public]
+    /stats            -> statistiques de prêt     [bénévole par défaut, réglable]
     /live             -> tableau de bord temps réel (écran salle 16:9)    [public]
     /live/data        -> données JSON du tableau de bord (auto-refresh)   [public]
     /scanner          -> scanner caméra (ouvre /pret/<id>)              [bénévole]

@@ -32,7 +32,8 @@ le même mot.
      vérifie, mot compris ;
    - la liste des jeux sortis, seule à montrer les numéros en dehors de
      `/pret`, est une page bénévole à part (`/sortis`, lot bilan-1) : la
-     route exige le jeton, et `/stats`, publique, n'en porte plus aucun ;
+     route exige le jeton, et `/stats`, qu'un bureau peut rendre publique
+     (lot bilan-2), n'en porte plus aucun ;
    - le numéro est de toute façon **effacé à la clôture du prêt** (fiche D5,
      `docs/specification.md` §3.2).
 

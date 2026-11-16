@@ -616,26 +616,42 @@ def test_filtre_de_periode_sur_l_heure_du_tirage(bases):
     assert _stats(debut=(T0 + timedelta(hours=5)).isoformat(timespec="seconds")) is None
 
 
-def test_section_stats_selon_module_et_tirages(visiteur):
+@pytest.fixture
+def visiteur_stats(visiteur):
+    """
+    Visiteur sur une page des statistiques PUBLIQUE. Depuis le lot bilan-2,
+    elles sont réservées aux bénévoles par défaut : un visiteur y serait
+    refusé et ces tests, qui vérifient ce que la tombola montre à un
+    visiteur, deviendraient vides. On les règle sur « tous ».
+    """
+    conn = _conn()
+    try:
+        services.ecrire_parametre(conn, "module_stats", "tous")
+    finally:
+        conn.close()
+    return visiteur
+
+
+def test_section_stats_selon_module_et_tirages(visiteur_stats):
     _etat("tous")
-    assert 'id="tombola"' not in visiteur.get("/stats").text   # aucun tirage
+    assert 'id="tombola"' not in visiteur_stats.get("/stats").text   # aucun tirage
     _tirer(12, 45)
-    page = visiteur.get("/stats").text
+    page = visiteur_stats.get("/stats").text
     assert '<section class="carte" id="tombola">' in page
     assert 'name="sections" value="tombola" checked' in page
     _etat("desactive")
-    page = visiteur.get("/stats").text
+    page = visiteur_stats.get("/stats").text
     assert 'id="tombola"' not in page and 'value="tombola"' not in page
     _etat("discret")                       # masqué pour un visiteur
-    assert 'id="tombola"' not in visiteur.get("/stats").text
+    assert 'id="tombola"' not in visiteur_stats.get("/stats").text
 
 
-def test_stats_ne_lisent_pas_la_tombola_module_masque(visiteur, monkeypatch):
+def test_stats_ne_lisent_pas_la_tombola_module_masque(visiteur_stats, monkeypatch):
     appels = []
     monkeypatch.setattr(tombola, "statistiques", lambda *a, **k: appels.append(1))
-    visiteur.get("/stats")
-    visiteur.get("/stats/export.xlsx")
-    visiteur.get("/stats/export.pdf")
+    visiteur_stats.get("/stats")
+    visiteur_stats.get("/stats/export.xlsx")
+    visiteur_stats.get("/stats/export.pdf")
     assert appels == []
 
 
@@ -644,19 +660,19 @@ def _feuilles(contenu):
     return load_workbook(io.BytesIO(contenu))
 
 
-def test_feuille_excel_presente_ou_absente(visiteur):
+def test_feuille_excel_presente_ou_absente(visiteur_stats):
     _etat("tous")
-    assert "Tombola" not in _feuilles(visiteur.get("/stats/export.xlsx").content).sheetnames
+    assert "Tombola" not in _feuilles(visiteur_stats.get("/stats/export.xlsx").content).sheetnames
     _tirer(12, 45)
     _remettre_apres(12, 4)
-    classeur = _feuilles(visiteur.get("/stats/export.xlsx").content)
+    classeur = _feuilles(visiteur_stats.get("/stats/export.xlsx").content)
     assert classeur.sheetnames == ["Synthèse", "Palmarès", "Détail", "Tombola"]
     valeurs = [[c.value for c in ligne] for ligne in classeur["Tombola"].iter_rows()]
     plat = [v for ligne in valeurs for v in ligne if v is not None]
     assert "Délai médian de remise (lots remis seulement)" in plat
     assert "Par tirage" in plat and "4 min" in plat
     _etat("desactive")
-    assert "Tombola" not in _feuilles(visiteur.get("/stats/export.xlsx").content).sheetnames
+    assert "Tombola" not in _feuilles(visiteur_stats.get("/stats/export.xlsx").content).sheetnames
 
 
 def test_cellules_de_la_feuille_tombola_neutralisees(bases):
@@ -671,7 +687,7 @@ def test_cellules_de_la_feuille_tombola_neutralisees(bases):
     assert cellules and all(c.data_type == "s" for c in cellules)
 
 
-def test_section_pdf_cochable(visiteur, monkeypatch):
+def test_section_pdf_cochable(visiteur_stats, monkeypatch):
     vus = []
     original = exports.construire_pdf
 
@@ -681,12 +697,12 @@ def test_section_pdf_cochable(visiteur, monkeypatch):
 
     monkeypatch.setattr(exports, "construire_pdf", espion)
     _etat("tous")
-    visiteur.get("/stats/export.pdf")
+    visiteur_stats.get("/stats/export.pdf")
     _tirer(12, 45)
-    visiteur.get("/stats/export.pdf")
-    r = visiteur.get("/stats/export.pdf", params=[("sections", "synthese")])
+    visiteur_stats.get("/stats/export.pdf")
+    r = visiteur_stats.get("/stats/export.pdf", params=[("sections", "synthese")])
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
-    visiteur.get("/stats/export.pdf", params=[("sections", "tombola")])
+    visiteur_stats.get("/stats/export.pdf", params=[("sections", "tombola")])
     assert vus == [
         ({"synthese", "plus", "moins"}, False),
         ({"synthese", "plus", "moins", "tombola"}, True),
@@ -724,9 +740,9 @@ def test_sans_tirage_live_data_identique_hors_reglage(visiteur):
     assert avant == apres and "tombola" not in apres
 
 
-def test_sans_tirage_accueil_et_stats_identiques(visiteur):
+def test_sans_tirage_accueil_et_stats_identiques(visiteur_stats):
     _etat("desactive")
-    accueil_avant, stats_avant = visiteur.get("/").text, visiteur.get("/stats").text
+    accueil_avant, stats_avant = visiteur_stats.get("/").text, visiteur_stats.get("/stats").text
     _etat("tous")
-    assert visiteur.get("/").text == accueil_avant
-    assert visiteur.get("/stats").text == stats_avant
+    assert visiteur_stats.get("/").text == accueil_avant
+    assert visiteur_stats.get("/stats").text == stats_avant

@@ -591,17 +591,20 @@ def test_stats_exports(client):
     assert p.content[:4] == b"%PDF"
 
 
-def test_stats_pochette_cloisonnee(client, monkeypatch):
+def test_stats_pochette_cloisonnee(client, tmp_path, monkeypatch):
     """
     D5 volet 1 : le numéro de pochette (rattaché à une pièce d'identité,
-    voir CLAUDE.md) ne doit apparaître sur /stats — page PUBLIQUE — pour
-    personne. Depuis le lot bilan-1, la liste des jeux sortis, seule à le
+    voir CLAUDE.md) ne doit apparaître sur /stats pour personne. Depuis le
+    lot bilan-2, /stats est réservée aux bénévoles par défaut : un visiteur
+    y est refusé. On la règle sur « tous » — état où elle est PUBLIQUE et où
+    la règle compte le plus. Depuis le lot bilan-1, la liste des jeux sortis, seule à le
     montrer, est sur sa propre page bénévole (/sortis) : /stats ne porte plus
     de colonne « Pochette », même pour un bénévole activé. Sans jeton
     configuré, l'accès est en mode ouvert (tout le monde est "bénévole") :
     on configure un jeton pour sortir de ce mode.
     """
     monkeypatch.setenv("PRET_TOKEN", "jeton-stats-pochette-xyz")
+    _set_module(tmp_path, "stats", "tous")
     # Le prêt est créé côté bénévole (activation requise pour POST /pret/*).
     client.get("/acces", params={"jeton": "jeton-stats-pochette-xyz"})
     client.post("/pret/001/preter")  # prêt en cours -> numero_pochette = 1
@@ -652,7 +655,7 @@ def test_stats_detail_sans_colonne_emplacement(client, monkeypatch):
     assert "Catan" in detail
 
 
-def test_stats_export_xlsx_sans_colonne_emplacement(client, monkeypatch):
+def test_stats_export_xlsx_sans_colonne_emplacement(client, tmp_path, monkeypatch):
     """
     D5 volet 2 : la colonne disparaît de la feuille « Détail », pour tout le
     monde — y compris un bénévole activé. Elle n'est plus cloisonnée par rôle
@@ -674,12 +677,14 @@ def test_stats_export_xlsx_sans_colonne_emplacement(client, monkeypatch):
     # Bénévole activé...
     assert "N° emplacement" not in entetes_detail()
     assert "Durée" in entetes_detail()          # les autres colonnes restent
-    # ...et visiteur.
+    # ...et visiteur, sur des statistiques rendues publiques (bilan-2 : sinon
+    # il est refusé).
+    _set_module(tmp_path, "stats", "tous")
     client.cookies.delete("jeton_pret")
     assert "N° emplacement" not in entetes_detail()
 
 
-def test_stats_export_pdf_sans_colonne_emplacement(client, monkeypatch):
+def test_stats_export_pdf_sans_colonne_emplacement(client, tmp_path, monkeypatch):
     """
     D5 volet 2 : idem sur l'export PDF. Le PDF produit par reportlab
     compresse ses flux de contenu (FlateDecode/ASCII85) : on ne peut pas
@@ -708,7 +713,8 @@ def test_stats_export_pdf_sans_colonne_emplacement(client, monkeypatch):
     assert "Empl." not in captures[-1][0]
     assert "Durée" in captures[-1][0]
 
-    # Visiteur : identique.
+    # Visiteur, statistiques rendues publiques (bilan-2) : identique.
+    _set_module(tmp_path, "stats", "tous")
     captures.clear()
     client.cookies.delete("jeton_pret")
     r2 = client.get("/stats/export.pdf", params=[("sections", "detail")])

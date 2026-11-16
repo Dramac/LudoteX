@@ -83,6 +83,32 @@ est installée.
 
 ---
 
+## À paraître
+
+### Statistiques réservées aux bénévoles : vérifier le réglage après la mise à jour — un clic, dans l'administration
+
+**À la mise à jour : aucun geste sur le serveur.** Les statistiques ont
+désormais « Bénévoles uniquement » pour réglage par défaut. Ce défaut ne
+s'applique qu'à une installation dont la page **Fonctionnalités** de
+l'administration n'a **jamais** été enregistrée : ce formulaire inscrit le
+réglage de tous les modules à chaque enregistrement, et un « Visible par
+tous » inscrit reste « Visible par tous ». L'application ne peut pas
+distinguer un choix délibéré d'un formulaire enregistré pour un autre
+module : elle ne réécrit donc rien.
+
+Après la mise à jour :
+
+1. Ouvrir `/admin/fonctionnalites`, ligne **Statistiques**.
+2. Si **Visible par tous** est coché et que vous voulez réserver la page aux
+   bénévoles : cocher **Bénévoles uniquement**, puis **Enregistrer**.
+3. Vérifier dans une fenêtre de navigation privée, sans accès bénévole :
+   `/stats` affiche « Accès réservé aux bénévoles » et le lien
+   « Statistiques » a quitté le menu et le pied de page.
+
+**En cas de retour arrière vers une 1.35.x : aucun geste.** Un réglage
+enregistré est relu tel quel. Sans réglage enregistré, l'ancienne version
+reprend son propre défaut, « Visible par tous ».
+
 ## 1.35.0 — 2026-11-15
 
 ### Pochettes écartées : rien à faire à la mise à jour, ni en cas de retour arrière

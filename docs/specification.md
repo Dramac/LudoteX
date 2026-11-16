@@ -423,6 +423,10 @@ plafond** : on ne refuse jamais un prêt.
 Les statistiques s'appuient sur l'historique complet de la table `prets` et
 ne contiennent aucune donnée personnelle.
 
+Elles servent d'abord au bilan du bureau : la page et ses exports sont
+**réservés aux bénévoles par défaut**. Faute de donnée personnelle, le bureau
+peut les rouvrir au public depuis la visibilité des modules (§8).
+
 Elles comptent les **prêts au public** : motif `pret`, et motif `oubli` — un
 prêt dont le retour n'a pas été scanné, clos plus tard par un re-prêt ou un
 transfert. Ce dernier est un vrai prêt, mais sa durée est inconnue : il est
@@ -466,6 +470,11 @@ entre **public (lecture)**, **bénévoles (écriture)** et **bureau
   et sans action ; les opérations de prêt passent par des adresses
   distinctes, chacune protégée par le jeton dans le code, indépendamment de la
   visibilité des modules.
+- **Visibilité des modules** — un réglage d'affichage, sauf pour les pages
+  que le bureau peut ouvrir au public sans risque, comme les statistiques
+  (§7) : là, l'état « bénévoles » suffit à refuser le visiteur, et l'état
+  « tous » les ouvre. Une page qui ne doit jamais être publique, comme le
+  carnet de maintenance, exige le jeton dans le code, quel que soit l'état.
 - **Administration** — un mot de passe distinct, haché en base, avec une
   session à durée limitée.
 - **Limitation de débit** par adresse IP sur l'activation du jeton et sur la

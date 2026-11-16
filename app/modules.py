@@ -10,9 +10,9 @@ Quatre états par module :
 Les états sont stockés dans la table `parametres` (clé : `module_<nom>`).
 L'état par défaut s'applique si aucune ligne n'existe en base, ce qui assure
 la compatibilité avec les bases existantes sans migration. C'est "tous" pour
-tous les modules SAUF le carnet de maintenance, qui vaut "benevoles", et la
-tombola, qui vaut "desactive" (voir `etat_defaut_module` et le drapeau
-`jamais_public` plus bas).
+tous les modules SAUF le carnet de maintenance et les statistiques, qui
+valent "benevoles", et la tombola, qui vaut "desactive" (voir
+`etat_defaut_module` et le drapeau `jamais_public` plus bas).
 
 USAGE DANS main.py
 ------------------
@@ -53,10 +53,26 @@ MODULES: dict[str, dict] = {
         "description": "Animations, ateliers et temps forts hors tournoi",
         "url": "/programme",
     },
+    # Statistiques (lot bilan-2) : réservées aux bénévoles par défaut. Elles
+    # servent au bilan du bureau, pas aux visiteurs.
+    # - `etat_defaut` : "benevoles". Ne joue que sur une base qui n'a JAMAIS
+    #   enregistré `/admin/fonctionnalites` : ce formulaire écrit l'état de
+    #   tous les modules à chaque passage, et un "tous" enregistré reste "tous"
+    #   (choix délibéré possible ; voir docs/notes-de-deploiement.md).
+    # - PAS `jamais_public`, et PAS de `Depends(exiger_jeton)` sur les routes
+    #   de `/stats` : ce N'EST PAS un oubli. Les chiffres sont agrégés, sans
+    #   donnée personnelle (spec §7), et une autre association doit pouvoir
+    #   rouvrir la page au public en cochant « Visible par tous ». Ici, la
+    #   visibilité EST l'autorisation : `garde_module("stats")`, posé sur tout
+    #   le routeur dans main.py, refuse le visiteur sans jeton en
+    #   "benevoles". Un `exiger_jeton` en propre fermerait la page même en
+    #   "tous", et l'interface mentirait. L'avertissement de `garde_module`
+    #   vise les pages qui ne doivent JAMAIS être publiques, comme le carnet.
     "stats": {
         "label": "Statistiques",
         "description": "Statistiques et historique détaillé des prêts",
         "url": "/stats",
+        "etat_defaut": "benevoles",
     },
     "planning": {
         "label": "Planning bénévoles",
@@ -161,8 +177,9 @@ def etat_defaut_module(nom: str) -> str:
 
     `ETAT_DEFAUT` ("tous") pour tous les modules, sauf ceux qui déclarent leur
     propre `etat_defaut` — le carnet de maintenance, qui ne doit jamais
-    s'ouvrir tout seul aux visiteurs sur une base d'avant ce module, et la
-    tombola, qui ne s'active que si le bureau le décide.
+    s'ouvrir tout seul aux visiteurs sur une base d'avant ce module, les
+    statistiques, outil de bilan du bureau que celui-ci peut rouvrir au
+    public, et la tombola, qui ne s'active que si le bureau le décide.
     """
     return MODULES.get(nom, {}).get("etat_defaut", ETAT_DEFAUT)
 

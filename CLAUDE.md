@@ -136,11 +136,15 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   *désactivé* — réglés depuis `/admin/fonctionnalites` et stockés dans
   `parametres`. L'état par défaut est *tous*, donc aucune migration pour les
   bases existantes. **Un module peut restreindre ces deux règles** : la
-  tombola a *désactivé* pour défaut ; le carnet
+  tombola a *désactivé* pour défaut ; les statistiques ont *bénévoles* pour
+  défaut mais acceptent *tous*, que le bureau peut rétablir (pas de jeton en
+  propre sur `/stats`, à dessein) ; le carnet
   de maintenance a *bénévoles* pour défaut et refuse *tous* (drapeau
   `jamais_public`, case masquée à l'écran et valeur refusée en écriture). La
   visibilité reste un réglage d'affichage : une route qui exige un jeton porte
-  son `Depends(exiger_jeton)` en propre.
+  son `Depends(exiger_jeton)` en propre. Le défaut d'un module ne joue que tant
+  que `/admin/fonctionnalites` n'a jamais été enregistré : le formulaire
+  inscrit tous les modules.
 - **Identité paramétrable** : le nom de l'association, la page « À propos », le
   logo et la couleur de thème sont des **données éditoriales** en base
   (`parametres`, écrans `/admin/identite` et `/admin/evenement`), pas des

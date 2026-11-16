@@ -349,10 +349,11 @@ lendemain : écarté.
 
 ### Exports
 
-Excel et PDF, depuis cette page uniquement — jamais depuis `/stats`, qui est
-**publique**. La liste nomme des boîtes abîmées et peut contenir du texte
-libre : la faire sortir par une route publique, fût-ce derrière une case à
-cocher, répéterait l'écart corrigé par D5 sur le numéro de pochette.
+Excel et PDF, depuis cette page uniquement — jamais depuis `/stats`, que le
+bureau peut rendre **publique** (réservée aux bénévoles par défaut depuis le
+lot bilan-2, mais ouvrable à tous). La liste nomme des boîtes abîmées et
+peut contenir du texte libre : la faire sortir par une route publique, fût-ce
+derrière une case à cocher, répéterait l'écart corrigé par D5 sur le numéro de pochette.
 
 Réemploi à trancher au moment d'écrire : `exports.catalogue_xlsx(entetes,
 lignes)` est en réalité **générique** malgré son nom et conviendrait telle

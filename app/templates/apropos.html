@@ -37,8 +37,6 @@
   <ul>
     <li>page d'accueil, <a class="lien" href="/catalogue">catalogue</a> et
         fiche de chaque jeu, avec recherche et filtres ;</li>
-    <li><a class="lien" href="/stats">statistiques</a> de prêt (palmarès,
-        histogramme, durées) et leurs exports Excel/PDF ;</li>
     <li><a class="lien" href="/live">écran salle</a> (tableau de bord temps
         réel, pensé pour un projecteur) ;</li>
     <li><a class="lien" href="/tournois">tournois</a> : liste, page de suivi
@@ -61,7 +59,14 @@
     <li>créer, éditer, dupliquer et supprimer un tournoi, gérer ses
         participants, l'ouvrir/le lancer, saisir les scores, les rondes ou les
         résultats de l'arbre selon le mode choisi ;</li>
-    <li>ouvrir en un clic tous les tournois programmés le jour même.</li>
+    <li>ouvrir en un clic tous les tournois programmés le jour même ;</li>
+    {# Lot bilan-2 : réservées aux bénévoles par défaut. Le lien ne s'affiche
+       qu'à qui peut ouvrir la page, comme dans les menus ; le texte reste,
+       c'est la description du produit. #}
+    <li>consulter les {% if module_visible(request, "stats") %}<a class="lien"
+        href="/stats">statistiques</a>{% else %}statistiques{% endif %} de prêt
+        (palmarès, histogramme, durées) et leurs exports Excel/PDF. Le bureau
+        peut aussi choisir de les montrer à tous les visiteurs.</li>
   </ul>
 
   <h3>Administrateur</h3>
