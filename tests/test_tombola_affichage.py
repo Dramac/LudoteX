@@ -666,7 +666,7 @@ def test_feuille_excel_presente_ou_absente(visiteur_stats):
     _tirer(12, 45)
     _remettre_apres(12, 4)
     classeur = _feuilles(visiteur_stats.get("/stats/export.xlsx").content)
-    assert classeur.sheetnames == ["Synthèse", "Palmarès", "Détail", "Tombola"]
+    assert classeur.sheetnames == ["Synthèse", "Palmarès", exports.FEUILLE_HEURE_PAR_HEURE, "Détail", "Tombola"]
     valeurs = [[c.value for c in ligne] for ligne in classeur["Tombola"].iter_rows()]
     plat = [v for ligne in valeurs for v in ligne if v is not None]
     assert "Délai médian de remise (lots remis seulement)" in plat

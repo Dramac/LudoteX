@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app import exports, models, services
+from app import comptoir, exports, models, services
 
 
 @pytest.fixture
@@ -179,7 +179,7 @@ def test_une_erreur_sort_de_toutes_les_statistiques(conn, vieillir_prets):
     assert services.palmares(conn, sens="desc")[0]["nb_prets"] == 1
     assert g["duree_moyenne"] == "—"       # aucun prêt ORDINAIRE terminé
     assert len(services.lister_prets_periode(conn)) == 1   # l'erreur n'y est pas
-    assert sum(h["n"] for h in services.prets_par_heure(conn)) == 1
+    assert comptoir.heure_par_heure(conn)["total_prets"] == 1
 
 
 def test_le_compteur_d_erreurs_respecte_la_periode(conn):

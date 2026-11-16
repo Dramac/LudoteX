@@ -513,7 +513,7 @@ L'association qui déploie LudoteX règle **une** couleur depuis
 |---|---|---|
 | `--primaire` | **fond seulement** : bandeau, bouton compact | oui, avec `--primaire-texte` |
 | `--primaire-survol` | survol du bouton compact | oui (même texte) |
-| `--primaire-clair` | **décoratif seulement** : barres de l'histogramme, bordure de survol d'une carte | **non** |
+| `--primaire-clair` | **décoratif seulement** : bordure de survol d'une carte (plus jamais les barres d'un graphique, § 20) | **non** |
 | `--primaire-fond` | aplats teintés (puces de filtre) | oui, avec `--primaire-lisible` |
 | `--primaire-fond-leger` | aplats les plus pâles (aide en ligne, cartes de chiffres) | oui, avec `--texte` ou `--gris` |
 | `--primaire-texte` | texte posé sur `--primaire` — **noir ou blanc, calculé** ; contour de focus sur le bandeau | — |
@@ -542,7 +542,7 @@ Six décisions à ne pas défaire :
    son contraste sur blanc tourne autour de 2,5:1, en dessous des 3:1 exigés
    d'un élément graphique porteur de sens (et loin des 4,5:1 d'un texte). C'est
    pour cela que les indicateurs de focus utilisent `--primaire-lisible`, et que les
-   barres de l'histogramme sont toujours doublées de leur valeur écrite.
+   barres des graphiques ne la prennent jamais (§ 20).
 3. **`--primaire-texte` n'est jamais un choix de l'utilisateur.** Noir ou
    blanc, celui des deux qui contraste le mieux au sens WCAG. Le pire cas de
    cette règle vaut 4,58:1 : aucune couleur saisie ne peut rendre le bandeau
@@ -632,3 +632,57 @@ Restent hors de ce tableau, parce qu'ils ne se réutilisent pas : les classes
 propres à la grille d'ajustement du planning (`pl-x`, `pl-horaire-lien`,
 `pl-case-lien`), le lien d'évitement `.saut-contenu`, le titre `.bandeau-titre`
 et le bouton `.rangement-quitter` du bandeau.
+
+## 20. Graphique dessiné par le serveur — `.graph-*` (lot bilan-4)
+
+Premier graphique de LudoteX : le comptoir heure par heure de `/stats`. Les
+lots suivants de la série « bilan » (achats, ce qui plaît) en reprennent les
+règles et les classes ; seule la géométrie est propre à chaque graphique.
+
+**Où vit quoi.** Les chiffres et **toutes les positions** se calculent en
+Python (`app/comptoir.py` : `heure_par_heure`, puis `geometrie`) ; le
+gabarit ne fait que poser les éléments, sans calcul. `comptoir.graduations`
+donne des graduations rondes (1, 2 ou 5 × 10ⁿ) depuis 0, réutilisable telle
+quelle.
+
+**Forme** (décisions de Simon, maquette `stats-bilan`) :
+
+- SVG en ligne, **sans JS, sans animation**, rendu à sa **taille naturelle**
+  (`width` et `height` = le `viewBox`), dans un conteneur `.graph-defile`
+  qui défile à l'horizontale. Jamais `width: 100 %` avec un `min-width` : la
+  maquette a montré que cela déformait le rapport hauteur/largeur ;
+- le conteneur prend le focus : `tabindex="0"`, `role="region"` et un
+  `aria-label` qui le nomme — sans quoi on ne le fait pas défiler sans
+  souris ;
+- le SVG est une image (`role="img"`, `<title>` et `<desc>` reliés par
+  `aria-labelledby`) dont la description **renvoie au tableau** des mêmes
+  chiffres, replié dessous dans un `<details>` : c'est lui que lit un lecteur
+  d'écran ;
+- **un seul axe par graphique**, qui part de 0 ; deux grandeurs d'échelles
+  différentes font deux graphiques ;
+- une bulle par barre et par point : un `<title>` (« sam. 19 h : 55
+  retours ») ; la zone de survol d'un point est la colonne entière de son
+  heure (`.graph-survol`) ;
+- des étiquettes directes **seulement** là où elles servent (le pic, au plus
+  deux pointes), jamais un nombre sur chaque barre ;
+- une légende en texte (`.graph-legende`) dès qu'il y a deux séries, chaque
+  série nommée **et** sa forme dite (« plein », « hachuré »).
+
+**Couleurs** — variables du thème seulement, jamais une valeur en dur ;
+contrastes mesurés par la formule WCAG dans la page sur quatre thèmes (défaut,
+jaune pâle, presque noir, rouge vif : compte rendu du lot bilan-4) :
+
+| Classe | Variable | Pourquoi |
+| --- | --- | --- |
+| `.graph-prets` (série pleine) | `--primaire-lisible` | garantie à 4,5:1 sur les fonds clairs quel que soit le thème |
+| `.graph-retours` (série hachurée) | `--gris`, motif `<pattern>` + contour | fixe, 6,0:1 sur blanc ; la texture distingue les séries sans la couleur (niveaux de gris, impression, daltonisme) |
+| `.graph-ligne`, `.graph-point`, `.graph-pic` | `--primaire-lisible`, ligne de 2 px | 3:1 au moins, sur blanc comme sur l'aire |
+| `.graph-aire` | `--primaire-fond` | décorative |
+| `.graph-axe`, `.graph-jour`, `.graph-etiquette` | `--gris`, `--texte` | du texte, jamais la couleur d'une série |
+| `.graph-grille`, `.graph-separation` | `--bord`, `--bord-champ` | discrètes |
+
+**`--primaire-clair` n'y entre jamais** (décoratif, 2,6:1 : § 18). Deux
+séries ne se distinguent **jamais par la seule couleur** : sur le thème rouge
+vif, prêts et retours sont à 1,09:1 l'un de l'autre, et seule la texture les
+sépare. En **couleurs forcées** (`forced-colors: active`), les marques passent
+en `CanvasText`, l'aire en `Canvas`, la grille en `GrayText`.

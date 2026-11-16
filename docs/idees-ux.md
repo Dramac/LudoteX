@@ -182,7 +182,7 @@ technique, et une suggestion concrète. Contrainte respectée : JS léger autori
 ## 2. UX MOYENNE PRIORITÉ (flux, clarté, feedback)
 
 ### M1. ✅ FAIT — 🐛 Histogramme des prêts en heures UTC
-- **Où** : `services.prets_par_heure` (docstring l'assume : « par heure
+- **Où** : `services.prets_par_heure` (devenue `comptoir.heure_par_heure` au lot bilan-4, qui garde la conversion en heure locale) (docstring l'assume : « par heure
   (UTC) ») ; affiché tel quel sur `/stats`.
 - **Pourquoi** : un prêt fait à 15 h apparaît dans la barre « 13 h » (été).
   Pour le bureau qui analyse « la pointe de l'après-midi », les données mentent

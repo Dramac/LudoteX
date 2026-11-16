@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from app import categories_jeu, models, services
+from app import categories_jeu, comptoir, models, services
 
 
 @pytest.fixture
@@ -178,7 +178,7 @@ def test_cloturer_tous_les_prets_efface_les_numeros(conn):
 def test_purge_sans_effet_sur_les_statistiques(conn):
     """
     Non-régression : aucune requête statistique n'agrège ni ne filtre sur
-    `numero_pochette`. Totaux, palmarès et histogramme doivent être identiques
+    `numero_pochette`. Totaux, palmarès et comptoir heure par heure doivent être identiques
     que les lignes closes portent un numéro ou non.
     """
     services.preter(conn, "001"); services.rendre(conn, "001")
@@ -188,7 +188,7 @@ def test_purge_sans_effet_sur_les_statistiques(conn):
     avant = (
         services.stats_globales(conn),
         services.palmares(conn, sens="desc", metrique="total"),
-        services.prets_par_heure(conn),
+        comptoir.heure_par_heure(conn),
     )
 
     # On remet artificiellement des numéros sur les lignes closes (état
@@ -199,7 +199,7 @@ def test_purge_sans_effet_sur_les_statistiques(conn):
     apres = (
         services.stats_globales(conn),
         services.palmares(conn, sens="desc", metrique="total"),
-        services.prets_par_heure(conn),
+        comptoir.heure_par_heure(conn),
     )
     assert avant == apres
 
@@ -319,31 +319,28 @@ def test_selection_etiquettes(conn):
     assert len(services.exemplaires_pour_etiquettes(conn, None)) == 3   # tout
 
 
-def test_prets_par_heure(conn):
+def test_prets_heure_par_heure(conn):
+    # Lot bilan-4 : `prets_par_heure` est devenue `comptoir.heure_par_heure`.
     services.preter(conn, "001")
     services.preter(conn, "002")
-    heures = services.prets_par_heure(conn)
-    assert sum(h["n"] for h in heures) == 2
+    assert comptoir.heure_par_heure(conn)["total_prets"] == 2
 
 
-def test_prets_par_heure_conversion_locale(conn):
+def test_prets_heure_par_heure_conversion_locale(conn):
     # Bug M1 (docs/idees-ux.md) : un prêt à 13:00 UTC un jour d'été (Europe/
-    # Paris en heure d'été, UTC+2) doit apparaître dans la barre LOCALE
-    # « 15h », pas « 13h ». Un seul jour dans la période -> pas de date dans
-    # le libellé.
+    # Paris en heure d'été, UTC+2) doit apparaître dans l'heure LOCALE
+    # « 15 h », pas « 13 h ».
     conn.execute(
         "INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif) "
         "VALUES ('001', 1, '2026-07-15T13:00:00+00:00', 'pret')"
     )
     conn.commit()
-    heures = services.prets_par_heure(conn)
-    assert heures == [{"heure": "2026-07-15T15", "label": "15h", "n": 1}]
+    heures = comptoir.heure_par_heure(conn)["heures"]
+    assert [(h["court"], h["libelle"], h["prets"]) for h in heures] == [("15 h", "mer. 15 h", 1)]
 
 
-def test_prets_par_heure_bascule_de_jour(conn):
-    # 23:30 UTC -> 01:30 heure locale LE LENDEMAIN (été, UTC+2). Avec un
-    # second prêt un autre jour local, la période couvre plusieurs jours : le
-    # libellé inclut alors la date (pas seulement l'heure).
+def test_prets_heure_par_heure_bascule_de_jour(conn):
+    # 23:30 UTC -> 01:30 heure locale LE LENDEMAIN (été, UTC+2).
     conn.execute(
         "INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif) "
         "VALUES ('001', 1, '2026-07-15T23:30:00+00:00', 'pret')"
@@ -353,7 +350,10 @@ def test_prets_par_heure_bascule_de_jour(conn):
         "VALUES ('002', 2, '2026-07-14T10:00:00+00:00', 'pret')"
     )
     conn.commit()
-    heures = {h["heure"]: h for h in services.prets_par_heure(conn)}
-    # Le prêt de 23:30 UTC bascule bien sur le jour local SUIVANT (16 juillet).
-    assert heures["2026-07-16T01"] == {"heure": "2026-07-16T01", "label": "16/07 01h", "n": 1}
-    assert heures["2026-07-14T12"] == {"heure": "2026-07-14T12", "label": "14/07 12h", "n": 1}
+    heures = comptoir.heure_par_heure(conn)["heures"]
+    # Le prêt de 23:30 UTC bascule bien sur le jour local SUIVANT (16 juillet,
+    # 1 h) ; il reste dans la JOURNÉE du 15, qui commence à 6 h
+    # (comptoir.HEURE_DEBUT_JOURNEE).
+    assert [(h["jour"], h["court"], h["libelle_table"], h["prets"]) for h in heures] == [
+        ("2026-07-14", "12 h", "mar. 14/07 12 h", 1),
+        ("2026-07-15", "1 h", "jeu. 16/07 1 h", 1)]

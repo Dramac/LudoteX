@@ -27,7 +27,7 @@ DONNÉES CRÉÉES (trois bases de l'instance courante)
   Les prêts sont DATÉS pour simuler un événement en cours depuis plusieurs
   heures : quelques dizaines de prêts terminés aux durées variées (~15 min à
   ~2 h) répartis dans le temps, plus une douzaine de prêts encore en cours — de
-  quoi peupler des statistiques crédibles (palmarès, histogramme horaire, durée
+  quoi peupler des statistiques crédibles (palmarès, comptoir heure par heure, durée
   moyenne, jeux actuellement sortis) pour une démonstration au bureau.
 - TOURNOIS : plusieurs tournois d'exemple couvrant les états et les modes de
   scoring (brouillon, inscriptions ouvertes, par équipes, high score en cours,

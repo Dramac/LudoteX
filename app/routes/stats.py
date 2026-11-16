@@ -6,8 +6,9 @@ main.py) : réservé aux bénévoles par défaut, ouvrable au public par le bure
 (lot bilan-2 ; le pourquoi est en commentaire de `MODULES["stats"]`).
 
 Agrégations sans donnée personnelle (spec §7) : total des prêts, palmarès des
-jeux les plus / les moins prêtés (par titre, jamais-sortis inclus), histogramme
-horaire, et liste détaillée des prêts. Toutes les données proviennent de
+jeux les plus / les moins prêtés (par titre, jamais-sortis inclus), le
+comptoir heure par heure (lot bilan-4, `app/comptoir.py`) et liste détaillée
+des prêts. Toutes les données proviennent de
 `services.collecter_stats`.
 
 Paramètres de requête (combinables) :
@@ -44,7 +45,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import editions, exports, services, tombola
+from app import comptoir, editions, exports, services, tombola
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -185,7 +186,6 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
     finally:
         conn.close()
 
-    max_heure = max((h["n"] for h in data["par_heure"]), default=0)
     # Query string pour conserver le tri et la période dans les liens d'export,
     # et la période seule dans la bascule du classement.
     qs_periode = _qs_periode(periode)
@@ -193,7 +193,8 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
     return templates.TemplateResponse(
         request, "stats.html",
         {"g": data["globales"], "plus": data["plus"], "moins": data["moins"],
-         "par_heure": data["par_heure"], "max_heure": max_heure,
+         "comptoir": data["comptoir"],
+         "graphiques": comptoir.geometrie(data["comptoir"]), "cpt": comptoir,
          "metrique": metrique, "prets": data["prets"],
          "choix": periode["choix"], "message_periode": periode["message"],
          "options_editions": [{"id": str(e["id"]), "libelle": editions.libelle_menu(e)}

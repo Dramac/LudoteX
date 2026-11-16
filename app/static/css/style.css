@@ -766,11 +766,66 @@ summary:focus-visible,
 .palmares-nom { font-weight: 600; }
 .palmares-val { color: var(--gris); }
 .palmares-val small { color: #6b7075; }
-.histo { list-style: none; margin: 0; padding: 0; }
-.histo-ligne { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
-.histo-label { flex-shrink: 0; width: 84px; font-size: 0.85rem; color: var(--gris); }
-.histo-barre { height: 16px; background: var(--primaire-clair); border-radius: 4px; min-width: 2px; }
-.histo-val { font-size: 0.85rem; font-weight: 600; }
+/* Le comptoir heure par heure (lot bilan-4, docs/ui-composants.md § 20).
+   SVG dessiné par le serveur (app/comptoir.py), à sa taille NATURELLE dans
+   un conteneur qui défile : jamais étiré ni écrasé (width: 100 % + min-width
+   déformait le rapport hauteur/largeur sur la maquette). Variables du thème
+   seulement ; contrastes mesurés contre le blanc de la carte sur quatre
+   thèmes, compte rendu du lot :
+   - prêts PLEINS en --primaire-lisible, garantie à 4,5:1 sur les fonds
+     clairs par couleur_lisible_sur_clair, quel que soit le thème ;
+   - retours HACHURÉS et CONTOURÉS en --gris, fixe (6,0:1 sur blanc) : les
+     deux séries se distinguent sans la couleur (plein / hachures), en
+     niveaux de gris, à l'impression et pour un daltonien. Jamais
+     --primaire-clair, décoratif (2,6:1) ;
+   - ligne des jeux dehors : 2 px en --primaire-lisible ; l'aire dessous,
+     en --primaire-fond, est décorative ;
+   - textes en --texte et --gris, jamais la couleur d'une série.
+   Aucune animation. */
+.graph-defile { overflow-x: auto; margin: 4px 0 12px; padding: 2px; }
+.graph { display: block; max-width: none; height: auto; }
+.graph-prets { fill: var(--primaire-lisible); }
+.graph-retours { fill: url(#hachures-retours); stroke: var(--gris); stroke-width: 1.5; }
+.graph-hachure { stroke: var(--gris); stroke-width: 2; }
+.graph-grille { stroke: var(--bord); stroke-width: 1; }
+.graph-separation { stroke: var(--bord-champ); stroke-width: 1; stroke-dasharray: 3 3; }
+.graph-base { stroke: var(--gris); stroke-width: 1; }
+.graph-axe { fill: var(--gris); font-size: 11px; }
+.graph-jour, .graph-etiquette { fill: var(--texte); font-size: 11px; font-weight: 700; }
+.graph-aire { fill: var(--primaire-fond); }
+.graph-ligne { fill: none; stroke: var(--primaire-lisible); stroke-width: 2; stroke-linejoin: round; }
+.graph-point { fill: var(--primaire-lisible); }
+.graph-pic { fill: var(--primaire-lisible); stroke: var(--texte); stroke-width: 1.5; }
+/* Zone de survol d'un point : toute la colonne de l'heure, invisible tant
+   qu'on ne la survole pas ; la bulle est son <title>. */
+.graph-survol { fill: var(--texte); fill-opacity: 0; }
+.graph-survol:hover { fill-opacity: 0.06; }
+.graph-legende { list-style: none; margin: 4px 0; padding: 0; display: flex;
+                 flex-wrap: wrap; gap: 4px 20px; }
+.graph-legende li { display: inline-flex; align-items: center; gap: 6px; }
+.graph-legende-forme { color: var(--gris); font-size: 0.85rem; }
+.graph-pastille { flex: none; }
+.comptoir-tableau { border: 1px solid var(--bord); border-radius: 8px; padding: 0 6px; margin-top: 12px; }
+.comptoir-tableau > summary { cursor: pointer; font-weight: 600; color: var(--primaire-lisible);
+                              padding-block: 10px; }  /* 24 px de texte + 20 = 44 px */
+.comptoir-tableau .detail { margin-bottom: 12px; }
+.comptoir-tableau .detail th[scope="row"] { text-align: left; font-weight: 400; color: var(--texte); white-space: nowrap; }
+/* Des nombres et des mots courts : on coupe ENTRE les mots, jamais dedans.
+   La règle commune de .detail (word-break: break-word) coupait « Prêts » en
+   « Pr / êts » à 375 px ; les colonnes de chiffres prennent leur largeur. */
+.comptoir-tableau .detail th, .comptoir-tableau .detail td { word-break: normal; padding-inline: 4px; }
+.comptoir-tableau .detail td { text-align: right; white-space: nowrap; }
+.comptoir-tableau .detail thead th:not(:first-child) { text-align: right; }
+/* Couleurs forcées (Windows contraste élevé) : les barres, la ligne et les
+   hachures prennent la couleur du texte du système ; les deux séries restent
+   distinctes par leur forme (plein / hachures). */
+@media (forced-colors: active) {
+  .graph-prets, .graph-point, .graph-pic,
+  .graph-axe, .graph-jour, .graph-etiquette { fill: CanvasText; }
+  .graph-retours, .graph-hachure, .graph-ligne, .graph-base { stroke: CanvasText; }
+  .graph-aire { fill: Canvas; }
+  .graph-grille, .graph-separation { stroke: GrayText; }
+}
 .stats-note { color: #6b7075; font-size: 0.8rem; }
 /* Page bénévole « Jeux sortis » (lot bilan-1, docs/ui-composants.md § 9, « Liste de cartes ») :
    une LISTE de cartes, sur téléphone comme sur grand écran — pas un tableau

@@ -455,10 +455,36 @@ Indicateurs :
 - Le palmarès des moins prêtés inclut les jeux **jamais sortis** : on part de
   **tous les titres du catalogue** et on y rattache les prêts (« catalogue
   d'abord »), faute de quoi les jeux à zéro prêt seraient invisibles.
-- **Prêts par heure** (histogramme) et liste détaillée. La liste des jeux
-  actuellement sortis n'est pas une statistique mais un outil de comptoir :
-  elle a sa propre page, réservée aux bénévoles (§5.1).
-- Exports Excel et PDF.
+- **Le comptoir heure par heure** : de quoi décider quand ouvrir une file
+  réservée aux retours, et combien de bénévoles placer au comptoir à chaque
+  créneau. Deux graphiques dessinés par le serveur (prêts et retours de
+  chaque heure ; jeux dehors à la fin de chaque heure, avec son pic) et le
+  tableau des mêmes chiffres. Définitions :
+  - **prêts** : les sorties au public, à l'heure de sortie ;
+  - **retours** : les prêts revenus et scannés, à l'heure du retour. Un
+    retour non scanné n'en est pas un (l'heure où l'on s'en aperçoit n'est
+    pas celle du retour), ni une **fermeture par la clôture** : la clôture
+    de fin d'événement pose la même heure de retour sur tous les prêts
+    encore ouverts, ce qui ferait un faux pic. Elle se reconnaît sans
+    marque en base : une heure de retour partagée à la seconde par au
+    moins deux lignes, à un instant où plus aucun autre prêt n'était
+    ouvert. Le nombre de jeux ainsi écartés est dit sous le graphique ;
+  - **jeux dehors** : les prêts au public sortis et pas encore revenus à la
+    fin de l'heure, y compris ceux sortis avant la période. Un retour non
+    scanné y reste jusqu'à ce qu'on s'en aperçoive (la courbe peut être
+    surestimée), une fermeture par la clôture jusqu'à la clôture ;
+  - **heures montrées** : par journée (de 6 h à 6 h le lendemain), de la
+    première à la dernière heure de prêts ou de retours, les heures creuses
+    du milieu à zéro, la nuit omise ; les deux « 2 h » du passage à l'heure
+    d'hiver restent distinctes. Au-delà d'une semaine d'activité, la page
+    invite à choisir une édition plutôt que de dessiner ;
+  - **pic** : la première heure où le plus de jeux sont dehors, repris en
+    tête de page.
+- **Liste détaillée** des prêts. La liste des jeux actuellement sortis n'est
+  pas une statistique mais un outil de comptoir : elle a sa propre page,
+  réservée aux bénévoles (§5.1).
+- Exports Excel et PDF. L'Excel porte une feuille « Heure par heure », mêmes
+  lignes que le tableau de la page ; le PDF ne reprend pas le comptoir.
 
 ---
 

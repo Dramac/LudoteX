@@ -20,7 +20,7 @@ from io import BytesIO
 
 import pytest
 
-from app import exports, models, services
+from app import comptoir, exports, models, services
 
 
 @pytest.fixture
@@ -151,7 +151,7 @@ def test_un_oubli_compte_comme_un_pret(un_oubli_et_un_pret):
     assert g["titres_pretes"] == 2
     assert g["oublis"] == 1
     assert g["erreurs"] == 0
-    assert sum(h["n"] for h in services.prets_par_heure(conn)) == 3
+    assert comptoir.heure_par_heure(conn)["total_prets"] == 3
     par_titre = {l["reference_titre"]: l["nb_prets"]
                  for l in services.palmares(conn, sens="desc")}
     assert par_titre == {"CATAN": 1, "DIXIT": 2}

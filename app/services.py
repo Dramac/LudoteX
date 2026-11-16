@@ -155,7 +155,7 @@ SEUIL_LONGUE_SORTIE_S = 3 * 3600
 # Un prêt jamais scanné en retour, clos plus tard par un re-prêt ou par
 # l'escalade du transfert, prend `motif = 'oubli'` (voir `_clore_pret_oublie`).
 # Ce n'est PAS une erreur : la boîte est bien sortie chez un visiteur, le prêt
-# compte donc dans les totaux, les palmarès et l'histogramme. Seule sa DURÉE
+# compte donc dans les totaux, les palmarès et les prêts heure par heure. Seule sa DURÉE
 # est fausse — elle court jusqu'au moment où quelqu'un s'aperçoit de l'oubli,
 # parfois des heures plus tard —, d'où son exclusion de la durée moyenne et un
 # « durée inconnue » dans la liste détaillée.
@@ -859,48 +859,6 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
     return [dict(r) for r in rows]
 
 
-def prets_par_heure(conn: sqlite3.Connection, debut: str | None = None,
-                    fin: str | None = None) -> list[dict]:
-    """
-    Nombre de prêts par heure LOCALE (Europe/Paris), pour l'histogramme,
-    éventuellement restreint à une période.
-
-    `date_sortie` est stocké en UTC ISO ; le regroupement par heure se fait
-    APRÈS conversion en heure locale, côté Python (pas de logique de fuseau en
-    SQL) — sinon un prêt fait à 15 h (heure française) atterrit dans la barre
-    « 13 h » l'été, alors que le reste de la page (filtres, liste détaillée)
-    est déjà en heure locale. Voir docs/idees-ux.md M1.
-
-    Returns:
-        Liste de dicts {heure: 'AAAA-MM-JJTHH' (clé locale, triable), label:
-        libellé affiché ('15h', ou '17/07 15h' si la période couvre plusieurs
-        jours locaux), n: int}, triée chronologiquement.
-    """
-    f, params = _filtre_periode("date_sortie", debut, fin)
-    rows = conn.execute(
-        f"SELECT date_sortie FROM prets WHERE motif {_SQL_MOTIFS_COMPTES}{f}",
-        params,
-    ).fetchall()
-
-    compte: dict[str, int] = {}
-    for r in rows:
-        try:
-            dt_local = datetime.fromisoformat(r["date_sortie"]).astimezone(FUSEAU_LOCAL)
-        except (ValueError, TypeError):
-            continue                              # date illisible : ignorée, jamais d'erreur
-        cle = dt_local.strftime("%Y-%m-%dT%H")
-        compte[cle] = compte.get(cle, 0) + 1
-
-    cles = sorted(compte)
-    plusieurs_jours = len({cle[:10] for cle in cles}) > 1
-    resultat = []
-    for cle in cles:
-        dt_local = datetime.strptime(cle, "%Y-%m-%dT%H")
-        motif = "%d/%m %Hh" if plusieurs_jours else "%Hh"
-        resultat.append({"heure": cle, "label": dt_local.strftime(motif), "n": compte[cle]})
-    return resultat
-
-
 # Libellés de la liste détaillée pour un prêt `oubli` — écran ET exports.
 RETOUR_NON_SCANNE = "non scanné"
 DUREE_INCONNUE = "inconnue"
@@ -953,7 +911,15 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
             out.append(d)
             continue
         d["retour_local"] = format_local(d["date_retour"]) if d["date_retour"] else ""
-        secs = _duree_secondes(d["date_sortie"], d["date_retour"])
+        try:
+            secs = _duree_secondes(d["date_sortie"], d["date_retour"])
+        except (ValueError, TypeError):
+            # Date illisible, ou sans fuseau : la ligne reste listée, sa durée
+            # devient inconnue — la page ne tombe jamais (lot bilan-4, qui l'a
+            # trouvée en 500 ; même règle que `lister_prets_en_cours`).
+            d["duree_txt"] = DUREE_INCONNUE
+            out.append(d)
+            continue
         # Prêt clos : durée fixe ; prêt en cours : « depuis X ».
         d["duree_txt"] = (format_duree(secs) if d["date_retour"]
                           else "depuis " + format_duree(secs))
@@ -976,7 +942,7 @@ def lister_prets_en_cours(conn: sqlite3.Connection,
     appelant hérite d'un ordre différent sans le savoir.
 
     Une date de sortie illisible ne fait jamais tomber la page (même règle
-    que `prets_par_heure`) : la ligne reste listée, sa durée devient
+    que le comptoir heure par heure) : la ligne reste listée, sa durée devient
     inconnue et elle ne porte pas le repère de longue sortie.
 
     Args:
@@ -1067,13 +1033,16 @@ def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
         limite_prets: limite de la liste détaillée (None = toutes, pour l'export).
 
     Returns:
-        dict {globales, plus, moins, par_heure, prets, metrique}.
+        dict {globales, plus, moins, comptoir, prets, metrique}. `comptoir`
+        est le comptoir heure par heure (lot bilan-4, `app/comptoir.py`).
     """
+    from app import comptoir  # différé : app.comptoir importe ce module
+
     return {
         "globales": stats_globales(conn, debut, fin),
         "plus": palmares(conn, "desc", metrique, limite_palmares, debut, fin),
         "moins": palmares(conn, "asc", metrique, limite_palmares, debut, fin),
-        "par_heure": prets_par_heure(conn, debut, fin),
+        "comptoir": comptoir.heure_par_heure(conn, debut, fin),
         "prets": lister_prets_periode(conn, debut, fin, limite_prets),
         "metrique": metrique,
     }
@@ -4029,7 +3998,7 @@ def nuances_theme(couleur: str) -> dict[str, str]:
       ÉLOIGNE toujours la nuance de la couleur du texte, il ne peut donc pas
       échouer ;
     - `clair`      : luminosité 62 %, saturation + 10 — usage DÉCORATIF
-      seulement (barres de l'histogramme, bordure de survol d'une carte) : à
+      seulement (bordure de survol d'une carte) : à
       cette luminosité, le contraste sur blanc tourne autour de 2,5:1, en
       dessous des 3:1 d'un élément porteur d'information ;
     - `fond`       : luminosité 94 %, saturation + 25 — aplats teintés (puces

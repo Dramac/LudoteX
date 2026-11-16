@@ -616,8 +616,11 @@ def test_stats_pochette_cloisonnee(client, tmp_path, monkeypatch):
     assert r.status_code == 200
     # Ni l'en-tête de colonne...
     assert "Pochette" not in r.text
-    # ...ni la valeur.
-    assert "<td>1</td>" not in r.text
+    # ...ni la valeur. Hors du comptoir heure par heure (lot bilan-4), dont
+    # le tableau porte des COMPTES par heure (« 1 » prêt) et jamais de numéro.
+    hors_comptoir = re.sub(r'<section class="carte" id="comptoir">.*?</section>',
+                           "", r.text, flags=re.S)
+    assert "<td>1</td>" not in hors_comptoir
     # Non-régression : le reste de la page (totaux, palmarès, tableau) est
     # inchangé.
     assert "Catan" in r.text
@@ -630,7 +633,9 @@ def test_stats_pochette_cloisonnee(client, tmp_path, monkeypatch):
     # sur /sortis, avec le lien qui y mène.
     client.cookies.set("jeton_pret", jeton_cookie)
     r2 = client.get("/stats")
-    assert "Pochette" not in r2.text and "<td>1</td>" not in r2.text
+    hors_comptoir = re.sub(r'<section class="carte" id="comptoir">.*?</section>',
+                           "", r2.text, flags=re.S)
+    assert "Pochette" not in r2.text and "<td>1</td>" not in hors_comptoir
     assert 'href="/sortis"' in r2.text
     assert "pochette <strong>1</strong>" in client.get("/sortis").text
 

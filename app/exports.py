@@ -207,11 +207,44 @@ def tableau_xlsx(entetes: list[str], lignes: list[dict],
     return buf.getvalue()
 
 
+# Le comptoir heure par heure (lot bilan-4) : la feuille porte les mêmes
+# lignes et les mêmes colonnes que le tableau de la page (`app/comptoir.py`),
+# pour la même période — TOUTES les heures, même quand la page renonce à
+# dessiner une période trop longue. Le PDF ne la reprend pas.
+FEUILLE_HEURE_PAR_HEURE = "Heure par heure"
+
+
+def feuille_heure_par_heure(wb, donnees: dict, periode_txt: str, gras):
+    """Ajoute la feuille « Heure par heure » au classeur et la renvoie."""
+    from app import comptoir
+
+    wh = wb.create_sheet(FEUILLE_HEURE_PAR_HEURE)
+    wh["A1"] = comptoir.TITRE_SECTION
+    wh["A1"].font = gras
+    wh["A2"] = f"Période : {periode_txt}"
+    if not donnees["heures"]:
+        wh["A4"] = comptoir.PHRASE_VIDE
+        return wh
+    ligne = 4
+    if donnees["fermetures_cloture"]:
+        wh[f"A{ligne}"] = comptoir.phrase_fermetures(donnees["fermetures_cloture"])
+        ligne += 2
+    for col, entete in enumerate(comptoir.ENTETES_TABLEAU, start=1):
+        wh.cell(row=ligne, column=col, value=entete).font = gras
+    for h in donnees["heures"]:
+        ligne += 1
+        wh.cell(row=ligne, column=1, value=h["libelle_table"])
+        wh.cell(row=ligne, column=2, value=h["prets"])
+        wh.cell(row=ligne, column=3, value=h["retours"])
+        wh.cell(row=ligne, column=4, value=h["dehors"])
+    return wh
+
+
 def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -> bytes:
     """
-    Construit un classeur Excel à trois feuilles : Synthèse, Palmarès, Détail
-    — et une quatrième, « Tombola », quand `tombola` est fourni (voir
-    `synthese_tombola`).
+    Construit un classeur Excel à quatre feuilles : Synthèse, Palmarès, Heure
+    par heure, Détail — et une cinquième, « Tombola », quand `tombola` est
+    fourni (voir `synthese_tombola`).
 
     La feuille « Détail » ne porte PAS de colonne « numéro de pochette » : ce
     détail couvre une période, donc essentiellement des prêts clos, dont le
@@ -272,7 +305,12 @@ def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -
             ligne += 1
         ligne += 1
 
-    # --- Feuille 3 : Détail des prêts ---
+    # --- Feuille 3 : Heure par heure (lot bilan-4). Absente d'un `data`
+    # construit à la main sans la clé, comme les `g.get(...)` ci-dessus. ---
+    wh = (feuille_heure_par_heure(wb, data["comptoir"], periode_txt, gras)
+          if "comptoir" in data else None)
+
+    # --- Feuille 4 : Détail des prêts ---
     wd = wb.create_sheet("Détail")
     entetes_detail = ["Jeu", "Exemplaire", "Sortie", "Retour", "Durée"]
     for col, entete in enumerate(entetes_detail):
@@ -288,8 +326,10 @@ def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -
 
     largeurs_feuilles = [(ws, [24, 14]), (wp, [40, 10, 12, 12]),
                          (wd, [40, 12, 18, 18, 12, 14])]
+    if wh is not None:
+        largeurs_feuilles.append((wh, [30, 10, 10, 30]))
 
-    # --- Feuille 4 : Tombola (synthèse puis tableaux), si elle a lieu ---
+    # --- Feuille 5 : Tombola (synthèse puis tableaux), si elle a lieu ---
     if tombola:
         wt = wb.create_sheet("Tombola")
         wt["A1"] = "Tombola"

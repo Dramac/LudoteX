@@ -51,6 +51,9 @@
        autre nombre — la règle « jamais de (0) permanent » vise les
        compteurs de menu, pas une synthèse. #}
     <div class="chiffre"><span class="chiffre-val" title="Jeux rendus moins d'une minute après leur sortie : mauvaise boîte scannée, ou visiteur qui se ravise. Non comptés dans les chiffres ci-dessus.">{{ g.erreurs }}</span><span class="chiffre-lib">{{ pluriel(g.erreurs, 'erreur de prêt', 'erreurs de prêt') }}</span></div>
+    {# Lot bilan-4 : le pic des jeux dehors, repris du comptoir heure par
+       heure (`comptoir.pic` : la première heure en cas d'égalité). #}
+    <div class="chiffre"><span class="chiffre-val" title="Le plus grand nombre de jeux dehors à la fin d'une heure, sur la période. Détail dans « {{ cpt.TITRE_SECTION }} ».">{{ comptoir.pic.dehors if comptoir.pic else "—" }}</span><span class="chiffre-lib">{{ cpt.LIBELLE_PIC }}{% if comptoir.pic %}, {{ comptoir.pic.libelle }}{% endif %}</span></div>
   </div>
 
   {# CHOIX DE LA PÉRIODE (lot bilan-3). Deux formulaires, sans JS :
@@ -140,21 +143,95 @@
   {{ tableau(moins) }}
 </section>
 
-<section class="carte">
-  <h2>Prêts par heure</h2>
-  {% if par_heure %}
-    <ul class="histo">
-      {% for h in par_heure %}
-        <li class="histo-ligne">
-          <span class="histo-label">{{ h.label }}</span>
-          <span class="histo-barre" style="width: {{ (h.n / max_heure * 100) | round }}%;"></span>
-          <span class="histo-val">{{ h.n }}</span>
-        </li>
-      {% endfor %}
-    </ul>
-    <p class="stats-note">Heures locales (Europe/Paris).</p>
+{# LE COMPTOIR HEURE PAR HEURE (lot bilan-4). Tous les chiffres et toutes
+   les positions viennent d'app/comptoir.py (`comptoir`, `graphiques`) : ce
+   gabarit ne calcule rien, il pose les éléments. Dessiné par le serveur, en
+   SVG, sans JS ni animation, et sans couleur en dur : les classes `graph-*`
+   d'app/static/css/style.css ne lisent que des variables du thème (règles
+   et contrastes mesurés : docs/ui-composants.md, « Graphique du comptoir »).
+   Chaque graphique a sa taille naturelle et défile à l'horizontale dans un
+   conteneur focalisable. Les SVG sont des images (`role="img"`) qui
+   renvoient au tableau replié dessous, la version lue par un lecteur
+   d'écran. #}
+<section class="carte" id="comptoir">
+  <h2>{{ cpt.TITRE_SECTION }}</h2>
+  <p>{{ cpt.PHRASE_SENS }}</p>
+  {% if not comptoir.heures %}
+    <p>{{ cpt.PHRASE_VIDE }}</p>
+  {% elif comptoir.trop_long %}
+    <p class="resultat resultat-info">{{ cpt.phrase_trop_long(comptoir.nb_jours) }}</p>
   {% else %}
-    <p>Aucun prêt sur la période.</p>
+    {% set gf = graphiques.flux %}
+    {% set gd = graphiques.dehors %}
+    <h3 id="comptoir-flux-titre">{{ cpt.TITRE_FLUX }}</h3>
+    <ul class="graph-legende">
+      <li><svg class="graph-pastille" width="18" height="14" viewBox="0 0 18 14" aria-hidden="true" focusable="false"><rect class="graph-prets" x="1" y="1" width="16" height="12"/></svg>{{ cpt.SERIE_PRETS }} <span class="graph-legende-forme">(plein)</span></li>
+      <li><svg class="graph-pastille" width="18" height="14" viewBox="0 0 18 14" aria-hidden="true" focusable="false"><rect class="graph-retours" x="1" y="1" width="16" height="12"/></svg>{{ cpt.SERIE_RETOURS }} <span class="graph-legende-forme">(hachuré)</span></li>
+    </ul>
+    <div class="graph-defile" tabindex="0" role="region" aria-label="{{ cpt.TITRE_FLUX }}, défilement horizontal">
+      <svg class="graph" width="{{ gf.largeur }}" height="{{ gf.hauteur }}" viewBox="0 0 {{ gf.largeur }} {{ gf.hauteur }}" role="img" aria-labelledby="comptoir-flux-svg comptoir-renvoi-flux" focusable="false">
+        <title id="comptoir-flux-svg">{{ cpt.TITRE_FLUX }}</title>
+        <desc id="comptoir-renvoi-flux">Les chiffres sont dans le tableau « {{ cpt.TITRE_TABLEAU }} », sous les graphiques.</desc>
+        <defs>
+          <pattern id="hachures-retours" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)">
+            <line class="graph-hachure" x1="1" y1="0" x2="1" y2="4"/>
+          </pattern>
+        </defs>
+        {% for g in gf.graduations %}
+          <line class="graph-grille" x1="{{ gf.gauche }}" x2="{{ gf.droite }}" y1="{{ g.y }}" y2="{{ g.y }}"/>
+          <text class="graph-axe" x="{{ gf.gauche - 6 }}" y="{{ g.y + 4 }}" text-anchor="end">{{ g.valeur }}</text>
+        {% endfor %}
+        {% for s in gf.separations %}<line class="graph-separation" x1="{{ s }}" x2="{{ s }}" y1="{{ gf.haut_trace }}" y2="{{ gf.y_jours + 4 }}"/>{% endfor %}
+        {% for b in gf.barres %}
+          <rect class="graph-{{ b.serie }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.largeur }}" height="{{ b.hauteur }}"><title>{{ b.titre }}</title></rect>
+        {% endfor %}
+        <line class="graph-base" x1="{{ gf.gauche }}" x2="{{ gf.droite }}" y1="{{ gf.base }}" y2="{{ gf.base }}"/>
+        {% for e in gf.etiquettes %}<text class="graph-etiquette" x="{{ e.x }}" y="{{ e.y }}" text-anchor="middle">{{ e.texte }}</text>{% endfor %}
+        {% for h in gf.heures %}<text class="graph-axe" x="{{ h.x }}" y="{{ gf.y_heures }}" text-anchor="middle">{{ h.texte }}</text>{% endfor %}
+        {% for j in gf.jours %}<text class="graph-jour" x="{{ j.x }}" y="{{ gf.y_jours }}">{{ j.texte }}</text>{% endfor %}
+      </svg>
+    </div>
+
+    <h3 id="comptoir-dehors-titre">{{ cpt.TITRE_DEHORS }}</h3>
+    <div class="graph-defile" tabindex="0" role="region" aria-label="{{ cpt.TITRE_DEHORS }}, défilement horizontal">
+      <svg class="graph" width="{{ gd.largeur }}" height="{{ gd.hauteur }}" viewBox="0 0 {{ gd.largeur }} {{ gd.hauteur }}" role="img" aria-labelledby="comptoir-dehors-svg comptoir-renvoi-dehors" focusable="false">
+        <title id="comptoir-dehors-svg">{{ cpt.TITRE_DEHORS }}</title>
+        <desc id="comptoir-renvoi-dehors">Les chiffres sont dans le tableau « {{ cpt.TITRE_TABLEAU }} », sous les graphiques.</desc>
+        {% for g in gd.graduations %}
+          <line class="graph-grille" x1="{{ gd.gauche }}" x2="{{ gd.droite }}" y1="{{ g.y }}" y2="{{ g.y }}"/>
+          <text class="graph-axe" x="{{ gd.gauche - 6 }}" y="{{ g.y + 4 }}" text-anchor="end">{{ g.valeur }}</text>
+        {% endfor %}
+        {% for s in gd.separations %}<line class="graph-separation" x1="{{ s }}" x2="{{ s }}" y1="{{ gd.haut_trace }}" y2="{{ gd.y_jours + 4 }}"/>{% endfor %}
+        {% for t in gd.traces %}<path class="graph-aire" d="{{ t.aire }}"/>{% endfor %}
+        <line class="graph-base" x1="{{ gd.gauche }}" x2="{{ gd.droite }}" y1="{{ gd.base }}" y2="{{ gd.base }}"/>
+        {% for t in gd.traces %}<path class="graph-ligne" d="{{ t.ligne }}"/>{% endfor %}
+        {% for p in gd.points %}<circle class="graph-point" cx="{{ p.x }}" cy="{{ p.y }}" r="{{ graphiques.rayon_point }}"/>{% endfor %}
+        {% if gd.pic %}<circle class="graph-pic" cx="{{ gd.pic.x }}" cy="{{ gd.pic.y }}" r="{{ graphiques.rayon_pic }}"/>{% endif %}
+        {% for e in gd.etiquettes %}<text class="graph-etiquette" x="{{ e.x }}" y="{{ e.y }}" text-anchor="middle">{{ e.texte }}</text>{% endfor %}
+        {% for h in gd.heures %}<text class="graph-axe" x="{{ h.x }}" y="{{ gd.y_heures }}" text-anchor="middle">{{ h.texte }}</text>{% endfor %}
+        {% for j in gd.jours %}<text class="graph-jour" x="{{ j.x }}" y="{{ gd.y_jours }}">{{ j.texte }}</text>{% endfor %}
+        {% for z in gd.survols %}<rect class="graph-survol" x="{{ z.x }}" y="{{ z.y }}" width="{{ z.largeur }}" height="{{ z.hauteur }}"><title>{{ z.titre }}</title></rect>{% endfor %}
+      </svg>
+    </div>
+  {% endif %}
+
+  {% if comptoir.heures %}
+    <p class="stats-note">{{ cpt.NOTE_DEFINITIONS }}</p>
+    <p class="stats-note">{{ cpt.NOTE_HEURES }}</p>
+    {% if comptoir.fermetures_cloture %}<p class="stats-note">{{ cpt.phrase_fermetures(comptoir.fermetures_cloture) }}</p>{% endif %}
+    {% if not comptoir.trop_long %}
+    <details class="comptoir-tableau">
+      <summary>{{ cpt.TITRE_TABLEAU }}</summary>
+      <table class="detail">
+        <thead><tr>{% for e in cpt.ENTETES_TABLEAU %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for h in comptoir.heures %}
+            <tr><th scope="row">{{ h.libelle_table }}</th><td>{{ h.prets }}</td><td>{{ h.retours }}</td><td>{{ h.dehors }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    {% endif %}
   {% endif %}
 </section>
 
