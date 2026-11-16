@@ -152,7 +152,11 @@ def phrase_trop_long(nb_jours: int) -> str:
 # ---------------------------------------------------------------------------
 # Les chiffres
 # ---------------------------------------------------------------------------
-def _lire(valeur) -> datetime | None:
+# `lire_instant`, `debut_heure` et `journee` sont publiques depuis le lot
+# bilan-6 : « Pour les achats » (`app/achats.py`) et « Ce qui plaît »
+# (`app/gouts.py`) les réutilisent, pour que les trois sections tiennent la
+# même date pour illisible et coupent les journées au même endroit.
+def lire_instant(valeur) -> datetime | None:
     """
     Un horodatage de la base, en UTC, ou None s'il est illisible. Un
     horodatage SANS fuseau est tenu pour illisible : on stocke toujours en
@@ -170,7 +174,7 @@ def _lire(valeur) -> datetime | None:
     return dt.astimezone(FUSEAU_UTC)
 
 
-def _heure(dt: datetime) -> datetime:
+def debut_heure(dt: datetime) -> datetime:
     """Le début de l'heure UTC qui contient `dt`. Paris est décalé d'heures
     entières : une heure UTC est toujours une heure locale."""
     return dt.replace(minute=0, second=0, microsecond=0)
@@ -195,17 +199,17 @@ def instants_de_cloture(lignes) -> set[str]:
         return set()
     lues = []
     for l in lignes:
-        sortie = _lire(l["date_sortie"])
+        sortie = lire_instant(l["date_sortie"])
         if sortie is None:
             continue
         retour_txt = l["date_retour"]
-        retour = _lire(retour_txt) if retour_txt is not None else None
+        retour = lire_instant(retour_txt) if retour_txt is not None else None
         if retour_txt is not None and retour is None:
             continue                     # retour illisible : on ne sait rien
         lues.append((sortie, retour, retour_txt))
     clotures = set()
     for ts in candidats:
-        instant = _lire(ts)
+        instant = lire_instant(ts)
         if instant is None:
             continue
         ouvert_ailleurs = any(
@@ -240,7 +244,7 @@ def _libelles_heure(local: datetime) -> tuple[str, str]:
     return f"{base} bis", f"{base} (heure d'hiver)"
 
 
-def _journee(h: datetime) -> date:
+def journee(h: datetime) -> date:
     """La journée de l'événement à laquelle appartient l'heure UTC `h` : la
     date locale, décalée de `HEURE_DEBUT_JOURNEE` heures (heure murale)."""
     local = h.astimezone(FUSEAU_LOCAL).replace(tzinfo=None)
@@ -270,6 +274,9 @@ def heure_par_heure(conn: sqlite3.Connection, debut: str | None = None,
           "jours": [{date, libelle, premier, nb}] ;
           "nb_jours" (journées), "trop_long" (au-delà de `MAX_JOURS`),
           "fermetures_cloture": retours écartés comme fermetures par la clôture,
+          "instants_cloture": les `date_retour` (chaînes exactes) reconnues
+              comme clôtures (`instants_de_cloture`), pour « Ce qui plaît »
+              (lot bilan-6), qui ne mesure pas une fermeture comme une durée,
           "pic": {"dehors", "libelle", "index"} ou None (aucun jeu dehors),
           "pointes_retours": index des deux plus fortes heures de retours,
           "total_prets", "total_retours"
@@ -287,16 +294,16 @@ def heure_par_heure(conn: sqlite3.Connection, debut: str | None = None,
     for l in lignes:
         if l["motif"] not in MOTIFS_COMPTES:
             continue                                  # tournoi, erreur
-        sortie = _lire(l["date_sortie"])
+        sortie = lire_instant(l["date_sortie"])
         if sortie is None:
             continue
         if _dans(l["date_sortie"], debut, fin):
-            prets[_heure(sortie)] += 1
+            prets[debut_heure(sortie)] += 1
         retour_txt = l["date_retour"]
         if retour_txt is None:
             debuts_dehors.append(sortie)              # encore dehors
             continue
-        retour = _lire(retour_txt)
+        retour = lire_instant(retour_txt)
         if retour is None:
             continue
         debuts_dehors.append(sortie)
@@ -305,14 +312,14 @@ def heure_par_heure(conn: sqlite3.Connection, debut: str | None = None,
             if retour_txt in clotures:
                 fermetures += 1
             else:
-                retours[_heure(retour)] += 1
+                retours[debut_heure(retour)] += 1
 
     # Les heures montrées : par JOURNÉE (voir `HEURE_DEBUT_JOURNEE`), de la
     # première à la dernière heure active, parcourues en UTC (voir l'en-tête :
     # heure d'été / d'hiver).
     par_jour: dict[date, list[datetime]] = defaultdict(list)
     for h in set(prets) | set(retours):
-        par_jour[_journee(h)].append(h)
+        par_jour[journee(h)].append(h)
     jours_tries = sorted(par_jour)
 
     debuts_dehors.sort()
@@ -367,6 +374,7 @@ def heure_par_heure(conn: sqlite3.Connection, debut: str | None = None,
         "nb_jours": len(jours),
         "trop_long": len(jours) > MAX_JOURS,
         "fermetures_cloture": fermetures,
+        "instants_cloture": clotures,
         "pic": pic,
         "pointes_retours": sorted(pointes),
         "total_prets": sum(prets.values()),

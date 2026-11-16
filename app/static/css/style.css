@@ -842,6 +842,26 @@ summary:focus-visible,
   .graph-aire { fill: Canvas; }
   .graph-grille, .graph-separation { stroke: GrayText; }
 }
+/* Ce qui plaît (lot bilan-6) : tableau à barres (docs/ui-composants.md § 9).
+   Mêmes règles de coupe que le comptoir et les achats : jamais un mot coupé
+   au milieu à 375 px. La barre passe SOUS le nom du groupe, à toute
+   largeur : les trois chiffres gardent leur colonne. Décorative (le texte
+   porte la valeur), elle reste visible : --primaire-lisible, comme les
+   barres des prêts du comptoir, au moins 3:1 sur le fond des quatre thèmes
+   mesurés ; jamais --primaire-clair (2,6:1). */
+.gouts-tableau .detail th, .gouts-tableau .detail td { word-break: normal; padding-inline: 4px; }
+.gouts-tableau .detail td { text-align: right; white-space: nowrap; }
+.gouts-tableau .detail thead th { text-align: right; }
+.gouts-tableau .detail thead th:first-child { text-align: left; }
+.gouts-tableau .detail th[scope="row"] { text-align: left; font-weight: 600; color: var(--texte); width: 55%; }
+.gouts-barre { display: block; height: 8px; margin-top: 4px; }
+.gouts-barre > span { display: block; height: 100%; min-width: 2px; border-radius: 2px;
+                      background: var(--primaire-lisible); }
+.gouts-hors-classement th[scope="row"] { font-weight: 400; font-style: italic; }
+.gouts-a-completer { margin-top: 4px; }
+@media (forced-colors: active) {
+  .gouts-barre > span { forced-color-adjust: none; background: CanvasText; }
+}
 .stats-note { color: #6b7075; font-size: 0.8rem; }
 /* Page bénévole « Jeux sortis » (lot bilan-1, docs/ui-composants.md § 9, « Liste de cartes ») :
    une LISTE de cartes, sur téléphone comme sur grand écran — pas un tableau

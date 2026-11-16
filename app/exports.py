@@ -334,11 +334,114 @@ def feuille_jamais_sortis(wb, achats_donnees: dict, periode_txt: str, gras):
     return wj
 
 
+# Ce qui plaît (lot bilan-6, `app/gouts.py`). La feuille porte les trois
+# répartitions EN ENTIER (toutes les catégories, petites comprises, sans le
+# regroupement « Autres catégories » de la page) et le tableau des durées ;
+# la seconde, la liste de travail des jeux sans catégorie.
+def feuille_gouts(wb, gouts_donnees: dict, periode_txt: str, gras):
+    """Ajoute la feuille « Ce qui plaît » au classeur et la renvoie."""
+    from app import gouts
+
+    wg = wb.create_sheet(gouts.FEUILLE_GOUTS)
+    _en_tete_feuille(wg, gouts.TITRE_SECTION, periode_txt, gras)
+    ligne = 4
+    if not gouts_donnees["nb_titres"]:
+        wg[f"A{ligne}"] = gouts.PHRASE_CATALOGUE_VIDE
+        return wg
+    wg[f"A{ligne}"] = gouts.NOTE_PRETS_PAR_JEU
+    ligne += 2
+
+    def repartition(titre, premier_entete, lignes, inconnus, notes):
+        nonlocal ligne
+        wg.cell(row=ligne, column=1, value=titre).font = gras
+        ligne += 1
+        for col, entete in enumerate((premier_entete, *gouts.ENTETES_XLSX_REPARTITION),
+                                     start=1):
+            wg.cell(row=ligne, column=col, value=entete).font = gras
+        for l in lignes + ([inconnus] if inconnus else []):
+            ligne += 1
+            ecrire_cellule(wg, ligne, 1, l["nom"])
+            wg.cell(row=ligne, column=2, value=l["nb_titres"])
+            wg.cell(row=ligne, column=3, value=l["nb_prets"])
+            wg.cell(row=ligne, column=4, value=(round(l["par_titre"], 1)
+                                               if l["par_titre"] is not None else None))
+            ecrire_cellule(wg, ligne, 5, "oui" if l["petit"] else None)
+        ligne += 1
+        for note in notes:
+            wg[f"A{ligne}"] = note
+            ligne += 1
+        ligne += 1
+
+    c = gouts_donnees["categories"]
+    repartition(gouts.TITRE_CATEGORIES, gouts.ENTETES_CATEGORIES[0], c["toutes"],
+                c["non_renseigne"],
+                [gouts.NOTE_PLUSIEURS_CATEGORIES] + (
+                    [gouts.phrase_non_renseigne(c["non_renseigne"]["nb_prets"],
+                                                gouts_donnees["total_prets"])]
+                    if c["non_renseigne"] else []))
+    repartition(gouts.TITRE_JOUEURS, gouts.ENTETES_JOUEURS[0],
+                gouts_donnees["joueurs"]["lignes"],
+                gouts_donnees["joueurs"]["non_renseigne"], [gouts.NOTE_JOUEURS])
+    repartition(gouts.TITRE_AGE, gouts.ENTETES_AGE[0], gouts_donnees["age"]["lignes"],
+                gouts_donnees["age"]["non_renseigne"], [])
+
+    d = gouts_donnees["durees"]
+    wg.cell(row=ligne, column=1, value=gouts.TITRE_DUREES).font = gras
+    ligne += 1
+    for col, entete in enumerate(gouts.ENTETES_XLSX_DUREES, start=1):
+        wg.cell(row=ligne, column=col, value=entete).font = gras
+    for l in d["lignes"] + [x for x in (d["non_renseigne"], d["ensemble"]) if x]:
+        ligne += 1
+        ecrire_cellule(wg, ligne, 1, l["nom"])
+        for col, valeur in enumerate(
+                (l["nb_prets"], l["nb_mesures"], l["annoncee_txt"],
+                 round(l["annoncee_s"] / 60) if l["annoncee_s"] is not None else None,
+                 l["reelle_txt"],
+                 round(l["reelle_s"] / 60) if l["reelle_s"] is not None else None),
+                start=2):
+            wg.cell(row=ligne, column=col, value=valeur)
+    ligne += 1
+    non_mesures = gouts.phrase_non_mesures(d["oublis"], d["nuit"], d["en_cours"],
+                                           d["illisibles"], d["clotures"])
+    for note in [gouts.NOTE_DUREES] + ([non_mesures] if non_mesures else []) + [
+            gouts.NOTE_CATALOGUE]:
+        wg[f"A{ligne}"] = note
+        ligne += 1
+    return wg
+
+
+def feuille_sans_categorie(wb, gouts_donnees: dict, periode_txt: str, gras):
+    """Ajoute la feuille « Sans catégorie » : la liste de travail pour
+    compléter le catalogue, les jeux les plus prêtés d'abord."""
+    from app import gouts
+
+    ws = wb.create_sheet(gouts.FEUILLE_SANS_CATEGORIE)
+    _en_tete_feuille(ws, gouts.FEUILLE_SANS_CATEGORIE, periode_txt, gras)
+    ligne = 4
+    lignes = gouts_donnees["sans_categorie"]
+    if not lignes:
+        ws[f"A{ligne}"] = (gouts.PHRASE_CATALOGUE_VIDE if not gouts_donnees["nb_titres"]
+                           else "Tous les jeux du catalogue ont au moins une catégorie.")
+        return ws
+    ws[f"A{ligne}"] = gouts.NOTE_SANS_CATEGORIE
+    ligne += 2
+    for col, entete in enumerate(gouts.ENTETES_XLSX_SANS_CATEGORIE, start=1):
+        ws.cell(row=ligne, column=col, value=entete).font = gras
+    for r in lignes:
+        ligne += 1
+        ecrire_cellule(ws, ligne, 1, r["nom"])
+        ecrire_cellule(ws, ligne, 2, r["reference_titre"])
+        ws.cell(row=ligne, column=3, value=r["nb_exemplaires"])
+        ws.cell(row=ligne, column=4, value=r["nb_prets"])
+    return ws
+
+
 def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -> bytes:
     """
-    Construit un classeur Excel à six feuilles : Synthèse, Plus prêtés, Tous
-    sortis, Jamais sortis, Heure par heure, Détail — et une septième,
-    « Tombola », quand `tombola` est fourni (voir `synthese_tombola`).
+    Construit un classeur Excel à huit feuilles : Synthèse, Plus prêtés, Tous
+    sortis, Jamais sortis, Ce qui plaît, Sans catégorie, Heure par heure,
+    Détail — et une neuvième, « Tombola », quand `tombola` est fourni (voir
+    `synthese_tombola`).
 
     La feuille « Détail » ne porte PAS de colonne « numéro de pochette » : ce
     détail couvre une période, donc essentiellement des prêts clos, dont le
@@ -404,6 +507,15 @@ def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -
              [36, 14, 8, 8, 16, 14, 18, 22, 22]),
             (feuille_jamais_sortis(wb, data["achats"], periode_txt, gras),
              [36, 14, 8, 24, 14, 24, 24, 14]),
+        ]
+    # --- Feuilles « Ce qui plaît » et « Sans catégorie » (lot bilan-6), après
+    # celles des achats. Absentes d'un `data` construit sans la clé. ---
+    if "gouts" in data:
+        feuilles_achats += [
+            (feuille_gouts(wb, data["gouts"], periode_txt, gras),
+             [30, 12, 14, 22, 22, 22, 22, 22]),
+            (feuille_sans_categorie(wb, data["gouts"], periode_txt, gras),
+             [40, 16, 10, 10]),
         ]
 
     # --- Feuille 3 : Heure par heure (lot bilan-4). Absente d'un `data`

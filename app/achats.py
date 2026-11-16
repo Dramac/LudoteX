@@ -97,10 +97,10 @@ import sqlite3
 from collections import Counter, defaultdict
 from datetime import datetime, time, timedelta
 
-# `_lire` : la lecture d'un horodatage du comptoir (UTC, None si illisible
+# `lire_instant` : la lecture d'un horodatage du comptoir (UTC, None si illisible
 # ou sans fuseau), réutilisée pour que les deux sections tiennent la même
 # date pour illisible.
-from app.comptoir import HEURE_DEBUT_JOURNEE, _heure, _journee, _lire
+from app.comptoir import HEURE_DEBUT_JOURNEE, debut_heure, journee, lire_instant
 from app.categories_jeu import cle
 from app.services import (FUSEAU_LOCAL, FUSEAU_UTC, MOTIFS_COMPTES,
                           format_duree, lignes_export_catalogue, pluriel)
@@ -287,10 +287,10 @@ def _couper(intervalles, plages) -> list[tuple[datetime, datetime]]:
 
 def fin_de_journee(sortie: datetime) -> datetime:
     """La fin (UTC) de la journée de l'événement où commence `sortie` : le
-    lendemain à `HEURE_DEBUT_JOURNEE` heures locales (`comptoir._journee`).
+    lendemain à `HEURE_DEBUT_JOURNEE` heures locales (`comptoir.journee`).
     Calculée en heure locale puis convertie : juste aussi la nuit d'un
     changement d'heure."""
-    jour = _journee(_heure(sortie)) + timedelta(days=1)
+    jour = journee(debut_heure(sortie)) + timedelta(days=1)
     return datetime.combine(jour, time(HEURE_DEBUT_JOURNEE),
                             tzinfo=FUSEAU_LOCAL).astimezone(FUSEAU_UTC)
 
@@ -352,8 +352,8 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
         """
     ).fetchall()
     plages = plages_ouverture(donnees_comptoir)
-    borne_debut = _lire(debut) if debut else None
-    borne_fin = _lire(fin) if fin else None
+    borne_debut = lire_instant(debut) if debut else None
+    borne_fin = lire_instant(fin) if fin else None
 
     sorties: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     pretes_public: Counter = Counter()          # prêts au public de la période
@@ -368,14 +368,14 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
             pretes_tournoi.add(ref)
         if motif not in MOTIFS_COMPTES or not plages:
             continue
-        sortie = _lire(l["date_sortie"])
+        sortie = lire_instant(l["date_sortie"])
         if sortie is None:
             continue
         # Au plus jusqu'à la fin de la journée du prêt (voir l'en-tête) ;
         # un prêt encore ouvert, jusque-là aussi.
         retour = fin_de_journee(sortie)
         if l["date_retour"] is not None:
-            lu = _lire(l["date_retour"])
+            lu = lire_instant(l["date_retour"])
             if lu is None:
                 continue                       # on ne sait pas quand
             retour = min(retour, lu)

@@ -232,6 +232,29 @@ Le lien vers l'Excel des jamais sortis porte `.lien-cible` : un `.lien` en
 `inline-flex` de 44 px de haut, la cible tactile minimale, pour un lien seul
 dans sa phrase.
 
+### Tableau à barres — `.gouts-tableau` (lot bilan-6)
+
+Un tableau de chiffres (mêmes règles de coupe que ci-dessus) dont chaque
+ligne porte, **sous** le nom du groupe (`th scope="row"`), une barre
+proportionnelle à la valeur qui classe : `<span class="gouts-barre"
+aria-hidden="true"><span style="width: 42%"></span></span>`. La largeur
+vient du service (pourcentage de la plus longue barre du même tableau) ; le
+gabarit ne calcule rien.
+
+- **La barre est décorative** : la valeur est écrite dans sa cellule. Elle
+  reste visible : `--primaire-lisible`, au moins 3:1 sur le blanc de la
+  carte quel que soit le thème (14,85 ; 5,17 ; 18,88 ; 5,57 sur les quatre
+  thèmes mesurés), jamais `--primaire-clair`. En couleurs forcées, elle
+  prend `CanvasText` (`forced-color-adjust: none`, sinon le fond disparaît).
+- **Sous le libellé, à toute largeur** : à 375 px, les trois colonnes de
+  chiffres gardent leur place, et rien ne bascule d'une mise en page à
+  l'autre.
+- **Les lignes hors classement** (`.gouts-hors-classement` : un agrégat
+  « Autres », « Non renseigné », un total) viennent en fin de tableau,
+  sans barre, libellé en italique.
+- Pas de SVG : pour une dizaine de lignes, un graphique à part n'apporte
+  rien que le tableau ne dise. Au-delà, voir le § 20.
+
 ### Liste de cartes — `.sorties` (lot bilan-1)
 
 Page bénévole « Jeux sortis » (`sortis.html`). Une `<ul class="sorties">` de

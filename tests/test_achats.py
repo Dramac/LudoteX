@@ -24,7 +24,7 @@ import openpyxl
 import pytest
 from markupsafe import escape
 
-from app import achats, comptoir, editions, exports, services
+from app import achats, comptoir, editions, exports, gouts, services
 from tests.test_tombola import (  # noqa: F401 — fixtures partagées
     _conn, bases, benevole,
 )
@@ -620,7 +620,8 @@ def test_feuilles_et_ordre(week_end, benevole):
     classeur = _classeur(benevole)
     assert classeur.sheetnames == [
         "Synthèse", exports.FEUILLE_PALMARES, achats.FEUILLE_TOUS_SORTIS,
-        achats.FEUILLE_JAMAIS_SORTIS, exports.FEUILLE_HEURE_PAR_HEURE, "Détail"]
+        achats.FEUILLE_JAMAIS_SORTIS, gouts.FEUILLE_GOUTS, gouts.FEUILLE_SANS_CATEGORIE,
+        exports.FEUILLE_HEURE_PAR_HEURE, "Détail"]
     assert "Palmarès" not in classeur.sheetnames
     assert all(c.data_type != "f" for f in classeur for l in f.iter_rows() for c in l)
 

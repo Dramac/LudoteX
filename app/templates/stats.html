@@ -298,6 +298,85 @@
     {% if achats.jamais_sortis %}<a class="lien lien-cible" href="/stats/export.xlsx?{{ qs }}">{{ ach.LIEN_EXCEL }}</a>{% endif %}</p>
 </section>
 
+{# CE QUI PLAÎT (lot bilan-6). Chiffres, barres et phrases viennent
+   d'app/gouts.py (`gouts`, `gts`) : ce gabarit ne calcule rien. Un tableau à
+   barres, sans SVG (docs/ui-composants.md § 9, « Tableau à barres ») : la
+   barre, sous le nom du groupe, est décorative (`aria-hidden`) ; les trois
+   chiffres sont du texte. Sa largeur vient du service (pourcentage de la
+   plus longue barre du tableau). « Autres catégories » et « Non renseigné »
+   ne sont pas classés : pas de barre, ligne séparée (`gouts-hors-classement`). #}
+{% macro tableau_gouts(entetes, lignes, autres=none, inconnus=none) %}
+  <div class="gouts-tableau">
+    <table class="detail">
+      <thead><tr>{% for e in entetes %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for l in lignes %}
+          <tr><th scope="row"><span class="gouts-nom">{{ l.nom }}</span>{% if l.barre is not none %}<span class="gouts-barre" aria-hidden="true"><span style="width: {{ l.barre }}%"></span></span>{% endif %}</th><td>{{ l.nb_titres }}</td><td>{{ l.nb_prets }}</td><td>{{ l.par_titre_txt }}</td></tr>
+        {% endfor %}
+        {% for l in [autres, inconnus] if l %}
+          <tr class="gouts-hors-classement"><th scope="row"><span class="gouts-nom">{{ l.nom }}</span></th><td>{{ l.nb_titres }}</td><td>{{ l.nb_prets }}</td><td>{{ l.par_titre_txt }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endmacro %}
+<section class="carte" id="gouts">
+  <h2>{{ gts.TITRE_SECTION }}</h2>
+  <p>{{ gts.PHRASE_SENS }}</p>
+  {% if not gouts.nb_titres %}
+    <p>{{ gts.PHRASE_CATALOGUE_VIDE }}</p>
+  {% elif not gouts.total_prets %}
+    <p>{{ gts.PHRASE_AUCUN_PRET }}</p>
+  {% else %}
+    <p class="stats-note">{{ gts.NOTE_PRETS_PAR_JEU }}</p>
+
+    <h3>{{ gts.TITRE_CATEGORIES }}</h3>
+    {% set c = gouts.categories %}
+    {% if c.aucune %}
+      <p>{{ gts.PHRASE_AUCUNE_CATEGORIE }}</p>
+    {% else %}
+      {{ tableau_gouts(gts.ENTETES_CATEGORIES, c.lignes, c.autres, c.non_renseigne) }}
+      <p class="stats-note">{{ gts.NOTE_PLUSIEURS_CATEGORIES }}</p>
+      {% if c.autres %}<p class="stats-note">{{ gts.phrase_autres(c.nb_suite, c.nb_petites) }}</p>{% endif %}
+    {% endif %}
+    {% if c.non_renseigne %}<p class="gouts-a-completer">{{ gts.phrase_non_renseigne(c.non_renseigne.nb_prets, gouts.total_prets) }}</p>{% endif %}
+
+    <h3>{{ gts.TITRE_JOUEURS }}</h3>
+    {{ tableau_gouts(gts.ENTETES_JOUEURS, gouts.joueurs.lignes, none, gouts.joueurs.non_renseigne) }}
+    <p class="stats-note">{{ gts.NOTE_JOUEURS }}</p>
+    {% if gouts.joueurs.petites %}<p class="stats-note">{{ gts.phrase_petites_tranches() }}</p>{% endif %}
+
+    <h3>{{ gts.TITRE_AGE }}</h3>
+    {{ tableau_gouts(gts.ENTETES_AGE, gouts.age.lignes, none, gouts.age.non_renseigne) }}
+    {% if gouts.age.petites %}<p class="stats-note">{{ gts.phrase_petites_tranches() }}</p>{% endif %}
+
+    <h3>{{ gts.TITRE_DUREES }}</h3>
+    {% set d = gouts.durees %}
+    {% if d.nb_mesures %}
+      <div class="gouts-tableau">
+        <table class="detail">
+          <thead><tr>{% for e in gts.ENTETES_DUREES %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for l in d.lignes %}
+              <tr><th scope="row"><span class="gouts-nom">{{ l.nom }}</span></th><td>{{ l.nb_mesures }}</td><td>{{ l.annoncee_txt }}</td><td>{{ l.reelle_txt }}</td></tr>
+            {% endfor %}
+            {% for l in [d.non_renseigne, d.ensemble] if l %}
+              <tr class="gouts-hors-classement"><th scope="row"><span class="gouts-nom">{{ l.nom }}</span></th><td>{{ l.nb_mesures }}</td><td>{{ l.annoncee_txt }}</td><td>{{ l.reelle_txt }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>{{ gts.PHRASE_AUCUNE_MESURE }}</p>
+    {% endif %}
+    <p class="stats-note">{{ gts.NOTE_DUREES }}</p>
+    {% set non_mesures = gts.phrase_non_mesures(d.oublis, d.nuit, d.en_cours, d.illisibles, d.clotures) %}
+    {% if non_mesures %}<p class="stats-note">{{ non_mesures }}</p>{% endif %}
+
+    <p class="stats-note">{{ gts.NOTE_CATALOGUE }}</p>
+  {% endif %}
+</section>
+
 {# Tombola (série tombola, lot 2) : absente quand le module est masqué pour
    ce visiteur ou qu'aucun tirage n'a eu lieu dans la période. Un numéro
    compte dans la période de son tirage. #}

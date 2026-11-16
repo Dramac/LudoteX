@@ -9,8 +9,10 @@ Agrégations sans donnée personnelle (spec §7) : total des prêts, le
 comptoir heure par heure (lot bilan-4, `app/comptoir.py`), la section « Pour
 les achats » (lot bilan-5, `app/achats.py` : les jeux dont toutes les boîtes
 étaient dehors, le palmarès des plus prêtés jusqu'à 50 jeux, le nombre de
-jeux jamais sortis, dont la liste est dans l'export Excel) et la liste
-détaillée des prêts. Toutes les données proviennent de
+jeux jamais sortis, dont la liste est dans l'export Excel), la section « Ce
+qui plaît » (lot bilan-6, `app/gouts.py` : prêts par jeu par catégorie, par
+nombre de joueurs et par âge, durée annoncée comparée à la durée du prêt) et
+la liste détaillée des prêts. Toutes les données proviennent de
 `services.collecter_stats`. Le palmarès des moins prêtés a quitté la page ;
 il reste dans le PDF jusqu'au lot bilan-7.
 
@@ -48,7 +50,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import achats, comptoir, editions, exports, services, tombola
+from app import achats, comptoir, editions, exports, gouts, services, tombola
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -199,6 +201,7 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
          "comptoir": data["comptoir"],
          "graphiques": comptoir.geometrie(data["comptoir"]), "cpt": comptoir,
          "achats": data["achats"], "ach": achats,
+         "gouts": data["gouts"], "gts": gouts,
          "palmares_visible": services.LIMITE_PALMARES_VISIBLE,
          "metrique": metrique, "prets": data["prets"],
          "choix": periode["choix"], "message_periode": periode["message"],

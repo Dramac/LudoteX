@@ -1070,15 +1070,16 @@ def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
         limite_prets: limite de la liste détaillée (None = toutes, pour l'export).
 
     Returns:
-        dict {globales, plus, moins, comptoir, achats, prets, metrique}.
+        dict {globales, plus, moins, comptoir, achats, gouts, prets, metrique}.
         `comptoir` est le comptoir heure par heure (lot bilan-4,
         `app/comptoir.py`), `achats` la section « Pour les achats » (lot
         bilan-5, `app/achats.py`), calculée sur les heures d'ouverture du
-        comptoir. `plus` porte le `rang` de chaque jeu (`classer`). `moins`
+        comptoir, `gouts` la section « Ce qui plaît » (lot bilan-6,
+        `app/gouts.py`). `plus` porte le `rang` de chaque jeu (`classer`). `moins`
         ne sert plus qu'au PDF (`LIMITE_PALMARES_PDF`), jusqu'au lot bilan-7.
     """
-    # Différés : app.comptoir et app.achats importent ce module.
-    from app import achats, comptoir
+    # Différés : app.comptoir, app.achats et app.gouts importent ce module.
+    from app import achats, comptoir, gouts
 
     donnees_comptoir = comptoir.heure_par_heure(conn, debut, fin)
     return {
@@ -1092,6 +1093,8 @@ def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
         "moins": palmares(conn, "asc", metrique, LIMITE_PALMARES_PDF, debut, fin),
         "comptoir": donnees_comptoir,
         "achats": achats.pour_les_achats(conn, debut, fin, donnees_comptoir),
+        "gouts": gouts.ce_qui_plait(conn, debut, fin,
+                                    donnees_comptoir["instants_cloture"]),
         "prets": lister_prets_periode(conn, debut, fin, limite_prets),
         "metrique": metrique,
     }

@@ -485,6 +485,43 @@ Indicateurs :
     de quoi retrouver chaque boîte (catégories, date d'achat, emplacements).
     Elle remplace le palmarès des moins prêtés, dont le bas n'était fait
     que de zéros.
+- **Ce qui plaît** : le profil des jeux que le public emprunte, pour
+  orienter les achats et choisir les jeux à mettre en avant. Quatre
+  répartitions :
+  - par **catégorie**, par **nombre de joueurs** et par **âge conseillé**,
+    mesurées en **prêts par jeu** : les prêts au public de la période divisés
+    par le nombre de jeux du groupe (les titres qui ont au moins une boîte,
+    prêtés ou non). Un compte brut ne mesurerait que la taille du rayon
+    (sur l'édition 2026 : « Cartes », 189 prêts pour 187 jeux ; « Réflexe »,
+    24 pour 6). Les catégories viennent de la liste du jeu, pas de la copie
+    du tableur ; un jeu à plusieurs catégories compte dans chacune. Une
+    catégorie de moins de cinq jeux n'est pas classée (deux jeux font un
+    chiffre au hasard) : la page montre les dix premières, puis « Autres
+    catégories », qui réunit les suivantes et les petites ; l'Excel les
+    donne toutes. « Non renseigné » n'est jamais classé : il est montré
+    avec la part des prêts qui échappent ainsi au tableau, et l'Excel liste
+    les jeux sans catégorie pour les compléter ;
+  - les **groupes de joueurs se chevauchent** (se joue seul, à 2, à 2
+    seulement, à 3 ou 4, à 5 et plus, 8 et plus) : une fourchette de 2 à 6
+    entre dans trois groupes, et toute fourchette dans au moins un. « Se
+    joue à N » est la règle du filtre du catalogue. Une borne absente prend
+    la valeur de l'autre, des bornes inversées sont remises dans l'ordre,
+    une borne inférieure à 1 est ignorée ;
+  - les **tranches d'âge** ne se chevauchent pas (moins de 6 ans, 6 et 7,
+    8 et 9, 10 et 11, 12 et 13, 14 et plus) ; un âge de 0 est dans la
+    première. Une tranche de moins de cinq jeux garde sa ligne, sans barre ;
+  - la **durée annoncée sur la boîte comparée à la durée du prêt**, par
+    tranche de durée annoncée (15 min ou moins, 16 à 30, 31 à 60, plus de
+    60), en **médianes** : quelques prêts de plusieurs heures ne les
+    déplacent pas. Ne sont mesurés que les prêts rendus et scannés le jour
+    de leur sortie (journée de 6 h à 6 h) : ni un retour non scanné, ni un
+    prêt en cours, ni une fermeture par la clôture, ni un prêt rendu après
+    la nuit — un jeu rendu le lendemain n'a pas été joué toute la nuit. Le
+    nombre de prêts écartés est dit. La durée du prêt comprend
+    l'explication des règles et les parties rejouées.
+
+  Catégories, joueurs, âge et durée sont ceux du catalogue d'aujourd'hui :
+  la base n'en garde pas l'historique.
 - **Le comptoir heure par heure** : de quoi décider quand ouvrir une file
   réservée aux retours, et combien de bénévoles placer au comptoir à chaque
   créneau. Deux graphiques dessinés par le serveur (prêts et retours de
@@ -514,8 +551,8 @@ Indicateurs :
   pas une statistique mais un outil de comptoir : elle a sa propre page,
   réservée aux bénévoles (§5.1).
 - Exports Excel et PDF. L'Excel porte les feuilles « Plus prêtés », « Tous
-  sortis », « Jamais sortis » et « Heure par heure », mêmes lignes que la
-  page, sans la coupe de la page ; le PDF ne reprend pas le comptoir, et
+  sortis », « Jamais sortis », « Ce qui plaît », « Sans catégorie » et
+  « Heure par heure », mêmes lignes que la page, sans la coupe de la page ; le PDF ne reprend pas le comptoir, et
   garde pour l'instant ses palmarès des plus et des moins prêtés, quinze
   lignes chacun.
 

@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pytest
 
-from app import achats, exports, journal, services, tombola
+from app import achats, exports, gouts, journal, services, tombola
 from app.routes import live
 from tests.test_tombola import (  # noqa: F401 — fixtures partagées
     T0, _conn, _etat, _geste, _id, _journal, _numeros, _saisir, actif, admin,
@@ -668,6 +668,7 @@ def test_feuille_excel_presente_ou_absente(visiteur_stats):
     classeur = _feuilles(visiteur_stats.get("/stats/export.xlsx").content)
     assert classeur.sheetnames == ["Synthèse", exports.FEUILLE_PALMARES,
                                    achats.FEUILLE_TOUS_SORTIS, achats.FEUILLE_JAMAIS_SORTIS,
+                                   gouts.FEUILLE_GOUTS, gouts.FEUILLE_SANS_CATEGORIE,
                                    exports.FEUILLE_HEURE_PAR_HEURE, "Détail", "Tombola"]
     valeurs = [[c.value for c in ligne] for ligne in classeur["Tombola"].iter_rows()]
     plat = [v for ligne in valeurs for v in ligne if v is not None]
