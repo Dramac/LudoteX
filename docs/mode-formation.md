@@ -94,8 +94,8 @@ entièrement les **trois** bases de l'instance de formation :
   de démonstration restent les mêmes. Ils sont **datés** pour simuler un événement en
   cours depuis plusieurs heures : quelques dizaines de prêts terminés aux durées
   variées (~15 min à ~2 h) répartis dans le temps, plus une douzaine encore en
-  cours. Les **statistiques** (palmarès, histogramme horaire, durée moyenne,
-  jeux actuellement sortis) sont ainsi fournies et crédibles — de quoi servir
+  cours. Les **statistiques** (palmarès, histogramme horaire, durée moyenne)
+  et la page des **jeux sortis** sont ainsi fournies et crédibles — de quoi servir
   aussi de **démonstration au bureau**.
 - **Tournois** : plusieurs tournois d'exemple couvrant les états et les modes —
   un brouillon, un ouvert aux inscriptions, un par équipes, un high score en

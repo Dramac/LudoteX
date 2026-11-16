@@ -213,6 +213,32 @@ carte à l'autre gagne un complément `.sr-only` qui dit sur quoi il agit.
 jamais été écrite, et les quatre libellés d'états s'affichaient donc en toutes
 lettres à côté de chaque bouton radio.
 
+### Liste de cartes — `.sorties` (lot bilan-1)
+
+Page bénévole « Jeux sortis » (`sortis.html`). Une `<ul class="sorties">` de
+`<li class="sortie">`, **cartes sur tous les écrans** : une colonne sur
+téléphone, une grille de cartes de 300 px au moins sur grand écran.
+
+*Pourquoi pas `.admin-table--cartes`* : cette variante reste un tableau sur
+grand écran, et sur téléphone elle empile des valeurs étiquetées
+(« Exemplaire : 0019 »), chacune sur sa ligne. Ici, rien ne se compare en
+colonnes, il n'y a pas de bouton d'action, et le **numéro de pochette** doit
+sauter aux yeux dans chaque carte : il occupe une colonne à droite
+(`.sortie-pochette`), à côté du nom, du code et de la durée. C'est aussi une
+vraie liste, annoncée comme telle par un lecteur d'écran, au lieu d'un tableau
+dont `display: block` efface la sémantique.
+
+- `.sortie-nom` — nom du jeu, toute la largeur restante : il passe à la ligne
+  entre deux mots, jamais au milieu (`overflow-wrap: break-word` ne coupe
+  qu'un mot plus long que la carte).
+- `.sortie-pochette` — « pochette » puis le numéro en gros (`--texte`, pas
+  `--primaire` : § 16 réserve la couleur d'identité au numéro qui ne bouge
+  pas). Variante `--tournoi` : le mot « tournoi » à la place.
+- `.sortie-detail` — code de la boîte, heure de sortie, durée.
+- `.sortie--longue` + `.sortie-repere` — longue sortie : bord gauche épais en
+  `--orange` **et** la mention « Longue sortie » en toutes lettres, jamais la
+  couleur seule.
+
 Tableau de la grille planning bénévole : `.pl-grille` (préfixe `pl-*`) reste
 **volontairement séparé** — grille éditable avec cases colorées par état,
 besoin réellement différent d'un tableau de lecture. Round robin :

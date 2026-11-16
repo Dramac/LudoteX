@@ -52,6 +52,9 @@ from app.routes import admin as routes_admin
 from app.routes.admin import _garde  # noqa: F401
 
 PREFIXES_RESERVES = ("/admin", "/pret", "/scanner", "/maintenance",
+                     # Lot bilan-1 : la page des jeux sortis montre les
+                     # numéros de pochette.
+                     "/sortis",
                      # Ajouté au périmètre du prompt : l'administration du
                      # planning est de l'administration, sous un autre préfixe.
                      "/planning/admin",

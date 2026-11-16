@@ -28,7 +28,7 @@ transmet, jamais son service.
 ```mermaid
 flowchart TB
     U["Téléphone, navigateur, écran de salle"] -->|"URL + GET / POST"| M["app/main.py<br/>branche les routeurs,<br/>garde de visibilité des modules"]
-    M --> RP["app/routes/<br/>catalogue, prêt, scanner, admin,<br/>stats, live, maintenance, tombola…"]
+    M --> RP["app/routes/<br/>catalogue, prêt, scanner, sortis, admin,<br/>stats, live, maintenance, tombola…"]
     M --> RT["app/tournoi/routes*.py"]
     M --> RPl["app/planning/routes.py"]
     RP --> SP["app/services.py<br/>(et modules voisins)"]
@@ -196,7 +196,7 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   commence par `if (garde := _garde(request)): return garde`.
   `tests/test_gardes_routes.py` parcourt toutes les routes et exige une garde
   sur toute méthode d'écriture et sous `/admin`, `/pret`, `/scanner`,
-  `/maintenance`, `/planning/admin`, `/tombola/gestion`. `garde_module` n'en est **pas** une (il
+  `/sortis`, `/maintenance`, `/planning/admin`, `/tombola/gestion`. `garde_module` n'en est **pas** une (il
   règle la visibilité). Une route qui doit rester ouverte s'ajoute à
   `EXCEPTIONS`, **avec sa raison**.
 - **Écrire une cellule de tableur** : passer par `exports.ecrire_cellule`

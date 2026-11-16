@@ -27,6 +27,13 @@
 {% block contenu %}
 <section class="carte">
   <h1>Statistiques</h1>
+  {# Lot bilan-1 : « Jeux actuellement sortis » a sa propre page, réservée
+     aux bénévoles. Ce lien sert aussi les favoris `/stats#sortis` : l'ancre
+     n'atteint pas le serveur, qui ne peut donc pas rediriger. Rendu pour les
+     seuls bénévoles : un visiteur tomberait sur « accès réservé ». #}
+  {% if est_benevole(request) %}
+  <p class="stats-vers-sortis">Chercher un jeu sorti en ce moment : <a class="lien" href="/sortis">Jeux sortis</a></p>
+  {% endif %}
   <p class="dispo-titre">Période : {{ periode_txt }}</p>
   <div class="stats-chiffres">
     <div class="chiffre"><span class="chiffre-val">{{ g.total_prets }}</span><span class="chiffre-lib">prêts</span></div>
@@ -87,61 +94,6 @@
       <div><button type="submit" class="bouton-filtrer">Télécharger le PDF</button></div>
     </form>
   </details>
-</section>
-
-<section class="carte" id="sortis">
-  <h2>Jeux actuellement sortis</h2>
-
-  {# Recherche (retour terrain, 1.34) : nom du jeu ou code de la boîte. Elle
-     ne filtre QUE cette section ; la période et le tri sont reportés tels
-     quels, pour que le reste de la page ne bouge pas. Retour sur l'ancre
-     #sortis : on reste sous les yeux de ce qu'on cherche. #}
-  <form method="get" action="/stats#sortis" class="recherche-form" role="search">
-    {% if tri and tri != "total" %}<input type="hidden" name="tri" value="{{ tri }}">{% endif %}
-    {% if debut %}<input type="hidden" name="debut" value="{{ debut }}">{% endif %}
-    {% if fin %}<input type="hidden" name="fin" value="{{ fin }}">{% endif %}
-    <div class="champ">
-      <label for="q-sortis">Chercher un jeu sorti</label>
-      <input type="search" id="q-sortis" name="q" value="{{ q }}" placeholder="Nom du jeu ou code de la boîte…">
-    </div>
-    <div class="recherche-actions">
-      <button type="submit" class="bouton-filtrer">Chercher</button>
-      {% if q %}<a class="lien" href="/stats{{ ('?' ~ qs) if qs }}#sortis">Tout afficher</a>{% endif %}
-    </div>
-  </form>
-  {% if q %}
-    <p class="stats-note" role="status">
-      {% set trouves = (sortis_pret | length) + (sortis_tournoi | length) %}
-      {{ trouves }} {{ pluriel(trouves, 'boîte trouvée', 'boîtes trouvées') }} pour « {{ q }} »,
-      sur {{ nb_sortis }} {{ pluriel(nb_sortis, 'sortie', 'sorties') }}.
-    </p>
-  {% endif %}
-
-  <h3>Prêtés au public <small>({{ sortis_pret | length }})</small></h3>
-  {% if sortis_pret %}
-    <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th>{% if est_benevole(request) %}<th>Pochette</th>{% endif %}<th>Depuis</th></tr></thead>
-      <tbody>
-        {% for p in sortis_pret %}
-          <tr><td>{{ p.nom }}</td><td>{{ p.id_exemplaire }}</td>
-              {% if est_benevole(request) %}<td>{{ p.numero_pochette }}</td>{% endif %}<td>{{ p.sortie_locale }} · {{ p.duree_txt }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}<p>Aucun.</p>{% endif %}
-
-  <h3>En tournoi <small>({{ sortis_tournoi | length }})</small></h3>
-  {% if sortis_tournoi %}
-    <table class="detail">
-      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Depuis</th></tr></thead>
-      <tbody>
-        {% for p in sortis_tournoi %}
-          <tr><td>{{ p.nom }}</td><td>{{ p.id_exemplaire }}</td>
-              <td>{{ p.sortie_locale }} · {{ p.duree_txt }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}<p>Aucun.</p>{% endif %}
 </section>
 
 <section class="carte">
@@ -241,8 +193,8 @@
       {# Pas de colonne « emplacement » ici : cette liste porte sur une période,
          donc essentiellement sur des prêts CLOS, dont le numéro de pochette est
          effacé à la clôture (fiche D5). La colonne serait toujours vide. Elle
-         reste en revanche dans « Jeux actuellement sortis », où le numéro
-         existe et sert. #}
+         reste en revanche sur la page bénévole « Jeux sortis » (/sortis), où
+         le numéro existe et sert. #}
       <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th></tr></thead>
       <tbody>
         {% for p in prets %}

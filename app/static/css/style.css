@@ -772,6 +772,36 @@ summary:focus-visible,
 .histo-barre { height: 16px; background: var(--primaire-clair); border-radius: 4px; min-width: 2px; }
 .histo-val { font-size: 0.85rem; font-weight: 600; }
 .stats-note { color: #6b7075; font-size: 0.8rem; }
+/* Page bénévole « Jeux sortis » (lot bilan-1, docs/ui-composants.md § 9, « Liste de cartes ») :
+   une LISTE de cartes, sur téléphone comme sur grand écran — pas un tableau
+   qui passe en cartes (.admin-table--cartes) : il n'y a pas de colonnes à
+   comparer, et le numéro de pochette doit sauter aux yeux dans chaque carte.
+   Le nom du jeu a toute la largeur restante : il passe à la ligne entre deux
+   mots, jamais au milieu (le défaut du tableau d'avant, à 375 px).
+   Longue sortie : bord gauche ÉPAIS et orange (forme + couleur) ET la mention
+   « Longue sortie » en toutes lettres — jamais la couleur seule. */
+.sorties-resume { margin: 12px 0 0; }
+/* Cibles tactiles de 44 px sur cette page de comptoir, et sur ELLE seule :
+   champ, bouton compact et « Tout afficher » y font 39 à 41 px de haut
+   (24 px pour le lien), réglage commun à des écrans de bureau qu'on ne
+   bouscule pas ici. Même chose pour le lien de /stats qui y mène. */
+.recherche-form--comptoir .champ input,
+.recherche-form--comptoir .bouton-filtrer { min-height: 44px; }
+.recherche-form--comptoir .lien,
+.stats-vers-sortis .lien { display: inline-flex; align-items: center; min-height: 44px; }
+.sorties { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px;
+           grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.sortie { border: 1px solid var(--bord); border-radius: 10px; padding: 10px 12px;
+          display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
+          align-content: start; }
+.sortie-nom { font-weight: 700; overflow-wrap: break-word; }
+.sortie-pochette { grid-column: 2; grid-row: 1 / span 3; align-self: center;
+                   min-width: 4.5rem; text-align: center; font-size: 0.85rem; color: var(--gris); }
+.sortie-pochette strong { display: block; font-size: 1.6rem; line-height: 1.1; color: var(--texte); }
+.sortie-pochette--tournoi { font-weight: 600; }
+.sortie-detail { color: var(--gris); font-size: 0.9rem; }
+.sortie-repere { color: var(--orange); font-weight: 700; font-size: 0.9rem; }
+.sortie--longue { border-left: 6px solid var(--orange); padding-left: 8px; }
 /* Fiche d'un jeu : ce que dit la copie BoardGameGeek sous une case
    (« BGG : 3 — différent », lot fiche-2). Le TEXTE porte le sens, y compris
    l'écart (« identique », « différent ») ; le gris n'est qu'un habillage —

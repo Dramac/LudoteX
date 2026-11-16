@@ -293,6 +293,14 @@ C'est le seul écran où un choix explicite est demandé, parce que la réalité
 physique peut diverger de la base. Un conflit entre deux bénévoles sur la même
 boîte donne un message, jamais une erreur (§2).
 
+**Jeux sortis** (`/sortis`, bénévole) — la liste des boîtes dehors à
+l'instant, pour retrouver un jeu et sa pochette au comptoir : prêts au public
+et sorties tournoi en deux blocs, les plus anciennes sorties en tête, une
+recherche par nom ou par code. Un prêt au public dehors depuis 3 heures ou
+plus porte la mention « Longue sortie » ; une sortie tournoi jamais, un
+tournoi long étant normal. La page relève du prêt et non des statistiques :
+elle reste ouverte aux bénévoles quel que soit le réglage de ce module.
+
 ### 5.2 Catalogue public (consultation)
 
 - Accès en **lecture seule**, sans donnée personnelle, sans bouton d'action.
@@ -431,8 +439,9 @@ Indicateurs :
 - Le palmarès des moins prêtés inclut les jeux **jamais sortis** : on part de
   **tous les titres du catalogue** et on y rattache les prêts (« catalogue
   d'abord »), faute de quoi les jeux à zéro prêt seraient invisibles.
-- **Prêts par heure** (histogramme), liste détaillée, jeux actuellement
-  sortis — le numéro de pochette n'y est montré qu'aux bénévoles.
+- **Prêts par heure** (histogramme) et liste détaillée. La liste des jeux
+  actuellement sortis n'est pas une statistique mais un outil de comptoir :
+  elle a sa propre page, réservée aux bénévoles (§5.1).
 - Exports Excel et PDF.
 
 ---

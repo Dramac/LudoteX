@@ -43,7 +43,7 @@ from app import auth, envois, journal, services
 from app.db import get_connection, init_db
 from app.modules import ModuleDesactive, garde_module
 from app.routes import (acces, admin, catalogue, images, live, maintenance, pret,
-                        scanner, stats, tombola)
+                        scanner, sortis, stats, tombola)
 from app.templating import templates
 from app.tournoi import routes as tournoi_routes
 from app.tournoi import routes_programme
@@ -71,6 +71,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 app.include_router(catalogue.router)                                           # /catalogue, /jeu/<id>   (public, cœur)
 app.include_router(pret.router)                                                # /pret/<id> + actions     (bénévole, cœur)
 app.include_router(scanner.router)                                             # /scanner                 (bénévole, cœur)
+app.include_router(sortis.router)                                              # /sortis                  (bénévole, cœur — pas le module stats)
 app.include_router(acces.router)                                               # /acces                   (activation)
 app.include_router(images.router)                                              # /image/*                 (logo + icônes)
 app.include_router(admin.router)                                               # /admin                   (mot de passe)

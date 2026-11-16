@@ -15,7 +15,7 @@ le même mot.
 
 | Objet | Nom à l'écran | Où |
 |---|---|---|
-| Casier numéroté où est déposée la pièce d'identité pendant un prêt | **pochette** | écrans bénévole (`/pret`, `/scanner`, `/stats` § jeux sortis) et page d'aide |
+| Casier numéroté où est déposée la pièce d'identité pendant un prêt | **pochette** | écrans bénévole (`/pret`, `/scanner`, `/sortis`) et page d'aide |
 | Lieu où se tient un tournoi | **lieu** (« Lieu / table ») | partout |
 | Place d'une boîte de jeu, à l'événement ou au local | **rangement**, et **emplacement** pour une place nommée de la liste | module Rangement |
 
@@ -30,8 +30,9 @@ le même mot.
    numéro de pochette dit où se trouve une pièce d'identité. Concrètement :
    - `/live` (projeté en salle) n'affiche aucun numéro, et un test le
      vérifie, mot compris ;
-   - sur `/stats`, page publique, la colonne « Pochette » de « Jeux
-     actuellement sortis » n'est rendue que pour `est_benevole(request)` ;
+   - la liste des jeux sortis, seule à montrer les numéros en dehors de
+     `/pret`, est une page bénévole à part (`/sortis`, lot bilan-1) : la
+     route exige le jeton, et `/stats`, publique, n'en porte plus aucun ;
    - le numéro est de toute façon **effacé à la clôture du prêt** (fiche D5,
      `docs/specification.md` §3.2).
 

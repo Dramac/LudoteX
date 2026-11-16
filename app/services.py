@@ -144,6 +144,14 @@ def pluriel(n: int, singulier: str, pluriel: str) -> str:
 # minute, un retour rapide reste un vrai prêt (un jeu essayé sur place).
 SEUIL_ERREUR_PRET_S = 60
 
+# Un jeu prêté au public et dehors depuis SEUIL_LONGUE_SORTIE_S ou plus porte
+# le repère « longue sortie » sur la page bénévole « Jeux sortis » (lot
+# bilan-1). Borne INCLUSIVE : à 3 h pile, le repère s'allume. Ce n'est pas une
+# alerte, c'est une piste pour le comptoir : une boîte oubliée sur une table,
+# un retour qui n'a pas été scanné. Les sorties « tournoi » n'ont jamais ce
+# repère : un tournoi long est normal, et le bureau sait où il se joue.
+SEUIL_LONGUE_SORTIE_S = 3 * 3600
+
 # Un prêt jamais scanné en retour, clos plus tard par un re-prêt ou par
 # l'escalade du transfert, prend `motif = 'oubli'` (voir `_clore_pret_oublie`).
 # Ce n'est PAS une erreur : la boîte est bien sortie chez un visiteur, le prêt
@@ -953,18 +961,39 @@ def lister_prets_periode(conn: sqlite3.Connection, debut: str | None = None,
     return out
 
 
-def lister_prets_en_cours(conn: sqlite3.Connection) -> dict:
+def lister_prets_en_cours(conn: sqlite3.Connection,
+                          instant: datetime | None = None) -> dict:
     """
-    Jeux actuellement sortis (prêt non clos), séparés par motif.
+    Jeux actuellement sortis (prêt non clos), séparés par motif, les PLUS
+    ANCIENNES sorties en tête.
 
-    Sert la vue « Jeux actuellement sortis » : contrairement aux statistiques,
-    elle INCLUT les sorties tournoi (le parc doit les voir), mais dans un bloc
-    distinct des prêts au public.
+    Sert la page bénévole « Jeux sortis » (`/sortis`, lot bilan-1) : elle
+    INCLUT les sorties tournoi (le comptoir doit les voir), mais dans un bloc
+    distinct des prêts au public. L'ordre est celui du comptoir : la boîte
+    dehors depuis le plus longtemps est celle qu'on cherche d'abord. Le tri
+    est fait ici, dans la requête, et pas à l'appel : la page est l'unique
+    consommateur qui regarde l'ordre, et un seul domicile évite qu'un second
+    appelant hérite d'un ordre différent sans le savoir.
+
+    Une date de sortie illisible ne fait jamais tomber la page (même règle
+    que `prets_par_heure`) : la ligne reste listée, sa durée devient
+    inconnue et elle ne porte pas le repère de longue sortie.
+
+    Args:
+        conn: connexion SQLite ouverte.
+        instant: « maintenant » en UTC, pour les tests ; l'heure courante
+            par défaut.
 
     Returns:
         dict {"pret": [...], "tournoi": [...]} ; chaque élément est un dict
-        {id_exemplaire, nom, numero_pochette, sortie_locale, duree_txt}.
+        {id_exemplaire, nom, numero_pochette, motif, date_sortie,
+        sortie_locale, sortie_txt, duree_txt, longue}. `sortie_txt` se lit
+        après « sortie » : « à 14:05 » si la sortie date du jour (heure
+        locale), « le 15/11 à 14:05 » sinon ; `longue` vaut True pour un prêt au public dehors
+        depuis `SEUIL_LONGUE_SORTIE_S` ou plus, jamais pour un tournoi.
     """
+    instant = instant or datetime.now(timezone.utc)
+    aujourd_hui = instant.astimezone(FUSEAU_LOCAL).date()
     rows = conn.execute(
         """
         SELECT p.date_sortie, p.numero_pochette, p.motif, e.id_exemplaire, t.nom
@@ -972,21 +1001,35 @@ def lister_prets_en_cours(conn: sqlite3.Connection) -> dict:
         JOIN exemplaires e ON e.id_exemplaire = p.id_exemplaire
         JOIN titres t ON t.reference_titre = e.reference_titre
         WHERE p.date_retour IS NULL
-        ORDER BY p.date_sortie DESC
+        ORDER BY p.date_sortie ASC, e.id_exemplaire ASC
         """
     ).fetchall()
     groupes: dict = {"pret": [], "tournoi": []}
     for r in rows:
         d = dict(r)
         d["sortie_locale"] = format_local(d["date_sortie"])
-        d["duree_txt"] = "depuis " + format_duree(_duree_secondes(d["date_sortie"], None))
+        try:
+            sortie = datetime.fromisoformat(d["date_sortie"])
+            secondes = (instant - sortie).total_seconds()
+            local = sortie.astimezone(FUSEAU_LOCAL)
+        except (ValueError, TypeError):
+            # Illisible, ou sans fuseau (soustraction impossible) : on garde
+            # la ligne, sans durée ni repère.
+            d["sortie_txt"] = "à une heure inconnue"
+            d["duree_txt"] = "durée " + DUREE_INCONNUE
+            d["longue"] = False
+        else:
+            d["sortie_txt"] = local.strftime(
+                "à %H:%M" if local.date() == aujourd_hui else "le %d/%m à %H:%M")
+            d["duree_txt"] = "depuis " + format_duree(max(secondes, 0))
+            d["longue"] = d["motif"] == "pret" and secondes >= SEUIL_LONGUE_SORTIE_S
         groupes.setdefault(d["motif"], []).append(d)
     return groupes
 
 
 def filtrer_sortis(en_cours: dict, recherche: str | None) -> dict:
     """
-    Restreint la vue « Jeux actuellement sortis » (`lister_prets_en_cours`)
+    Restreint la page « Jeux sortis » (`lister_prets_en_cours`)
     aux lignes dont le NOM du jeu ou le CODE de la boîte contient la
     recherche — ni la casse ni les accents ne comptent (« ecl » trouve
     « Éclipse »). Recherche vide : tout, inchangé. Filtrage en Python et pas

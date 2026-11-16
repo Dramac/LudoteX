@@ -594,8 +594,10 @@ def test_stats_exports(client):
 def test_stats_pochette_cloisonnee(client, monkeypatch):
     """
     D5 volet 1 : le numéro de pochette (rattaché à une pièce d'identité,
-    voir CLAUDE.md) ne doit apparaître sur /stats — page PUBLIQUE — que pour
-    un bénévole activé ou un admin connecté (auth.peut_ecrire). Sans jeton
+    voir CLAUDE.md) ne doit apparaître sur /stats — page PUBLIQUE — pour
+    personne. Depuis le lot bilan-1, la liste des jeux sortis, seule à le
+    montrer, est sur sa propre page bénévole (/sortis) : /stats ne porte plus
+    de colonne « Pochette », même pour un bénévole activé. Sans jeton
     configuré, l'accès est en mode ouvert (tout le monde est "bénévole") :
     on configure un jeton pour sortir de ce mode.
     """
@@ -616,16 +618,18 @@ def test_stats_pochette_cloisonnee(client, monkeypatch):
     # Non-régression : le reste de la page (totaux, palmarès, tableau) est
     # inchangé.
     assert "Catan" in r.text
-    assert "Jeux actuellement sortis" in r.text
-    assert "Prêtés au public" in r.text
+    # La section est partie, et le lien vers /sortis n'est pas rendu pour un
+    # visiteur : il le mènerait à « accès réservé ».
+    assert "Jeux actuellement sortis" not in r.text
+    assert 'href="/sortis"' not in r.text
 
-    # Bénévole activé : la colonne réapparaît — dans « Jeux actuellement
-    # sortis » UNIQUEMENT (volet 2 : la liste détaillée n'a plus de colonne
-    # emplacement du tout, le numéro y serait toujours vide).
+    # Bénévole activé : toujours aucune colonne sur /stats ; le numéro est
+    # sur /sortis, avec le lien qui y mène.
     client.cookies.set("jeton_pret", jeton_cookie)
     r2 = client.get("/stats")
-    assert r2.text.count("Pochette") == 1
-    assert "<td>1</td>" in r2.text
+    assert "Pochette" not in r2.text and "<td>1</td>" not in r2.text
+    assert 'href="/sortis"' in r2.text
+    assert "pochette <strong>1</strong>" in client.get("/sortis").text
 
 
 def test_stats_detail_sans_colonne_emplacement(client, monkeypatch):
@@ -1405,8 +1409,10 @@ def test_pret_tournoi_route(client):
     # Hors statistiques : aucun prêt comptabilisé.
     stats = client.get("/stats").text
     assert '<span class="chiffre-val">0<' in stats
-    # Mais visible dans « Jeux actuellement sortis » (bloc tournoi).
-    assert "Jeux actuellement sortis" in stats and "En tournoi" in stats
+    # Mais visible sur la page « Jeux sortis » (bloc tournoi, lot bilan-1).
+    sortis = client.get("/sortis").text
+    assert "En tournoi <small>(1)</small>" in sortis
+    assert "Boîte 001" in sortis
 
 
 def test_repret_sur_le_meme_numero_ne_se_contredit_plus(client):
@@ -1570,10 +1576,11 @@ def test_retour_confirme_en_vert(client):
 
 
 def test_stats_jeux_sortis(client):
+    """Lot bilan-1 : la vue a quitté /stats pour la page bénévole /sortis."""
     client.post("/pret/001/preter")
-    stats = client.get("/stats").text
-    assert "Jeux actuellement sortis" in stats
-    assert "Prêtés au public" in stats
+    assert "Jeux actuellement sortis" not in client.get("/stats").text
+    sortis = client.get("/sortis").text
+    assert "Prêtés au public <small>(1)</small>" in sortis
 
 
 def test_scanner_page(client):

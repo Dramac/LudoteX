@@ -15,6 +15,10 @@ Exports : /stats/export.xlsx et /stats/export.pdf (mêmes paramètres → mêmes
 chiffres que la page, période comprise).
 
 Alias : /stat, /statistique, /statistiques redirigent vers /stats.
+
+« Jeux actuellement sortis » n'est plus ici (lot bilan-1) : c'est la page
+bénévole `/sortis` (app/routes/sortis.py). Une recherche enregistrée en 1.34
+(`/stats?q=…`) y est redirigée.
 """
 
 from datetime import datetime
@@ -79,15 +83,18 @@ def _params(tri: str, debut: str | None, fin: str | None) -> tuple[str, str | No
 
 @router.get("/stats")
 def stats(request: Request, tri: str = "total", debut: str | None = None,
-          fin: str | None = None, q: str | None = None):
+          fin: str | None = None):
     """
     Page des statistiques (avec filtre de période et liste détaillée).
 
-    `q` ne filtre QUE la vue « Jeux actuellement sortis » (nom du jeu ou code
-    de la boîte, retour terrain 1.34) — ni les totaux, ni les palmarès, ni
-    les exports.
+    Un paramètre `q` vient d'un ancien lien : la recherche des jeux sortis
+    (1.34), partie avec sa section sur `/sortis`. On l'y renvoie, avec le
+    même code que les alias ; sans jeton, `/sortis` affiche « accès
+    réservé » et son lien vers le catalogue.
     """
-    q = (q or "").strip()
+    if "q" in request.query_params:
+        recherche = urlencode({"q": request.query_params["q"]})
+        return RedirectResponse(f"/sortis?{recherche}", status_code=307)
     metrique, debut, fin = _params(tri, debut, fin)
     # Conversion des bornes locales saisies -> UTC pour interroger la base.
     debut_utc = services.local_vers_utc_iso(debut)
@@ -97,11 +104,6 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
     try:
         data = services.collecter_stats(conn, metrique, debut_utc, fin_utc,
                                          limite_prets=LIMITE_PRETS_PAGE)
-        # Vue « actuellement sortis » : indépendante du filtre de période, inclut
-        # les tournois (état du parc à l'instant T).
-        en_cours = services.lister_prets_en_cours(conn)
-        nb_sortis = sum(len(lignes) for lignes in en_cours.values())
-        en_cours = services.filtrer_sortis(en_cours, q)
         stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
     finally:
         conn.close()
@@ -117,8 +119,6 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
          "metrique": metrique, "prets": data["prets"],
          "debut": debut or "", "fin": fin or "",
          "periode_txt": _periode_txt(debut, fin), "qs": qs,
-         "sortis_pret": en_cours["pret"], "sortis_tournoi": en_cours["tournoi"],
-         "q": q, "nb_sortis": nb_sortis, "tri": tri,
          "tombola": stats_tombola},
     )
 

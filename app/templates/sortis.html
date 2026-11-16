@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block titre %}Jeux sortis — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{# Page BÉNÉVOLE (lot bilan-1, app/routes/sortis.py) : la route exige le jeton,
+   le numéro de pochette peut donc s'y afficher (docs/vocabulaire.md, règle 2).
+   Des cartes en liste (`.sorties`, docs/ui-composants.md § 9, « Liste de cartes ») plutôt que
+   le tableau d'avant, qui coupait les noms au milieu des mots à 375 px. #}
+
+{% macro carte(p, tournoi=false) %}
+  <li class="sortie{% if p.longue %} sortie--longue{% endif %}">
+    <span class="sortie-nom">{{ p.nom }}</span>
+    {% if tournoi %}
+      <span class="sortie-pochette sortie-pochette--tournoi">tournoi</span>
+    {% else %}
+      <span class="sortie-pochette">pochette <strong>{{ p.numero_pochette }}</strong></span>
+    {% endif %}
+    <span class="sortie-detail">Boîte {{ p.id_exemplaire }} · sortie {{ p.sortie_txt }} · {{ p.duree_txt }}</span>
+    {% if p.longue %}<span class="sortie-repere">Longue sortie</span>{% endif %}
+  </li>
+{% endmacro %}
+
+{% block contenu %}
+<section class="carte">
+  <h1>Jeux sortis</h1>
+
+  {# Recherche (retour terrain, 1.34) : nom du jeu ou code de la boîte, sans
+     casse ni accents. Formulaire GET, sans JS. #}
+  <form method="get" action="/sortis" class="recherche-form recherche-form--comptoir" role="search">
+    <div class="champ">
+      <label for="q-sortis">Chercher un jeu sorti</label>
+      <input type="search" id="q-sortis" name="q" value="{{ q }}" maxlength="100" placeholder="Nom du jeu ou code de la boîte…">
+    </div>
+    <div class="recherche-actions">
+      <button type="submit" class="bouton-filtrer">Chercher</button>
+      {% if q %}<a class="lien" href="/sortis">Tout afficher</a>{% endif %}
+    </div>
+  </form>
+
+  {% if q %}
+    <p class="stats-note" role="status">
+      {% set trouves = (sortis_pret | length) + (sortis_tournoi | length) %}
+      {{ trouves }} {{ pluriel(trouves, 'boîte trouvée', 'boîtes trouvées') }} pour « {{ q }} »,
+      sur {{ nb_sortis }} {{ pluriel(nb_sortis, 'sortie', 'sorties') }}.
+    </p>
+  {% endif %}
+
+  {% if nb_sortis %}
+    <p class="sorties-resume">
+      {{ nb_sortis }} {{ pluriel(nb_sortis, 'jeu dehors', 'jeux dehors') }} en ce moment{% if nb_tournoi %}, dont {{ nb_tournoi }} en tournoi{% endif %}.
+      Les plus anciennes sorties en tête.
+    </p>
+  {% else %}
+    <p class="sorties-resume">Aucun jeu n'est sorti en ce moment.</p>
+  {% endif %}
+
+  <h2>Prêtés au public <small>({{ sortis_pret | length }})</small></h2>
+  {% if sortis_pret %}
+    <ul class="sorties">
+      {% for p in sortis_pret %}{{ carte(p) }}{% endfor %}
+    </ul>
+    <p class="stats-note">Longue sortie : dehors depuis {{ seuil_heures }} heures ou plus.</p>
+  {% else %}<p>Aucun.</p>{% endif %}
+
+  <h2>En tournoi <small>({{ sortis_tournoi | length }})</small></h2>
+  {% if sortis_tournoi %}
+    <ul class="sorties">
+      {% for p in sortis_tournoi %}{{ carte(p, tournoi=true) }}{% endfor %}
+    </ul>
+  {% else %}<p>Aucun.</p>{% endif %}
+</section>
+{% endblock %}

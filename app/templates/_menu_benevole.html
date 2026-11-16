@@ -5,9 +5,11 @@
 <nav class="menu-benevole">
   <a href="/catalogue">Catalogue</a>
   <a href="/scanner">Scanner</a>
+  {# Jeux sortis (lot bilan-1) : outil de comptoir du cœur du prêt, comme le
+     scanner — il ne suit PAS la visibilité du module « stats ». #}
+  <a href="/sortis">Jeux sortis</a>
   {% if module_visible(request, "stats") %}
   <a href="/stats">Statistiques</a>
-  <a href="/stats#sortis">Jeux sortis</a>
   {% endif %}
   {% if module_visible(request, "tournois") %}
   <a href="/tournois">Tournois</a>
