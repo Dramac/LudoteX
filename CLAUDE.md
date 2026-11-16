@@ -358,7 +358,10 @@ versionnée en **`MAJEUR.MINEUR.CORRECTIF`** (SemVer). Marche à suivre complèt
 
 **La règle.** Quand une session a produit un changement destiné à être déployé,
 **proposer à Simon** (sans l'appliquer d'office — c'est lui qui tranche) le
-numéro adapté :
+numéro adapté. Exception : un lot d'une série qui partage une version (le
+prompt du lot le dit, `docs/versioning.md` § « Quand monter de version ») ne
+propose rien et prépare ses puces de `CHANGELOG.md` dans son compte rendu.
+Les niveaux :
 
 - **CORRECTIF** (`x.y.Z`) — corrections de bugs, retouches d'UI, de texte ou
   d'accessibilité, refactorisations : rien de neuf pour l'utilisateur.

@@ -30,6 +30,25 @@ seul** des trois nombres et on remet à zéro ceux de droite :
 
 En cas de doute entre deux niveaux, prendre le plus élevé.
 
+## Quand monter de version
+
+Une version correspond à une **mise en production**, pas à un commit. Plusieurs
+lots qui répondent à une même demande (une série) peuvent donc partager une
+seule version, posée quand l'ensemble est utilisable.
+
+Entre deux versions :
+
+- les commits ne touchent ni `app/version.py`, ni `VERSION`, ni `CHANGELOG.md` ;
+- les gestes de serveur vont dans la section « À paraître » de
+  `docs/notes-de-deploiement.md` ;
+- les puces destinées au `CHANGELOG.md` sont préparées à part, puis reprises
+  dans le commit de version.
+
+**Ne pas lancer `deploy/update.sh` tant que la version n'est pas posée.** Le
+script installe la dernière version de la branche principale telle quelle
+(`git pull --ff-only`) : un code non publié tournerait sous l'ancien numéro, et
+la page « À propos » annoncerait des nouveautés qui ne sont pas les siennes.
+
 ## Les fichiers à mettre à jour (dans le même commit)
 
 1. **`app/version.py`** — la constante `APP_VERSION` (le numéro canonique, sans
