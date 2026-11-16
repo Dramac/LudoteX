@@ -261,38 +261,47 @@ def _date_heure(dt) -> str:
 
 
 def feuille_tous_sortis(wb, achats_donnees: dict, periode_txt: str, gras):
-    """Ajoute la feuille « Tous sortis » : TOUTES les lignes de la page,
-    sans la coupe aux premières, et la date du début de la plus longue fois."""
+    """Ajoute la feuille « Tous sortis » : les deux listes de la page, jeux à
+    plusieurs boîtes puis jeux à une boîte souvent prêtés, TOUTES leurs
+    lignes, sans la coupe aux premières, avec le début et la fin de la plus
+    longue fois."""
     from app import achats
 
     wt = wb.create_sheet(achats.FEUILLE_TOUS_SORTIS)
-    _en_tete_feuille(wt, achats.TITRE_TOUS_SORTIS, periode_txt, gras)
-    lignes = achats_donnees["tous_sortis"]
+    _en_tete_feuille(wt, achats.TITRE_SECTION, periode_txt, gras)
     ligne = 4
-    if not lignes:
-        wt[f"A{ligne}"] = achats.PHRASE_AUCUN
+    for titre, phrase, vide, lignes in (
+            (achats.TITRE_TOUS_SORTIS, achats.PHRASE_TOUS_SORTIS,
+             achats.PHRASE_AUCUN, achats_donnees["plusieurs_boites"]),
+            (achats.TITRE_UNE_BOITE, achats.PHRASE_UNE_BOITE,
+             achats.PHRASE_AUCUN_UNE_BOITE, achats_donnees["une_boite"])):
+        wt.cell(row=ligne, column=1, value=titre).font = gras
         ligne += 1
-    else:
-        wt[f"A{ligne}"] = achats.PHRASE_TOUS_SORTIS
-        ligne += 2
+        if not lignes:
+            wt[f"A{ligne}"] = vide
+            ligne += 2
+            continue
+        wt[f"A{ligne}"] = phrase
+        ligne += 1
         for col, entete in enumerate(achats.ENTETES_XLSX_TOUS_SORTIS, start=1):
             wt.cell(row=ligne, column=col, value=entete).font = gras
         for r in lignes:
             ligne += 1
             ecrire_cellule(wt, ligne, 1, r["nom"])
             ecrire_cellule(wt, ligne, 2, r["reference_titre"])
-            wt.cell(row=ligne, column=3, value=r["nb_exemplaires"])
-            wt.cell(row=ligne, column=4, value=r["total_txt"])
-            wt.cell(row=ligne, column=5, value=round(r["total_s"] / 60))
-            wt.cell(row=ligne, column=6, value=r["plus_long_txt"])
-            wt.cell(row=ligne, column=7, value=_date_heure(r["plus_long_debut"]))
-            wt.cell(row=ligne, column=8, value=_date_heure(r["plus_long_fin"]))
+            for col, valeur in enumerate(
+                    (r["nb_exemplaires"], r["nb_prets"], r["total_txt"],
+                     round(r["total_s"] / 60), r["plus_long_txt"],
+                     _date_heure(r["plus_long_debut"]),
+                     _date_heure(r["plus_long_fin"])), start=3):
+                wt.cell(row=ligne, column=col, value=valeur)
+        ligne += 2
+    for phrase in ([achats.phrase_peu_pretes(achats_donnees["ecartes_peu_pretes"])]
+                   if achats_donnees["ecartes_peu_pretes"] else []) + (
+                   [achats.phrase_seuil(achats_donnees["ecartes_seuil"])]
+                   if achats_donnees["ecartes_seuil"] else []) + [achats.NOTE_DEFINITIONS]:
+        wt[f"A{ligne}"] = phrase
         ligne += 1
-    ligne += 1
-    if achats_donnees["ecartes_seuil"]:
-        wt[f"A{ligne}"] = achats.phrase_seuil(achats_donnees["ecartes_seuil"])
-        ligne += 1
-    wt[f"A{ligne}"] = achats.NOTE_DEFINITIONS
     return wt
 
 
@@ -392,7 +401,7 @@ def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -
     if "achats" in data:
         feuilles_achats = [
             (feuille_tous_sortis(wb, data["achats"], periode_txt, gras),
-             [36, 14, 8, 16, 14, 18, 22, 22]),
+             [36, 14, 8, 8, 16, 14, 18, 22, 22]),
             (feuille_jamais_sortis(wb, data["achats"], periode_txt, gras),
              [36, 14, 8, 24, 14, 24, 24, 14]),
         ]

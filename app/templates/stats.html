@@ -234,24 +234,41 @@
   <h2>{{ ach.TITRE_SECTION }}</h2>
   <p>{{ ach.PHRASE_SENS }}</p>
 
-  <h3>{{ ach.TITRE_TOUS_SORTIS }}</h3>
-  {% set tous = achats.tous_sortis %}
-  {% if tous %}
-    <p>{{ ach.PHRASE_TOUS_SORTIS }}</p>
+  {# Deux listes (complément de calibrage) : la saturation d'un jeu à
+     plusieurs boîtes est le signal d'achat ; pour un jeu à une boîte,
+     « toutes dehors » veut dire « prêté », d'où le nombre de prêts en plus
+     (`ach.PRETS_MIN_UNE_BOITE`). La deuxième colonne change : « Boîtes »
+     d'un côté, « Prêts » de l'autre. #}
+  {% macro tableau_saturation(lignes, entetes, deuxieme) %}
     <div class="achats-tableau">
       <table class="detail">
-        <thead><tr>{% for e in ach.ENTETES_TOUS_SORTIS %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+        <thead><tr>{% for e in entetes %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
         <tbody>
-          {% for j in tous[:ach.LIGNES_PAGE] %}
-            <tr><th scope="row">{{ j.nom }}</th><td>{{ j.nb_exemplaires }}</td><td>{{ j.total_txt }}</td><td><span class="achats-duree">{{ j.plus_long_txt }}</span> <span class="achats-quand"><span>{{ j.plus_long_de }}</span> <span>{{ j.plus_long_a }}</span></span></td></tr>
+          {% for j in lignes[:ach.LIGNES_PAGE] %}
+            <tr><th scope="row">{{ j.nom }}</th><td>{{ j[deuxieme] }}</td><td>{{ j.total_txt }}</td><td><span class="achats-duree">{{ j.plus_long_txt }}</span> <span class="achats-quand"><span>{{ j.plus_long_de }}</span> <span>{{ j.plus_long_a }}</span></span></td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if tous | length > ach.LIGNES_PAGE %}<p class="stats-note">{{ ach.phrase_suite(tous | length) }}</p>{% endif %}
+    {% if lignes | length > ach.LIGNES_PAGE %}<p class="stats-note">{{ ach.phrase_suite(lignes | length) }}</p>{% endif %}
+  {% endmacro %}
+
+  <h3>{{ ach.TITRE_TOUS_SORTIS }}</h3>
+  {% if achats.plusieurs_boites %}
+    <p>{{ ach.PHRASE_TOUS_SORTIS }}</p>
+    {{ tableau_saturation(achats.plusieurs_boites, ach.ENTETES_TOUS_SORTIS, "nb_exemplaires") }}
   {% else %}
     <p>{{ ach.PHRASE_AUCUN }}</p>
   {% endif %}
+
+  <h3>{{ ach.TITRE_UNE_BOITE }}</h3>
+  {% if achats.une_boite %}
+    <p>{{ ach.PHRASE_UNE_BOITE }}</p>
+    {{ tableau_saturation(achats.une_boite, ach.ENTETES_UNE_BOITE, "nb_prets") }}
+  {% else %}
+    <p>{{ ach.PHRASE_AUCUN_UNE_BOITE }}</p>
+  {% endif %}
+  {% if achats.ecartes_peu_pretes %}<p class="stats-note">{{ ach.phrase_peu_pretes(achats.ecartes_peu_pretes) }}</p>{% endif %}
   {% if achats.ecartes_seuil %}<p class="stats-note">{{ ach.phrase_seuil(achats.ecartes_seuil) }}</p>{% endif %}
   <p class="stats-note">{{ ach.NOTE_DEFINITIONS }}</p>
 

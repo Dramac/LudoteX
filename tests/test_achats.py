@@ -67,6 +67,16 @@ def _dim(heure_utc):
     return f"2026-11-15T{heure_utc}+00:00"
 
 
+def _prets_enchaines(code, n, depart=9, duree_min=40):
+    """n prêts de `duree_min` minutes sur la boîte `code`, l'un après l'autre
+    (cinq minutes d'écart), retours à des secondes distinctes."""
+    for k in range(n):
+        debut = depart * 60 + k * (duree_min + 5)
+        fin = debut + duree_min
+        _ligne(code, _sam(f"{debut // 60:02d}:{debut % 60:02d}:00"),
+               _sam(f"{fin // 60:02d}:{fin % 60:02d}:{k:02d}"))
+
+
 def _calcul(debut=None, fin=None):
     conn = _conn()
     try:
@@ -284,6 +294,44 @@ def test_duree_minimale_ecarte_et_compte(base, benevole):
     assert "Splendor" not in section.split("<h3>", 2)[1]       # pas dans le tableau
 
 
+def test_deux_listes_plusieurs_boites_et_une_boite_souvent_pretee(base):
+    assert achats.PRETS_MIN_UNE_BOITE == 3
+    _titre("DIXIT", "Dixit", 2)                       # deux boîtes, deux prêts
+    _ligne("DIX1", _sam("09:00:00"), _sam("11:00:00"))
+    _ligne("DIX2", _sam("09:10:00"), _sam("11:20:00"))
+    _titre("SPLENDOR", "Splendor", 1)                 # une boîte, trois prêts
+    _prets_enchaines("SPL1", 3)
+    _titre("SKYJO", "Skyjo", 1)                       # une boîte, un long prêt
+    _ligne("SKY1", _sam("09:00:00"), _sam("15:00:00"))
+    r = _calcul()
+    assert [x["nom"] for x in r["plusieurs_boites"]] == ["Dixit"]
+    assert [(x["nom"], x["nb_prets"]) for x in r["une_boite"]] == [("Splendor", 3)]
+    assert r["ecartes_peu_pretes"] == 1
+    # La liste complète garde tout : c'est elle que testent les définitions.
+    assert {x["nom"] for x in r["tous_sortis"]} == {"Dixit", "Splendor", "Skyjo"}
+
+
+def test_prets_hors_periode_ne_comptent_pas_dans_le_seuil(base):
+    _titre("SPLENDOR", "Splendor", 1)
+    _ligne("SPL1", "2026-06-01T10:00:00+00:00", "2026-06-01T11:00:00+00:00")
+    _ligne("SPL1", "2026-06-01T12:00:00+00:00", "2026-06-01T13:00:00+00:00")
+    _ligne("SPL1", _sam("09:00:00"), _sam("12:00:00"))
+    debut = services.local_vers_utc_iso("2026-11-14T00:00")
+    r = _calcul(debut)
+    assert r["une_boite"] == [] and r["ecartes_peu_pretes"] == 1
+    assert [x["nb_prets"] for x in _calcul()["une_boite"]] == [3]
+
+
+def test_phrase_des_jeux_peu_pretes_et_listes_vides(base, benevole):
+    _titre("SKYJO", "Skyjo", 1)
+    _ligne("SKY1", _sam("09:00:00"), _sam("15:00:00"))
+    section = _section(benevole.get("/stats?edition=tout").text)
+    assert _e(achats.phrase_peu_pretes(1)) in section
+    assert _e(achats.PHRASE_AUCUN) in section and _e(achats.PHRASE_AUCUN_UNE_BOITE) in section
+    assert "a été prêté moins de 3 fois" in achats.phrase_peu_pretes(1)
+    assert "ont été prêtés moins de 3 fois" in achats.phrase_peu_pretes(4)
+
+
 def test_classement_par_duree_totale_puis_par_nom(base):
     for ref, nom, retour in (("B", "Bohnanza", "10:00:00"), ("A", "Azul mini", "10:00:00"),
                              ("C", "Carcassonne", "11:00:00")):
@@ -453,15 +501,23 @@ def test_plus_de_palmares_des_moins_pretes_sur_la_page(soixante, benevole):
 # 4. Rendu de /stats
 # ===========================================================================
 def test_section_et_hierarchie(base, benevole):
+    _titre("DIXIT", "Dixit", 2)
+    _ligne("DIX1", _sam("09:00:00"), _sam("11:00:00"))
+    _ligne("DIX2", _sam("09:10:00"), _sam("11:20:00"))
     _titre("SPLENDOR", "Splendor", 1)
-    _ligne("SPL1", _sam("09:10:00"), _sam("11:20:00"))
+    _prets_enchaines("SPL1", 3)
     section = _section(benevole.get("/stats?edition=tout").text)
     assert section.lstrip().startswith(f"<h2>{_e(achats.TITRE_SECTION)}</h2>")
     assert [t for t in re.findall(r"<h3>([^<]*)</h3>", section)] == [
-        _e(achats.TITRE_TOUS_SORTIS), "Les plus prêtés", _e(achats.TITRE_JAMAIS_SORTIS)]
-    assert all(f'<th scope="col">{_e(e)}</th>' in section for e in achats.ENTETES_TOUS_SORTIS)
-    assert '<tr><th scope="row">Splendor</th><td>1</td><td>2 h 10</td>' in section
-    assert _e(achats.PHRASE_TOUS_SORTIS) in section
+        _e(achats.TITRE_TOUS_SORTIS), _e(achats.TITRE_UNE_BOITE), "Les plus prêtés",
+        _e(achats.TITRE_JAMAIS_SORTIS)]
+    for entetes in (achats.ENTETES_TOUS_SORTIS, achats.ENTETES_UNE_BOITE):
+        assert all(f'<th scope="col">{_e(e)}</th>' in section for e in entetes)
+    # Plusieurs boîtes : la 2e colonne est le nombre de boîtes ; une boîte :
+    # le nombre de prêts.
+    assert '<tr><th scope="row">Dixit</th><td>2</td><td>1 h 50</td>' in section
+    assert '<tr><th scope="row">Splendor</th><td>3</td><td>2 h 00</td>' in section
+    assert _e(achats.PHRASE_TOUS_SORTIS) in section and _e(achats.PHRASE_UNE_BOITE) in section
     assert _e(achats.NOTE_DEFINITIONS) in section
     # Le libellé de la maquette affirmait ce qu'on ne sait pas.
     assert "repartait sans" not in section
@@ -471,9 +527,10 @@ def test_vingt_lignes_sur_la_page_et_la_phrase(base, benevole):
     for i in range(achats.LIGNES_PAGE + 3):
         ref = f"T{i:02d}"
         _titre(ref, f"Jeu {i:02d}", 1, prefixe=f"{ref}-")
-        _ligne(f"{ref}-1", _sam("09:00:00"), _sam(f"{10 + i // 6:02d}:{i % 6 * 5:02d}:00"))
+        _prets_enchaines(f"{ref}-1", 3, duree_min=20 + i)
     section = _section(benevole.get("/stats?edition=tout").text)
-    tableau = section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    une_boite = section.split(f"<h3>{_e(achats.TITRE_UNE_BOITE)}</h3>", 1)[1]
+    tableau = une_boite.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
     assert tableau.count("<tr>") == achats.LIGNES_PAGE
     assert _e(achats.phrase_suite(achats.LIGNES_PAGE + 3)) in section
 
@@ -485,6 +542,7 @@ def test_cas_vides_ne_bloquent_jamais(bases, benevole, requete):
     assert r.status_code == 200
     section = _section(r.text)
     assert _e(achats.PHRASE_AUCUN) in section
+    assert _e(achats.PHRASE_AUCUN_UNE_BOITE) in section
     assert "Aucun prêt sur la période." in section
     assert "Le catalogue ne compte aucun jeu." in section
 
@@ -580,17 +638,23 @@ def test_feuille_tous_sortis_toutes_les_lignes(base, benevole):
     for i in range(achats.LIGNES_PAGE + 3):
         ref = f"T{i:02d}"
         _titre(ref, f"=Jeu {i:02d}", 1, prefixe=f"{ref}-")      # nom piégé
-        # Des retours à des secondes différentes : rendus tous dans la même
-        # seconde, avec plus rien dehors, ils passeraient pour une clôture.
-        _ligne(f"{ref}-1", _sam("09:00:00"), _sam(f"11:00:{i:02d}"))
+        _prets_enchaines(f"{ref}-1", 3, duree_min=20 + i)
+    _titre("DIXIT", "Dixit", 2)
+    _ligne("DIX1", _sam("09:00:00"), _sam("11:00:00"))
+    _ligne("DIX2", _sam("09:10:00"), _sam("11:20:00"))
     classeur = _classeur(benevole)
     rangees = _rangees(classeur[achats.FEUILLE_TOUS_SORTIS])
-    i = [tuple(r[:len(achats.ENTETES_XLSX_TOUS_SORTIS)]) for r in rangees].index(
-        achats.ENTETES_XLSX_TOUS_SORTIS)
-    lignes = rangees[i + 1:i + 1 + achats.LIGNES_PAGE + 3]
-    assert len(lignes) == achats.LIGNES_PAGE + 3
-    assert lignes[-1][:8] == ["=Jeu 00", "T00", 1, "2 h 00", 120, "2 h 00",
-                              "14/11/2026 10:00", "14/11/2026 12:00"]
+    plat = [tuple(r[:len(achats.ENTETES_XLSX_TOUS_SORTIS)]) for r in rangees]
+    titres = [r[0] for r in rangees]
+    # Les deux listes, dans l'ordre de la page, chacune avec ses en-têtes.
+    assert titres.index(achats.TITRE_TOUS_SORTIS) < titres.index(achats.TITRE_UNE_BOITE)
+    debut_plusieurs = plat.index(achats.ENTETES_XLSX_TOUS_SORTIS)
+    assert rangees[debut_plusieurs + 1][:9] == [
+        "Dixit", "DIXIT", 2, 2, "1 h 50", 110, "1 h 50", "14/11/2026 10:10", "14/11/2026 12:00"]
+    debut_une = plat.index(achats.ENTETES_XLSX_TOUS_SORTIS, debut_plusieurs + 1)
+    lignes = rangees[debut_une + 1:debut_une + 1 + achats.LIGNES_PAGE + 3]
+    assert len(lignes) == achats.LIGNES_PAGE + 3            # sans la coupe aux 20
+    assert lignes[-1][:6] == ["=Jeu 00", "T00", 1, 3, "1 h 00", 60]
     assert all(c.data_type != "f" for f in classeur for l in f.iter_rows() for c in l)
 
 
@@ -628,7 +692,9 @@ def test_excel_meme_periode_que_la_page(week_end, benevole):
     feuille = _classeur(benevole, f"/stats/export.xlsx?edition={edition['id']}")[
         achats.FEUILLE_TOUS_SORTIS]
     noms = [r[0] for r in _rangees(feuille)]
-    assert "Splendor" in noms and "Azul" not in noms
+    # Splendor (une boîte, deux prêts) n'est pas un signal ; Dixit (deux
+    # boîtes) l'est ; Azul est hors de l'édition.
+    assert "Dixit" in noms and "Splendor" not in noms and "Azul" not in noms
 
 
 # ===========================================================================

@@ -451,7 +451,12 @@ Indicateurs :
 - **Pour les achats** : de quoi décider quoi racheter, quoi mettre en avant
   et quoi retirer du catalogue. Trois blocs :
   - **les jeux dont toutes les boîtes étaient dehors** en même temps, avec
-    la durée cumulée et la plus longue de ces périodes. Une boîte est
+    la durée cumulée et la plus longue de ces périodes, en **deux listes** :
+    les jeux à plusieurs boîtes (la saturation est le signal d'achat), et
+    les jeux à une seule boîte prêtés au moins trois fois sur la période —
+    pour eux, « toutes dehors » veut seulement dire « prêté », et c'est le
+    nombre de prêts qui dit la demande (calibré sur l'édition 2026, où 163
+    des 182 jeux concernés n'avaient qu'une boîte). Une boîte est
     dehors de son prêt au public à son retour ; une sortie tournoi ne la
     rend pas dehors (le bureau choisit les jeux de tournoi, leur absence
     est voulue), une erreur de prêt non plus. Seules comptent les heures
@@ -462,8 +467,9 @@ Indicateurs :
     reste dehors jusqu'à ce qu'on s'en aperçoive (la durée peut être
     surestimée). Le nombre de boîtes est celui d'aujourd'hui : la base ne
     garde pas l'historique du parc. Un jeu à moins d'un quart d'heure cumulé
-    n'est pas montré, et le nombre de ces jeux est dit. La page montre les
-    vingt premiers, l'Excel tous. Ces durées disent qu'aucune boîte n'était
+    n'est pas montré, ni un jeu à une boîte prêté moins de trois fois ; le
+    nombre de ces jeux est dit. La page montre les vingt premiers de chaque
+    liste, l'Excel tous. Ces durées disent qu'aucune boîte n'était
     disponible, pas qu'un visiteur a attendu ;
   - le **palmarès des plus prêtés**, agrégé **par titre**
     (`reference_titre`), en deux vues : total brut, ou rapporté au nombre

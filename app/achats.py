@@ -64,6 +64,24 @@ TOUS SORTIS — LES DÉFINITIONS (reprises sous le tableau, `NOTE_DEFINITIONS`) 
 - **Durée minimale** : `DUREE_MINIMALE_S` cumulée. En dessous, ce n'est pas
   un signal d'achat ; le nombre de jeux écartés est dit sous le tableau.
 
+DEUX LISTES (complément de calibrage, sur les données réelles de 2026) :
+pour un jeu à UNE boîte, « toutes dehors » veut seulement dire « prêté ».
+Sur l'édition 2026, 163 des 182 jeux « tous sortis » n'avaient qu'une boîte,
+et le haut de la liste unique était fait de longs prêts uniques (un jeu
+prêté une fois, dehors 10 h 20) ; les 19 jeux à plusieurs boîtes, le vrai
+signal, n'atteignaient pas les vingt premières lignes. D'où :
+
+- **les jeux à plusieurs boîtes** dont toutes étaient dehors : la
+  saturation est le signal, sans autre filtre ;
+- **les jeux à une seule boîte** prêtés au moins `PRETS_MIN_UNE_BOITE` fois
+  sur la période : le nombre de prêts est l'indice de demande ; la durée
+  dehors classe. Le nombre de jeux écartés faute de prêts est dit.
+
+Le re-prêt rapide après un retour a été mesuré et écarté comme indice : sur
+2026, 59 retours de jeux à une boîte suivis d'un prêt en moins de 10 min,
+pour un écart médian de 67 min — trop peu, et indiscernable du hasard du
+comptoir.
+
 JAMAIS SORTIS : les titres qui ont au moins une boîte et AUCUN prêt au
 public (`pret`, `oubli`) sorti dans la période. Un titre sorti seulement en
 tournoi en fait partie, signalé par sa colonne.
@@ -76,7 +94,7 @@ Python. Jamais une requête par titre.
 from __future__ import annotations
 
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, time, timedelta
 
 # `_lire` : la lecture d'un horodatage du comptoir (UTC, None si illisible
@@ -93,7 +111,13 @@ from app.services import (FUSEAU_LOCAL, FUSEAU_UTC, MOTIFS_COMPTES,
 # lot ; le nombre de jeux écartés est dit sous le tableau.
 DUREE_MINIMALE_S = 15 * 60
 
-# Lignes montrées sur la page ; l'export Excel les donne toutes.
+# Un jeu à une seule boîte n'est montré que s'il a été prêté au moins
+# PRETS_MIN_UNE_BOITE fois sur la période (voir l'en-tête). Calibré sur 2026 :
+# 76 des 163 jeux à une boîte « tous sortis » ; à 4, 58 ; à 5, 43. Trois
+# prêts, c'est une boîte qui a enchaîné les tables, pas une longue partie.
+PRETS_MIN_UNE_BOITE = 3
+
+# Lignes montrées sur la page, par liste ; l'export Excel les donne toutes.
 LIGNES_PAGE = 20
 
 JOURS_COURTS = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
@@ -102,11 +126,16 @@ JOURS_COURTS = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
 TITRE_SECTION = "Pour les achats"
 PHRASE_SENS = ("Pour décider quoi racheter, quoi mettre en avant et quoi "
                "retirer du catalogue.")
-TITRE_TOUS_SORTIS = "Les jeux dont toutes les boîtes étaient dehors"
+TITRE_TOUS_SORTIS = "Jeux à plusieurs boîtes, toutes dehors en même temps"
 PHRASE_TOUS_SORTIS = ("Pendant ces durées, plus aucune boîte de ce jeu n'était "
                       "disponible au comptoir.")
 ENTETES_TOUS_SORTIS = ("Jeu", "Boîtes", "Toutes dehors", "La plus longue fois")
-ENTETES_XLSX_TOUS_SORTIS = ("Jeu", "Référence", "Boîtes",
+TITRE_UNE_BOITE = "Jeux à une seule boîte, souvent prêtés"
+PHRASE_UNE_BOITE = (f"Prêtés au moins {PRETS_MIN_UNE_BOITE} fois sur la "
+                    "période. Pendant ces durées, la seule boîte du jeu était "
+                    "prêtée.")
+ENTETES_UNE_BOITE = ("Jeu", "Prêts", "Dehors", "La plus longue fois")
+ENTETES_XLSX_TOUS_SORTIS = ("Jeu", "Référence", "Boîtes", "Prêts",
                             "Toutes dehors (durée)", "Toutes dehors (minutes)",
                             "La plus longue fois (durée)",
                             "La plus longue fois : début",
@@ -122,7 +151,10 @@ NOTE_DEFINITIONS = (
     "celui d'aujourd'hui : un jeu dont une boîte a été ajoutée depuis peut "
     "ne pas apparaître."
 )
-PHRASE_AUCUN = "Aucun jeu n'a eu toutes ses boîtes dehors en même temps sur la période."
+PHRASE_AUCUN = ("Aucun jeu à plusieurs boîtes n'a eu toutes ses boîtes "
+                "dehors en même temps sur la période.")
+PHRASE_AUCUN_UNE_BOITE = (f"Aucun jeu à une seule boîte n'a été prêté "
+                          f"{PRETS_MIN_UNE_BOITE} fois ou plus sur la période.")
 TITRE_JAMAIS_SORTIS = "Les jeux jamais sortis"
 FEUILLE_TOUS_SORTIS = "Tous sortis"
 FEUILLE_JAMAIS_SORTIS = "Jamais sortis"
@@ -145,8 +177,16 @@ def phrase_seuil(nb: int) -> str:
             f"{pluriel(nb, 'il n’est pas montré', 'ils ne sont pas montrés')}.")
 
 
+def phrase_peu_pretes(nb: int) -> str:
+    """La phrase sur les jeux à une boîte écartés faute de prêts."""
+    return (f"{nb} {pluriel(nb, 'autre jeu', 'autres jeux')} à une seule boîte "
+            f"{pluriel(nb, 'a été prêté', 'ont été prêtés')} moins de "
+            f"{PRETS_MIN_UNE_BOITE} fois : un long prêt ne dit pas qu'il en "
+            f"faut une deuxième, {pluriel(nb, 'il n’est pas montré', 'ils ne sont pas montrés')}.")
+
+
 def phrase_suite(nb: int) -> str:
-    """La phrase quand le tableau de la page est coupé à `LIGNES_PAGE`."""
+    """La phrase quand un tableau de la page est coupé à `LIGNES_PAGE`."""
     return (f"Les {LIGNES_PAGE} premiers sont montrés ; les {nb} sont dans "
             f"l'export Excel, feuille « {FEUILLE_TOUS_SORTIS} ».")
 
@@ -278,7 +318,7 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
 
     Returns:
         dict {
-          "tous_sortis": [{reference_titre, nom, nb_exemplaires, total_s,
+          "tous_sortis": [{reference_titre, nom, nb_exemplaires, nb_prets, total_s,
                            total_txt, plus_long_s, plus_long_txt,
                            plus_long_debut, plus_long_fin (datetime UTC),
                            plus_long_quand ("sam. 15:05 → 19:10"),
@@ -286,6 +326,10 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
               au-dessus de `DUREE_MINIMALE_S`, de la plus longue durée
               totale à la plus courte, puis par nom ;
           "ecartes_seuil": jeux tous sortis moins de `DUREE_MINIMALE_S`,
+          "plusieurs_boites": les lignes de `tous_sortis` à plusieurs boîtes,
+          "une_boite": celles à une boîte prêtées au moins
+              `PRETS_MIN_UNE_BOITE` fois, même ordre,
+          "ecartes_peu_pretes": jeux à une boîte écartés faute de prêts,
           "jamais_sortis": [{reference_titre, nom, nb_exemplaires,
                              tournoi_seulement}], par nom ;
           "nb_titres": titres qui ont au moins une boîte
@@ -312,14 +356,14 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
     borne_fin = _lire(fin) if fin else None
 
     sorties: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
-    pretes_public: set[str] = set()
+    pretes_public: Counter = Counter()          # prêts au public de la période
     pretes_tournoi: set[str] = set()
     for l in lignes:
         motif, ref = l["motif"], l["reference_titre"]
         dans = ((debut is None or (l["date_sortie"] or "") >= debut)
                 and (fin is None or (l["date_sortie"] or "") < fin))
         if motif in MOTIFS_COMPTES and dans:
-            pretes_public.add(ref)
+            pretes_public[ref] += 1
         elif motif == "tournoi" and dans:
             pretes_tournoi.add(ref)
         if motif not in MOTIFS_COMPTES or not plages:
@@ -359,6 +403,7 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
         plus_long = (f_long - d_long).total_seconds()
         tous.append({
             "reference_titre": ref, "nom": t["nom"], "nb_exemplaires": t["nb"],
+            "nb_prets": pretes_public[ref],
             "total_s": total, "total_txt": format_duree(total),
             "plus_long_s": plus_long, "plus_long_txt": format_duree(plus_long),
             "plus_long_debut": d_long, "plus_long_fin": f_long,
@@ -379,7 +424,13 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
          for t in titres if t["reference_titre"] not in pretes_public),
         key=lambda r: (cle(r["nom"]), r["reference_titre"]))
 
+    une_boite = [r for r in tous if r["nb_exemplaires"] == 1]
     return {"tous_sortis": tous, "ecartes_seuil": ecartes,
+            "plusieurs_boites": [r for r in tous if r["nb_exemplaires"] > 1],
+            "une_boite": [r for r in une_boite
+                          if r["nb_prets"] >= PRETS_MIN_UNE_BOITE],
+            "ecartes_peu_pretes": sum(r["nb_prets"] < PRETS_MIN_UNE_BOITE
+                                      for r in une_boite),
             "jamais_sortis": jamais_sortis, "nb_titres": len(titres)}
 
 
