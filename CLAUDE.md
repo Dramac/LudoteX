@@ -175,7 +175,7 @@ livré, par module :
   **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), **retours
   non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue
   « pochette pas vide » qui prévient le bureau, clôture de fin d'événement.
-- **Statistiques** (`/stats`) — totaux, palmarès, comptoir heure par heure (prêts, retours, jeux dehors), durées,
+- **Statistiques** (`/stats`) — totaux, comptoir heure par heure (prêts, retours, jeux dehors), achats (jeux tous sortis, palmarès sur 50, jamais sortis), durées,
   période au choix (éditions datées par le bureau dans « Événement », toute
   la période ou dates libres), liste détaillée, exports Excel et PDF à
   sections cochables.

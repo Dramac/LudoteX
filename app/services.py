@@ -45,6 +45,7 @@ import re
 import secrets
 import sqlite3
 import unicodedata
+from collections import Counter
 from collections.abc import Sequence
 from typing import NamedTuple
 from datetime import datetime, timedelta, timezone
@@ -815,7 +816,9 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
 
     « Catalogue d'abord » : on part de TOUS les titres (JOIN sur exemplaires) et
     on rattache les prêts par LEFT JOIN. Ainsi un titre jamais prêté apparaît
-    avec `nb_prets = 0` — indispensable pour le palmarès des MOINS prêtés.
+    avec `nb_prets = 0` — indispensable pour le palmarès des MOINS prêtés,
+    qui ne sert plus qu'au PDF (lot bilan-5 ; les jamais sortis ont leur
+    feuille Excel, `app/achats.py`).
 
     IMPORTANT : le filtre de période est placé dans la condition du LEFT JOIN
     (et non dans un WHERE), pour conserver les titres à zéro prêt sur la période.
@@ -1015,9 +1018,43 @@ def filtrer_sortis(en_cours: dict, recherche: str | None) -> dict:
             for motif, lignes in en_cours.items()}
 
 
+# Le palmarès des plus prêtés (lot bilan-5) : jusqu'à LIMITE_PALMARES jeux,
+# dont LIMITE_PALMARES_VISIBLE montrés d'emblée sur la page, la suite dans un
+# volet replié. Un seul appel au service, à la limite haute.
+LIMITE_PALMARES = 50
+LIMITE_PALMARES_VISIBLE = 10
+# Le PDF garde ses deux palmarès de 15 lignes, « moins prêtés » compris : il
+# est refait par le lot bilan-7, qui retirera la section « moins ». D'ici là,
+# son contenu ne bouge pas.
+LIMITE_PALMARES_PDF = 15
+
+
+def classer(jeux: list[dict], metrique: str) -> list[dict]:
+    """
+    Ajoute à chaque jeu du palmarès son `rang`, ex aequo compris : deux jeux
+    à égalité sur la métrique affichée portent le même rang, le suivant prend
+    le rang de sa place (1, 2, 2, 4). L'ordre reste celui du service (la
+    métrique, puis le nom du jeu) : à égalité, l'ordre alphabétique ne dit
+    rien du classement. `ex_aequo` vaut True pour chaque jeu qui partage son
+    rang.
+    """
+    cle = (lambda j: round(j["par_exemplaire"], 9)) if metrique == "exemplaire" \
+        else (lambda j: j["nb_prets"])
+    precedent, rang = None, 0
+    for place, jeu in enumerate(jeux, start=1):
+        valeur = cle(jeu)
+        if valeur != precedent:
+            rang, precedent = place, valeur
+        jeu["rang"] = rang
+    comptes = Counter(j["rang"] for j in jeux)
+    for jeu in jeux:
+        jeu["ex_aequo"] = comptes[jeu["rang"]] > 1
+    return jeux
+
+
 def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
                     debut: str | None = None, fin: str | None = None,
-                    limite_palmares: int = 15,
+                    limite_palmares: int = LIMITE_PALMARES,
                     limite_prets: int | None = None) -> dict:
     """
     Rassemble toutes les données de la page statistiques en une fois.
@@ -1029,20 +1066,32 @@ def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
         conn: connexion SQLite ouverte.
         metrique: "total" ou "exemplaire" (pour les palmarès).
         debut, fin: bornes UTC ISO optionnelles (fin exclusive).
-        limite_palmares: taille de chaque palmarès.
+        limite_palmares: taille du palmarès des plus prêtés.
         limite_prets: limite de la liste détaillée (None = toutes, pour l'export).
 
     Returns:
-        dict {globales, plus, moins, comptoir, prets, metrique}. `comptoir`
-        est le comptoir heure par heure (lot bilan-4, `app/comptoir.py`).
+        dict {globales, plus, moins, comptoir, achats, prets, metrique}.
+        `comptoir` est le comptoir heure par heure (lot bilan-4,
+        `app/comptoir.py`), `achats` la section « Pour les achats » (lot
+        bilan-5, `app/achats.py`), calculée sur les heures d'ouverture du
+        comptoir. `plus` porte le `rang` de chaque jeu (`classer`). `moins`
+        ne sert plus qu'au PDF (`LIMITE_PALMARES_PDF`), jusqu'au lot bilan-7.
     """
-    from app import comptoir  # différé : app.comptoir importe ce module
+    # Différés : app.comptoir et app.achats importent ce module.
+    from app import achats, comptoir
 
+    donnees_comptoir = comptoir.heure_par_heure(conn, debut, fin)
     return {
         "globales": stats_globales(conn, debut, fin),
-        "plus": palmares(conn, "desc", metrique, limite_palmares, debut, fin),
-        "moins": palmares(conn, "asc", metrique, limite_palmares, debut, fin),
-        "comptoir": comptoir.heure_par_heure(conn, debut, fin),
+        # Un jeu sans aucun prêt n'est pas « plus prêté » : il est parmi les
+        # jamais sortis (`achats`). Sur une petite période, le bas des 50
+        # n'aurait sinon été fait que de zéros.
+        "plus": classer([j for j in palmares(conn, "desc", metrique,
+                                             limite_palmares, debut, fin)
+                         if j["nb_prets"] > 0], metrique),
+        "moins": palmares(conn, "asc", metrique, LIMITE_PALMARES_PDF, debut, fin),
+        "comptoir": donnees_comptoir,
+        "achats": achats.pour_les_achats(conn, debut, fin, donnees_comptoir),
         "prets": lister_prets_periode(conn, debut, fin, limite_prets),
         "metrique": metrique,
     }

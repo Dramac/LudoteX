@@ -813,9 +813,25 @@ summary:focus-visible,
 /* Des nombres et des mots courts : on coupe ENTRE les mots, jamais dedans.
    La règle commune de .detail (word-break: break-word) coupait « Prêts » en
    « Pr / êts » à 375 px ; les colonnes de chiffres prennent leur largeur. */
-.comptoir-tableau .detail th, .comptoir-tableau .detail td { word-break: normal; padding-inline: 4px; }
-.comptoir-tableau .detail td { text-align: right; white-space: nowrap; }
-.comptoir-tableau .detail thead th:not(:first-child) { text-align: right; }
+.comptoir-tableau .detail th, .comptoir-tableau .detail td,
+.achats-tableau .detail th, .achats-tableau .detail td { word-break: normal; padding-inline: 4px; }
+.comptoir-tableau .detail td, .achats-tableau .detail td { text-align: right; white-space: nowrap; }
+.comptoir-tableau .detail thead th:not(:first-child),
+.achats-tableau .detail thead th:not(:first-child) { text-align: right; }
+/* Les jeux dont toutes les boîtes étaient dehors (lot bilan-5) : même règle
+   que le tableau du comptoir, étendue. Le nom du jeu passe à la ligne entre
+   ses mots ; la dernière colonne (« 4 h 05 sam. 15:05 → 19:10 ») passe à la
+   ligne entre la durée, le début et la fin (« → 19:10 »), jamais au milieu
+   de l'un d'eux. */
+.achats-tableau .detail th[scope="row"] { text-align: left; font-weight: 600; color: var(--texte); }
+.achats-tableau .detail td:last-child { white-space: normal; }
+.achats-duree, .achats-quand > span { white-space: nowrap; }
+.achats-quand { color: var(--gris); }
+/* Le volet « Voir la suite du classement » et le lien vers l'Excel des
+   jamais sortis : cibles de 44 px, comme le volet du comptoir. */
+.palmares-suite > summary { cursor: pointer; font-weight: 600; color: var(--primaire-lisible);
+                            padding-block: 10px; }  /* 24 px de texte + 20 = 44 px */
+.lien-cible { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
 /* Couleurs forcées (Windows contraste élevé) : les barres, la ligne et les
    hachures prennent la couleur du texte du système ; les deux séries restent
    distinctes par leur forme (plein / hachures). */

@@ -167,8 +167,9 @@ def test_statistiques_xlsx_nom_de_jeu_jamais_formule():
                    "retour_local": None, "duree_txt": "—"}],
     }
     classeur = openpyxl.load_workbook(BytesIO(exports.construire_xlsx(data, "tout")))
-    assert classeur["Palmarès"]["A5"].value == "=1+1"
-    assert classeur["Palmarès"]["A5"].data_type == "s"
+    # Feuille des plus prêtés (lot bilan-5) : le rang en A, le nom en B.
+    assert classeur[exports.FEUILLE_PALMARES]["B5"].value == "=1+1"
+    assert classeur[exports.FEUILLE_PALMARES]["B5"].data_type == "s"
     assert [classeur["Détail"]["A2"].value, classeur["Détail"]["B2"].value] == ["@jeu", "-001"]
     assert all(c.data_type != "f" for f in classeur for l in f.iter_rows() for c in l)
 

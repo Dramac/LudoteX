@@ -464,7 +464,7 @@ def _tableau_page(html):
 
 def test_feuille_excel_memes_lignes_que_le_tableau(week_end, benevole):
     classeur, feuille = _feuille(benevole.get("/stats/export.xlsx").content)
-    assert classeur.sheetnames[:3] == ["Synthèse", "Palmarès", exports.FEUILLE_HEURE_PAR_HEURE]
+    assert exports.FEUILLE_HEURE_PAR_HEURE in classeur.sheetnames
     assert feuille["A1"].value == comptoir.TITRE_SECTION
     assert feuille["A2"].value == "Période : toutes périodes"
     assert _rangees(feuille) == _tableau_page(benevole.get("/stats").text)

@@ -213,6 +213,25 @@ carte à l'autre gagne un complément `.sr-only` qui dit sur quoi il agit.
 jamais été écrite, et les quatre libellés d'états s'affichaient donc en toutes
 lettres à côté de chaque bouton radio.
 
+### Tableau de chiffres — `.comptoir-tableau` et `.achats-tableau` (lots bilan-4 et bilan-5)
+
+Deux tableaux de statistiques faits de **nombres et de mots courts** : le
+comptoir heure par heure et les jeux dont toutes les boîtes étaient dehors.
+Ils lèvent pour eux seuls le `word-break: break-word` des règles partagées,
+qui coupait « Pr/êts » à 375 px : on passe à la ligne **entre** les mots,
+jamais dedans, et les colonnes de chiffres sont alignées à droite sans
+retour à la ligne. Le second tableau ajoute deux règles : le nom du jeu (en
+`th scope="row"`) passe à la ligne entre ses mots, et la dernière cellule
+pose ses morceaux dans des `span` insécables (« 2 h 31 », « sam. 15:54 »,
+« → 18:25 »), qui passent à la ligne l'un sous l'autre. Mesuré à 375 px :
+286 px de tableau dans une carte de 326, sans débordement. Un troisième
+tableau du même genre s'ajoute au même sélecteur ; il ne retouche pas
+`.detail`.
+
+Le lien vers l'Excel des jamais sortis porte `.lien-cible` : un `.lien` en
+`inline-flex` de 44 px de haut, la cible tactile minimale, pour un lien seul
+dans sa phrase.
+
 ### Liste de cartes — `.sorties` (lot bilan-1)
 
 Page bénévole « Jeux sortis » (`sortis.html`). Une `<ul class="sorties">` de

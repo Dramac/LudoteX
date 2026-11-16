@@ -448,13 +448,37 @@ Indicateurs :
   d'été comprise. Sans choix, la page montre la dernière édition commencée,
   et à défaut toute la période. Deux éditions ne se chevauchent pas. Les
   exports portent la même période, nommée.
-- **Palmarès des jeux les plus et les moins prêtés**, agrégé **par titre**
-  (`reference_titre`), en deux vues : total brut, ou rapporté au nombre
-  d'exemplaires (pour ne pas avantager mécaniquement les titres présents en
-  plusieurs boîtes).
-- Le palmarès des moins prêtés inclut les jeux **jamais sortis** : on part de
-  **tous les titres du catalogue** et on y rattache les prêts (« catalogue
-  d'abord »), faute de quoi les jeux à zéro prêt seraient invisibles.
+- **Pour les achats** : de quoi décider quoi racheter, quoi mettre en avant
+  et quoi retirer du catalogue. Trois blocs :
+  - **les jeux dont toutes les boîtes étaient dehors** en même temps, avec
+    la durée cumulée et la plus longue de ces périodes. Une boîte est
+    dehors de son prêt au public à son retour ; une sortie tournoi ne la
+    rend pas dehors (le bureau choisit les jeux de tournoi, leur absence
+    est voulue), une erreur de prêt non plus. Seules comptent les heures
+    d'ouverture du comptoir heure par heure (par journée, de la première à
+    la dernière heure active), et une sortie ne compte que dans la journée
+    où elle a commencé : une boîte encore dehors le soir, presque toujours
+    un retour non scanné, ne compte pas le lendemain. Un retour non scanné
+    reste dehors jusqu'à ce qu'on s'en aperçoive (la durée peut être
+    surestimée). Le nombre de boîtes est celui d'aujourd'hui : la base ne
+    garde pas l'historique du parc. Un jeu à moins d'un quart d'heure cumulé
+    n'est pas montré, et le nombre de ces jeux est dit. La page montre les
+    vingt premiers, l'Excel tous. Ces durées disent qu'aucune boîte n'était
+    disponible, pas qu'un visiteur a attendu ;
+  - le **palmarès des plus prêtés**, agrégé **par titre**
+    (`reference_titre`), en deux vues : total brut, ou rapporté au nombre
+    d'exemplaires (pour ne pas avantager mécaniquement les titres présents
+    en plusieurs boîtes). Jusqu'à 50 jeux, les dix premiers visibles, la
+    suite repliée ; deux jeux à égalité portent le même rang. Un jeu sans
+    aucun prêt n'y figure pas ;
+  - les **jeux jamais sortis** : les titres qui ont au moins une boîte et
+    aucun prêt au public dans la période — on part de **tous les titres du
+    catalogue** (« catalogue d'abord »), faute de quoi ils seraient
+    invisibles. Un jeu sorti seulement en tournoi en fait partie, signalé.
+    La page en donne le nombre ; la liste est une feuille de l'Excel, avec
+    de quoi retrouver chaque boîte (catégories, date d'achat, emplacements).
+    Elle remplace le palmarès des moins prêtés, dont le bas n'était fait
+    que de zéros.
 - **Le comptoir heure par heure** : de quoi décider quand ouvrir une file
   réservée aux retours, et combien de bénévoles placer au comptoir à chaque
   créneau. Deux graphiques dessinés par le serveur (prêts et retours de
@@ -483,8 +507,11 @@ Indicateurs :
 - **Liste détaillée** des prêts. La liste des jeux actuellement sortis n'est
   pas une statistique mais un outil de comptoir : elle a sa propre page,
   réservée aux bénévoles (§5.1).
-- Exports Excel et PDF. L'Excel porte une feuille « Heure par heure », mêmes
-  lignes que le tableau de la page ; le PDF ne reprend pas le comptoir.
+- Exports Excel et PDF. L'Excel porte les feuilles « Plus prêtés », « Tous
+  sortis », « Jamais sortis » et « Heure par heure », mêmes lignes que la
+  page, sans la coupe de la page ; le PDF ne reprend pas le comptoir, et
+  garde pour l'instant ses palmarès des plus et des moins prêtés, quinze
+  lignes chacun.
 
 ---
 

@@ -28,8 +28,8 @@ from io import BytesIO
 # `nuances_theme` sont des calculs purs (aucun accès disque) : les importer
 # ici n'ouvre rien. `COULEUR_ASSOCIATION_DEFAUT` est le seul domicile du
 # littéral par défaut (voir app/services.py) — il n'est jamais recopié.
-from app.services import (COULEUR_ASSOCIATION_DEFAUT, couleur_texte_sur,
-                          nom_association, nuances_theme)
+from app.services import (COULEUR_ASSOCIATION_DEFAUT, LIMITE_PALMARES_PDF,
+                          couleur_texte_sur, nom_association, nuances_theme)
 
 # Prêts clos par un re-prêt ou un transfert sans que leur retour ait été
 # scanné (motif `oubli`, voir app/services.py::MOTIF_OUBLI) : comptés dans les
@@ -240,11 +240,96 @@ def feuille_heure_par_heure(wb, donnees: dict, periode_txt: str, gras):
     return wh
 
 
+# Pour les achats (lot bilan-5, `app/achats.py`). La feuille du palmarès
+# s'appelait « Palmarès » et portait les plus PUIS les moins prêtés ; elle ne
+# garde que les plus prêtés, d'où son nom. Les deux autres feuilles portent
+# les listes complètes de la section : la page n'en montre que le début.
+FEUILLE_PALMARES = "Plus prêtés"
+ENTETES_PALMARES = ("Rang", "Jeu", "Prêts", "Exemplaires", "Par exempl.")
+
+
+def _en_tete_feuille(feuille, titre: str, periode_txt: str, gras) -> None:
+    feuille["A1"] = titre
+    feuille["A1"].font = gras
+    feuille["A2"] = f"Période : {periode_txt}"
+
+
+def _date_heure(dt) -> str:
+    from app.services import FUSEAU_LOCAL
+
+    return dt.astimezone(FUSEAU_LOCAL).strftime("%d/%m/%Y %H:%M")
+
+
+def feuille_tous_sortis(wb, achats_donnees: dict, periode_txt: str, gras):
+    """Ajoute la feuille « Tous sortis » : TOUTES les lignes de la page,
+    sans la coupe aux premières, et la date du début de la plus longue fois."""
+    from app import achats
+
+    wt = wb.create_sheet(achats.FEUILLE_TOUS_SORTIS)
+    _en_tete_feuille(wt, achats.TITRE_TOUS_SORTIS, periode_txt, gras)
+    lignes = achats_donnees["tous_sortis"]
+    ligne = 4
+    if not lignes:
+        wt[f"A{ligne}"] = achats.PHRASE_AUCUN
+        ligne += 1
+    else:
+        wt[f"A{ligne}"] = achats.PHRASE_TOUS_SORTIS
+        ligne += 2
+        for col, entete in enumerate(achats.ENTETES_XLSX_TOUS_SORTIS, start=1):
+            wt.cell(row=ligne, column=col, value=entete).font = gras
+        for r in lignes:
+            ligne += 1
+            ecrire_cellule(wt, ligne, 1, r["nom"])
+            ecrire_cellule(wt, ligne, 2, r["reference_titre"])
+            wt.cell(row=ligne, column=3, value=r["nb_exemplaires"])
+            wt.cell(row=ligne, column=4, value=r["total_txt"])
+            wt.cell(row=ligne, column=5, value=round(r["total_s"] / 60))
+            wt.cell(row=ligne, column=6, value=r["plus_long_txt"])
+            wt.cell(row=ligne, column=7, value=_date_heure(r["plus_long_debut"]))
+            wt.cell(row=ligne, column=8, value=_date_heure(r["plus_long_fin"]))
+        ligne += 1
+    ligne += 1
+    if achats_donnees["ecartes_seuil"]:
+        wt[f"A{ligne}"] = achats.phrase_seuil(achats_donnees["ecartes_seuil"])
+        ligne += 1
+    wt[f"A{ligne}"] = achats.NOTE_DEFINITIONS
+    return wt
+
+
+def feuille_jamais_sortis(wb, achats_donnees: dict, periode_txt: str, gras):
+    """Ajoute la feuille « Jamais sortis » : de quoi retrouver la boîte sur
+    l'étagère (`achats.detailler_jamais_sortis`, lu par la route) ; à défaut
+    de ce détail, les colonnes du catalogue restent vides."""
+    from app import achats
+
+    wj = wb.create_sheet(achats.FEUILLE_JAMAIS_SORTIS)
+    _en_tete_feuille(wj, achats.TITRE_JAMAIS_SORTIS, periode_txt, gras)
+    lignes = achats_donnees.get("jamais_detail", achats_donnees["jamais_sortis"])
+    ligne = 4
+    if not lignes:
+        wj[f"A{ligne}"] = achats.phrase_jamais_sortis(
+            0, achats_donnees["nb_titres"], periode_txt)
+        return wj
+    wj[f"A{ligne}"] = achats.NOTE_JAMAIS_SORTIS
+    ligne += 2
+    for col, entete in enumerate(achats.ENTETES_XLSX_JAMAIS_SORTIS, start=1):
+        wj.cell(row=ligne, column=col, value=entete).font = gras
+    for r in lignes:
+        ligne += 1
+        for col, valeur in enumerate(
+                (r["nom"], r["reference_titre"], r["nb_exemplaires"],
+                 r.get("categories", ""), r.get("date_achat", ""),
+                 r.get("emplacement_local", ""), r.get("emplacement_evenement", ""),
+                 "oui" if r["tournoi_seulement"] else ""), start=1):
+            ecrire_cellule(wj, ligne, col, valeur)
+    return wj
+
+
 def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -> bytes:
     """
-    Construit un classeur Excel à quatre feuilles : Synthèse, Palmarès, Heure
-    par heure, Détail — et une cinquième, « Tombola », quand `tombola` est
-    fourni (voir `synthese_tombola`).
+    Construit un classeur Excel à six feuilles : Synthèse, Plus prêtés, Tous
+    sortis, Jamais sortis, Heure par heure, Détail — et une septième,
+    « Tombola », quand `tombola` est fourni (voir `synthese_tombola`).
 
     La feuille « Détail » ne porte PAS de colonne « numéro de pochette » : ce
     détail couvre une période, donc essentiellement des prêts clos, dont le
@@ -283,27 +368,34 @@ def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -
         ws[f"A{i}"] = lib
         ws[f"B{i}"] = val
 
-    # --- Feuille 2 : Palmarès (plus puis moins prêtés) ---
-    wp = wb.create_sheet("Palmarès")
-    wp["A1"] = f"Palmarès ({_libelle_metrique(data['metrique'])})"
+    # --- Feuille 2 : les plus prêtés (lot bilan-5 : jusqu'à 50, avec le
+    # rang, ex aequo compris ; les moins prêtés ont quitté l'Excel, les
+    # jamais sortis ont leur feuille) ---
+    wp = wb.create_sheet(FEUILLE_PALMARES)
+    wp["A1"] = f"Les plus prêtés ({_libelle_metrique(data['metrique'])})"
     wp["A1"].font = gras
-    ligne = 3
-    for titre_section, jeux in (("Les plus prêtés", data["plus"]),
-                                ("Les moins prêtés", data["moins"])):
-        wp[f"A{ligne}"] = titre_section
-        wp[f"A{ligne}"].font = gras
+    wp["A2"] = f"Période : {periode_txt}"
+    ligne = 4
+    for col, entete in enumerate(ENTETES_PALMARES, start=1):
+        wp.cell(row=ligne, column=col, value=entete).font = gras
+    for jeu in data["plus"]:
         ligne += 1
-        for col, entete in enumerate(["Jeu", "Prêts", "Exemplaires", "Par exempl."]):
-            cell = wp.cell(row=ligne, column=1 + col, value=entete)
-            cell.font = gras
-        ligne += 1
-        for jeu in jeux:
-            ecrire_cellule(wp, ligne, 1, jeu["nom"])
-            wp.cell(row=ligne, column=2, value=jeu["nb_prets"])
-            wp.cell(row=ligne, column=3, value=jeu["nb_exemplaires"])
-            wp.cell(row=ligne, column=4, value=round(jeu["par_exemplaire"], 2))
-            ligne += 1
-        ligne += 1
+        wp.cell(row=ligne, column=1, value=jeu.get("rang"))
+        ecrire_cellule(wp, ligne, 2, jeu["nom"])
+        wp.cell(row=ligne, column=3, value=jeu["nb_prets"])
+        wp.cell(row=ligne, column=4, value=jeu["nb_exemplaires"])
+        wp.cell(row=ligne, column=5, value=round(jeu["par_exemplaire"], 2))
+
+    # --- Feuilles « Tous sortis » et « Jamais sortis » (lot bilan-5). Absentes
+    # d'un `data` construit à la main sans la clé, comme le comptoir. ---
+    feuilles_achats = []
+    if "achats" in data:
+        feuilles_achats = [
+            (feuille_tous_sortis(wb, data["achats"], periode_txt, gras),
+             [36, 14, 8, 16, 14, 18, 22, 22]),
+            (feuille_jamais_sortis(wb, data["achats"], periode_txt, gras),
+             [36, 14, 8, 24, 14, 24, 24, 14]),
+        ]
 
     # --- Feuille 3 : Heure par heure (lot bilan-4). Absente d'un `data`
     # construit à la main sans la clé, comme les `g.get(...)` ci-dessus. ---
@@ -324,8 +416,8 @@ def construire_xlsx(data: dict, periode_txt: str, tombola: dict | None = None) -
         wd.cell(row=i, column=4, value=p["retour_local"] or "en cours")
         wd.cell(row=i, column=5, value=p["duree_txt"])
 
-    largeurs_feuilles = [(ws, [24, 14]), (wp, [40, 10, 12, 12]),
-                         (wd, [40, 12, 18, 18, 12, 14])]
+    largeurs_feuilles = [(ws, [24, 14]), (wp, [8, 40, 10, 12, 12]),
+                         *feuilles_achats, (wd, [40, 12, 18, 18, 12, 14])]
     if wh is not None:
         largeurs_feuilles.append((wh, [30, 10, 10, 30]))
 
@@ -450,12 +542,16 @@ def construire_pdf(data: dict, periode_txt: str,
             [8 * cm, 4 * cm]))
         elements.append(Spacer(1, 0.4 * cm))
 
-    # Palmarès (les deux sections sont indépendantes)
+    # Palmarès (les deux sections sont indépendantes). Le PDF garde ses 15
+    # lignes et sa section « moins » jusqu'au lot bilan-7, qui le refait ;
+    # la page et l'Excel portent jusqu'à 50 plus prêtés (lot bilan-5).
     palmares_sections = []
     if "plus" in sections:
-        palmares_sections.append(("Les plus prêtés", data["plus"]))
+        palmares_sections.append(("Les plus prêtés",
+                                  data["plus"][:LIMITE_PALMARES_PDF]))
     if "moins" in sections:
-        palmares_sections.append(("Les moins prêtés", data["moins"]))
+        palmares_sections.append(("Les moins prêtés",
+                                  data["moins"][:LIMITE_PALMARES_PDF]))
     for titre_section, jeux in palmares_sections:
         elements.append(Paragraph(
             f"{titre_section} ({_libelle_metrique(data['metrique'])})",

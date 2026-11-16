@@ -5,11 +5,14 @@ Accès réglé par la visibilité du module « stats » (`garde_module` dans
 main.py) : réservé aux bénévoles par défaut, ouvrable au public par le bureau
 (lot bilan-2 ; le pourquoi est en commentaire de `MODULES["stats"]`).
 
-Agrégations sans donnée personnelle (spec §7) : total des prêts, palmarès des
-jeux les plus / les moins prêtés (par titre, jamais-sortis inclus), le
-comptoir heure par heure (lot bilan-4, `app/comptoir.py`) et liste détaillée
-des prêts. Toutes les données proviennent de
-`services.collecter_stats`.
+Agrégations sans donnée personnelle (spec §7) : total des prêts, le
+comptoir heure par heure (lot bilan-4, `app/comptoir.py`), la section « Pour
+les achats » (lot bilan-5, `app/achats.py` : les jeux dont toutes les boîtes
+étaient dehors, le palmarès des plus prêtés jusqu'à 50 jeux, le nombre de
+jeux jamais sortis, dont la liste est dans l'export Excel) et la liste
+détaillée des prêts. Toutes les données proviennent de
+`services.collecter_stats`. Le palmarès des moins prêtés a quitté la page ;
+il reste dans le PDF jusqu'au lot bilan-7.
 
 Paramètres de requête (combinables) :
     tri     = total | exemplaire     -> métrique des palmarès.
@@ -45,7 +48,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import comptoir, editions, exports, services, tombola
+from app import achats, comptoir, editions, exports, services, tombola
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -195,6 +198,8 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
         {"g": data["globales"], "plus": data["plus"], "moins": data["moins"],
          "comptoir": data["comptoir"],
          "graphiques": comptoir.geometrie(data["comptoir"]), "cpt": comptoir,
+         "achats": data["achats"], "ach": achats,
+         "palmares_visible": services.LIMITE_PALMARES_VISIBLE,
          "metrique": metrique, "prets": data["prets"],
          "choix": periode["choix"], "message_periode": periode["message"],
          "options_editions": [{"id": str(e["id"]), "libelle": editions.libelle_menu(e)}
@@ -226,6 +231,10 @@ def _exporter(request: Request, tri: str, edition: str | None,
             limite_prets=None,  # toutes les lignes dans l'export
         )
         stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
+        # La feuille « Jamais sortis » : de quoi retrouver chaque boîte
+        # (emplacements, date d'achat). Lu pour l'export seulement.
+        data["achats"]["jamais_detail"] = achats.detailler_jamais_sortis(
+            conn, data["achats"]["jamais_sortis"])
     finally:
         conn.close()
     return data, _libelle(periode), stats_tombola

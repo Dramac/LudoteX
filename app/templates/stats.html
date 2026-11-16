@@ -5,10 +5,14 @@
 {# `periode_qs` (fourni par la route) : la période choisie, à recopier dans
    les bascules de tri — explicite, édition comprise (lot bilan-3). #}
 
+{# Le palmarès des plus prêtés (lot bilan-5). Chaque `li` porte son rang
+   (`value`, `services.classer`) : deux jeux à égalité ont le même numéro,
+   le suivant prend le rang de sa place (1, 2, 2, 4). La suite du classement,
+   dans le volet replié, reste numérotée à partir de son vrai rang. #}
 {% macro tableau(titres) %}
   <ol class="palmares">
     {% for jeu in titres %}
-      <li>
+      <li value="{{ jeu.rang }}">
         <span class="palmares-nom">{{ jeu.nom }}</span>
         <span class="palmares-val">
           {% if metrique == "exemplaire" %}
@@ -18,6 +22,7 @@
             {{ jeu.nb_prets }} {{ pluriel(jeu.nb_prets, 'prêt', 'prêts') }}
             {% if jeu.nb_exemplaires > 1 %}<small>({{ jeu.nb_exemplaires }} ex.)</small>{% endif %}
           {% endif %}
+          {% if jeu.ex_aequo %}<small>· ex aequo</small>{% endif %}
         </span>
       </li>
     {% endfor %}
@@ -126,23 +131,6 @@
   </details>
 </section>
 
-<section class="carte">
-  <p class="stats-bascule">
-    Classement
-    {% if metrique == "exemplaire" %}
-      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total&amp;{{ periode_qs }}">par total</a>
-    {% else %}
-      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire&amp;{{ periode_qs }}">par exemplaire</a>
-    {% endif %}
-  </p>
-
-  <h2>Les plus prêtés</h2>
-  {{ tableau(plus) }}
-
-  <h2>Les moins prêtés <small>(jamais sortis inclus)</small></h2>
-  {{ tableau(moins) }}
-</section>
-
 {# LE COMPTOIR HEURE PAR HEURE (lot bilan-4). Tous les chiffres et toutes
    les positions viennent d'app/comptoir.py (`comptoir`, `graphiques`) : ce
    gabarit ne calcule rien, il pose les éléments. Dessiné par le serveur, en
@@ -233,6 +221,64 @@
     </details>
     {% endif %}
   {% endif %}
+</section>
+
+{# POUR LES ACHATS (lot bilan-5). Les chiffres et les phrases viennent
+   d'app/achats.py (`achats`, `ach`) : ce gabarit ne calcule rien. Trois
+   blocs : les jeux dont toutes les boîtes étaient dehors (les premières
+   lignes ; toutes dans l'Excel), le palmarès des plus prêtés jusqu'à 50, et
+   une seule ligne pour les jamais sortis, dont la liste est une feuille de
+   l'Excel. Le palmarès des moins prêtés a quitté la page (il reste dans le
+   PDF jusqu'au lot bilan-7). #}
+<section class="carte" id="achats">
+  <h2>{{ ach.TITRE_SECTION }}</h2>
+  <p>{{ ach.PHRASE_SENS }}</p>
+
+  <h3>{{ ach.TITRE_TOUS_SORTIS }}</h3>
+  {% set tous = achats.tous_sortis %}
+  {% if tous %}
+    <p>{{ ach.PHRASE_TOUS_SORTIS }}</p>
+    <div class="achats-tableau">
+      <table class="detail">
+        <thead><tr>{% for e in ach.ENTETES_TOUS_SORTIS %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for j in tous[:ach.LIGNES_PAGE] %}
+            <tr><th scope="row">{{ j.nom }}</th><td>{{ j.nb_exemplaires }}</td><td>{{ j.total_txt }}</td><td><span class="achats-duree">{{ j.plus_long_txt }}</span> <span class="achats-quand"><span>{{ j.plus_long_de }}</span> <span>{{ j.plus_long_a }}</span></span></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if tous | length > ach.LIGNES_PAGE %}<p class="stats-note">{{ ach.phrase_suite(tous | length) }}</p>{% endif %}
+  {% else %}
+    <p>{{ ach.PHRASE_AUCUN }}</p>
+  {% endif %}
+  {% if achats.ecartes_seuil %}<p class="stats-note">{{ ach.phrase_seuil(achats.ecartes_seuil) }}</p>{% endif %}
+  <p class="stats-note">{{ ach.NOTE_DEFINITIONS }}</p>
+
+  <h3>Les plus prêtés</h3>
+  <p class="stats-bascule">
+    Classement
+    {% if metrique == "exemplaire" %}
+      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total&amp;{{ periode_qs }}#achats">par total</a>
+    {% else %}
+      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire&amp;{{ periode_qs }}#achats">par exemplaire</a>
+    {% endif %}
+  </p>
+  {% if plus %}
+    {{ tableau(plus[:palmares_visible]) }}
+    {% if plus | length > palmares_visible %}
+    <details class="palmares-suite">
+      <summary>Voir la suite du classement</summary>
+      {{ tableau(plus[palmares_visible:]) }}
+    </details>
+    {% endif %}
+  {% else %}
+    <p>Aucun prêt sur la période.</p>
+  {% endif %}
+
+  <h3>{{ ach.TITRE_JAMAIS_SORTIS }}</h3>
+  <p>{{ ach.phrase_jamais_sortis(achats.jamais_sortis | length, achats.nb_titres, periode_txt) }}
+    {% if achats.jamais_sortis %}<a class="lien lien-cible" href="/stats/export.xlsx?{{ qs }}">{{ ach.LIEN_EXCEL }}</a>{% endif %}</p>
 </section>
 
 {# Tombola (série tombola, lot 2) : absente quand le module est masqué pour

@@ -499,7 +499,8 @@ def test_liens_portent_l_edition(benevole, deux_editions):
     html = benevole.get(f"/stats?edition={recente['id']}").text
     assert f'/stats/export.xlsx?tri=total&amp;edition={recente["id"]}"' in html
     assert f'<input type="hidden" name="edition" value="{recente["id"]}">' in html
-    assert f'/stats?tri=exemplaire&amp;edition={recente["id"]}"' in html
+    # La bascule ramène à sa section (lot bilan-5 : « Pour les achats »).
+    assert f'/stats?tri=exemplaire&amp;edition={recente["id"]}#achats"' in html
     autre = benevole.get("/stats?edition=autre&debut=2026-11-14T00:00").text
     assert "/stats/export.xlsx?tri=total&amp;edition=autre&amp;debut=2026-11-14T00%3A00" in autre
 

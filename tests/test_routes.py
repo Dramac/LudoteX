@@ -616,9 +616,10 @@ def test_stats_pochette_cloisonnee(client, tmp_path, monkeypatch):
     assert r.status_code == 200
     # Ni l'en-tête de colonne...
     assert "Pochette" not in r.text
-    # ...ni la valeur. Hors du comptoir heure par heure (lot bilan-4), dont
-    # le tableau porte des COMPTES par heure (« 1 » prêt) et jamais de numéro.
-    hors_comptoir = re.sub(r'<section class="carte" id="comptoir">.*?</section>',
+    # ...ni la valeur. Hors du comptoir heure par heure (lot bilan-4) et de
+    # « Pour les achats » (lot bilan-5), dont les tableaux portent des
+    # COMPTES (« 1 » prêt, « 1 » boîte) et jamais de numéro.
+    hors_comptoir = re.sub(r'<section class="carte" id="(comptoir|achats)">.*?</section>',
                            "", r.text, flags=re.S)
     assert "<td>1</td>" not in hors_comptoir
     # Non-régression : le reste de la page (totaux, palmarès, tableau) est
@@ -633,7 +634,7 @@ def test_stats_pochette_cloisonnee(client, tmp_path, monkeypatch):
     # sur /sortis, avec le lien qui y mène.
     client.cookies.set("jeton_pret", jeton_cookie)
     r2 = client.get("/stats")
-    hors_comptoir = re.sub(r'<section class="carte" id="comptoir">.*?</section>',
+    hors_comptoir = re.sub(r'<section class="carte" id="(comptoir|achats)">.*?</section>',
                            "", r2.text, flags=re.S)
     assert "Pochette" not in r2.text and "<td>1</td>" not in hors_comptoir
     assert 'href="/sortis"' in r2.text
@@ -654,10 +655,13 @@ def test_stats_detail_sans_colonne_emplacement(client, monkeypatch):
 
     r = client.get("/stats")
     assert r.status_code == 200
-    detail = r.text.split("Détail des prêts", 1)[1]
+    detail = r.text.split("<h2>Détail des prêts", 1)[1]
     assert "Pochette" not in detail
-    # La liste elle-même est bien rendue (non-régression).
-    assert "Catan" in detail
+    # La section elle-même est bien rendue (non-régression). Le prêt rendu
+    # dans la minute est une erreur de prêt, hors liste : jusqu'au lot
+    # bilan-5, « Catan » n'était trouvé ici que par le palmarès des moins
+    # prêtés, rendu plus bas que l'étiquette du PDF.
+    assert "Aucun prêt sur la période." in detail
 
 
 def test_stats_export_xlsx_sans_colonne_emplacement(client, tmp_path, monkeypatch):
