@@ -96,6 +96,11 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
   `docs/conception-tombola.md`. Ce que voit le public (écran de salle,
   `/tombola`, accueil) passe par une seule lecture,
   `tombola.numeros_affiches`, sans identifiant de ligne.
+- `editions_evenement` (`AUTOINCREMENT`) : les éditions de l'événement,
+  datées en jours locaux inclus par le bureau. Logique dans `app/editions.py`
+  (conversion en bornes, libellés, refus du chevauchement) ; `/stats` résout
+  `edition=<id>` en `debut` / `fin` **dans la route**, avant tout calcul.
+  Sans rapport avec `tombola_editions` (des sessions de tirages).
 - `categories_jeu` (vocabulaire, `cle` UNIQUE) et `titres_categories`
   (liaison ordonnée par `rang`) : les catégories de jeu en liste. Découpage
   d'une case et clé de rapprochement dans `app/categories_jeu.py`, module pur ;
@@ -186,6 +191,11 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   `SCHEMA_TITRES` de `models.py` ; 2) la mapper dans `COLONNES` + l'INSERT de
   `import_csv.py` ; 3) prévoir une migration `ALTER TABLE` pour les bases déjà
   créées ; 4) l'afficher dans le gabarit voulu.
+- **Ajouter une table** : un `SCHEMA_…` en `CREATE TABLE IF NOT EXISTS` dans
+  `models.py`, ajouté à `SCHEMA_STATEMENTS` ; `init_db` la crée au démarrage
+  et à chaque restauration de sauvegarde, sans autre migration (exemple :
+  `editions_evenement`). Une colonne ajoutée **plus tard** à une table
+  existante, elle, demande son `ALTER TABLE` (`_MIGRATIONS_COLONNES`).
 - **Ajouter une page** : créer `app/routes/xxx.py` exposant un `router`, l'inclure
   dans `app/main.py`, ajouter un gabarit. Mettre la logique dans `services.py`.
 - **Ajouter un filtre catalogue** : étendre `services.lister_catalogue` (clause

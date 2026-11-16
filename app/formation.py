@@ -353,6 +353,12 @@ def _vider_base_pret(conn: sqlite3.Connection) -> None:
     faisait échouer toute réinitialisation (`FOREIGN KEY constraint failed`).
     Les catégories de signalement, elles, sont gardées : ce sont des réglages
     du bureau, pas des données de démonstration.
+
+    Les éditions de l'événement (`editions_evenement`, lot bilan-3) sont
+    gardées aussi, comme `parametres` : ce sont des périodes datées par le
+    bureau, pas des données de démonstration, et la base de formation
+    n'en a que si quelqu'un les y a saisies. Les vider effacerait un réglage
+    pour rien : une édition ne porte aucun prêt.
     """
     for table in ("prets", "pochettes", "signalements", "exemplaires", "titres",
                   "categories_jeu", "fiches_bgg"):

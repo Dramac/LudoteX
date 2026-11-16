@@ -101,6 +101,14 @@ ACTIONS = {
     "alerte_effacee",
     "evenement_date_modifiee",
     "evenement_nom_modifie",
+    # Éditions de l'événement (série bilan, lot 3 ; app/editions.py) : `objet`
+    # porte le nom de l'édition et ses jours — un texte publié par le bureau,
+    # comme le nom de l'événement, pas une donnée personnelle ; `ref` son
+    # identifiant. Écrit au changement réel seulement ; un refus (dates
+    # invalides, chevauchement) n'écrit rien.
+    "edition_creee",
+    "edition_modifiee",
+    "edition_supprimee",
     # Réglage d'impression des étiquettes (/admin/etiquettes) : le code de la
     # boîte y figure ou non. `objet` porte l'état retenu (« affiché » /
     # « masqué ») — un réglage d'affichage, aucune donnée personnelle.

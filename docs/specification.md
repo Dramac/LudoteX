@@ -179,7 +179,10 @@ La base de prêt porte aussi les réglages (`parametres`), le registre des
 appareils autorisés à écrire (`appareils`), les emplacements de rangement et
 le carnet de maintenance (`signalements`, `categories_signalement`), et la
 copie datée des fiches BoardGameGeek (`fiches_bgg`, clé : le numéro BGG, pas
-la référence du titre — deux jeux peuvent partager une fiche). Cette copie
+la référence du titre — deux jeux peuvent partager une fiche), et les
+**éditions de l'événement** (`editions_evenement` : un nom, un premier et un
+dernier jour, inclus), datées par le bureau pour nommer une période des
+statistiques (§7) ; aucun prêt n'y est rattaché. Cette copie
 n'est jamais une donnée du bureau : elle ne remplace aucune valeur, ne part
 pas dans l'export du catalogue, et n'est récupérée que sur demande. Elle garde
 aussi l'**adresse** de la petite image de la boîte chez BGG (`vignette`).
@@ -370,7 +373,9 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   candidats comparés aux nôtres, cases vides pré-remplies après liaison,
   enchaînement d'un jeu au suivant à l'enregistrement et marque
   « pas sur BGG » ; import et export) et étiquettes, jeton et appareils, sauvegarde et restauration des trois bases,
-  supervision, identité, visibilité des modules, clôture de fin d'événement.
+  supervision, identité, visibilité des modules, gestion de l'événement
+  (nom, premier jour, inscriptions aux tournois, et **éditions** : ajout,
+  correction, suppression sans perte de prêt), clôture de fin d'événement.
 - **Mode formation** — une seconde instance du même code, sur ses propres
   bases, pour s'entraîner sur de vraies boîtes sans rien inscrire pour de bon.
   `docs/mode-formation.md`.
@@ -435,7 +440,14 @@ sorties tournoi et les erreurs de prêt sont hors statistiques.
 
 Indicateurs :
 
-- **Nombre total de prêts**, durée moyenne, filtrables par période.
+- **Nombre total de prêts**, durée moyenne, filtrables par période. La
+  période se choisit dans un menu : chaque **édition** datée par le bureau
+  (de la plus récente à la plus ancienne), « Toute la période », ou « Autre
+  période… » (deux heures locales, fin exclusive). Une édition couvre ses
+  jours **en entier**, de minuit au minuit qui suit son dernier jour, heure
+  d'été comprise. Sans choix, la page montre la dernière édition commencée,
+  et à défaut toute la période. Deux éditions ne se chevauchent pas. Les
+  exports portent la même période, nommée.
 - **Palmarès des jeux les plus et les moins prêtés**, agrégé **par titre**
   (`reference_titre`), en deux vues : total brut, ou rapporté au nombre
   d'exemplaires (pour ne pas avantager mécaniquement les titres présents en

@@ -72,6 +72,111 @@
   </form>
 </section>
 
+{# ÉDITIONS (série bilan, lot 3 ; app/editions.py). Sans JS : chaque ligne a
+   un lien « Corriger », qui rouvre cette page avec le formulaire prérempli,
+   et un lien « Supprimer », qui mène à une page de confirmation. Le
+   formulaire sert à l'ajout comme à la correction (champ caché `id_edition`).
+   Les refus sont reliés à leur champ (aria-describedby, aria-invalid), patron
+   de _saisie_manuelle.html et d'admin_fiche.html. #}
+{% set f = formulaire_edition %}
+{% set err = erreurs_edition %}
+<section class="carte" id="editions">
+  <h2>Éditions</h2>
+  <p class="stats-note">
+    Une édition, ce sont les <strong>jours</strong> de l'événement d'une année.
+    Elle sert aux <strong>statistiques</strong>, qui proposent chaque édition
+    dans le menu « Période » au lieu de dates à retaper. Créez-la
+    <strong>avant</strong> l'événement : les jours se corrigent à tout moment,
+    et les prêts déjà enregistrés suivent les nouvelles dates.
+  </p>
+
+  {% if message_edition %}
+    <p class="resultat {{ {'succes': 'resultat-ok', 'info': 'resultat-info'}.get(message_edition[0], 'resultat-attention') }}"
+       role="{{ 'status' if message_edition[0] in ('succes', 'info') else 'alert' }}">
+      {{ message_edition[1] }}
+    </p>
+  {% endif %}
+
+  {% if editions %}
+  <ul class="editions-liste">
+    {% for e in editions %}
+      <li class="edition-ligne">
+        <span class="edition-nom">{{ e.nom }}</span>
+        <span class="edition-dates">{{ e.dates }}</span>
+        <span class="edition-actions">
+          <a class="lien" href="/admin/evenement?edition={{ e.id }}#edition-form"
+             aria-label="Corriger l'édition {{ e.nom }}">Corriger</a>
+          <a class="lien" href="/admin/evenement/editions/{{ e.id }}/supprimer"
+             aria-label="Supprimer l'édition {{ e.nom }}">Supprimer</a>
+        </span>
+      </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>Aucune édition pour l'instant : les statistiques montrent toute la période.</p>
+  {% endif %}
+
+  <form method="post" action="/admin/evenement/editions" class="recherche-form edition-form"
+        id="edition-form">
+    <h3>{% if f.id %}Corriger l'édition « {{ f.nom }} »{% else %}Ajouter une édition{% endif %}</h3>
+    {% if f.id %}<input type="hidden" name="id_edition" value="{{ f.id }}">{% endif %}
+    <div class="champ">
+      <label for="edition_nom">Nom de l'édition</label>
+      <input type="text" id="edition_nom" name="nom" maxlength="{{ longueur_nom_edition }}"
+             value="{{ f.nom or '' }}" placeholder="Festival du jeu 2026"
+             aria-describedby="edition_nom-aide">
+      <small class="stats-note" id="edition_nom-aide">
+        {{ longueur_nom_edition }} caractères au plus. Laissez vide pour
+        « Édition » suivi de l'année.
+      </small>
+    </div>
+    <div class="champ">
+      <label for="edition_premier">Premier jour</label>
+      <input type="date" id="edition_premier" name="premier_jour" required
+             value="{{ f.premier_jour or '' }}"
+             {%- if err.premier_jour %} aria-invalid="true" aria-describedby="edition_premier-erreur" autofocus{% endif %}>
+      {% if err.premier_jour %}
+        <p class="resultat resultat-attention" id="edition_premier-erreur">{{ err.premier_jour }}
+          {%- if conflit_edition %}
+          <a class="lien" href="/admin/evenement?edition={{ conflit_edition.id }}#edition-form">Corriger « {{ conflit_edition.nom }} »</a>
+          {%- endif %}
+        </p>
+      {% endif %}
+    </div>
+    <div class="champ">
+      <label for="edition_dernier">Dernier jour</label>
+      <input type="date" id="edition_dernier" name="dernier_jour"
+             value="{{ f.dernier_jour or '' }}"
+             aria-describedby="{% if err.dernier_jour %}edition_dernier-erreur {% endif %}edition_dernier-aide"
+             {%- if err.dernier_jour %} aria-invalid="true"{% if not err.premier_jour %} autofocus{% endif %}{% endif %}>
+      {% if err.dernier_jour %}
+        <p class="resultat resultat-attention" id="edition_dernier-erreur">{{ err.dernier_jour }}</p>
+      {% endif %}
+      <small class="stats-note" id="edition_dernier-aide">
+        Inclus : les prêts de ce jour-là comptent jusqu'à minuit. Laissez vide
+        pour un événement d'un seul jour.
+      </small>
+    </div>
+    <div class="recherche-actions">
+      <button type="submit" class="bouton-filtrer">Enregistrer l'édition</button>
+      {% if f.id %}<a class="lien" href="/admin/evenement#editions">Annuler la correction</a>{% endif %}
+    </div>
+  </form>
+
+  {# Préremplissage depuis les réglages ci-dessus : un lien (GET), qui
+     n'enregistre rien. Proposé seulement quand il y a de quoi préremplir et
+     que le formulaire n'est pas déjà en correction. #}
+  {% if not f.id and (nom_evenement or date_evenement) %}
+  <form method="get" action="/admin/evenement#edition-form" class="edition-depuis">
+    <input type="hidden" name="depuis_evenement" value="1">
+    <button type="submit" class="bouton-filtrer bouton-filtrer--secondaire"
+            aria-describedby="edition-depuis-aide">Créer l'édition à partir de l'événement</button>
+    <small class="stats-note" id="edition-depuis-aide">Reprend le nom et le premier
+      jour réglés plus haut, sans rien enregistrer.</small>
+  </form>
+  {% endif %}
+</section>
+
 {# Les autres réglages qui concernent l'événement gardent leurs pages propres :
    cette page ne fait qu'y renvoyer, elle n'en absorbe aucun. #}
 <section class="carte">

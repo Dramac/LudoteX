@@ -30,8 +30,8 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 
 from app import (admin_auth, auth, bgg, bgg_api, bgg_recherche, carnet,
-                 categories_jeu, classement, envois, exports, formation, journal, logo,
-                 sauvegarde, services, supervision, vignettes)
+                 categories_jeu, classement, editions, envois, exports, formation,
+                 journal, logo, sauvegarde, services, supervision, vignettes)
 from app.auth import secondes_avant_essai, trop_de_tentatives  # limite de débit
 from app.config import MODE_FORMATION
 from app.db import get_connection
@@ -2930,8 +2930,51 @@ def identite_logo_retirer(request: Request):
     return _page_identite(request, saisies, message)
 
 
+def _rendre_evenement(request: Request, contexte: dict, status_code: int = 200):
+    """
+    Rend « Gestion de l'événement » : les trois réglages de `contexte`, plus
+    la section des éditions (série bilan, lot 3), relue ici à chaque rendu
+    pour que tous les chemins — enregistrement, refus, correction — montrent
+    la même liste.
+
+    `formulaire_edition` (facultatif dans `contexte`) : les valeurs du
+    formulaire d'édition à réafficher, `erreurs_edition` ses refus par champ,
+    `message_edition` le message de la section, (genre, texte).
+    """
+    conn = get_connection()
+    try:
+        liste = editions.lister(conn)
+    finally:
+        conn.close()
+    for edition in liste:
+        edition["dates"] = editions.dates_fr(edition, annee=True)
+    contexte = {
+        "message": None,
+        "editions": liste,
+        "formulaire_edition": {"id": None, "nom": "", "premier_jour": "",
+                               "dernier_jour": ""},
+        "erreurs_edition": {},
+        "message_edition": None,
+        "conflit_edition": None,
+        "longueur_nom_edition": editions.LONGUEUR_NOM,
+        **contexte,
+    }
+    return templates.TemplateResponse(request, "admin_evenement.html", contexte,
+                                      status_code=status_code)
+
+
+def _reglages_evenement(conn) -> dict:
+    """Les trois réglages de l'événement, tels qu'ils sont en base."""
+    return {
+        "date_evenement": services.lire_parametre(conn, "evenement_date"),
+        "nom_evenement": services.lire_nom_evenement(conn),
+        "inscription_tournoi": services.lire_inscription_tournoi(conn),
+    }
+
+
 @router.get("/evenement")
-def evenement_formulaire(request: Request):
+def evenement_formulaire(request: Request, edition: str = "",
+                         depuis_evenement: str = ""):
     """
     « Gestion de l'événement » : le nom de l'édition et sa date, plus des liens
     vers les autres réglages qui la concernent (écran de salle, types de
@@ -2940,21 +2983,33 @@ def evenement_formulaire(request: Request):
     L'URL reste `/admin/evenement` : elle est liée depuis le tableau de bord et
     depuis `admin_aide.html`, et rien ne justifie de casser ces liens pour un
     changement de titre.
+
+    Section « Éditions » (série bilan, lot 3) :
+    - `?edition=<id>` ouvre le formulaire en correction de cette édition ; un
+      identifiant inconnu le dit et laisse le formulaire d'ajout ;
+    - `?depuis_evenement=1` préremplit le formulaire d'ajout avec le nom et le
+      premier jour réglés plus haut, SANS RIEN ENREGISTRER. Pas de couplage
+      automatique (arbitrage du lot) : ces deux réglages servent l'accueil et
+      le programme, et une édition passée ne doit pas les suivre.
     """
     if (garde := _garde(request)):
         return garde
     conn = get_connection()
     try:
-        valeur = services.lire_parametre(conn, "evenement_date")
-        nom = services.lire_nom_evenement(conn)
-        inscription = services.lire_inscription_tournoi(conn)
+        contexte = _reglages_evenement(conn)
+        a_corriger = editions.lire(conn, int(edition)) if edition.isdigit() else None
     finally:
         conn.close()
-    return templates.TemplateResponse(
-        request, "admin_evenement.html",
-        {"date_evenement": valeur, "nom_evenement": nom,
-         "inscription_tournoi": inscription, "message": None},
-    )
+    if a_corriger is not None:
+        contexte["formulaire_edition"] = a_corriger
+    elif edition:
+        contexte["message_edition"] = ("attention", MESSAGE_EDITION_DISPARUE)
+    elif depuis_evenement:
+        contexte["formulaire_edition"] = {
+            "id": None, "nom": contexte["nom_evenement"] or "",
+            "premier_jour": contexte["date_evenement"] or "", "dernier_jour": ""}
+        contexte["message_edition"] = ("info", MESSAGE_EDITION_PREREMPLIE)
+    return _rendre_evenement(request, contexte)
 
 
 @router.post("/evenement")
@@ -2999,8 +3054,8 @@ def evenement_enregistrer(
                 request, "admin", "evenement_date_modifiee",
                 objet=saisie, ok=False, detail="date_invalide",
             )
-            return templates.TemplateResponse(
-                request, "admin_evenement.html",
+            return _rendre_evenement(
+                request,
                 {"date_evenement": saisie, "nom_evenement": saisie_nom,
                  "inscription_tournoi": saisie_inscription,
                  "message": ("erreur", "Date invalide (format attendu : AAAA-MM-JJ).")},
@@ -3043,12 +3098,159 @@ def evenement_enregistrer(
         "Inscriptions aux tournois réservées aux bénévoles."
         if saisie_inscription == "benevoles"
         else "Inscriptions aux tournois ouvertes aux visiteurs.")
-    return templates.TemplateResponse(
-        request, "admin_evenement.html",
+    return _rendre_evenement(
+        request,
         {"date_evenement": saisie or None, "nom_evenement": saisie_nom or None,
          "inscription_tournoi": saisie_inscription,
          "message": ("succes", f"{partie_nom} {partie_date} {partie_inscription}")},
     )
+
+
+# ---------------------------------------------------------------------------
+# Éditions de l'événement (série bilan, lot 3 ; app/editions.py)
+# ---------------------------------------------------------------------------
+# Messages de la section, importés par les tests plutôt que recopiés.
+MESSAGE_EDITION_DISPARUE = ("Cette édition n'existe plus : elle a sans doute été "
+                            "supprimée entre-temps. Vous pouvez en ajouter une "
+                            "ci-dessous.")
+MESSAGE_EDITION_PREREMPLIE = ("Formulaire prérempli avec le nom et le premier jour "
+                              "de l'événement. Rien n'est enregistré : vérifiez "
+                              "les jours, puis appuyez sur « Enregistrer "
+                              "l'édition ».")
+
+
+def _objet_edition(edition: dict) -> str:
+    """`objet` du journal : le nom et les jours, textes publiés par le bureau."""
+    return f"{edition['nom']} ({edition['premier_jour']} → {edition['dernier_jour']})"
+
+
+@router.post("/evenement/editions")
+def edition_enregistrer(
+    request: Request,
+    id_edition: str = Form(""),
+    nom: str = Form(""),
+    premier_jour: str = Form(""),
+    dernier_jour: str = Form(""),
+):
+    """
+    Ajoute une édition (`id_edition` vide) ou corrige celle qui est nommée.
+
+    Comme la date invalide de l'événement : un refus — date manquante ou
+    invalide, jours dans le désordre, chevauchement avec une autre édition —
+    n'écrit RIEN et réaffiche le formulaire avec ce qui a été tapé, le
+    message relié au champ fautif. Un chevauchement propose de corriger
+    l'autre édition, d'un tap. Le journal n'écrit qu'un changement réel : un
+    envoi identique à ce qui est en base n'y laisse rien.
+    """
+    if (garde := _garde(request)):
+        return garde
+    ident = int(id_edition) if id_edition.strip().isdigit() else None
+    valeurs, erreurs = editions.lire_saisie(nom, premier_jour, dernier_jour)
+    formulaire = {"id": ident, **valeurs}
+    conn = get_connection()
+    try:
+        contexte = _reglages_evenement(conn)
+        issue, edition = ((None, None) if erreurs
+                          else editions.enregistrer(conn, valeurs, ident))
+    finally:
+        conn.close()
+
+    if erreurs:
+        contexte.update(formulaire_edition=formulaire, erreurs_edition=erreurs,
+                        message_edition=("attention", "Édition non enregistrée : "
+                                         "corrigez la date indiquée."))
+        return _rendre_evenement(request, contexte, status_code=400)
+    if issue == "chevauchement":
+        contexte.update(
+            formulaire_edition=formulaire, conflit_edition=edition,
+            erreurs_edition={"premier_jour": (
+                f"Ces jours croisent ceux de l'édition « {edition['nom']} » "
+                f"({editions.dates_fr(edition, annee=True)}). Deux éditions ne "
+                "peuvent pas se chevaucher : corrigez l'une des deux.")},
+            message_edition=("attention", "Édition non enregistrée : ses jours "
+                             "chevauchent une autre édition."))
+        return _rendre_evenement(request, contexte, status_code=409)
+    if issue == "introuvable":
+        contexte.update(formulaire_edition={**formulaire, "id": None},
+                        message_edition=("attention", MESSAGE_EDITION_DISPARUE))
+        return _rendre_evenement(request, contexte, status_code=404)
+
+    textes = {
+        "creee": "Édition ajoutée",
+        "modifiee": "Édition corrigée",
+        "inchangee": "Rien à changer : l'édition était déjà ainsi",
+    }
+    if issue in ("creee", "modifiee"):
+        journal.journaliser(request, "admin", f"edition_{issue}",
+                            objet=_objet_edition(edition), ref=str(edition["id"]))
+    contexte["message_edition"] = (
+        "succes", f"{textes[issue]} : « {edition['nom']} », "
+        f"{editions.dates_fr(edition, annee=True)}.")
+    return _rendre_evenement(request, contexte)
+
+
+@router.get("/evenement/editions/{id_edition:int}/supprimer")
+def edition_supprimer_confirmation(request: Request, id_edition: int):
+    """
+    Page de confirmation, sans JS (patron de la suppression d'un élément du
+    programme) : elle dit ce que la suppression NE fait PAS — aucun prêt
+    supprimé. Une édition déjà partie renvoie à la page, avec un message.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        edition = editions.lire(conn, id_edition)
+        contexte = _reglages_evenement(conn) if edition is None else {}
+    finally:
+        conn.close()
+    if edition is None:
+        contexte["message_edition"] = ("attention", MESSAGE_EDITION_DISPARUE)
+        return _rendre_evenement(request, contexte, status_code=404)
+    edition["dates"] = editions.dates_fr(edition, annee=True)
+    return templates.TemplateResponse(
+        request, "admin_edition_supprimer.html",
+        {"edition": edition, "erreur": None})
+
+
+@router.post("/evenement/editions/{id_edition:int}/supprimer")
+def edition_supprimer(request: Request, id_edition: int,
+                      confirmation: str = Form("")):
+    """
+    Retire l'édition si la case est cochée — la période nommée seulement :
+    les prêts restent, et la page des statistiques les montre toujours dans
+    « Toute la période ». Case non cochée : la page de confirmation revient,
+    rien n'est retiré. Double envoi : la seconde fois, rien à retirer, rien
+    au journal.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        if confirmation != "oui":
+            edition = editions.lire(conn, id_edition)
+            if edition is not None:
+                edition["dates"] = editions.dates_fr(edition, annee=True)
+                return templates.TemplateResponse(
+                    request, "admin_edition_supprimer.html",
+                    {"edition": edition,
+                     "erreur": "Cochez la case pour confirmer la suppression."},
+                    status_code=400)
+            retiree = None
+        else:
+            retiree = editions.supprimer(conn, id_edition)
+        contexte = _reglages_evenement(conn)
+    finally:
+        conn.close()
+    if retiree is None:
+        contexte["message_edition"] = ("attention", MESSAGE_EDITION_DISPARUE)
+        return _rendre_evenement(request, contexte, status_code=404)
+    journal.journaliser(request, "admin", "edition_supprimee",
+                        objet=_objet_edition(retiree), ref=str(retiree["id"]))
+    contexte["message_edition"] = (
+        "succes", f"Édition « {retiree['nom']} » supprimée. Aucun prêt n'a été "
+        "supprimé : ils restent dans « Toute la période » des statistiques.")
+    return _rendre_evenement(request, contexte)
 
 
 def _reglages_alerte(conn) -> dict:

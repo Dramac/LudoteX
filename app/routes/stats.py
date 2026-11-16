@@ -11,9 +11,22 @@ horaire, et liste détaillée des prêts. Toutes les données proviennent de
 `services.collecter_stats`.
 
 Paramètres de requête (combinables) :
-    tri    = total | exemplaire     -> métrique des palmarès.
-    debut  = 'AAAA-MM-JJTHH:MM'      -> borne basse (heure LOCALE) sur date_sortie.
-    fin    = 'AAAA-MM-JJTHH:MM'      -> borne haute (heure locale, EXCLUSIVE).
+    tri     = total | exemplaire     -> métrique des palmarès.
+    edition = <id> | tout | autre    -> la période (lot bilan-3, voir plus bas).
+    debut   = 'AAAA-MM-JJTHH:MM'     -> borne basse (heure LOCALE) sur date_sortie.
+    fin     = 'AAAA-MM-JJTHH:MM'     -> borne haute (heure locale, EXCLUSIVE).
+
+LA PÉRIODE (lot bilan-3, `_choisir_periode`). `edition` est résolu en `debut`
+/ `fin` par la route, AVANT tout calcul : les services, la tombola, les
+exports et le libellé reçoivent la même paire qu'avant ce lot.
+- `edition=<id>` : les jours de cette édition (`editions.periode_locale`) ;
+  `debut` et `fin` sont alors IGNORÉS — le menu l'emporte.
+- `edition=tout` : toute la période. `edition=autre` : `debut` / `fin`.
+- sans `edition` : `debut` / `fin` s'il y en a (liens d'avant ce lot) ;
+  sinon l'édition par défaut (`editions.par_defaut`), et à défaut toute la
+  période — une base sans édition se comporte exactement comme avant.
+- une `edition` inconnue, supprimée ou forgée : toute la période, avec une
+  phrase qui le dit. Jamais de 404 ni de 500.
 
 Exports : /stats/export.xlsx et /stats/export.pdf (mêmes paramètres → mêmes
 chiffres que la page, période comprise).
@@ -31,7 +44,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import exports, services, tombola
+from app import editions, exports, services, tombola
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
@@ -85,11 +98,69 @@ def _params(tri: str, debut: str | None, fin: str | None) -> tuple[str, str | No
     return metrique, (debut or "").strip() or None, (fin or "").strip() or None
 
 
-@router.get("/stats")
-def stats(request: Request, tri: str = "total", debut: str | None = None,
-          fin: str | None = None):
+# Valeurs du menu « Période » qui ne sont pas des éditions.
+EDITION_TOUT = "tout"
+EDITION_AUTRE = "autre"
+MESSAGE_EDITION_INCONNUE = ("Cette édition n'existe pas ou a été supprimée : "
+                            "les chiffres portent sur toute la période.")
+
+
+def _choisir_periode(conn, edition: str | None, debut: str | None,
+                     fin: str | None, aujourd_hui=None) -> dict:
     """
-    Page des statistiques (avec filtre de période et liste détaillée).
+    Résout le choix de période (règles en tête de module).
+
+    Returns:
+        {"choix": "<id>" | "tout" | "autre", "edition": dict | None,
+         "debut", "fin" (heures locales saisies, ou None),
+         "message": phrase à afficher, ou None}
+    """
+    edition = (edition or "").strip()
+    if not edition:
+        if debut or fin:
+            edition = EDITION_AUTRE
+        else:
+            defaut = editions.par_defaut(conn, aujourd_hui)
+            edition = str(defaut["id"]) if defaut else EDITION_TOUT
+    if edition == EDITION_AUTRE:
+        return {"choix": EDITION_AUTRE, "edition": None, "debut": debut,
+                "fin": fin, "message": None}
+    if edition == EDITION_TOUT:
+        return {"choix": EDITION_TOUT, "edition": None, "debut": None,
+                "fin": None, "message": None}
+    trouvee = editions.lire(conn, int(edition)) if edition.isdigit() else None
+    if trouvee is None:
+        return {"choix": EDITION_TOUT, "edition": None, "debut": None,
+                "fin": None, "message": MESSAGE_EDITION_INCONNUE}
+    debut, fin = editions.periode_locale(trouvee)
+    return {"choix": str(trouvee["id"]), "edition": trouvee, "debut": debut,
+            "fin": fin, "message": None}
+
+
+def _libelle(periode: dict) -> str:
+    """Le libellé de la période : l'édition nommée, sinon les heures saisies."""
+    if periode["edition"]:
+        return editions.libelle_periode(periode["edition"])
+    return _periode_txt(periode["debut"], periode["fin"])
+
+
+def _qs_periode(periode: dict) -> dict:
+    """
+    Les paramètres qui reproduisent ce choix dans un lien (exports, bascule
+    du classement) : toujours explicites, pour qu'un export téléchargé
+    demain porte la même période que la page vue aujourd'hui.
+    """
+    qs = {"edition": periode["choix"]}
+    if periode["choix"] == EDITION_AUTRE:
+        qs.update({k: periode[k] for k in ("debut", "fin") if periode[k]})
+    return qs
+
+
+@router.get("/stats")
+def stats(request: Request, tri: str = "total", edition: str | None = None,
+          debut: str | None = None, fin: str | None = None):
+    """
+    Page des statistiques (avec choix de la période et liste détaillée).
 
     Un paramètre `q` vient d'un ancien lien : la recherche des jeux sortis
     (1.34), partie avec sa section sur `/sortis`. On l'y renvoie, avec le
@@ -100,12 +171,14 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
         recherche = urlencode({"q": request.query_params["q"]})
         return RedirectResponse(f"/sortis?{recherche}", status_code=307)
     metrique, debut, fin = _params(tri, debut, fin)
-    # Conversion des bornes locales saisies -> UTC pour interroger la base.
-    debut_utc = services.local_vers_utc_iso(debut)
-    fin_utc = services.local_vers_utc_iso(fin)
 
     conn = get_connection()
     try:
+        periode = _choisir_periode(conn, edition, debut, fin)
+        liste_editions = editions.lister(conn)
+        # Conversion des bornes locales -> UTC pour interroger la base.
+        debut_utc = services.local_vers_utc_iso(periode["debut"])
+        fin_utc = services.local_vers_utc_iso(periode["fin"])
         data = services.collecter_stats(conn, metrique, debut_utc, fin_utc,
                                          limite_prets=LIMITE_PRETS_PAGE)
         stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
@@ -113,30 +186,40 @@ def stats(request: Request, tri: str = "total", debut: str | None = None,
         conn.close()
 
     max_heure = max((h["n"] for h in data["par_heure"]), default=0)
-    # Query string pour conserver les filtres dans les liens d'export.
-    qs = urlencode({k: v for k, v in
-                    {"tri": tri, "debut": debut, "fin": fin}.items() if v})
+    # Query string pour conserver le tri et la période dans les liens d'export,
+    # et la période seule dans la bascule du classement.
+    qs_periode = _qs_periode(periode)
+    qs = urlencode({"tri": metrique, **qs_periode})
     return templates.TemplateResponse(
         request, "stats.html",
         {"g": data["globales"], "plus": data["plus"], "moins": data["moins"],
          "par_heure": data["par_heure"], "max_heure": max_heure,
          "metrique": metrique, "prets": data["prets"],
-         "debut": debut or "", "fin": fin or "",
-         "periode_txt": _periode_txt(debut, fin), "qs": qs,
-         "tombola": stats_tombola},
+         "choix": periode["choix"], "message_periode": periode["message"],
+         "options_editions": [{"id": str(e["id"]), "libelle": editions.libelle_menu(e)}
+                              for e in liste_editions],
+         "debut": (periode["debut"] or "") if periode["choix"] == EDITION_AUTRE else "",
+         "fin": (periode["fin"] or "") if periode["choix"] == EDITION_AUTRE else "",
+         "periode_txt": _libelle(periode), "qs": qs,
+         "periode_qs": urlencode(qs_periode), "qs_periode": qs_periode,
+         "tombola": stats_tombola,
+         "libelle_sessions_tombola": exports.TITRE_TOMBOLA_SESSIONS},
     )
 
 
-def _exporter(request: Request, tri: str, debut: str | None, fin: str | None):
+def _exporter(request: Request, tri: str, edition: str | None,
+              debut: str | None, fin: str | None):
     """
     Collecte les données complètes (toutes lignes) pour un export, et celles
-    de la tombola (None si la section n'a pas lieu d'être).
+    de la tombola (None si la section n'a pas lieu d'être). Même résolution
+    de la période que la page : mêmes paramètres, mêmes chiffres.
     """
     metrique, debut, fin = _params(tri, debut, fin)
-    debut_utc = services.local_vers_utc_iso(debut)
-    fin_utc = services.local_vers_utc_iso(fin)
     conn = get_connection()
     try:
+        periode = _choisir_periode(conn, edition, debut, fin)
+        debut_utc = services.local_vers_utc_iso(periode["debut"])
+        fin_utc = services.local_vers_utc_iso(periode["fin"])
         data = services.collecter_stats(
             conn, metrique, debut_utc, fin_utc,
             limite_prets=None,  # toutes les lignes dans l'export
@@ -144,14 +227,14 @@ def _exporter(request: Request, tri: str, debut: str | None, fin: str | None):
         stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
     finally:
         conn.close()
-    return data, _periode_txt(debut, fin), stats_tombola
+    return data, _libelle(periode), stats_tombola
 
 
 @router.get("/stats/export.xlsx")
-def export_xlsx(request: Request, tri: str = "total", debut: str | None = None,
-                fin: str | None = None):
+def export_xlsx(request: Request, tri: str = "total", edition: str | None = None,
+                debut: str | None = None, fin: str | None = None):
     """Télécharge les statistiques au format Excel (.xlsx)."""
-    data, periode, stats_tombola = _exporter(request, tri, debut, fin)
+    data, periode, stats_tombola = _exporter(request, tri, edition, debut, fin)
     contenu = exports.construire_xlsx(data, periode, tombola=stats_tombola)
     return Response(
         content=contenu,
@@ -161,8 +244,8 @@ def export_xlsx(request: Request, tri: str = "total", debut: str | None = None,
 
 
 @router.get("/stats/export.pdf")
-def export_pdf(request: Request, tri: str = "total", debut: str | None = None,
-               fin: str | None = None):
+def export_pdf(request: Request, tri: str = "total", edition: str | None = None,
+               debut: str | None = None, fin: str | None = None):
     """
     Télécharge les statistiques au format PDF, avec sections au choix.
 
@@ -173,7 +256,7 @@ def export_pdf(request: Request, tri: str = "total", debut: str | None = None,
     par défaut côté page). Une section « tombola » demandée sans données ne
     produit rien.
     """
-    data, periode, stats_tombola = _exporter(request, tri, debut, fin)
+    data, periode, stats_tombola = _exporter(request, tri, edition, debut, fin)
     defaut = set(SECTIONS_PDF_DEFAUT) | ({"tombola"} if stats_tombola else set())
     sections = set(request.query_params.getlist("sections")) or defaut
     sections &= set(exports.SECTIONS_PDF)  # ne garder que les sections connues

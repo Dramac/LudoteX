@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titre %}Supprimer l'édition — Administration — {{ nom_association }}{% endblock %}
+
+{# Confirmation sans JS (série bilan, lot 3), patron de programme_supprimer.html :
+   une page à part et une case à cocher. Elle dit d'abord ce que la
+   suppression NE fait PAS : aucun prêt n'est rattaché à une édition. #}
+{% block contenu %}
+<section class="carte">
+  <h1>Supprimer l'édition</h1>
+  <div class="resultat resultat-attention">
+    <p>
+      Vous allez supprimer l'édition « <strong>{{ edition.nom }}</strong> »
+      ({{ edition.dates }}).
+    </p>
+    <p>
+      <strong>Aucun prêt n'est supprimé.</strong> Seul le nom de cette période
+      disparaît du menu « Période » des statistiques. Les prêts de ces jours-là
+      restent dans « Toute la période », et vous pouvez recréer l'édition à
+      tout moment.
+    </p>
+  </div>
+
+  <form method="post" action="/admin/evenement/editions/{{ edition.id }}/supprimer"
+        class="edition-supprimer">
+    <label class="case">
+      <input type="checkbox" name="confirmation" value="oui" required
+             {%- if erreur %} aria-invalid="true" aria-describedby="confirmation-erreur" autofocus{% endif %}>
+      Je confirme vouloir supprimer cette édition.
+    </label>
+    {% if erreur %}<p class="resultat resultat-attention" id="confirmation-erreur">{{ erreur }}</p>{% endif %}
+    <button type="submit" class="bouton bouton-principal">Supprimer l'édition</button>
+  </form>
+
+  <p class="lien-fiche"><a class="lien" href="/admin/evenement#editions">Annuler</a></p>
+</section>
+{% endblock %}

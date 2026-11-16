@@ -100,7 +100,7 @@ avec son propre schéma, ses migrations et son initialisation :
 
 | Base | Schéma | Tables |
 | --- | --- | --- |
-| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg`, `annonces_ecran`, `tombola_editions`, `tombola_tirages`, `tombola_numeros` |
+| Prêt | `app/models.py` | `titres`, `categories_jeu`, `titres_categories`, `exemplaires`, `prets`, `pochettes`, `parametres`, `appareils`, `emplacements_rangement`, `signalements`, `categories_signalement`, `fiches_bgg`, `annonces_ecran`, `tombola_editions`, `tombola_tirages`, `tombola_numeros`, `editions_evenement` |
 | Tournois | `app/tournoi/models.py` | `tournois`, `inscriptions`, `rencontres`, `types_programme`, `programme`, `publics_programme`, `programme_publics`, `programme_jeux` |
 | Planning | `app/planning/models.py` | `evenements`, `postes`, `creneaux`, `besoins`, `benevoles`, `disponibilites`, `preferences`, `affectations` |
 
@@ -176,8 +176,9 @@ livré, par module :
   non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue
   « pochette pas vide » qui prévient le bureau, clôture de fin d'événement.
 - **Statistiques** (`/stats`) — totaux, palmarès, histogramme horaire, durées,
-  filtre par période, liste détaillée, jeux actuellement sortis, exports Excel
-  et PDF à sections cochables.
+  période au choix (éditions datées par le bureau dans « Événement », toute
+  la période ou dates libres), liste détaillée, exports Excel et PDF à
+  sections cochables.
 - **Tournois** (`/tournois`) — quatre modes de scoring (`app/tournoi/services.py`,
   `MODES_SCORING` : high score, ronde suisse, round robin, élimination directe),
   tournois **par équipes**, option BO3, inscription publique avec code de

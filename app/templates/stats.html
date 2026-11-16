@@ -2,8 +2,8 @@
 {% block titre %}Statistiques — {{ nom_association }}{% endblock %}
 {% block conteneur_extra %}contenu-large{% endblock %}
 
-{# Suffixe de query string pour conserver la période dans les bascules de tri #}
-{% set periode_qs = (("&debut=" ~ debut) if debut else "") ~ (("&fin=" ~ fin) if fin else "") %}
+{# `periode_qs` (fourni par la route) : la période choisie, à recopier dans
+   les bascules de tri — explicite, édition comprise (lot bilan-3). #}
 
 {% macro tableau(titres) %}
   <ol class="palmares">
@@ -53,10 +53,38 @@
     <div class="chiffre"><span class="chiffre-val" title="Jeux rendus moins d'une minute après leur sortie : mauvaise boîte scannée, ou visiteur qui se ravise. Non comptés dans les chiffres ci-dessus.">{{ g.erreurs }}</span><span class="chiffre-lib">{{ pluriel(g.erreurs, 'erreur de prêt', 'erreurs de prêt') }}</span></div>
   </div>
 
-  <details class="recherche" {% if debut or fin %}open{% endif %}>
-    <summary>Filtrer par période</summary>
-    <form method="get" action="/stats" class="recherche-form">
+  {# CHOIX DE LA PÉRIODE (lot bilan-3). Deux formulaires, sans JS :
+     - le menu « Période » : chaque édition (de la plus récente à la plus
+       ancienne), « Toute la période », « Autre période… » ; il n'envoie
+       jamais de dates, donc aucun conflit possible avec les deux champs ;
+     - « Autre période… » : les deux champs d'avant ce lot, dans leur propre
+       formulaire qui envoie `edition=autre`. Choisir « Autre période… » dans
+       le menu rouvre ce volet (attribut `open`).
+     La règle de priorité (le menu l'emporte) est écrite en tête de
+     app/routes/stats.py. #}
+  {% if message_periode %}<p class="resultat resultat-attention" role="status">{{ message_periode }}</p>{% endif %}
+  <form method="get" action="/stats" class="recherche-form stats-periode">
+    <input type="hidden" name="tri" value="{{ metrique }}">
+    <div class="champ">
+      <label for="edition">Période</label>
+      <select id="edition" name="edition">
+        {% for e in options_editions %}
+          <option value="{{ e.id }}" {% if choix == e.id %}selected{% endif %}>{{ e.libelle }}</option>
+        {% endfor %}
+        <option value="tout" {% if choix == "tout" %}selected{% endif %}>Toute la période</option>
+        <option value="autre" {% if choix == "autre" %}selected{% endif %}>Autre période…</option>
+      </select>
+    </div>
+    <div class="recherche-actions">
+      <button type="submit" class="bouton-filtrer">Afficher</button>
+    </div>
+  </form>
+
+  <details class="recherche stats-autre-periode" {% if choix == "autre" %}open{% endif %}>
+    <summary>Autre période…</summary>
+    <form method="get" action="/stats" class="recherche-form stats-periode">
       <input type="hidden" name="tri" value="{{ metrique }}">
+      <input type="hidden" name="edition" value="autre">
       <div class="champ">
         <label for="debut">Début</label>
         <input type="datetime-local" id="debut" name="debut" value="{{ debut }}">
@@ -82,8 +110,7 @@
     <summary>Export PDF (choisir les sections)</summary>
     <form method="get" action="/stats/export.pdf" class="recherche-form">
       <input type="hidden" name="tri" value="{{ metrique }}">
-      {% if debut %}<input type="hidden" name="debut" value="{{ debut }}">{% endif %}
-      {% if fin %}<input type="hidden" name="fin" value="{{ fin }}">{% endif %}
+      {% for cle, valeur in qs_periode.items() %}<input type="hidden" name="{{ cle }}" value="{{ valeur }}">{% endfor %}
       <label class="case"><input type="checkbox" name="sections" value="synthese" checked> Synthèse</label>
       <label class="case"><input type="checkbox" name="sections" value="plus" checked> Palmarès des plus prêtés</label>
       <label class="case"><input type="checkbox" name="sections" value="moins" checked> Palmarès des moins prêtés</label>
@@ -100,9 +127,9 @@
   <p class="stats-bascule">
     Classement
     {% if metrique == "exemplaire" %}
-      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total{{ periode_qs }}">par total</a>
+      <strong>par exemplaire</strong> · <a class="lien" href="/stats?tri=total&amp;{{ periode_qs }}">par total</a>
     {% else %}
-      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire{{ periode_qs }}">par exemplaire</a>
+      <strong>par total</strong> · <a class="lien" href="/stats?tri=exemplaire&amp;{{ periode_qs }}">par exemplaire</a>
     {% endif %}
   </p>
 
@@ -170,10 +197,12 @@
     </tbody>
   </table>
 
-  {# Une ligne par édition seulement quand la période en couvre plusieurs :
-     sinon le tableau répéterait la synthèse. #}
+  {# Une ligne par session de tombola (`tombola_editions`) seulement quand la
+     période en couvre plusieurs : sinon le tableau répéterait la synthèse.
+     « Session », et non « édition » depuis le lot bilan-3 : une édition est
+     désormais une période de l'événement, datée par le bureau. #}
   {% if tombola.par_edition | length > 1 %}
-  <h3>Par édition</h3>
+  <h3>{{ libelle_sessions_tombola }}</h3>
   <table class="detail">
     <thead><tr><th>Ouverte le</th><th>Close le</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
     <tbody>

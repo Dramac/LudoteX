@@ -65,14 +65,21 @@ def synthese_tombola(t: dict) -> list[tuple[str, object]]:
 
 ENTETES_TOMBOLA_TIRAGE = ["Tirage", "Mode", "Numéros", "Remis", "Délai médian"]
 ENTETES_TOMBOLA_MODE = ["Mode", "Tirages", "Numéros", "Remis", "Délai médian"]
-ENTETES_TOMBOLA_EDITION = ["Édition ouverte le", "Close le", "Tirages", "Numéros",
+# « Session de tombola », et non « édition » (lot bilan-3) : une ÉDITION est
+# désormais une période de l'événement datée par le bureau (app/editions.py).
+# Une session de tombola (`tombola_editions`) s'ouvre au premier tirage et se
+# ferme à la clôture : rien à voir. Même titre sur la page (stats.html, passé
+# par la route) et dans les deux exports.
+TITRE_TOMBOLA_SESSIONS = "Par session de tombola"
+ENTETES_TOMBOLA_EDITION = ["Session ouverte le", "Close le", "Tirages", "Numéros",
                            "Remis", "Délai médian"]
 
 
 def tableaux_tombola(t: dict) -> list[tuple[str, list[str], list[list]]]:
     """
     Les tableaux de la tombola, (titre, en-têtes, lignes) : par tirage, par
-    mode, et par édition seulement à partir de deux éditions dans la période.
+    mode, et par session de tombola seulement à partir de deux sessions dans
+    la période.
     """
     tableaux = [
         ("Par tirage", ENTETES_TOMBOLA_TIRAGE,
@@ -83,7 +90,7 @@ def tableaux_tombola(t: dict) -> list[tuple[str, list[str], list[list]]]:
           for x in t["par_mode"]]),
     ]
     if len(t["par_edition"]) > 1:
-        tableaux.append(("Par édition", ENTETES_TOMBOLA_EDITION,
+        tableaux.append((TITRE_TOMBOLA_SESSIONS, ENTETES_TOMBOLA_EDITION,
                          [[x["ouverte"], x["close"] or "en cours", x["nb_tirages"],
                            x["tires"], x["remis"], x["delai_median"]]
                           for x in t["par_edition"]]))

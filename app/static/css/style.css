@@ -789,6 +789,39 @@ summary:focus-visible,
 .recherche-form--comptoir .bouton-filtrer { min-height: 44px; }
 .recherche-form--comptoir .lien,
 .stats-vers-sortis .lien { display: inline-flex; align-items: center; min-height: 44px; }
+/* Menu « Période » de /stats et section « Éditions » de /admin/evenement
+   (lot bilan-3) : cibles tactiles de 44 px, comme le comptoir ci-dessus,
+   sur ces seuls formulaires. */
+.stats-periode .champ select,
+.stats-periode .champ input,
+.stats-periode .bouton-filtrer,
+.edition-form .champ input,
+.edition-form .bouton-filtrer,
+.edition-depuis .bouton-filtrer { min-height: 44px; }
+/* Le libellé d'une édition est long (« Festival du jeu 2026 — 14 et 15
+   novembre ») : sans borne, le menu débordait de la carte à 375 px. La grille
+   de .recherche-form le laisserait grandir à la largeur de son option la plus
+   longue ; minmax(0, 1fr) le ramène à la largeur de la carte. */
+.stats-periode { grid-template-columns: minmax(0, 1fr); margin-bottom: 12px; }
+.stats-periode .champ select { width: 100%; max-width: 100%; box-sizing: border-box; }
+.stats-autre-periode > summary { padding-block: 10px; }  /* 24 px de texte + 20 = 44 px, triangle gardé */
+.stats-periode .lien,
+.edition-form .lien,
+.edition-actions .lien { display: inline-flex; align-items: center; min-height: 44px; }
+/* Bouton compact secondaire : même gabarit que .bouton-filtrer, sans fond
+   coloré (« Créer l'édition à partir de l'événement » : il préremplit, il
+   n'enregistre rien). Couleurs du thème seulement. */
+.bouton-filtrer--secondaire,
+.bouton-filtrer--secondaire:hover { background: #fff; color: var(--texte); border: 2px solid var(--bord-champ); }
+.bouton-filtrer--secondaire:hover { border-color: var(--primaire-lisible); }
+.edition-depuis { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 16px; }
+.editions-liste { list-style: none; margin: 12px 0; padding: 0; }
+.edition-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px;
+                 padding: 6px 0; border-bottom: 1px solid var(--bord); }
+.edition-nom { font-weight: 700; overflow-wrap: anywhere; }
+.edition-dates { color: var(--gris); }
+.edition-actions { margin-left: auto; display: flex; gap: 16px; }
+.edition-form h3 { margin: 16px 0 0; }
 .sorties { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px;
            grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
 .sortie { border: 1px solid var(--bord); border-radius: 10px; padding: 10px 12px;

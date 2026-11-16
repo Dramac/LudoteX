@@ -254,8 +254,12 @@ couleur). Section absente sans tirage dans la période.
   sans aucun remis. **Jamais** les `non_reclame`. Un délai **négatif**
   (horloge du serveur revenue en arrière) est **écarté et compté** : le
   ramener à zéro tirerait la médiane vers le bas sans rien dire.
-- **Par tirage**, **par mode** ; **par édition** seulement quand la période en
-  couvre au moins deux (sinon le tableau répéterait la synthèse).
+- **Par tirage**, **par mode** ; **par session de tombola** (une ligne de
+  `tombola_editions`) seulement quand la période en couvre au moins deux
+  (sinon le tableau répéterait la synthèse). Titre « Par session de tombola »
+  depuis le lot bilan-3 : une « édition » y désigne désormais une période de
+  l'événement datée par le bureau (`editions_evenement`), sans lien avec les
+  sessions de la tombola.
 - **Excel** : feuille « Tombola », cellules écrites par `ecrire_cellule`.
   **PDF** : section cochable `tombola`, cochée par défaut seulement quand
   elle existe ; la case n'apparaît sur la page qu'à la même condition.

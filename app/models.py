@@ -27,6 +27,7 @@ docs/conception-signalements.md) :
     tombola_editions        éditions de la tombola (une ouverte à la fois).
     tombola_tirages         tirages d'une édition (saisie manuelle ou par l'application).
     tombola_numeros         numéros gagnants tirés, de l'affichage à la remise du lot.
+    editions_evenement      éditions de l'événement, datées par le bureau (statistiques).
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -643,6 +644,38 @@ CREATE INDEX IF NOT EXISTS idx_tombola_numeros_affiches
     ON tombola_numeros (edition_id) WHERE motif IS NULL;
 """
 
+# ---------------------------------------------------------------------------
+# Éditions de l'événement (série bilan, lot 3 ; app/editions.py)
+# ---------------------------------------------------------------------------
+# Une ligne par édition, DATÉE PAR LE BUREAU depuis « Gestion de l'événement »
+# (décision du 2026-11-16 : pas déduite de la clôture). Elle ne sert qu'à
+# nommer une période des statistiques : aucune clé étrangère, aucun prêt n'y
+# est rattaché — supprimer une édition ne supprime rien d'autre.
+#
+# Le nom `editions_evenement`, et non `editions` : `tombola_editions` existe
+# déjà et désigne autre chose (une session de tirages, ouverte au premier
+# tirage et fermée par la clôture). Les deux tables ne se lisent jamais l'une
+# l'autre.
+#
+# Des JOURS locaux 'AAAA-MM-JJ', tous deux INCLUS, pas des heures : un bureau
+# pense « samedi et dimanche », et une soirée qui passe minuit reste dans la
+# période jusqu'au minuit qui suit le dernier jour. La conversion en bornes
+# UTC est faite à la lecture (`editions.periode_locale`), heure d'été comprise.
+#
+# Le nom n'est PAS une porte à donnée personnelle (CLAUDE.md) : c'est un texte
+# que publie le bureau, borné comme `evenement_nom`. Aucune donnée personnelle.
+# `AUTOINCREMENT` pour la raison des annonces : le lien « Supprimer » d'une
+# page restée ouverte ne doit jamais désigner une autre édition.
+SCHEMA_EDITIONS_EVENEMENT = """
+CREATE TABLE IF NOT EXISTS editions_evenement (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom           TEXT NOT NULL,   -- 80 caractères au plus (services.LONGUEUR_NOM_EVENEMENT)
+    premier_jour  TEXT NOT NULL,   -- 'AAAA-MM-JJ', jour local, inclus
+    dernier_jour  TEXT NOT NULL,   -- 'AAAA-MM-JJ', jour local, inclus
+    CHECK (dernier_jour >= premier_jour)
+);
+"""
+
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
     SCHEMA_CATEGORIES_JEU,
@@ -659,5 +692,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_TOMBOLA_EDITIONS,
     SCHEMA_TOMBOLA_TIRAGES,
     SCHEMA_TOMBOLA_NUMEROS,
+    SCHEMA_EDITIONS_EVENEMENT,
     SCHEMA_INDEXES,
 )
