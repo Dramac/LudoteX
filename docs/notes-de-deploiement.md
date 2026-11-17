@@ -83,7 +83,7 @@ est installée.
 
 ---
 
-## À paraître
+## 1.36.0 — 2026-11-17
 
 ### Statistiques réservées aux bénévoles : vérifier le réglage après la mise à jour — un clic, dans l'administration
 

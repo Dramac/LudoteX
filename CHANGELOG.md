@@ -6,6 +6,17 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.36.0 — 2026-11-17
+
+- **Les statistiques sont réservées aux bénévoles** par défaut ; le bureau peut les rouvrir à tous depuis **Fonctionnalités**.
+- **Nouvelle page « Jeux sortis »**, réservée aux bénévoles : les jeux dehors en cartes, les plus anciens d'abord, avec un repère sur les longues sorties.
+- **Les éditions de l'événement** : le bureau date chaque édition dans **Gestion de l'événement**, et les statistiques se lisent édition par édition.
+- **Le comptoir heure par heure** : les prêts, les retours et les jeux dehors de chaque heure, pour savoir quand ouvrir une file des retours et combien de bénévoles placer au comptoir.
+- **Pour les achats** : les jeux dont toutes les boîtes étaient prêtées en même temps, les 50 plus prêtés, et la liste des jeux jamais sortis dans l'Excel, avec l'emplacement de chaque boîte.
+- **Ce qui plaît** : les genres de jeux les plus empruntés, par catégorie, par nombre de joueurs et par âge, et la durée écrite sur la boîte comparée à celle d'un prêt.
+- **Une section Organisation**, réservée aux bénévoles : erreurs de prêt, retours non scannés, clôture oubliée, signalements du carnet, tombola, tournois et programme.
+- **Le bilan de l'édition en PDF, en un clic**, à joindre à un compte rendu ou à une demande de subvention ; la durée moyenne ne compte plus les jeux rendus à la clôture.
+
 ## 1.35.0 — 2026-11-15
 
 - **Une pochette ignorée n'est plus proposée** : quand vous choisissez une autre pochette que celle proposée, celle-ci n'est plus proposée jusqu'à la fin de l'événement. Pour la reprendre, il suffit de la choisir à la main.

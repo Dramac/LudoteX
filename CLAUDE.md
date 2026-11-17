@@ -161,7 +161,7 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 
 ## État de l'application
 
-**Dernière version au dépôt : 1.33.0** (voir `VERSION` et `CHANGELOG.md`,
+**Dernière version au dépôt : 1.36.0** (voir `VERSION` et `CHANGELOG.md`,
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
 du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
