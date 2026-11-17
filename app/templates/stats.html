@@ -53,7 +53,10 @@
     {# Lot bilan-4 : le pic des jeux dehors, repris du comptoir heure par
        heure (`comptoir.pic` : la première heure en cas d'égalité). #}
     <div class="chiffre"><span class="chiffre-val" title="Le plus grand nombre de jeux dehors à la fin d'une heure, sur la période. Détail dans « {{ cpt.TITRE_SECTION }} ».">{{ comptoir.pic.dehors if comptoir.pic else "—" }}</span><span class="chiffre-lib">{{ cpt.LIBELLE_PIC }}{% if comptoir.pic %}, {{ comptoir.pic.libelle }}{% endif %}</span></div>
-    <div class="chiffre"><span class="chiffre-val" {% if g.duree_moyenne == "—" %}title="Aucun prêt terminé sur la période"{% endif %}>{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
+    {# Lot bilan-7b : la définition en infobulle (les fermetures par la
+       clôture n'entrent plus dans la moyenne), la même phrase que le PDF
+       et l'Excel. #}
+    <div class="chiffre"><span class="chiffre-val" title="{% if g.duree_moyenne == "—" %}Aucun prêt terminé sur la période. {% endif %}{{ def_duree_moyenne }}">{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
   </div>
 
   {# SOMMAIRE (lot bilan-7a) : un lien par section PRÉSENTE. « Organisation »
@@ -74,6 +77,7 @@
         </ul>
       </li>
       {% endif %}
+      <li><a class="lien" href="#bilan">{{ exp.TITRE_SECTION_BILAN }}</a></li>
     </ul>
   </nav>
 
@@ -125,26 +129,6 @@
     <p class="stats-note">Heures saisies en heure locale (France).</p>
   </details>
 
-  <p class="stats-export">
-    Export Excel (complet) :
-    <a class="lien" href="/stats/export.xlsx{% if qs %}?{{ qs }}{% endif %}">Télécharger</a>
-  </p>
-
-  <details class="recherche">
-    <summary>Export PDF (choisir les sections)</summary>
-    <form method="get" action="/stats/export.pdf" class="recherche-form">
-      <input type="hidden" name="tri" value="{{ metrique }}">
-      {% for cle, valeur in qs_periode.items() %}<input type="hidden" name="{{ cle }}" value="{{ valeur }}">{% endfor %}
-      <label class="case"><input type="checkbox" name="sections" value="synthese" checked> Synthèse</label>
-      <label class="case"><input type="checkbox" name="sections" value="plus" checked> Palmarès des plus prêtés</label>
-      <label class="case"><input type="checkbox" name="sections" value="moins" checked> Palmarès des moins prêtés</label>
-      {# Tombola (série tombola, lot 2) : la case n'existe que si la section
-         existe — module visible et au moins un tirage dans la période. #}
-      {% if tombola %}<label class="case"><input type="checkbox" name="sections" value="tombola" checked> Tombola</label>{% endif %}
-      <label class="case"><input type="checkbox" name="sections" value="detail"> Détail des prêts</label>
-      <div><button type="submit" class="bouton-filtrer">Télécharger le PDF</button></div>
-    </form>
-  </details>
 </section>
 
 {# LE COMPTOIR HEURE PAR HEURE (lot bilan-4). Tous les chiffres et toutes
@@ -596,4 +580,32 @@
   })();
 </script>
 {% endif %}
+
+{# BILAN ET EXPORTS (lot bilan-7b), en fin de page : le bloc des exports a
+   quitté la tête. Le bouton du bilan est le SEUL bouton principal de la page
+   (docs/ui-composants.md § 1) ; il emporte la période affichée et le
+   classement, comme les autres liens d'export. Son libellé ne dit « de
+   l'édition » que si la période en est une (`libelle_bilan`, la route).
+   « PDF à la carte » : une case par section qui existe pour ce visiteur
+   (`cases_pdf`, la route) — l'Organisation, la tombola et le détail pour un
+   bénévole seulement, la tombola si elle a eu lieu. Envoyé sans case
+   cochée, il donne le bilan par défaut. #}
+<section class="carte" id="bilan">
+  <h2>{{ exp.TITRE_SECTION_BILAN }}</h2>
+  <p>{{ exp.PHRASE_BILAN }}{% if org %} {{ exp.NOTE_BILAN_ORGANISATION }}{% endif %}</p>
+  <a class="bouton bouton-principal" href="/stats/export.pdf?{{ qs }}">{{ libelle_bilan }}</a>
+  <p class="stats-export"><a class="lien lien-cible" href="/stats/export.xlsx?{{ qs }}">{{ exp.LIBELLE_TOUT_EXCEL }}</a></p>
+  <details class="recherche stats-a-la-carte">
+    <summary>{{ exp.LIBELLE_A_LA_CARTE }}</summary>
+    <form method="get" action="/stats/export.pdf" class="recherche-form">
+      <input type="hidden" name="tri" value="{{ metrique }}">
+      {% for cle, valeur in qs_periode.items() %}<input type="hidden" name="{{ cle }}" value="{{ valeur }}">{% endfor %}
+      <fieldset class="champ champ-groupe stats-cases-pdf">
+        <legend>Sections du PDF</legend>
+        {% for c in cases_pdf %}<label class="case"><input type="checkbox" name="sections" value="{{ c.valeur }}" {% if c.cochee %}checked{% endif %}> {{ c.libelle }}</label>{% endfor %}
+      </fieldset>
+      <div><button type="submit" class="bouton-filtrer">Télécharger le PDF</button></div>
+    </form>
+  </details>
+</section>
 {% endblock %}

@@ -535,8 +535,10 @@ def test_racine_sert_accueil(client):
 
 def test_stats_page(client, vieillir_prets):
     # Q9 : aucun prêt terminé -> « — » avec une info-bulle, pas « 0 min ».
+    # Depuis le lot bilan-7b, l'infobulle porte aussi la définition de la
+    # durée moyenne (`services.DEF_DUREE_MOYENNE`).
     r0 = client.get("/stats")
-    assert 'title="Aucun prêt terminé sur la période"' in r0.text
+    assert 'title="Aucun prêt terminé sur la période. ' in r0.text
     assert "0 min" not in r0.text
 
     client.post("/pret/001/preter")          # un prêt pour alimenter les stats
@@ -559,8 +561,13 @@ def test_stats_page(client, vieillir_prets):
     finally:
         conn.close()
     client.post("/pret/001/rendre")
+    from markupsafe import escape
+
+    from app import services
+
     r3 = client.get("/stats")
-    assert 'title="Aucun prêt terminé sur la période"' not in r3.text
+    assert "Aucun prêt terminé sur la période" not in r3.text
+    assert f'title="{escape(services.DEF_DUREE_MOYENNE)}"' in r3.text
 
 
 def test_stats_alias_redirige(client):
@@ -688,31 +695,22 @@ def test_stats_export_xlsx_sans_colonne_emplacement(client, tmp_path, monkeypatc
     assert "N° emplacement" not in entetes_detail()
     assert "Durée" in entetes_detail()          # les autres colonnes restent
     # ...et visiteur, sur des statistiques rendues publiques (bilan-2 : sinon
-    # il est refusé).
+    # il est refusé) : depuis le lot bilan-7b, il n'a plus de feuille
+    # « Détail » du tout (réservée aux bénévoles, comme sur la page).
     _set_module(tmp_path, "stats", "tous")
     client.cookies.delete("jeton_pret")
-    assert "N° emplacement" not in entetes_detail()
+    x = client.get("/stats/export.xlsx")
+    assert x.status_code == 200
+    assert "Détail" not in load_workbook(BytesIO(x.content)).sheetnames
 
 
 def test_stats_export_pdf_sans_colonne_emplacement(client, tmp_path, monkeypatch):
     """
-    D5 volet 2 : idem sur l'export PDF. Le PDF produit par reportlab
-    compresse ses flux de contenu (FlateDecode/ASCII85) : on ne peut pas
-    chercher "Empl." dans les octets bruts. On intercepte plutôt
-    `reportlab.platypus.Table` (importée à l'intérieur de
-    `exports.construire_pdf`, donc le mock est bien pris en compte) pour
-    inspecter les en-têtes réellement transmises à la mise en page.
+    D5 volet 2 : idem sur l'export PDF. Le texte du PDF est lu par
+    `tests/outils_pdf.py` (lot bilan-7b) : ses flux sont compressés.
     """
-    import reportlab.platypus as platypus
+    from tests.outils_pdf import texte_pdf
 
-    captures = []
-    table_reelle = platypus.Table
-
-    def table_espion(data, *a, **k):
-        captures.append(data)
-        return table_reelle(data, *a, **k)
-
-    monkeypatch.setattr(platypus, "Table", table_espion)
     monkeypatch.setenv("PRET_TOKEN", "jeton-export-pdf-pochette-xyz")
     client.get("/acces", params={"jeton": "jeton-export-pdf-pochette-xyz"})
     client.post("/pret/001/preter")
@@ -720,16 +718,19 @@ def test_stats_export_pdf_sans_colonne_emplacement(client, tmp_path, monkeypatch
     # Bénévole activé : plus de colonne emplacement, mais le tableau est bien là.
     r = client.get("/stats/export.pdf", params=[("sections", "detail")])
     assert r.status_code == 200
-    assert "Empl." not in captures[-1][0]
-    assert "Durée" in captures[-1][0]
+    texte = texte_pdf(r.content)
+    assert "Détail des prêts (1)" in texte and "Jeu Ex. Sortie Retour Durée" in texte
+    assert "Empl." not in texte
 
-    # Visiteur, statistiques rendues publiques (bilan-2) : identique.
+    # Visiteur, statistiques rendues publiques (bilan-2) : depuis le lot
+    # bilan-7b, le détail ne sort pas du tout, même demandé dans l'URL ; il
+    # reçoit le bilan public.
     _set_module(tmp_path, "stats", "tous")
-    captures.clear()
     client.cookies.delete("jeton_pret")
     r2 = client.get("/stats/export.pdf", params=[("sections", "detail")])
     assert r2.status_code == 200
-    assert "Empl." not in captures[-1][0]
+    texte2 = texte_pdf(r2.content)
+    assert "Détail des prêts" not in texte2 and "Synthèse" in texte2
 
 
 def test_url_inconnue_page_conviviale(client):

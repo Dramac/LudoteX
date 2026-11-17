@@ -728,3 +728,23 @@ séries ne se distinguent **jamais par la seule couleur** : sur le thème rouge
 vif, prêts et retours sont à 1,09:1 l'un de l'autre, et seule la texture les
 sépare. En **couleurs forcées** (`forced-colors: active`), les marques passent
 en `CanvasText`, l'aire en `Canvas`, la grille en `GrayText`.
+
+**Dans le bilan PDF** (lot bilan-7b, `exports.graphique_flux`) — le graphique
+des prêts et des retours est redessiné avec `reportlab.graphics`, à partir de
+la **même géométrie** que la page (`comptoir.geometrie`), mise à l'échelle :
+aucun chiffre n'y est recalculé. Mêmes règles, avec ce que l'impression
+impose :
+
+- **une seule couleur** pour les deux séries, la nuance `lisible` du thème
+  (`nuances_theme`, 4,5:1 sur le blanc pour les quatre thèmes) : prêts en
+  barres **pleines**, retours en barres à **contour hachuré** ; ReportLab n'a
+  pas de motif de remplissage, les hachures sont des traits à 45° coupés au
+  bord de la barre (`_hachures`). En niveaux de gris, la forme seule sépare
+  les séries ;
+- la grille dans la nuance `clair`, décorative ; la ligne de base dans la
+  nuance `lisible` ; le texte en noir par défaut, **jamais sous 8 pt** — une
+  étiquette d'heure sur deux (ou sur trois) quand les heures sont trop
+  serrées ;
+- la légende est un petit dessin suivi du nom de chaque série et de sa forme
+  (« Prêts (plein) », « Retours (hachuré) ») ;
+- au-delà de `MAX_JOURS` journées, la phrase de la page, pas de graphique.

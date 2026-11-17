@@ -162,11 +162,11 @@ def test_statistiques_xlsx_nom_de_jeu_jamais_formule():
         "globales": {"total_prets": 1, "en_cours": 0, "titres_pretes": 1, "nb_titres": 1},
         "metrique": "total",
         "plus": [{"nom": "=1+1", "nb_prets": 1, "nb_exemplaires": 1, "par_exemplaire": 1}],
-        "moins": [],
         "prets": [{"nom": "@jeu", "id_exemplaire": "-001", "sortie_locale": "01/01/2026 10:00",
                    "retour_local": None, "duree_txt": "—"}],
     }
-    classeur = openpyxl.load_workbook(BytesIO(exports.construire_xlsx(data, "tout")))
+    classeur = openpyxl.load_workbook(BytesIO(
+        exports.construire_xlsx(data, "tout", benevole=True)))
     # Feuille des plus prêtés (lot bilan-5) : le rang en A, le nom en B.
     assert classeur[exports.FEUILLE_PALMARES]["B5"].value == "=1+1"
     assert classeur[exports.FEUILLE_PALMARES]["B5"].data_type == "s"

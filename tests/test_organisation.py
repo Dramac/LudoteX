@@ -155,7 +155,8 @@ def _sommaire(html):
 def test_sommaire_benevole_sans_tombola(catalogue, benevole):
     nom, liens = _sommaire(benevole.get(EDITION).text)
     assert nom == "Sommaire des statistiques"
-    assert liens == ["comptoir", "achats", "gouts", "organisation", "tournois", "detail"]
+    assert liens == ["comptoir", "achats", "gouts", "organisation", "tournois", "detail",
+                     "bilan"]
 
 
 def test_sommaire_chaque_lien_a_sa_cible(catalogue, benevole):
@@ -176,14 +177,16 @@ def test_sommaire_tombola_et_modules_masques(catalogue, benevole):
     finally:
         conn.close()
     assert _sommaire(benevole.get(EDITION).text)[1] == [
-        "comptoir", "achats", "gouts", "organisation", "tombola", "tournois", "detail"]
+        "comptoir", "achats", "gouts", "organisation", "tombola", "tournois", "detail",
+        "bilan"]
     _parametre("module_tournois", "desactive")
     _parametre("module_programme", "desactive")
     assert "tournois" not in _sommaire(benevole.get(EDITION).text)[1]
 
 
 def test_sommaire_visiteur(catalogue, public, visiteur):
-    assert _sommaire(visiteur.get(EDITION).text)[1] == ["comptoir", "achats", "gouts"]
+    assert _sommaire(visiteur.get(EDITION).text)[1] == ["comptoir", "achats", "gouts",
+                                                        "bilan"]
 
 
 def test_sommaire_cibles_44_px():
@@ -487,22 +490,24 @@ def test_les_services_des_statistiques_ignorent_la_base_des_tournois():
         assert "app.tournoi" not in source and "from app import tournoi" not in source, module
 
 
-def test_exports_inchanges_et_sans_porte(carnet, tournois, benevole):
-    """Le lot ne touche ni l'Excel ni le PDF (lot bilan-7b) : mêmes feuilles,
-    et aucune des deux portes n'y entre."""
+def test_exports_sans_porte(carnet, tournois, benevole):
+    """Le bilan-7b a porté l'Organisation dans l'Excel et le PDF : aucune
+    des deux portes n'y entre, même pour un bénévole et toutes sections
+    cochées (le test complet est dans tests/test_bilan_pdf.py)."""
     from io import BytesIO
 
     import openpyxl
 
-    from app import achats, exports, gouts
+    from app import exports
+    from tests.outils_pdf import texte_pdf
 
     xlsx = benevole.get(EDITION.replace("/stats?", "/stats/export.xlsx?")).content
     classeur = openpyxl.load_workbook(BytesIO(xlsx))
-    assert classeur.sheetnames == ["Synthèse", exports.FEUILLE_PALMARES,
-                                   achats.FEUILLE_TOUS_SORTIS, achats.FEUILLE_JAMAIS_SORTIS,
-                                   gouts.FEUILLE_GOUTS, gouts.FEUILLE_SANS_CATEGORIE,
-                                   exports.FEUILLE_HEURE_PAR_HEURE, "Détail"]
+    assert exports.FEUILLE_ORGANISATION in classeur.sheetnames
     cellules = [str(c) for f in classeur for ligne in f.iter_rows(values_only=True) for c in ligne]
     assert not any(SENTINELLE_TEXTE in c or SENTINELLE_PSEUDO in c for c in cellules)
-    pdf = benevole.get(EDITION.replace("/stats?", "/stats/export.pdf?")).content
-    assert pdf[:4] == b"%PDF" and SENTINELLE_TEXTE.encode() not in pdf
+    pdf = benevole.get(EDITION.replace("/stats?", "/stats/export.pdf?"),
+                       params=[("sections", s) for s in exports.SECTIONS_PDF]).content
+    texte = texte_pdf(pdf)
+    assert organisation.TITRE_SIGNALEMENTS in texte          # la section est là…
+    assert SENTINELLE_TEXTE not in texte and SENTINELLE_PSEUDO not in texte   # …sans porte

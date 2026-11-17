@@ -29,7 +29,7 @@ from app.planning import exports as exports_planning
 DATA = {
     "globales": {"total_prets": 3, "en_cours": 1, "titres_pretes": 2,
                  "nb_titres": 5, "duree_moyenne": "1 h 30", "erreurs": 0},
-    "plus": [], "moins": [], "metrique": "total", "prets": [],
+    "plus": [], "metrique": "total", "prets": [],
 }
 
 GRILLE = {
@@ -74,6 +74,13 @@ def _commande(cmds, nom):
     return next(c for c in cmds if c[0] == nom)
 
 
+def _premier_tableau(captures):
+    """Le style du premier TABLEAU de données (en-tête à la couleur
+    d'identité) : depuis le lot bilan-7b, le bilan pose aussi des styles
+    sans en-tête (les quatre cases de la synthèse)."""
+    return next(c for c in captures if any(x[0] == "TEXTCOLOR" for x in c))
+
+
 # ---------------------------------------------------------------------------
 # 1. app.exports.construire_pdf (statistiques)
 # ---------------------------------------------------------------------------
@@ -81,9 +88,9 @@ def test_construire_pdf_sans_couleur_utilise_lanthracite(monkeypatch):
     import reportlab.platypus as platypus
 
     captures = _capturer_styles(monkeypatch, platypus)
-    exports.construire_pdf(DATA, "toutes périodes", {"synthese"})
+    exports.construire_pdf(DATA, "toutes périodes", {"organisation"}, benevole=True)
 
-    fond = _commande(captures[0], "BACKGROUND")[3]
+    fond = _commande(_premier_tableau(captures), "BACKGROUND")[3]
     assert fond == colors.HexColor(services.COULEUR_ASSOCIATION_DEFAUT)
 
 
@@ -91,10 +98,10 @@ def test_construire_pdf_porte_la_couleur_reglee(monkeypatch):
     import reportlab.platypus as platypus
 
     captures = _capturer_styles(monkeypatch, platypus)
-    exports.construire_pdf(DATA, "toutes périodes", {"synthese"},
-                           couleur="#123456")
+    exports.construire_pdf(DATA, "toutes périodes", {"organisation"},
+                           couleur="#123456", benevole=True)
 
-    cmds = captures[0]
+    cmds = _premier_tableau(captures)
     assert _commande(cmds, "BACKGROUND")[3] == colors.HexColor("#123456")
     # Fond des lignes alternées : la nuance « fond » de cette même couleur,
     # jamais recopiée — voir services.nuances_theme.
@@ -111,14 +118,14 @@ def test_construire_pdf_la_couleur_du_texte_suit_la_luminance(monkeypatch):
 
     captures = _capturer_styles(monkeypatch, platypus)
 
-    exports.construire_pdf(DATA, "toutes périodes", {"synthese"},
-                           couleur="#2a2724")  # sombre
-    assert _commande(captures[0], "TEXTCOLOR")[3] == colors.white
+    exports.construire_pdf(DATA, "toutes périodes", {"organisation"},
+                           couleur="#2a2724", benevole=True)  # sombre
+    assert _commande(_premier_tableau(captures), "TEXTCOLOR")[3] == colors.white
 
     captures.clear()
-    exports.construire_pdf(DATA, "toutes périodes", {"synthese"},
-                           couleur="#fffbe6")  # jaune très pâle
-    assert _commande(captures[0], "TEXTCOLOR")[3] == colors.black
+    exports.construire_pdf(DATA, "toutes périodes", {"organisation"},
+                           couleur="#fffbe6", benevole=True)  # jaune très pâle
+    assert _commande(_premier_tableau(captures), "TEXTCOLOR")[3] == colors.black
 
 
 # ---------------------------------------------------------------------------

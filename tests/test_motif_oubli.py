@@ -184,10 +184,13 @@ def test_les_exports_portent_les_oublis(un_oubli_et_un_pret):
 
     data = services.collecter_stats(un_oubli_et_un_pret)
 
-    classeur = openpyxl.load_workbook(BytesIO(exports.construire_xlsx(data, "tout")))
-    synthese = {c[0]: c[1] for c in classeur["Synthèse"].iter_rows(values_only=True)
-                if c[0]}
-    assert synthese[exports.LIBELLE_OUBLIS] == 1
+    # Feuilles « Organisation » et « Détail » : réservées aux bénévoles
+    # depuis le lot bilan-7b.
+    classeur = openpyxl.load_workbook(BytesIO(
+        exports.construire_xlsx(data, "tout", benevole=True)))
+    feuille = {c[0]: c[1] for c in classeur[exports.FEUILLE_ORGANISATION].iter_rows(
+        values_only=True) if c[0]}
+    assert feuille["Retours non scannés"] == 1
     textes = [str(v) for f in classeur.worksheets
               for ligne in f.iter_rows(values_only=True) for v in ligne if v]
     assert services.RETOUR_NON_SCANNE in textes

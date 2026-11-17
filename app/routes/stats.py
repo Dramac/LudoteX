@@ -24,11 +24,22 @@ rouvert `/stats` au public : elle parle du travail des bénévoles et des
 boîtes abîmées, et le carnet est `jamais_public`. Pour un visiteur, rien
 n'en est calculé (`_organisation` rend None) : ni signalements, ni tournois.
 La tombola et la liste détaillée, repliées sous elle, disparaissent donc
-aussi pour un visiteur. Les exports suivront la même règle au lot bilan-7b.
+aussi pour un visiteur. LES EXPORTS SUIVENT LA MÊME RÈGLE (lot bilan-7b) :
+`_exporter` ne calcule l'Organisation et la tombola que pour un bénévole, et
+dit aux exports `benevole=True` ; pour un visiteur, ni le PDF ni l'Excel ne
+portent l'Organisation, les tournois et le programme, la tombola ni le
+détail des prêts, même quand une section est cochée à la main dans l'URL.
+La liste PUBLIQUE des numéros gagnants, elle, est la page `/tombola`.
 Les tournois et le programme vivent dans une autre base : c'est cette route
 qui la lit et transmet des comptes (`_tournois_programme`), jamais un
-service des statistiques. Le palmarès des moins prêtés a quitté la page ;
-il reste dans le PDF jusqu'au lot bilan-7.
+service des statistiques. Le palmarès des moins prêtés a quitté la page
+(lot bilan-5) puis le PDF (lot bilan-7b).
+
+LE BILAN (lot bilan-7b) : la section « Bilan et exports », en fin de page,
+porte le bouton « Télécharger le bilan de l'édition (PDF) » (« Télécharger
+le bilan (PDF) » quand la période n'est pas une édition), le lien « Tout en
+Excel » et le volet « PDF à la carte ». Le bilan reprend les sections de la
+page, dans son ordre, pour la période affichée (`exports.construire_pdf`).
 
 Paramètres de requête (combinables) :
     tri     = total | exemplaire     -> métrique des palmarès.
@@ -49,7 +60,7 @@ exports et le libellé reçoivent la même paire qu'avant ce lot.
   phrase qui le dit. Jamais de 404 ni de 500.
 
 Exports : /stats/export.xlsx et /stats/export.pdf (mêmes paramètres → mêmes
-chiffres que la page, période comprise).
+chiffres que la page, période comprise ; le PDF prend en plus `sections`).
 
 Alias : /stat, /statistique, /statistiques redirigent vers /stats.
 
@@ -79,9 +90,10 @@ router = APIRouter(tags=["stats"])
 # Limite de la liste détaillée AFFICHÉE (l'export, lui, prend tout).
 LIMITE_PRETS_PAGE = 1000
 
-# Sections du PDF cochées par défaut. « tombola » s'y ajoute seulement quand
-# la section existe (`_tombola`).
-SECTIONS_PDF_DEFAUT = ("synthese", "plus", "moins")
+# Le libellé du bouton du bilan : il ne dit « de l'édition » que quand la
+# période EST une édition (lot bilan-7b).
+LIBELLE_BILAN_EDITION = "Télécharger le bilan de l'édition (PDF)"
+LIBELLE_BILAN = "Télécharger le bilan (PDF)"
 
 
 def _tombola(request: Request, conn, debut_utc: str | None,
@@ -280,13 +292,24 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
     finally:
         conn.close()
 
+    # Les cases du volet « PDF à la carte » : une par section qui EXISTE pour
+    # ce visiteur (l'Organisation, la tombola et le détail pour un bénévole
+    # seulement, la tombola si elle a eu lieu), toutes cochées sauf le
+    # détail des prêts.
+    reservees = stats_organisation is not None
+    cases_pdf = [{"valeur": cle, "libelle": exports.TITRES_SECTIONS_PDF[cle],
+                  "cochee": cle in exports.SECTIONS_PDF_DEFAUT}
+                 for cle in exports.SECTIONS_PDF
+                 if (cle not in exports.SECTIONS_RESERVEES or reservees)
+                 and (cle != "tombola" or stats_tombola)]
+
     # Query string pour conserver le tri et la période dans les liens d'export,
     # et la période seule dans la bascule du classement.
     qs_periode = _qs_periode(periode)
     qs = urlencode({"tri": metrique, **qs_periode})
     return templates.TemplateResponse(
         request, "stats.html",
-        {"g": data["globales"], "plus": data["plus"], "moins": data["moins"],
+        {"g": data["globales"], "plus": data["plus"],
          "comptoir": data["comptoir"],
          "graphiques": comptoir.geometrie(data["comptoir"]), "cpt": comptoir,
          "achats": data["achats"], "ach": achats,
@@ -302,16 +325,28 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
          "periode_qs": urlencode(qs_periode), "qs_periode": qs_periode,
          "tombola": stats_tombola,
          "org": stats_organisation, "orga": organisation,
-         "libelle_sessions_tombola": exports.TITRE_TOMBOLA_SESSIONS},
+         "libelle_sessions_tombola": exports.TITRE_TOMBOLA_SESSIONS,
+         "def_duree_moyenne": services.DEF_DUREE_MOYENNE,
+         "libelle_bilan": (LIBELLE_BILAN_EDITION if periode["edition"]
+                           else LIBELLE_BILAN),
+         "cases_pdf": cases_pdf, "exp": exports},
     )
 
 
 def _exporter(request: Request, tri: str, edition: str | None,
-              debut: str | None, fin: str | None):
+              debut: str | None, fin: str | None) -> dict:
     """
-    Collecte les données complètes (toutes lignes) pour un export, et celles
-    de la tombola (None si la section n'a pas lieu d'être). Même résolution
-    de la période que la page : mêmes paramètres, mêmes chiffres.
+    Collecte les données complètes (toutes lignes) pour un export. Même
+    résolution de la période que la page : mêmes paramètres, mêmes chiffres.
+
+    LA RÈGLE DE VISIBILITÉ (en tête de module) se décide ICI, une fois pour
+    les deux exports : l'Organisation et la tombola ne sont calculées que
+    pour un bénévole (`_organisation` rend None pour un visiteur), et
+    `benevole` dit aux exports s'ils peuvent porter les sections réservées,
+    détail des prêts compris.
+
+    Returns:
+        {"data", "periode_txt", "titre", "tombola", "organisation", "benevole"}
     """
     metrique, debut, fin = _params(tri, debut, fin)
     conn = get_connection()
@@ -323,22 +358,32 @@ def _exporter(request: Request, tri: str, edition: str | None,
             conn, metrique, debut_utc, fin_utc,
             limite_prets=None,  # toutes les lignes dans l'export
         )
-        stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
+        stats_organisation = _organisation(request, conn, debut_utc, fin_utc)
+        benevole = stats_organisation is not None
+        stats_tombola = _tombola(request, conn, debut_utc, fin_utc) if benevole else None
         # La feuille « Jamais sortis » : de quoi retrouver chaque boîte
         # (emplacements, date d'achat). Lu pour l'export seulement.
         data["achats"]["jamais_detail"] = achats.detailler_jamais_sortis(
             conn, data["achats"]["jamais_sortis"])
     finally:
         conn.close()
-    return data, _libelle(periode), stats_tombola
+    periode_txt = _libelle(periode)
+    return {"data": data, "periode_txt": periode_txt,
+            "titre": exports.titre_bilan(
+                periode["edition"]["nom"] if periode["edition"] else None, periode_txt),
+            "tombola": stats_tombola, "organisation": stats_organisation,
+            "benevole": benevole}
 
 
 @router.get("/stats/export.xlsx")
 def export_xlsx(request: Request, tri: str = "total", edition: str | None = None,
                 debut: str | None = None, fin: str | None = None):
-    """Télécharge les statistiques au format Excel (.xlsx)."""
-    data, periode, stats_tombola = _exporter(request, tri, edition, debut, fin)
-    contenu = exports.construire_xlsx(data, periode, tombola=stats_tombola)
+    """Télécharge les statistiques au format Excel (.xlsx) : « Tout en
+    Excel ». Les feuilles réservées suivent la règle en tête de module."""
+    e = _exporter(request, tri, edition, debut, fin)
+    contenu = exports.construire_xlsx(e["data"], e["periode_txt"], tombola=e["tombola"],
+                                      organisation_donnees=e["organisation"],
+                                      benevole=e["benevole"])
     return Response(
         content=contenu,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -350,25 +395,32 @@ def export_xlsx(request: Request, tri: str = "total", edition: str | None = None
 def export_pdf(request: Request, tri: str = "total", edition: str | None = None,
                debut: str | None = None, fin: str | None = None):
     """
-    Télécharge les statistiques au format PDF, avec sections au choix.
+    Télécharge le bilan PDF (lot bilan-7b), avec sections au choix.
 
-    Les sections à inclure sont passées en paramètres `sections` (multivalués) :
-    synthese, plus, moins, tombola, detail. Par défaut (aucune fournie), on
-    inclut synthèse + les deux palmarès, et la tombola quand elle a des
-    tirages dans la période et que son module est visible (détail décoché
-    par défaut côté page). Une section « tombola » demandée sans données ne
-    produit rien.
+    Les sections sont passées en paramètres `sections` (multivalués), parmi
+    `exports.SECTIONS_PDF`. Aucune section, ou aucune section connue (un
+    formulaire « à la carte » envoyé sans case cochée, un ancien lien vers
+    « moins ») : le bilan par défaut, toutes les sections sauf le détail des
+    prêts. Les sections réservées ne sortent que pour un bénévole (règle en
+    tête de module), même demandées dans l'URL ; la tombola, seulement si
+    elle a eu lieu dans la période.
     """
-    data, periode, stats_tombola = _exporter(request, tri, edition, debut, fin)
-    defaut = set(SECTIONS_PDF_DEFAUT) | ({"tombola"} if stats_tombola else set())
-    sections = set(request.query_params.getlist("sections")) or defaut
-    sections &= set(exports.SECTIONS_PDF)  # ne garder que les sections connues
+    e = _exporter(request, tri, edition, debut, fin)
+    sections = set(request.query_params.getlist("sections")) & set(exports.SECTIONS_PDF)
+    if not e["benevole"]:
+        sections -= set(exports.SECTIONS_RESERVEES)
+    if not sections:
+        sections = set(exports.SECTIONS_PDF_DEFAUT)
+        if not e["benevole"]:
+            sections -= set(exports.SECTIONS_RESERVEES)
     # Couleur d'identité (lot 3c) : la ROUTE la lit et la transmet — voir la
     # note en tête d'app/exports.py. `theme_association()` ne lève jamais et
     # renvoie toujours un `#rrggbb` effectif (l'anthracite par défaut).
     couleur = services.theme_association()["couleur"]
-    contenu = exports.construire_pdf(data, periode, sections, couleur,
-                                     tombola=stats_tombola)
+    contenu = exports.construire_pdf(e["data"], e["periode_txt"], sections, couleur,
+                                     tombola=e["tombola"],
+                                     organisation_donnees=e["organisation"],
+                                     benevole=e["benevole"], titre=e["titre"])
     return Response(
         content=contenu,
         media_type="application/pdf",

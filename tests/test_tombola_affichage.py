@@ -33,6 +33,7 @@ import pytest
 
 from app import achats, exports, gouts, journal, services, tombola
 from app.routes import live
+from tests.outils_pdf import texte_pdf
 from tests.test_tombola import (  # noqa: F401 — fixtures partagées
     T0, _conn, _etat, _geste, _id, _journal, _numeros, _saisir, actif, admin,
     bases, benevole, visiteur,
@@ -640,8 +641,8 @@ def test_section_stats_selon_module_et_tirages(visiteur_stats, benevole):
     Depuis le lot bilan-7a, la tombola est un volet replié de la section
     « Organisation », réservée aux bénévoles : mêmes conditions qu'avant
     (module visible pour ce visiteur, au moins un tirage dans la période),
-    plus celle de la section. La case du PDF, elle, n'a pas bougé (lot
-    bilan-7b).
+    plus celle de la section. Depuis le lot bilan-7b, la case du PDF suit
+    la même règle : un visiteur ne l'a plus.
     """
     _etat("tous")
     assert 'id="tombola"' not in benevole.get("/stats").text          # aucun tirage
@@ -650,10 +651,10 @@ def test_section_stats_selon_module_et_tirages(visiteur_stats, benevole):
     assert VOLET_TOMBOLA in page
     assert 'name="sections" value="tombola" checked' in page
     # Un visiteur, /stats rouverte au public : ni Organisation ni tombola,
-    # mais la case du PDF reste, comme avant ce lot.
+    # ni case du PDF (lot bilan-7b).
     page = visiteur_stats.get("/stats").text
     assert 'id="tombola"' not in page and 'id="organisation"' not in page
-    assert 'name="sections" value="tombola" checked' in page
+    assert 'value="tombola"' not in page
     _etat("desactive")
     page = benevole.get("/stats").text
     assert 'id="tombola"' not in page and 'value="tombola"' not in page
@@ -692,22 +693,27 @@ def _feuilles(contenu):
     return load_workbook(io.BytesIO(contenu))
 
 
-def test_feuille_excel_presente_ou_absente(visiteur_stats):
+def test_feuille_excel_presente_ou_absente(visiteur_stats, benevole):
+    """La feuille « Tombola » : pour un bénévole, si la tombola a eu lieu ;
+    jamais pour un visiteur, même /stats rouverte au public (lot bilan-7b)."""
     _etat("tous")
-    assert "Tombola" not in _feuilles(visiteur_stats.get("/stats/export.xlsx").content).sheetnames
+    assert "Tombola" not in _feuilles(benevole.get("/stats/export.xlsx").content).sheetnames
     _tirer(12, 45)
     _remettre_apres(12, 4)
-    classeur = _feuilles(visiteur_stats.get("/stats/export.xlsx").content)
-    assert classeur.sheetnames == ["Synthèse", exports.FEUILLE_PALMARES,
+    assert "Tombola" not in _feuilles(
+        visiteur_stats.get("/stats/export.xlsx").content).sheetnames
+    classeur = _feuilles(benevole.get("/stats/export.xlsx").content)
+    assert classeur.sheetnames == ["Synthèse", exports.FEUILLE_HEURE_PAR_HEURE,
+                                   exports.FEUILLE_PALMARES,
                                    achats.FEUILLE_TOUS_SORTIS, achats.FEUILLE_JAMAIS_SORTIS,
                                    gouts.FEUILLE_GOUTS, gouts.FEUILLE_SANS_CATEGORIE,
-                                   exports.FEUILLE_HEURE_PAR_HEURE, "Détail", "Tombola"]
+                                   exports.FEUILLE_ORGANISATION, "Tombola", "Détail"]
     valeurs = [[c.value for c in ligne] for ligne in classeur["Tombola"].iter_rows()]
     plat = [v for ligne in valeurs for v in ligne if v is not None]
     assert "Délai médian de remise (lots remis seulement)" in plat
     assert "Par tirage" in plat and "4 min" in plat
     _etat("desactive")
-    assert "Tombola" not in _feuilles(visiteur_stats.get("/stats/export.xlsx").content).sheetnames
+    assert "Tombola" not in _feuilles(benevole.get("/stats/export.xlsx").content).sheetnames
 
 
 def test_cellules_de_la_feuille_tombola_neutralisees(bases):
@@ -716,46 +722,55 @@ def test_cellules_de_la_feuille_tombola_neutralisees(bases):
     s["par_tirage"][0]["mode"] = "=1+1"        # aucune saisie ne l'atteint : filet
     classeur = _feuilles(exports.construire_xlsx(
         {"globales": {"total_prets": 0, "en_cours": 0, "titres_pretes": 0, "nb_titres": 0},
-         "plus": [], "moins": [], "prets": [], "metrique": "total"}, "tout", tombola=s))
+         "plus": [], "prets": [], "metrique": "total"}, "tout", tombola=s, benevole=True))
     cellules = [c for ligne in classeur["Tombola"].iter_rows() for c in ligne
                 if c.value == "=1+1"]
     assert cellules and all(c.data_type == "s" for c in cellules)
 
 
-def test_section_pdf_cochable(visiteur_stats, monkeypatch):
+def test_section_pdf_cochable(visiteur_stats, benevole, monkeypatch):
+    """La tombola du bilan PDF : pour un bénévole, dans le bilan par défaut
+    dès qu'elle a eu lieu, et à la carte ; jamais pour un visiteur, même
+    demandée dans l'URL (lot bilan-7b)."""
     vus = []
     original = exports.construire_pdf
 
-    def espion(data, periode, sections, couleur, tombola=None):
-        vus.append((set(sections), tombola is not None))
-        return original(data, periode, sections, couleur, tombola=tombola)
+    def espion(data, periode, sections, couleur, **kw):
+        vus.append((set(sections), kw["tombola"] is not None, kw["benevole"]))
+        return original(data, periode, sections, couleur, **kw)
 
     monkeypatch.setattr(exports, "construire_pdf", espion)
     _etat("tous")
-    visiteur_stats.get("/stats/export.pdf")
+    defaut = set(exports.SECTIONS_PDF_DEFAUT)
+    benevole.get("/stats/export.pdf")
     _tirer(12, 45)
-    visiteur_stats.get("/stats/export.pdf")
-    r = visiteur_stats.get("/stats/export.pdf", params=[("sections", "synthese")])
+    benevole.get("/stats/export.pdf")
+    r = benevole.get("/stats/export.pdf", params=[("sections", "tombola")])
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
     visiteur_stats.get("/stats/export.pdf", params=[("sections", "tombola")])
     assert vus == [
-        ({"synthese", "plus", "moins"}, False),
-        ({"synthese", "plus", "moins", "tombola"}, True),
-        ({"synthese"}, True),
-        ({"tombola"}, True),
+        (defaut, False, True),                    # pas de tirage : section vide
+        (defaut, True, True),
+        ({"tombola"}, True, True),
+        (defaut - set(exports.SECTIONS_RESERVEES), False, False),
     ]
-    assert exports.SECTIONS_PDF == ("synthese", "plus", "moins", "tombola", "detail")
+    assert "tombola" in exports.SECTIONS_PDF and "tombola" in exports.SECTIONS_RESERVEES
 
 
 def test_pdf_tombola_se_construit_sans_couleur_en_dur(bases):
     _tirer(12, 45)
     _remettre_apres(12, 4)
     data = {"globales": {"total_prets": 0, "en_cours": 0, "titres_pretes": 0,
-                         "nb_titres": 0}, "plus": [], "moins": [], "prets": [],
+                         "nb_titres": 0}, "plus": [], "prets": [],
             "metrique": "total"}
-    avec = exports.construire_pdf(data, "tout", {"tombola"}, "#123456", tombola=_stats())
-    sans = exports.construire_pdf(data, "tout", {"tombola"}, "#123456", tombola=None)
+    avec = exports.construire_pdf(data, "tout", {"tombola"}, "#123456", tombola=_stats(),
+                                  benevole=True)
+    sans = exports.construire_pdf(data, "tout", {"tombola"}, "#123456", tombola=None,
+                                  benevole=True)
     assert avec.startswith(b"%PDF") and len(avec) > len(sans)
+    # Sans `benevole`, la tombola ne sort pas, même fournie et demandée.
+    public = exports.construire_pdf(data, "tout", {"tombola"}, "#123456", tombola=_stats())
+    assert "Tombola" not in texte_pdf(public) and "Tombola" in texte_pdf(avec)
 
 
 # ===========================================================================

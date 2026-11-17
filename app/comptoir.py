@@ -141,6 +141,31 @@ def phrase_fermetures(n: int) -> str:
             "jusqu'à la clôture.")
 
 
+def phrase_pic_et_pointes(donnees: dict) -> str | None:
+    """
+    Le pic et les deux plus fortes heures de retours, en une phrase, pour le
+    bilan PDF (lot bilan-7b) : la page les porte en étiquettes sur ses
+    graphiques. Les deux pointes dans l'ordre des heures. None quand il n'y a
+    ni pic ni retour.
+    """
+    morceaux = []
+    pic = donnees.get("pic")
+    if pic:
+        morceaux.append(f"Pic : {pic['dehors']} "
+                        f"{pluriel(pic['dehors'], 'jeu dehors', 'jeux dehors')}, "
+                        f"{pic['libelle']}.")
+    heures = donnees.get("heures", [])
+    pointes = [heures[i] for i in donnees.get("pointes_retours", [])]
+    if pointes:
+        liste = " et ".join(
+            f"{h['libelle']} ({h['retours']} {pluriel(h['retours'], 'retour', 'retours')})"
+            for h in pointes)
+        debut = ("Plus forte heure de retours" if len(pointes) == 1
+                 else "Plus fortes heures de retours")
+        morceaux.append(f"{debut} : {liste}.")
+    return " ".join(morceaux) or None
+
+
 def phrase_trop_long(nb_jours: int) -> str:
     """La phrase qui remplace les graphiques au-delà de `MAX_JOURS` jours d'activité."""
     return (f"La période couvre {nb_jours} jours d'activité : choisissez une "

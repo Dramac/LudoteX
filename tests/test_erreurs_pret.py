@@ -203,8 +203,17 @@ def test_les_exports_montrent_les_erreurs_a_part(conn):
 
     import openpyxl
 
-    classeur = openpyxl.load_workbook(BytesIO(exports.construire_xlsx(data, "tout")))
-    libelles = [c[0] for c in classeur["Synthèse"].iter_rows(values_only=True) if c[0]]
+    # Depuis le lot bilan-7b, les erreurs sont dans la feuille « Organisation »,
+    # réservée aux bénévoles : la synthèse ne porte plus que la tête de page.
+    classeur = openpyxl.load_workbook(BytesIO(
+        exports.construire_xlsx(data, "tout", benevole=True)))
+    libelles = [c[0] for c in classeur[exports.FEUILLE_ORGANISATION].iter_rows(values_only=True)
+                if c[0]]
     assert any("Erreurs de prêt" in str(l) for l in libelles)
+    public = openpyxl.load_workbook(BytesIO(exports.construire_xlsx(data, "tout")))
+    assert exports.FEUILLE_ORGANISATION not in public.sheetnames
+    assert not any("Erreurs de prêt" in str(v) for f in public.worksheets
+                   for ligne in f.iter_rows(values_only=True) for v in ligne if v)
     # Le PDF se construit sans erreur et n'est pas vide.
     assert exports.construire_pdf(data, "tout", sections=("synthese",))
+    assert exports.construire_pdf(data, "tout", sections=("organisation",), benevole=True)

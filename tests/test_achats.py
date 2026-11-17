@@ -12,7 +12,7 @@ Ordre des familles :
 3. palmarès : 50 au plus, 10 visibles, ex aequo, zéros écartés, bascule ;
 4. rendu de `/stats`, cas vides, édition = paire de dates ;
 5. export Excel ;
-6. PDF inchangé (arbitrage : bilan-7 le refait).
+6. le bilan PDF (lot bilan-7b) : listes coupées, plus de « moins ».
 
 Les libellés et les constantes sont importés, jamais recopiés.
 """
@@ -25,6 +25,7 @@ import pytest
 from markupsafe import escape
 
 from app import achats, comptoir, editions, exports, gouts, services
+from tests.outils_pdf import texte_pdf
 from tests.test_tombola import (  # noqa: F401 — fixtures partagées
     _conn, bases, benevole,
 )
@@ -493,8 +494,8 @@ def test_bascule_garde_la_periode(soixante, benevole):
 def test_plus_de_palmares_des_moins_pretes_sur_la_page(soixante, benevole):
     html = benevole.get("/stats?edition=tout").text
     assert "<h2>Les moins prêtés" not in html and "jamais sortis inclus" not in html
-    # Le volet PDF garde sa case jusqu'au lot bilan-7.
-    assert 'value="moins" checked> Palmarès des moins prêtés' in html
+    # Le volet « PDF à la carte » n'a plus de case « moins » (lot bilan-7b).
+    assert 'value="moins"' not in html and "Palmarès des moins prêtés" not in html
 
 
 # ===========================================================================
@@ -618,10 +619,13 @@ def _rangees(feuille, a_partir=1):
 
 def test_feuilles_et_ordre(week_end, benevole):
     classeur = _classeur(benevole)
+    # L'ordre de la page depuis le lot bilan-7b (`exports.FEUILLES_XLSX`) :
+    # le comptoir vient après la synthèse ; « Organisation » et « Détail »,
+    # réservées aux bénévoles, à la fin.
     assert classeur.sheetnames == [
-        "Synthèse", exports.FEUILLE_PALMARES, achats.FEUILLE_TOUS_SORTIS,
-        achats.FEUILLE_JAMAIS_SORTIS, gouts.FEUILLE_GOUTS, gouts.FEUILLE_SANS_CATEGORIE,
-        exports.FEUILLE_HEURE_PAR_HEURE, "Détail"]
+        "Synthèse", exports.FEUILLE_HEURE_PAR_HEURE, exports.FEUILLE_PALMARES,
+        achats.FEUILLE_TOUS_SORTIS, achats.FEUILLE_JAMAIS_SORTIS, gouts.FEUILLE_GOUTS,
+        gouts.FEUILLE_SANS_CATEGORIE, exports.FEUILLE_ORGANISATION, "Détail"]
     assert "Palmarès" not in classeur.sheetnames
     assert all(c.data_type != "f" for f in classeur for l in f.iter_rows() for c in l)
 
@@ -699,44 +703,40 @@ def test_excel_meme_periode_que_la_page(week_end, benevole):
 
 
 # ===========================================================================
-# 6. PDF : inchangé dans ce lot (bilan-7 le refait)
+# 6. Le bilan PDF (lot bilan-7b) : la section « Pour les achats »
 # ===========================================================================
-def test_pdf_garde_ses_deux_palmares_de_quinze(soixante, benevole, monkeypatch):
-    assert exports.SECTIONS_PDF == ("synthese", "plus", "moins", "tombola", "detail")
-    vus = {}
-    original = exports.construire_pdf
-
-    def espion(data, periode, sections, couleur, tombola=None):
-        vus.update(data=data, sections=sections)
-        return original(data, periode, sections, couleur, tombola=tombola)
-
-    monkeypatch.setattr(exports, "construire_pdf", espion)
+def test_pdf_sans_moins_et_plus_pretes_a_quinze(soixante, benevole):
+    """Le palmarès des moins prêtés a quitté le PDF ; les plus prêtés y sont
+    coupés à `LIGNES_PALMARES_PDF`, avec le renvoi à l'Excel."""
+    assert "moins" not in exports.SECTIONS_PDF
     r = benevole.get("/stats/export.pdf?edition=tout")
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
-    assert vus["sections"] == {"synthese", "plus", "moins"}
-    assert len(vus["data"]["moins"]) == services.LIMITE_PALMARES_PDF == 15
-    # Le PDF coupe les plus prêtés à 15, comme avant ce lot : la page et
-    # l'Excel en portent 50.
-    assert len(vus["data"]["plus"]) == 50
+    texte = texte_pdf(r.content)
+    assert "moins prêtés" not in texte
+    assert achats.TITRE_SECTION in texte and "Les plus prêtés (par total)" in texte
+    assert (f"Les {exports.LIGNES_PALMARES_PDF} premiers sont montrés ; les "
+            f"{services.LIMITE_PALMARES} sont dans l'export Excel, feuille "
+            f"« {exports.FEUILLE_PALMARES} ».") in texte
 
 
-def test_pdf_coupe_les_plus_pretes_a_quinze(monkeypatch):
-    lignes = []
-
-    class Table:
-        def __init__(self, donnees, **_):
-            lignes.append(len(donnees) - 1)
-
-        def setStyle(self, _):
-            pass
-
-        def wrapOn(self, *a):
-            return (0, 0)
-
-    import reportlab.platypus as platypus
-    monkeypatch.setattr(platypus, "Table", Table)
-    monkeypatch.setattr(platypus.SimpleDocTemplate, "build", lambda self, e: None)
-    jeu = {"nom": "Jeu", "nb_prets": 1, "nb_exemplaires": 1, "par_exemplaire": 1.0}
-    exports.construire_pdf({"plus": [jeu] * 50, "moins": [jeu] * 50, "metrique": "total"},
-                           "tout", {"plus", "moins"})
-    assert lignes == [15, 15]
+def test_pdf_listes_coupees_et_jamais_sortis(base, benevole):
+    """Les deux listes des jeux tous sortis : leurs `achats.LIGNES_PDF`
+    premières lignes, la phrase de la suite, et le NOMBRE de jamais sortis
+    avec le renvoi à l'Excel — les phrases des constantes, telles quelles."""
+    for i in range(achats.LIGNES_PDF + 3):
+        ref = f"T{i:02d}"
+        _titre(ref, f"Jeu {i:02d}", 1, prefixe=f"{ref}-")
+        _prets_enchaines(f"{ref}-1", 3, duree_min=20 + i)
+    texte = texte_pdf(benevole.get("/stats/export.pdf?edition=tout").content)
+    assert achats.TITRE_UNE_BOITE in texte and achats.PHRASE_UNE_BOITE in texte
+    assert achats.phrase_suite(achats.LIGNES_PDF + 3, achats.LIGNES_PDF) in texte
+    # Classés par durée dehors : les plus longs (les derniers créés) d'abord ;
+    # les trois plus courts ne sont pas dans le tableau du PDF.
+    liste = texte[texte.index(achats.TITRE_UNE_BOITE):
+                  texte.index(achats.phrase_suite(achats.LIGNES_PDF + 3, achats.LIGNES_PDF))]
+    assert f"Jeu {achats.LIGNES_PDF + 2:02d}" in liste and "Jeu 03" in liste
+    assert not any(f"Jeu {i:02d}" in liste for i in range(3))
+    assert achats.PHRASE_AUCUN in texte                 # Azul n'est jamais saturé
+    assert achats.NOTE_DEFINITIONS in texte
+    # Azul n'a aucun prêt : il est le jamais sorti, compté, pas listé.
+    assert achats.phrase_jamais_sortis(1, achats.LIGNES_PDF + 4, "toutes périodes") in texte

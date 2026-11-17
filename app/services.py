@@ -741,14 +741,29 @@ def lister_catalogue(conn: sqlite3.Connection, categories: Sequence[str] = (),
 # ===========================================================================
 # STATISTIQUES (post-événement) — fondées sur l'historique complet des prêts
 # ===========================================================================
+# La définition de la durée moyenne, mot pour mot sur la page (infobulle de
+# la case), dans le PDF et dans l'Excel (lot bilan-7b).
+DEF_DUREE_MOYENNE = (
+    "Durée moyenne : sur les prêts rendus au comptoir. Les retours non "
+    "scannés et les jeux rendus à la clôture de fin d'événement n'y entrent "
+    "pas : leur durée n'est pas celle d'une partie.")
+
+
 def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
-                   fin: str | None = None) -> dict:
+                   fin: str | None = None,
+                   instants_cloture=frozenset()) -> dict:
     """
     Indicateurs de synthèse, éventuellement restreints à une période.
 
     Args:
         conn: connexion SQLite ouverte.
         debut, fin: bornes UTC ISO optionnelles (fin exclusive) sur date_sortie.
+        instants_cloture: les `date_retour` posées par une clôture de fin
+            d'événement (`comptoir.instants_de_cloture`), écartées de la
+            durée moyenne (lot bilan-7b) : un prêt fermé par la clôture n'a
+            pas été rendu, sa « durée » court jusqu'au soir ou au lendemain.
+            Il reste un vrai prêt : le total ne bouge pas. Vide par défaut
+            (appel sans le comptoir) : la moyenne d'avant ce lot.
 
     Returns:
         dict avec total_prets, en_cours, titres_pretes, nb_titres,
@@ -789,13 +804,20 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
     # Durée moyenne, sur les prêts TERMINÉS uniquement (hors tournoi, période
     # incluse). `motif = 'pret'` et non `MOTIFS_COMPTES` : la durée d'un
     # `oubli` court jusqu'à la découverte de l'oubli, elle fausserait tout.
+    # Les fermetures par la clôture en sont écartées (lot bilan-7b), comme
+    # des médianes de « Ce qui plaît » : même reconnaissance, celle du
+    # comptoir. Sur l'extraction 2026, elles portaient la moyenne de
+    # l'édition de 51 à 55 min.
+    clotures = sorted(instants_cloture)
+    sans_cloture = (f" AND date_retour NOT IN ({', '.join('?' * len(clotures))})"
+                    if clotures else "")
     moyenne = conn.execute(
         f"""
         SELECT AVG((julianday(date_retour) - julianday(date_sortie)) * 86400)
         FROM prets
-        WHERE motif = 'pret' AND date_retour IS NOT NULL{f}
+        WHERE motif = 'pret' AND date_retour IS NOT NULL{f}{sans_cloture}
         """,
-        params,
+        [*params, *clotures],
     ).fetchone()[0]
     return {
         "total_prets": total_prets,
@@ -816,9 +838,10 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
 
     « Catalogue d'abord » : on part de TOUS les titres (JOIN sur exemplaires) et
     on rattache les prêts par LEFT JOIN. Ainsi un titre jamais prêté apparaît
-    avec `nb_prets = 0` — indispensable pour le palmarès des MOINS prêtés,
-    qui ne sert plus qu'au PDF (lot bilan-5 ; les jamais sortis ont leur
-    feuille Excel, `app/achats.py`).
+    avec `nb_prets = 0`. Le sens « asc » (moins prêtés) n'a plus d'appelant
+    dans les statistiques : la page l'a quitté au lot bilan-5, le PDF au lot
+    bilan-7b, et les jamais sortis le remplacent (`app/achats.py`).
+    `collecter_stats` écarte d'ailleurs les zéros du palmarès des plus prêtés.
 
     IMPORTANT : le filtre de période est placé dans la condition du LEFT JOIN
     (et non dans un WHERE), pour conserver les titres à zéro prêt sur la période.
@@ -1023,10 +1046,6 @@ def filtrer_sortis(en_cours: dict, recherche: str | None) -> dict:
 # volet replié. Un seul appel au service, à la limite haute.
 LIMITE_PALMARES = 50
 LIMITE_PALMARES_VISIBLE = 10
-# Le PDF garde ses deux palmarès de 15 lignes, « moins prêtés » compris : il
-# est refait par le lot bilan-7, qui retirera la section « moins ». D'ici là,
-# son contenu ne bouge pas.
-LIMITE_PALMARES_PDF = 15
 
 
 def classer(jeux: list[dict], metrique: str) -> list[dict]:
@@ -1070,27 +1089,30 @@ def collecter_stats(conn: sqlite3.Connection, metrique: str = "total",
         limite_prets: limite de la liste détaillée (None = toutes, pour l'export).
 
     Returns:
-        dict {globales, plus, moins, comptoir, achats, gouts, prets, metrique}.
+        dict {globales, plus, comptoir, achats, gouts, prets, metrique}.
         `comptoir` est le comptoir heure par heure (lot bilan-4,
         `app/comptoir.py`), `achats` la section « Pour les achats » (lot
         bilan-5, `app/achats.py`), calculée sur les heures d'ouverture du
         comptoir, `gouts` la section « Ce qui plaît » (lot bilan-6,
-        `app/gouts.py`). `plus` porte le `rang` de chaque jeu (`classer`). `moins`
-        ne sert plus qu'au PDF (`LIMITE_PALMARES_PDF`), jusqu'au lot bilan-7.
+        `app/gouts.py`). `plus` porte le `rang` de chaque jeu (`classer`). Le
+        palmarès des moins prêtés a quitté la page (lot bilan-5) puis le PDF
+        (lot bilan-7b) : les jamais sortis le remplacent (`achats`).
+        La durée moyenne de `globales` écarte les fermetures par la clôture
+        que le comptoir reconnaît (lot bilan-7b).
     """
     # Différés : app.comptoir, app.achats et app.gouts importent ce module.
     from app import achats, comptoir, gouts
 
     donnees_comptoir = comptoir.heure_par_heure(conn, debut, fin)
     return {
-        "globales": stats_globales(conn, debut, fin),
+        "globales": stats_globales(conn, debut, fin,
+                                   donnees_comptoir["instants_cloture"]),
         # Un jeu sans aucun prêt n'est pas « plus prêté » : il est parmi les
         # jamais sortis (`achats`). Sur une petite période, le bas des 50
         # n'aurait sinon été fait que de zéros.
         "plus": classer([j for j in palmares(conn, "desc", metrique,
                                              limite_palmares, debut, fin)
                          if j["nb_prets"] > 0], metrique),
-        "moins": palmares(conn, "asc", metrique, LIMITE_PALMARES_PDF, debut, fin),
         "comptoir": donnees_comptoir,
         "achats": achats.pour_les_achats(conn, debut, fin, donnees_comptoir),
         "gouts": gouts.ce_qui_plait(conn, debut, fin,

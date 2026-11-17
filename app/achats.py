@@ -119,6 +119,10 @@ PRETS_MIN_UNE_BOITE = 3
 
 # Lignes montrées sur la page, par liste ; l'export Excel les donne toutes.
 LIGNES_PAGE = 20
+# Lignes de chaque liste dans le bilan PDF (lot bilan-7b) : les dix premières,
+# pour que le bilan tienne en trois pages ; la phrase sous le tableau renvoie
+# à l'Excel pour la suite.
+LIGNES_PDF = 10
 
 JOURS_COURTS = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
 
@@ -185,9 +189,10 @@ def phrase_peu_pretes(nb: int) -> str:
             f"faut une deuxième, {pluriel(nb, 'il n’est pas montré', 'ils ne sont pas montrés')}.")
 
 
-def phrase_suite(nb: int) -> str:
-    """La phrase quand un tableau de la page est coupé à `LIGNES_PAGE`."""
-    return (f"Les {LIGNES_PAGE} premiers sont montrés ; les {nb} sont dans "
+def phrase_suite(nb: int, montres: int = LIGNES_PAGE) -> str:
+    """La phrase quand un tableau est coupé à ses `montres` premières lignes :
+    `LIGNES_PAGE` sur la page, `LIGNES_PDF` dans le bilan PDF."""
+    return (f"Les {montres} premiers sont montrés ; les {nb} sont dans "
             f"l'export Excel, feuille « {FEUILLE_TOUS_SORTIS} ».")
 
 

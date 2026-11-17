@@ -886,6 +886,12 @@ summary:focus-visible,
 .org-volet[open] > summary { margin-bottom: 4px; }
 .org-volet h4 { margin: 16px 0 6px; }
 .org-volet > :last-child { margin-bottom: 12px; }
+/* Bilan et exports (lot bilan-7b) : le bouton du bilan, puis « Tout en
+   Excel » et le volet « PDF à la carte ». Le `summary` et chaque case sont
+   des cibles de 44 px ; le focus du `summary` reprend la règle globale. */
+#bilan .bouton-principal { margin: 12px 0 4px; }
+.stats-a-la-carte > summary { padding-block: 10px; line-height: 24px; }
+.stats-cases-pdf .case { min-height: 44px; }
 .stats-note { color: #6b7075; font-size: 0.8rem; }
 /* Page bénévole « Jeux sortis » (lot bilan-1, docs/ui-composants.md § 9, « Liste de cartes ») :
    une LISTE de cartes, sur téléphone comme sur grand écran — pas un tableau

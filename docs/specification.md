@@ -435,7 +435,10 @@ peut les rouvrir au public depuis la visibilité des modules (§8).
 Elles comptent les **prêts au public** : motif `pret`, et motif `oubli` — un
 prêt dont le retour n'a pas été scanné, clos plus tard par un re-prêt ou un
 transfert. Ce dernier est un vrai prêt, mais sa durée est inconnue : il est
-exclu de la durée moyenne et affiché à part (« retours non scannés »). Les
+exclu de la durée moyenne et affiché à part (« retours non scannés »). Un
+prêt **fermé par la clôture** de fin d'événement reste un vrai prêt, compté
+dans le total, mais sa « durée » court jusqu'à la clôture : il est lui aussi
+exclu de la durée moyenne, reconnu comme le fait le comptoir (ci-dessous). Les
 sorties tournoi et les erreurs de prêt sont hors statistiques.
 
 Indicateurs :
@@ -582,11 +585,35 @@ Indicateurs :
   La liste des jeux actuellement sortis n'est pas une statistique mais un
   outil de comptoir : elle a sa propre page, réservée aux bénévoles
   (§5.1).
-- Exports Excel et PDF. L'Excel porte les feuilles « Plus prêtés », « Tous
-  sortis », « Jamais sortis », « Ce qui plaît », « Sans catégorie » et
-  « Heure par heure », mêmes lignes que la page, sans la coupe de la page ; le PDF ne reprend pas le comptoir, et
-  garde pour l'instant ses palmarès des plus et des moins prêtés, quinze
-  lignes chacun.
+- **Bilan et exports**, en fin de page, pour la période affichée :
+  - le **bilan de l'édition** en PDF, en un clic : un document à joindre à
+    un compte rendu ou à une demande de subvention. Il reprend les sections
+    de la page, dans leur ordre et avec les mêmes chiffres : la synthèse,
+    le comptoir (le pic, les deux plus fortes heures de retours, et le
+    graphique des prêts et des retours, imprimable en noir et blanc — au-delà
+    d'une semaine d'activité, la phrase de la page), les achats (les dix
+    premiers jeux de chaque liste, les quinze plus prêtés, le **nombre** de
+    jamais sortis avec un renvoi à l'Excel), ce qui plaît (les tableaux,
+    sans les barres), puis, pour un bénévole, l'organisation (tournois et
+    programme compris) et la tombola. Le palmarès des moins prêtés n'y est
+    plus. Son titre nomme l'édition, ou la période quand ce n'en est pas
+    une ;
+  - « **PDF à la carte** » : une case par section qui existe pour ce
+    visiteur, toutes cochées sauf la liste détaillée des prêts. Envoyé sans
+    case cochée, il donne le bilan par défaut ;
+  - « **Tout en Excel** » : les feuilles dans l'ordre de la page — synthèse,
+    heure par heure, plus prêtés, tous sortis, jamais sortis, ce qui plaît,
+    sans catégorie —, toutes les lignes, sans la coupe de la page.
+
+  **La règle de visibilité de la page vaut pour les exports.** Ce qui relève
+  de l'Organisation — ses chiffres, les signalements, les tournois et le
+  programme, la tombola, la liste détaillée des prêts — n'entre ni dans le
+  PDF ni dans l'Excel d'un visiteur, même quand le bureau a rouvert la page
+  au public, et même demandé à la main dans l'adresse. Un bénévole a en plus
+  les feuilles « Organisation » (des comptes seulement), « Tombola » et
+  « Détail ». La liste publique des numéros gagnants de la tombola, elle,
+  est la page de la tombola. Aucun export ne porte de numéro de pochette, de
+  texte de signalement ni de pseudo.
 
 ---
 
