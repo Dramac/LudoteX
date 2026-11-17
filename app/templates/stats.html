@@ -40,26 +40,42 @@
   <p class="stats-vers-sortis">Chercher un jeu sorti en ce moment : <a class="lien" href="/sortis">Jeux sortis</a></p>
   {% endif %}
   <p class="dispo-titre">Période : {{ periode_txt }}</p>
+  {# SYNTHÈSE DE TÊTE (lot bilan-7a) : quatre chiffres, dans l'ordre de la
+     maquette validée — prêts, jeux différents prêtés, pic des jeux dehors,
+     durée moyenne. Les trois autres d'avant ce lot (erreurs de prêt,
+     retours non scannés, en cours) sont passés dans « Organisation », avec
+     les mêmes valeurs. « Jeux différents prêtés » : `titres_pretes` /
+     `nb_titres`, le mot « jeu » de la page (lot bilan-6) au lieu de
+     « titres ». #}
   <div class="stats-chiffres">
     <div class="chiffre"><span class="chiffre-val">{{ g.total_prets }}</span><span class="chiffre-lib">prêts</span></div>
-    <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">en cours</span></div>
-    <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">titres prêtés</span></div>
-    <div class="chiffre"><span class="chiffre-val" {% if g.duree_moyenne == "—" %}title="Aucun prêt terminé sur la période"{% endif %}>{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
-    {# Retours non scannés (motif `oubli`, services.MOTIF_OUBLI) : ce sont
-       de vrais prêts, comptés dans « prêts » et dans les palmarès, mais leur
-       durée court jusqu'à la découverte de l'oubli — la durée moyenne les
-       ignore. La tuile dit pourquoi, plutôt que de laisser l'écart muet. #}
-    <div class="chiffre"><span class="chiffre-val" title="Prêts dont le retour n'a pas été scanné, clôturés plus tard par un re-prêt ou un transfert. Comptés dans les prêts, mais pas dans la durée moyenne : leur durée est inconnue.">{{ g.oublis }}</span><span class="chiffre-lib">{{ pluriel(g.oublis, 'retour non scanné', 'retours non scannés') }}</span></div>
-    {# Les erreurs de prêt (jeu rendu en moins d'une minute) sont comptées à
-       part et n'entrent dans AUCUN des chiffres ci-dessus. Le « 0 » est
-       affiché : sur un tableau de bord chiffré, il informe autant qu'un
-       autre nombre — la règle « jamais de (0) permanent » vise les
-       compteurs de menu, pas une synthèse. #}
-    <div class="chiffre"><span class="chiffre-val" title="Jeux rendus moins d'une minute après leur sortie : mauvaise boîte scannée, ou visiteur qui se ravise. Non comptés dans les chiffres ci-dessus.">{{ g.erreurs }}</span><span class="chiffre-lib">{{ pluriel(g.erreurs, 'erreur de prêt', 'erreurs de prêt') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.titres_pretes }} / {{ g.nb_titres }}</span><span class="chiffre-lib">jeux différents prêtés</span></div>
     {# Lot bilan-4 : le pic des jeux dehors, repris du comptoir heure par
        heure (`comptoir.pic` : la première heure en cas d'égalité). #}
     <div class="chiffre"><span class="chiffre-val" title="Le plus grand nombre de jeux dehors à la fin d'une heure, sur la période. Détail dans « {{ cpt.TITRE_SECTION }} ».">{{ comptoir.pic.dehors if comptoir.pic else "—" }}</span><span class="chiffre-lib">{{ cpt.LIBELLE_PIC }}{% if comptoir.pic %}, {{ comptoir.pic.libelle }}{% endif %}</span></div>
+    <div class="chiffre"><span class="chiffre-val" {% if g.duree_moyenne == "—" %}title="Aucun prêt terminé sur la période"{% endif %}>{{ g.duree_moyenne }}</span><span class="chiffre-lib">durée moyenne</span></div>
   </div>
+
+  {# SOMMAIRE (lot bilan-7a) : un lien par section PRÉSENTE. « Organisation »
+     et ses volets n'ont de lien que pour un bénévole (`org`), la tombola
+     que si elle a lieu d'être, « Tournois et programme » que si l'un des
+     deux modules est visible. Chaque lien est une cible de 44 px. #}
+  <nav class="stats-sommaire" aria-label="Sommaire des statistiques">
+    <ul>
+      <li><a class="lien" href="#comptoir">{{ cpt.TITRE_SECTION }}</a></li>
+      <li><a class="lien" href="#achats">{{ ach.TITRE_SECTION }}</a></li>
+      <li><a class="lien" href="#gouts">{{ gts.TITRE_SECTION }}</a></li>
+      {% if org %}
+      <li class="stats-sommaire-groupe"><a class="lien" href="#organisation">{{ orga.TITRE_SECTION }}</a>
+        <ul>
+          {% if tombola %}<li><a class="lien" href="#tombola">{{ orga.TITRE_TOMBOLA }}</a></li>{% endif %}
+          {% if org.tournois_programme %}<li><a class="lien" href="#tournois">{{ orga.TITRE_TOURNOIS }}</a></li>{% endif %}
+          <li><a class="lien" href="#detail">{{ orga.TITRE_DETAIL }}</a></li>
+        </ul>
+      </li>
+      {% endif %}
+    </ul>
+  </nav>
 
   {# CHOIX DE LA PÉRIODE (lot bilan-3). Deux formulaires, sans JS :
      - le menu « Période » : chaque édition (de la plus récente à la plus
@@ -377,87 +393,207 @@
   {% endif %}
 </section>
 
-{# Tombola (série tombola, lot 2) : absente quand le module est masqué pour
-   ce visiteur ou qu'aucun tirage n'a eu lieu dans la période. Un numéro
-   compte dans la période de son tirage. #}
-{% if tombola %}
-<section class="carte" id="tombola">
-  <h2>Tombola</h2>
+{# ORGANISATION (lot bilan-7a). Les chiffres et les phrases viennent
+   d'app/organisation.py (`orga`) et de la synthèse (`g`) : ce gabarit ne
+   calcule rien.
+
+   RÉSERVÉE AUX BÉNÉVOLES (`org` vaut None pour un visiteur, la route ne
+   calcule rien pour lui), même quand le bureau a rouvert `/stats` au
+   public : elle parle du travail des bénévoles et des boîtes abîmées, et le
+   carnet est `jamais_public`. La tombola et le détail des prêts, repliés
+   ici, suivent donc la même règle. Elle ne montre JAMAIS le texte d'un
+   signalement, le code d'une boîte signalée ni un pseudo de tournoi : des
+   comptes seulement.
+
+   Trois volets repliés (`details`), dans l'ordre : tombola, tournois et
+   programme, détail des prêts. Leur titre est un `h3` dans le `summary`,
+   leurs sous-titres des `h4` : la hiérarchie reste h1 > h2 > h3 > h4. #}
+{% if org %}
+<section class="carte" id="organisation">
+  <h2>{{ orga.TITRE_SECTION }}</h2>
+  <p>{{ orga.PHRASE_SENS }}</p>
+  <p class="stats-note">{{ orga.NOTE_RESERVEE }}</p>
+
   <div class="stats-chiffres">
-    <div class="chiffre"><span class="chiffre-val">{{ tombola.tires }}</span><span class="chiffre-lib">{{ pluriel(tombola.tires, 'numéro tiré', 'numéros tirés') }}</span></div>
-    <div class="chiffre"><span class="chiffre-val">{{ tombola.remis }}</span><span class="chiffre-lib">{{ pluriel(tombola.remis, 'lot remis', 'lots remis') }}</span></div>
-    <div class="chiffre"><span class="chiffre-val">{{ tombola.affiches }}</span><span class="chiffre-lib">encore {{ pluriel(tombola.affiches, 'affiché', 'affichés') }}</span></div>
-    <div class="chiffre"><span class="chiffre-val">{{ tombola.non_reclames }}</span><span class="chiffre-lib">non {{ pluriel(tombola.non_reclames, 'réclamé', 'réclamés') }}</span></div>
-    <div class="chiffre"><span class="chiffre-val" title="Temps entre l'affichage d'un numéro et la remise de son lot, sur les seuls lots remis.">{{ tombola.delai_median }}</span><span class="chiffre-lib">délai médian de remise</span></div>
-    <div class="chiffre"><span class="chiffre-val" title="Numéros mal tapés, retirés de l'affichage. Non comptés dans les chiffres ci-dessus.">{{ tombola.erreurs_saisie }}</span><span class="chiffre-lib">{{ pluriel(tombola.erreurs_saisie, 'erreur de saisie', 'erreurs de saisie') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.erreurs }}</span><span class="chiffre-lib">{{ pluriel(g.erreurs, 'erreur de prêt', 'erreurs de prêt') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.oublis }}</span><span class="chiffre-lib">{{ pluriel(g.oublis, 'retour non scanné', 'retours non scannés') }}</span></div>
+    <div class="chiffre"><span class="chiffre-val">{{ g.en_cours }}</span><span class="chiffre-lib">{{ pluriel(g.en_cours, 'prêt encore ouvert', 'prêts encore ouverts') }}</span></div>
   </div>
-  <p class="stats-note">Le délai médian se calcule sur les seuls lots remis :
-    la moitié des gagnants est venue plus vite, l'autre moitié plus tard. Les
-    numéros non réclamés à la clôture n'y entrent pas.{% if tombola.delais_ecartes %}
-    {{ tombola.delais_ecartes }} {{ pluriel(tombola.delais_ecartes, 'délai écarté', 'délais écartés') }} : l'horloge du serveur donnait une remise avant l'affichage.{% endif %}</p>
+  {# Les deux infobulles d'avant ce lot, devenues des phrases visibles : une
+     infobulle ne se lit pas sur téléphone. #}
+  <ul class="org-definitions">
+    <li>{{ orga.DEF_ERREURS }}</li>
+    <li>{{ orga.DEF_OUBLIS }}</li>
+  </ul>
+  {# Prêts encore ouverts : une phrase, et pour un administrateur connecté
+     un lien vers la clôture du tableau de bord. AUCUN bouton d'action ici :
+     la clôture reste un geste de l'administration. #}
+  <p class="org-ouverts">{{ orga.phrase_ouverts(g.en_cours, org.periode_finie) }}
+    {% if g.en_cours %}{% if est_admin(request) %}<a class="lien lien-cible" href="{{ orga.URL_CLOTURE }}">{{ orga.LIEN_CLOTURE }}</a>{% else %}{{ orga.PHRASE_DEMANDER_BUREAU }}{% endif %}{% endif %}</p>
 
-  <h3>Par tirage <small>({{ tombola.par_tirage | length }})</small></h3>
-  <table class="detail">
-    <thead><tr><th>Tirage</th><th>Mode</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
-    <tbody>
-      {% for t in tombola.par_tirage %}
-        <tr><td>{{ t.quand }}</td><td>{{ t.mode }}</td><td>{{ t.tires }}</td><td>{{ t.remis }}</td><td>{{ t.delai_median }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <h3>Par mode de tirage</h3>
-  <table class="detail">
-    <thead><tr><th>Mode</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
-    <tbody>
-      {% for m in tombola.par_mode %}
-        <tr><td>{{ m.mode }}</td><td>{{ m.nb_tirages }}</td><td>{{ m.tires }}</td><td>{{ m.remis }}</td><td>{{ m.delai_median }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  {# Une ligne par session de tombola (`tombola_editions`) seulement quand la
-     période en couvre plusieurs : sinon le tableau répéterait la synthèse.
-     « Session », et non « édition » depuis le lot bilan-3 : une édition est
-     désormais une période de l'événement, datée par le bureau. #}
-  {% if tombola.par_edition | length > 1 %}
-  <h3>{{ libelle_sessions_tombola }}</h3>
-  <table class="detail">
-    <thead><tr><th>Ouverte le</th><th>Close le</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
-    <tbody>
-      {% for e in tombola.par_edition %}
-        <tr><td>{{ e.ouverte }}</td><td>{{ e.close or "en cours" }}</td><td>{{ e.nb_tirages }}</td><td>{{ e.tires }}</td><td>{{ e.remis }}</td><td>{{ e.delai_median }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h3>{{ orga.TITRE_SIGNALEMENTS }}</h3>
+  {% set sig = org.signalements %}
+  {% if sig.total %}
+    <p>{{ orga.phrase_signalements(sig.total, sig.traites, sig.a_traiter) }}</p>
+    <div class="org-tableau">
+      <table class="detail">
+        <thead><tr>{% for e in orga.ENTETES_SIGNALEMENTS %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for l in sig.lignes %}
+            <tr><th scope="row">{{ l.nom }}</th><td>{{ l.total }}</td><td>{{ l.traites }}</td><td>{{ l.a_traiter }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="stats-note">{{ orga.NOTE_SIGNALEMENTS }}</p>
+  {% else %}
+    <p>{{ orga.PHRASE_AUCUN_SIGNALEMENT }}</p>
   {% endif %}
-</section>
-{% endif %}
+  {% if org.voir_carnet %}<p><a class="lien lien-cible" href="/maintenance">{{ orga.LIEN_CARNET }}</a></p>{% endif %}
 
-<section class="carte">
-  <h2>Détail des prêts <small>({{ prets | length }})</small></h2>
-  {% if prets %}
+  {# Tombola (série tombola, lot 2), déplacée ici par le lot bilan-7a sans
+     changement de contenu : absente quand le module est masqué pour ce
+     visiteur ou qu'aucun tirage n'a eu lieu dans la période. Un numéro
+     compte dans la période de son tirage. #}
+  {% if tombola %}
+  <details class="org-volet" id="tombola">
+    <summary><h3>{{ orga.TITRE_TOMBOLA }}</h3></summary>
+    <div class="stats-chiffres">
+      <div class="chiffre"><span class="chiffre-val">{{ tombola.tires }}</span><span class="chiffre-lib">{{ pluriel(tombola.tires, 'numéro tiré', 'numéros tirés') }}</span></div>
+      <div class="chiffre"><span class="chiffre-val">{{ tombola.remis }}</span><span class="chiffre-lib">{{ pluriel(tombola.remis, 'lot remis', 'lots remis') }}</span></div>
+      <div class="chiffre"><span class="chiffre-val">{{ tombola.affiches }}</span><span class="chiffre-lib">encore {{ pluriel(tombola.affiches, 'affiché', 'affichés') }}</span></div>
+      <div class="chiffre"><span class="chiffre-val">{{ tombola.non_reclames }}</span><span class="chiffre-lib">non {{ pluriel(tombola.non_reclames, 'réclamé', 'réclamés') }}</span></div>
+      <div class="chiffre"><span class="chiffre-val" title="Temps entre l'affichage d'un numéro et la remise de son lot, sur les seuls lots remis.">{{ tombola.delai_median }}</span><span class="chiffre-lib">délai médian de remise</span></div>
+      <div class="chiffre"><span class="chiffre-val" title="Numéros mal tapés, retirés de l'affichage. Non comptés dans les chiffres ci-dessus.">{{ tombola.erreurs_saisie }}</span><span class="chiffre-lib">{{ pluriel(tombola.erreurs_saisie, 'erreur de saisie', 'erreurs de saisie') }}</span></div>
+    </div>
+    <p class="stats-note">Le délai médian se calcule sur les seuls lots remis :
+      la moitié des gagnants est venue plus vite, l'autre moitié plus tard. Les
+      numéros non réclamés à la clôture n'y entrent pas.{% if tombola.delais_ecartes %}
+      {{ tombola.delais_ecartes }} {{ pluriel(tombola.delais_ecartes, 'délai écarté', 'délais écartés') }} : l'horloge du serveur donnait une remise avant l'affichage.{% endif %}</p>
+
+    <h4>Par tirage <small>({{ tombola.par_tirage | length }})</small></h4>
     <table class="detail">
-      {# Pas de colonne « emplacement » ici : cette liste porte sur une période,
-         donc essentiellement sur des prêts CLOS, dont le numéro de pochette est
-         effacé à la clôture (fiche D5). La colonne serait toujours vide. Elle
-         reste en revanche sur la page bénévole « Jeux sortis » (/sortis), où
-         le numéro existe et sert. #}
-      <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th></tr></thead>
+      <thead><tr><th>Tirage</th><th>Mode</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
       <tbody>
-        {% for p in prets %}
-          <tr>
-            <td>{{ p.nom }}</td>
-            <td>{{ p.id_exemplaire }}</td>
-            <td>{{ p.sortie_locale }}</td>
-            <td>{{ p.retour_local or "en cours" }}</td>
-            <td>{{ p.duree_txt }}</td>
-          </tr>
+        {% for t in tombola.par_tirage %}
+          <tr><td>{{ t.quand }}</td><td>{{ t.mode }}</td><td>{{ t.tires }}</td><td>{{ t.remis }}</td><td>{{ t.delai_median }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
-  {% else %}
-    <p>Aucun prêt sur la période.</p>
+
+    <h4>Par mode de tirage</h4>
+    <table class="detail">
+      <thead><tr><th>Mode</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
+      <tbody>
+        {% for m in tombola.par_mode %}
+          <tr><td>{{ m.mode }}</td><td>{{ m.nb_tirages }}</td><td>{{ m.tires }}</td><td>{{ m.remis }}</td><td>{{ m.delai_median }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {# Une ligne par session de tombola (`tombola_editions`) seulement quand la
+       période en couvre plusieurs : sinon le tableau répéterait la synthèse.
+       « Session », et non « édition » depuis le lot bilan-3 : une édition est
+       désormais une période de l'événement, datée par le bureau. #}
+    {% if tombola.par_edition | length > 1 %}
+    <h4>{{ libelle_sessions_tombola }}</h4>
+    <table class="detail">
+      <thead><tr><th>Ouverte le</th><th>Close le</th><th>Tirages</th><th>Numéros</th><th>Remis</th><th>Délai médian</th></tr></thead>
+      <tbody>
+        {% for e in tombola.par_edition %}
+          <tr><td>{{ e.ouverte }}</td><td>{{ e.close or "en cours" }}</td><td>{{ e.nb_tirages }}</td><td>{{ e.tires }}</td><td>{{ e.remis }}</td><td>{{ e.delai_median }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </details>
   {% endif %}
+
+  {# Tournois et programme : des COMPTES lus dans la base des tournois par la
+     route (`org.tournois_programme`), jamais un pseudo, un nom d'équipe ni un
+     membre. Absent quand les deux modules sont masqués pour ce visiteur :
+     rien n'a alors été calculé. #}
+  {% set tp = org.tournois_programme %}
+  {% if tp %}
+  <details class="org-volet" id="tournois">
+    <summary><h3>{{ orga.TITRE_TOURNOIS }}</h3></summary>
+    {% if tp.illisible %}
+      <p class="resultat resultat-attention">{{ orga.PHRASE_BASE_ILLISIBLE }}</p>
+    {% endif %}
+    {% if tp.tournois %}
+      {% set tr = tp.tournois %}
+      {% if tr.total %}
+        <div class="org-tableau">
+          <table class="detail">
+            <thead><tr>{% for e in orga.ENTETES_TOURNOIS %}<th scope="col">{{ e }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for etat, libelle in orga.LIBELLES_ETATS_TOURNOI.items() %}
+                <tr><th scope="row">{{ libelle }}</th><td>{{ tr.par_etat[etat] }}</td></tr>
+              {% endfor %}
+              <tr class="org-total"><th scope="row">Total</th><td>{{ tr.total }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {% set insc = orga.phrase_inscriptions(tr.inscrits, tr.equipes) %}
+        {% if insc %}<p>{{ insc }}</p>{% endif %}
+      {% else %}
+        <p>{{ orga.PHRASE_AUCUN_TOURNOI }}</p>
+      {% endif %}
+      {% if tr.sans_date %}<p class="stats-note">{{ orga.phrase_tournois_sans_date(tr.sans_date) }}</p>{% endif %}
+    {% endif %}
+    {% if org.sorties_tournoi is not none %}
+      <p>{{ orga.phrase_sorties_tournoi(org.sorties_tournoi) }}</p>
+      <p class="stats-note">{{ orga.NOTE_SORTIES_TOURNOI }}</p>
+    {% endif %}
+    {% if tp.programme %}
+      <p>{{ orga.phrase_programme(tp.programme.publies) }}</p>
+      {% if tp.programme.sans_date %}<p class="stats-note">{{ orga.phrase_programme_sans_date(tp.programme.sans_date) }}</p>{% endif %}
+    {% endif %}
+  </details>
+  {% endif %}
+
+  {# Détail des prêts : le tableau d'avant ce lot, replié, son nombre de
+     lignes dans le `summary`. #}
+  <details class="org-volet" id="detail">
+    <summary><h3>{{ orga.TITRE_DETAIL }} <small>({{ prets | length }})</small></h3></summary>
+    {% if prets %}
+      <table class="detail">
+        {# Pas de colonne « emplacement » ici : cette liste porte sur une période,
+           donc essentiellement sur des prêts CLOS, dont le numéro de pochette est
+           effacé à la clôture (fiche D5). La colonne serait toujours vide. Elle
+           reste en revanche sur la page bénévole « Jeux sortis » (/sortis), où
+           le numéro existe et sert. #}
+        <thead><tr><th>Jeu</th><th>Exemplaire</th><th>Sortie</th><th>Retour</th><th>Durée</th></tr></thead>
+        <tbody>
+          {% for p in prets %}
+            <tr>
+              <td>{{ p.nom }}</td>
+              <td>{{ p.id_exemplaire }}</td>
+              <td>{{ p.sortie_locale }}</td>
+              <td>{{ p.retour_local or "en cours" }}</td>
+              <td>{{ p.duree_txt }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>Aucun prêt sur la période.</p>
+    {% endif %}
+  </details>
 </section>
+
+{# Un lien du sommaire vers un volet replié l'ouvre : sans ce script, la
+   plupart des navigateurs défilent jusqu'au volet sans l'ouvrir. Sans JS, le
+   lien amène au volet, qu'on ouvre d'un appui. #}
+<script>
+  (function () {
+    function ouvrir() {
+      var cible = location.hash ? document.getElementById(location.hash.slice(1)) : null;
+      if (cible && cible.tagName === "DETAILS") { cible.open = true; }
+    }
+    window.addEventListener("hashchange", ouvrir);
+    ouvrir();
+  })();
+</script>
+{% endif %}
 {% endblock %}

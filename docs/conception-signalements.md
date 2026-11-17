@@ -461,7 +461,8 @@ Corrigé au passage : la **date de traitement** ne vivait que dans un attribut
 - **La logique de prêt** : aucune. Ni les états, ni les numéros de pochette, ni
   les transactions, ni les index.
 - **Les statistiques** : un signalement n'est pas un prêt, aucun filtre à
-  ajouter nulle part.
+  ajouter nulle part. *Complément (lot bilan-7a)* : la section
+  « Organisation » de `/stats` lit désormais les signalements, voir §12.
 - **La clôture de fin d'événement** : elle ferme les prêts, purge le registre
   des appareils et les rotations du journal. Elle ne touche pas aux
   signalements — un carnet de maintenance sans mémoire ne sert à rien.
@@ -513,7 +514,20 @@ Garde-fou d'interdiction étendu (voir §3, point 2).
 
 ## 12. Le « bilan de l'événement »
 
-⚠️ **Il n'existe pas.** C'est la fiche **6.3 (« Rapport d'édition
+**Lecteur ajouté au lot bilan-7a : la section « Organisation » de
+`/stats`** (`app/organisation.py`, `signalements`). Elle ne montre que des
+**comptes** : les signalements ouverts pendant la période (date
+`cree_le`), traités depuis ou encore à traiter, par catégorie (« Non
+classé » sans catégorie). La requête ne lit **ni `texte` ni
+`id_exemplaire`** : rien de ce qui en sort ne nomme une personne ni une
+boîte. La section n'est rendue qu'aux bénévoles, même quand `/stats` est
+publique, et renvoie au carnet (`/maintenance`) si son module est visible.
+Les exports de `/stats` ne portent toujours aucune liste de signalements ;
+le bilan PDF du lot bilan-7b reprendra ces comptes, sous la même règle.
+
+*Ce qui suit date de la conception du carnet.*
+
+⚠️ **Il n'existait pas.** C'est la fiche **6.3 (« Rapport d'édition
 auto-généré »)** de `docs/idees-evolutions.md`, non réalisée : il n'y a
 aujourd'hui que les exports Excel/PDF de `/stats`, à sections cochables, et les
 exports du planning. Aucune page ne les assemble.

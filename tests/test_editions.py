@@ -95,12 +95,16 @@ def _journal(chemin):
 
 
 def _chiffres(html):
-    """Le bloc des six chiffres de synthèse, sans le libellé de la période."""
-    return html.split('<div class="stats-chiffres">', 1)[1].split("</div>\n\n", 1)[0]
+    """Toutes les cases chiffrées de la page, sans le libellé de la période :
+    la synthèse de tête et, depuis le lot bilan-7a, celles d'« Organisation »
+    (erreurs, retours non scannés, prêts encore ouverts) et de la tombola."""
+    return re.findall(r'<span class="chiffre-val"[^>]*>.*?</span><span class="chiffre-lib">.*?</span>',
+                      html, re.DOTALL)
 
 
 def _detail(html):
-    return html.split("<h2>Détail des prêts", 1)[1].split("</section>", 1)[0]
+    """Le volet « Détail des prêts » de la section Organisation (lot bilan-7a)."""
+    return html.split('<details class="org-volet" id="detail">', 1)[1].split("</details>", 1)[0]
 
 
 # ===========================================================================

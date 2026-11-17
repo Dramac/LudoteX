@@ -612,25 +612,49 @@ def test_export_pdf_sans_signalement_ne_plante_pas(client):
     assert r.status_code == 200 and r.content[:4] == b"%PDF"
 
 
-def test_rien_de_tout_cela_ne_sort_par_stats(client):
+def test_rien_de_tout_cela_ne_sort_par_stats(client, monkeypatch):
     """
-    Piège 2 du lot 3 : /stats est PUBLIQUE. Le carnet de maintenance nomme des
-    boîtes abîmées et porte du texte libre — il ne doit apparaître ni sur la
-    page, ni dans ses deux exports (précédent D5 sur le numéro de pochette).
+    Piège 2 du lot 3 : /stats peut être PUBLIQUE. Le carnet de maintenance
+    nomme des boîtes abîmées et porte du texte libre — ni le texte ni la
+    boîte ne doivent apparaître sur la page, ni dans ses deux exports
+    (précédent D5 sur le numéro de pochette).
+
+    Depuis le lot bilan-7a, la section « Organisation » COMPTE les
+    signalements de la période, par catégorie, pour les seuls bénévoles :
+    des nombres, jamais le texte ni le code de la boîte. Un visiteur, même
+    sur une page rouverte au public, n'en voit rien.
     """
+    from app import services
+
     _connecter(client)
     _creer_signalement("001", "pièce", "texte-libre-distinctif")
 
     page = client.get("/stats")
     assert page.status_code == 200
     assert "texte-libre-distinctif" not in page.text
-    assert "signalement" not in page.text.lower()
+    bloc = page.text.split("<h3>Signalements du carnet</h3>", 1)[1].split("<details", 1)[0]
+    assert "<td>1</td>" in bloc                       # un compte...
+    assert "001" not in bloc                          # ...jamais la boîte
 
     xlsx = client.get("/stats/export.xlsx")
     assert b"texte-libre-distinctif" not in xlsx.content
 
     pdf = client.get("/stats/export.pdf")
     assert b"texte-libre-distinctif" not in pdf.content
+
+    # Un visiteur, page rouverte au public : aucune trace du carnet.
+    conn = _conn()
+    try:
+        services.ecrire_parametre(conn, "module_stats", "tous")
+    finally:
+        conn.close()
+    # Un jeton configuré : sans lui, l'application est en mode ouvert et
+    # tout appareil est bénévole.
+    monkeypatch.setenv("PRET_TOKEN", "jeton-carnet-stats-xyz")
+    client.cookies.clear()                            # plus de session admin
+    publique = client.get("/stats")
+    assert publique.status_code == 200
+    assert "signalement" not in publique.text.lower()
 
 
 # ===========================================================================

@@ -417,8 +417,10 @@ def test_edition_memes_resultats_que_la_paire_de_dates(week_end, benevole):
 # ===========================================================================
 def test_section_titres_barres_et_entetes(rayons, benevole):
     html = benevole.get("/stats?edition=tout").text
-    # Après « Pour les achats », avant le détail des prêts.
-    assert html.index('id="achats"') < html.index('id="gouts"') < html.index("<h2>Détail des prêts")
+    # Après « Pour les achats », avant « Organisation » (lot bilan-7a), qui
+    # porte le détail des prêts.
+    assert (html.index('id="achats"') < html.index('id="gouts"')
+            < html.index('id="organisation"') < html.index('id="detail"'))
     section = _section(html)
     assert re.findall(r"<h2>([^<]*)</h2>", section) == [_e(gouts.TITRE_SECTION)]
     assert re.findall(r"<h3>([^<]*)</h3>", section) == [

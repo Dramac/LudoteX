@@ -1507,3 +1507,76 @@ def ical_tournoi(conn: sqlite3.Connection, id_tournoi: int,
     lignes += ["END:VEVENT", "END:VCALENDAR"]
     # iCalendar impose des fins de ligne CRLF.
     return "\r\n".join(lignes) + "\r\n"
+
+
+# ===========================================================================
+# BILAN D'UNE PÉRIODE (lot bilan-7a) — des comptes, jamais un pseudo
+# ===========================================================================
+def _dans_periode(iso: str | None, debut: datetime | None,
+                  fin: datetime | None) -> bool | None:
+    """
+    L'instant `iso` tombe-t-il dans [debut, fin[ ? None si l'instant est
+    absent ou illisible : l'appelant le compte à part, jamais d'erreur. La
+    comparaison se fait sur des instants, pas sur des chaînes : une date
+    saisie avant une évolution de format reste comparée juste.
+    """
+    try:
+        instant = datetime.fromisoformat(iso) if iso else None
+    except ValueError:
+        instant = None
+    if instant is None:
+        return None
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=FUSEAU_UTC)
+    return (debut is None or instant >= debut) and (fin is None or instant < fin)
+
+
+def bilan_periode(conn: sqlite3.Connection, debut: str | None = None,
+                  fin: str | None = None) -> dict:
+    """
+    Les tournois d'une période, pour la section « Organisation » de `/stats`.
+
+    Lu par la ROUTE des statistiques, qui transmet le résultat : le service
+    des statistiques ne traverse jamais la base des tournois (invariant des
+    trois bases). Un tournoi appartient à la période de son `date_heure` ; un
+    tournoi sans date (ou à la date illisible) n'est dans aucune période, et
+    son nombre est rendu à part pour que la page le dise.
+
+    DONNÉES PERSONNELLES : la requête ne lit ni `pseudo` ni `membres`. Elle
+    COMPTE les lignes d'`inscriptions`, rien d'autre : un compte n'est pas une
+    donnée personnelle, une liste de pseudos le serait.
+
+    Args:
+        debut, fin: bornes UTC ISO facultatives (fin exclusive), celles de
+            `/stats`.
+
+    Returns:
+        {"par_etat": {etat: nombre} pour les quatre états (`ETATS`, zéros
+         compris), "total", "sans_date", "inscrits" (inscriptions aux
+         tournois individuels), "equipes" (inscriptions aux tournois par
+         équipes)}.
+    """
+    b = datetime.fromisoformat(debut) if debut else None
+    f = datetime.fromisoformat(fin) if fin else None
+    resultat = {"par_etat": {e: 0 for e in ETATS}, "total": 0, "sans_date": 0,
+                "inscrits": 0, "equipes": 0}
+    lignes = conn.execute(
+        """
+        SELECT t.etat, t.date_heure, t.par_equipes,
+               (SELECT COUNT(*) FROM inscriptions i
+                WHERE i.id_tournoi = t.id_tournoi) AS nb_inscriptions
+        FROM tournois t
+        """
+    ).fetchall()
+    for l in lignes:
+        dedans = _dans_periode(l["date_heure"], b, f)
+        if dedans is None:
+            resultat["sans_date"] += 1
+            continue
+        if not dedans:
+            continue
+        resultat["total"] += 1
+        if l["etat"] in resultat["par_etat"]:
+            resultat["par_etat"][l["etat"]] += 1
+        resultat["equipes" if l["par_equipes"] else "inscrits"] += l["nb_inscriptions"]
+    return resultat

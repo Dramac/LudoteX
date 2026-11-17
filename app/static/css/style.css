@@ -862,6 +862,30 @@ summary:focus-visible,
 @media (forced-colors: active) {
   .gouts-barre > span { forced-color-adjust: none; background: CanvasText; }
 }
+/* Sommaire et section « Organisation » de /stats (lot bilan-7a).
+   Sommaire : une liste de liens, chacun une cible de 44 px de haut ; les
+   volets d'Organisation, en retrait sous elle. Volets : un `details` dont le
+   `summary` porte un h3 (titre de niveau, taille de texte courant) et fait
+   44 px de haut, comme les volets du comptoir. Aucune couleur en dur. */
+.stats-sommaire { margin: 12px 0; }
+.stats-sommaire ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
+.stats-sommaire ul ul { padding-left: 16px; gap: 0 16px; }
+.stats-sommaire-groupe { flex-basis: 100%; }
+.stats-sommaire .lien { display: inline-flex; align-items: center; min-height: 44px; }
+.org-definitions { margin: 12px 0; padding-left: 20px; }
+.org-definitions li { margin: 4px 0; }
+.org-ouverts .lien-cible { margin-left: 4px; }
+.org-tableau .detail th, .org-tableau .detail td { word-break: normal; padding-inline: 4px; }
+.org-tableau .detail td { text-align: right; white-space: nowrap; }
+.org-tableau .detail thead th:not(:first-child) { text-align: right; }
+.org-tableau .detail th[scope="row"] { text-align: left; font-weight: 600; color: var(--texte); }
+.org-total th[scope="row"] { font-weight: 400; font-style: italic; }
+.org-volet { border: 1px solid var(--bord); border-radius: 8px; padding: 0 8px; margin-top: 12px; }
+.org-volet > summary { cursor: pointer; padding-block: 10px; color: var(--primaire-lisible); }
+.org-volet > summary h3 { display: inline; margin: 0; font-size: 1rem; line-height: 24px; }
+.org-volet[open] > summary { margin-bottom: 4px; }
+.org-volet h4 { margin: 16px 0 6px; }
+.org-volet > :last-child { margin-bottom: 12px; }
 .stats-note { color: #6b7075; font-size: 0.8rem; }
 /* Page bénévole « Jeux sortis » (lot bilan-1, docs/ui-composants.md § 9, « Liste de cartes ») :
    une LISTE de cartes, sur téléphone comme sur grand écran — pas un tableau

@@ -175,10 +175,10 @@ livré, par module :
   **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), **retours
   non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue
   « pochette pas vide » qui prévient le bureau, clôture de fin d'événement.
-- **Statistiques** (`/stats`) — totaux, comptoir heure par heure (prêts, retours, jeux dehors), achats (jeux tous sortis, palmarès sur 50, jamais sortis), ce qui plaît (prêts par jeu, durées),
-  période au choix (éditions datées par le bureau dans « Événement », toute
-  la période ou dates libres), liste détaillée, exports Excel et PDF à
-  sections cochables.
+- **Statistiques** (`/stats`) — quatre chiffres et un sommaire, comptoir heure par heure, achats, ce qui plaît,
+  organisation (bénévoles seuls : erreurs, oublis, prêts ouverts, comptes du
+  carnet, tombola, tournois, liste détaillée), période au choix (éditions
+  datées par le bureau), exports Excel et PDF.
 - **Tournois** (`/tournois`) — quatre modes de scoring (`app/tournoi/services.py`,
   `MODES_SCORING` : high score, ronde suisse, round robin, élimination directe),
   tournois **par équipes**, option BO3, inscription publique avec code de

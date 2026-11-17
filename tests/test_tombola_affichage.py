@@ -632,18 +632,50 @@ def visiteur_stats(visiteur):
     return visiteur
 
 
-def test_section_stats_selon_module_et_tirages(visiteur_stats):
+VOLET_TOMBOLA = '<details class="org-volet" id="tombola">'
+
+
+def test_section_stats_selon_module_et_tirages(visiteur_stats, benevole):
+    """
+    Depuis le lot bilan-7a, la tombola est un volet replié de la section
+    « Organisation », réservée aux bénévoles : mêmes conditions qu'avant
+    (module visible pour ce visiteur, au moins un tirage dans la période),
+    plus celle de la section. La case du PDF, elle, n'a pas bougé (lot
+    bilan-7b).
+    """
     _etat("tous")
-    assert 'id="tombola"' not in visiteur_stats.get("/stats").text   # aucun tirage
+    assert 'id="tombola"' not in benevole.get("/stats").text          # aucun tirage
     _tirer(12, 45)
+    page = benevole.get("/stats").text
+    assert VOLET_TOMBOLA in page
+    assert 'name="sections" value="tombola" checked' in page
+    # Un visiteur, /stats rouverte au public : ni Organisation ni tombola,
+    # mais la case du PDF reste, comme avant ce lot.
     page = visiteur_stats.get("/stats").text
-    assert '<section class="carte" id="tombola">' in page
+    assert 'id="tombola"' not in page and 'id="organisation"' not in page
     assert 'name="sections" value="tombola" checked' in page
     _etat("desactive")
-    page = visiteur_stats.get("/stats").text
+    page = benevole.get("/stats").text
     assert 'id="tombola"' not in page and 'value="tombola"' not in page
-    _etat("discret")                       # masqué pour un visiteur
-    assert 'id="tombola"' not in visiteur_stats.get("/stats").text
+    _etat("discret")                       # masqué pour un visiteur, pas pour un bénévole
+    assert VOLET_TOMBOLA in benevole.get("/stats").text
+    assert 'value="tombola"' not in visiteur_stats.get("/stats").text
+
+
+def test_volet_tombola_meme_contenu(benevole):
+    """Le volet garde le contenu de l'ancienne section : six cases, la note
+    du délai médian, les tableaux par tirage et par mode (titres en h4)."""
+    _etat("tous")
+    _tirer(12, 45)
+    _remettre_apres(12, 4)
+    volet = benevole.get("/stats").text.split(VOLET_TOMBOLA, 1)[1].split("</details>", 1)[0]
+    assert "<summary><h3>Tombola</h3></summary>" in volet
+    assert volet.count('class="chiffre-val"') == 6
+    assert ">2</span><span class=\"chiffre-lib\">numéros tirés<" in volet
+    assert ">1</span><span class=\"chiffre-lib\">lot remis<" in volet
+    assert "Le délai médian se calcule sur les seuls lots remis" in volet
+    assert "<h4>Par tirage <small>(1)</small></h4>" in volet
+    assert "<h4>Par mode de tirage</h4>" in volet
 
 
 def test_stats_ne_lisent_pas_la_tombola_module_masque(visiteur_stats, monkeypatch):

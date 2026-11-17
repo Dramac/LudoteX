@@ -12,8 +12,22 @@ les achats » (lot bilan-5, `app/achats.py` : les jeux dont toutes les boîtes
 jeux jamais sortis, dont la liste est dans l'export Excel), la section « Ce
 qui plaît » (lot bilan-6, `app/gouts.py` : prêts par jeu par catégorie, par
 nombre de joueurs et par âge, durée annoncée comparée à la durée du prêt) et
-la liste détaillée des prêts. Toutes les données proviennent de
-`services.collecter_stats`. Le palmarès des moins prêtés a quitté la page ;
+la section « Organisation » (lot bilan-7a, `app/organisation.py` : erreurs,
+retours non scannés, prêts encore ouverts, signalements du carnet, et
+repliés sous elle la tombola, les tournois et le programme, la liste
+détaillée des prêts). Les données des sections publiques proviennent de
+`services.collecter_stats`.
+
+LA SECTION « ORGANISATION » N'EST RENDUE QU'AUX BÉNÉVOLES (lot bilan-7a,
+`auth.peut_ecrire`, administrateur connecté compris), même quand le bureau a
+rouvert `/stats` au public : elle parle du travail des bénévoles et des
+boîtes abîmées, et le carnet est `jamais_public`. Pour un visiteur, rien
+n'en est calculé (`_organisation` rend None) : ni signalements, ni tournois.
+La tombola et la liste détaillée, repliées sous elle, disparaissent donc
+aussi pour un visiteur. Les exports suivront la même règle au lot bilan-7b.
+Les tournois et le programme vivent dans une autre base : c'est cette route
+qui la lit et transmet des comptes (`_tournois_programme`), jamais un
+service des statistiques. Le palmarès des moins prêtés a quitté la page ;
 il reste dans le PDF jusqu'au lot bilan-7.
 
 Paramètres de requête (combinables) :
@@ -44,16 +58,21 @@ bénévole `/sortis` (app/routes/sortis.py). Une recherche enregistrée en 1.34
 (`/stats?q=…`) y est redirigée.
 """
 
+import sqlite3
 from datetime import datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, Response
 
-from app import achats, comptoir, editions, exports, gouts, services, tombola
+from app import (achats, auth, comptoir, editions, exports, gouts, organisation,
+                 services, tombola)
 from app.db import get_connection
 from app.modules import module_visible
 from app.templating import templates
+from app.tournoi import db as tournoi_db
+from app.tournoi import programme as programme_services
+from app.tournoi import services as tournoi_services
 
 router = APIRouter(tags=["stats"])
 
@@ -77,6 +96,75 @@ def _tombola(request: Request, conn, debut_utc: str | None,
     if not module_visible(request, "tombola"):
         return None
     return tombola.statistiques(conn, debut_utc, fin_utc)
+
+
+def _tournois_programme(request: Request, debut_utc: str | None,
+                        fin_utc: str | None) -> dict | None:
+    """
+    Les comptes des tournois et du programme pour la période, lus dans la
+    base des TOURNOIS par la route (invariant des trois bases), ou None si
+    les deux modules sont masqués pour ce visiteur : rien n'est alors calculé
+    (motif « fiche A3 », comme `_tombola`).
+
+    Une base absente ou illisible ne lève jamais : le bloc dit qu'il n'a pas
+    pu être calculé (`illisible`). Une base absente n'est pas créée ici :
+    on vérifie le fichier avant d'ouvrir, une lecture ne doit rien écrire.
+
+    Returns:
+        {"voir_tournois", "voir_programme", "illisible",
+         "tournois": `tournoi.services.bilan_periode` ou None,
+         "programme": `programme.compter_publies` ou None}
+    """
+    voir_tournois = module_visible(request, "tournois")
+    voir_programme = module_visible(request, "programme")
+    if not (voir_tournois or voir_programme):
+        return None
+    resultat = {"voir_tournois": voir_tournois, "voir_programme": voir_programme,
+                "illisible": False, "tournois": None, "programme": None}
+    try:
+        if not tournoi_db.get_database_path().is_file():
+            raise FileNotFoundError("base des tournois absente")
+        conn_t = tournoi_db.get_connection()
+        try:
+            if voir_tournois:
+                resultat["tournois"] = tournoi_services.bilan_periode(conn_t, debut_utc, fin_utc)
+            if voir_programme:
+                resultat["programme"] = programme_services.compter_publies(conn_t, debut_utc, fin_utc)
+        finally:
+            conn_t.close()
+    except (sqlite3.Error, OSError, ValueError):
+        resultat.update(illisible=True, tournois=None, programme=None)
+    return resultat
+
+
+def _organisation(request: Request, conn, debut_utc: str | None,
+                  fin_utc: str | None) -> dict | None:
+    """
+    La section « Organisation » (lot bilan-7a), ou None pour un visiteur :
+    elle n'est rendue qu'aux bénévoles (règle en tête de module), et rien
+    n'en est calculé pour les autres.
+
+    Les erreurs, retours non scannés et prêts encore ouverts ne sont pas
+    recalculés : ce sont ceux de la synthèse (`g`), déjà passés au gabarit.
+
+    Returns:
+        {"signalements", "voir_carnet", "tournois_programme",
+         "sorties_tournoi" (None si le module tournois est masqué),
+         "periode_finie"}
+    """
+    if not auth.peut_ecrire(request):
+        return None
+    tp = _tournois_programme(request, debut_utc, fin_utc)
+    return {
+        "signalements": organisation.signalements(conn, debut_utc, fin_utc),
+        "voir_carnet": module_visible(request, "maintenance"),
+        "tournois_programme": tp,
+        "sorties_tournoi": (organisation.sorties_tournoi(conn, debut_utc, fin_utc)
+                            if tp and tp["voir_tournois"] else None),
+        # Une période dont la fin est passée : des prêts encore ouverts y
+        # veulent dire que la clôture n'a pas été faite.
+        "periode_finie": bool(fin_utc) and fin_utc <= services.maintenant(),
+    }
 
 
 def _joli(saisie: str | None) -> str:
@@ -188,6 +276,7 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
         data = services.collecter_stats(conn, metrique, debut_utc, fin_utc,
                                          limite_prets=LIMITE_PRETS_PAGE)
         stats_tombola = _tombola(request, conn, debut_utc, fin_utc)
+        stats_organisation = _organisation(request, conn, debut_utc, fin_utc)
     finally:
         conn.close()
 
@@ -212,6 +301,7 @@ def stats(request: Request, tri: str = "total", edition: str | None = None,
          "periode_txt": _libelle(periode), "qs": qs,
          "periode_qs": urlencode(qs_periode), "qs_periode": qs_periode,
          "tombola": stats_tombola,
+         "org": stats_organisation, "orga": organisation,
          "libelle_sessions_tombola": exports.TITRE_TOMBOLA_SESSIONS},
     )
 

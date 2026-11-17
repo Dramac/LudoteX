@@ -656,7 +656,7 @@ def test_stats_detail_sans_colonne_emplacement(client, monkeypatch):
 
     r = client.get("/stats")
     assert r.status_code == 200
-    detail = r.text.split("<h2>Détail des prêts", 1)[1]
+    detail = r.text.split('<details class="org-volet" id="detail">', 1)[1]
     assert "Pochette" not in detail
     # La section elle-même est bien rendue (non-régression). Le prêt rendu
     # dans la minute est une erreur de prêt, hors liste : jusqu'au lot

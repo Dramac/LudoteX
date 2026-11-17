@@ -440,6 +440,10 @@ sorties tournoi et les erreurs de prêt sont hors statistiques.
 
 Indicateurs :
 
+- **La tête de page** : quatre chiffres — les prêts, les jeux différents
+  prêtés (sur le nombre de jeux du catalogue), le pic des jeux dehors et la
+  durée moyenne —, puis un **sommaire** qui renvoie à chaque section
+  présente, et à elle seule.
 - **Nombre total de prêts**, durée moyenne, filtrables par période. La
   période se choisit dans un menu : chaque **édition** datée par le bureau
   (de la plus récente à la plus ancienne), « Toute la période », ou « Autre
@@ -547,9 +551,37 @@ Indicateurs :
     invite à choisir une édition plutôt que de dessiner ;
   - **pic** : la première heure où le plus de jeux sont dehors, repris en
     tête de page.
-- **Liste détaillée** des prêts. La liste des jeux actuellement sortis n'est
-  pas une statistique mais un outil de comptoir : elle a sa propre page,
-  réservée aux bénévoles (§5.1).
+- **Organisation** : le travail au comptoir et l'état des boîtes, pour
+  préparer l'édition suivante. Cette section n'est **montrée qu'aux
+  bénévoles**, même quand le bureau a rouvert la page au public : elle parle
+  du travail des bénévoles et des boîtes abîmées, et le carnet de
+  maintenance n'est jamais public. Elle porte :
+  - les **erreurs de prêt** et les **retours non scannés**, chacun avec sa
+    définition en toutes lettres ;
+  - les **prêts encore ouverts** parmi ceux de la période : une fois la
+    période finie, un nombre non nul veut dire que la clôture de fin
+    d'événement n'a pas été faite, et la page le dit. Elle renvoie un
+    administrateur connecté à la clôture, et dit aux autres de la demander
+    au bureau ; aucun bouton d'action sur la page ;
+  - les **signalements du carnet** ouverts pendant la période (date
+    d'ouverture), traités depuis ou encore à traiter, par catégorie
+    (« Non classé » pour ceux qui n'en ont pas) ;
+  - repliés : la **tombola** (quand son module est visible et qu'elle a eu
+    des tirages dans la période), les **tournois et le programme** (quand
+    l'un des deux modules est visible : tournois par état et inscriptions,
+    à la date du tournoi, un tournoi sans date n'étant pas compté ; sorties
+    tournoi du prêt ; animations publiées), et la **liste détaillée** des
+    prêts.
+
+  La section ne montre **que des comptes** : jamais le texte d'un
+  signalement, jamais le code de la boîte signalée, jamais un pseudo, un
+  nom d'équipe ou un membre de tournoi. La base des tournois, séparée, est
+  lue par la route, qui ne transmet que des nombres ; si elle est absente
+  ou illisible, la page le dit et le reste s'affiche.
+
+  La liste des jeux actuellement sortis n'est pas une statistique mais un
+  outil de comptoir : elle a sa propre page, réservée aux bénévoles
+  (§5.1).
 - Exports Excel et PDF. L'Excel porte les feuilles « Plus prêtés », « Tous
   sortis », « Jamais sortis », « Ce qui plaît », « Sans catégorie » et
   « Heure par heure », mêmes lignes que la page, sans la coupe de la page ; le PDF ne reprend pas le comptoir, et

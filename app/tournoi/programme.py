@@ -37,7 +37,8 @@ from app.tournoi.creneau import (
     label_jour,
 )
 from app.tournoi.models import ETATS_PROGRAMME
-from app.tournoi.services import _ics_echappe, _ics_horodatage, tournois_imminents
+from app.tournoi.services import (_dans_periode, _ics_echappe, _ics_horodatage,
+                                  tournois_imminents)
 from app.tournoi.services import planning as services_planning
 
 # Transitions d'état autorisées (machine à états, conception §4.2). Plus
@@ -941,3 +942,27 @@ def planning_fusionne(
                 par_jour[bloc["debut_dt"].date()].append(bloc)
 
     return assembler_jours(par_jour, jours, cle_tri="nom")
+
+
+def compter_publies(conn: sqlite3.Connection, debut: str | None = None,
+                    fin: str | None = None) -> dict:
+    """
+    Les éléments PUBLIÉS du programme d'une période (lot bilan-7a, section
+    « Organisation » de `/stats`, lu par la route). Un élément appartient à
+    la période de son `date_heure` ; un élément publié sans date n'est dans
+    aucune, et son nombre est rendu à part. Brouillons et éléments annulés
+    ne comptent pas : le public ne les a pas vus.
+
+    Returns:
+        {"publies": nombre dans la période, "sans_date": publiés sans date}.
+    """
+    b = datetime.fromisoformat(debut) if debut else None
+    f = datetime.fromisoformat(fin) if fin else None
+    resultat = {"publies": 0, "sans_date": 0}
+    for l in conn.execute("SELECT date_heure FROM programme WHERE etat = 'publie'"):
+        dedans = _dans_periode(l["date_heure"], b, f)
+        if dedans is None:
+            resultat["sans_date"] += 1
+        elif dedans:
+            resultat["publies"] += 1
+    return resultat

@@ -87,7 +87,9 @@
     {% include "_menu_benevole.html" %}
   </section>
 
-  <section class="carte">
+  {# `id` : la section « Organisation » de /stats y renvoie un administrateur
+     quand des prêts sont restés ouverts (lot bilan-7a). #}
+  <section class="carte" id="fin-evenement">
     <h2>Fin d'événement</h2>
     <p class="stats-note">Pensez à <a class="lien" href="/stats">exporter les statistiques</a> avant de clôturer.</p>
     {# La tombola n'est nommée que si son module n'est pas désactivé (série
