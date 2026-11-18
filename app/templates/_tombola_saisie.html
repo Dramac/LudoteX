@@ -1,0 +1,60 @@
+{#
+  Saisie d'un tirage de la tombola à la main — UN SEUL DOMICILE pour les
+  deux pages qui la proposent (série tombola, lot 3) :
+  - /tombola/gestion, la page complète de la tombola (bouton principal) ;
+  - /live/annonce, le bloc « Tombola » sous les annonces (bouton
+    SECONDAIRE : « Ajouter une annonce » reste le seul bouton principal de
+    cette page, docs/ui-composants.md § 1).
+
+  Deux macros, parce que les deux morceaux ne sont pas voisins sur
+  /tombola/gestion (le message vient sous « Lot remis », le formulaire bien
+  plus bas) :
+
+  - `message_tombola(message)` : le bloc de résultat d'un `tombola.Message`
+    (texte, numéros en grand, numéros écartés avec leur raison). Appelée par
+    `{% call %}`, elle insère le contenu de l'appelant à la fin du bloc :
+    /tombola/gestion y met « Remplacer » et « Annuler », qui n'existent que
+    là. À placer dans une zone `role="status"` toujours présente.
+  - `saisie_tirage(action, jeton, saisies, numero_min, numero_max,
+    classe_bouton, prefixe)` : le formulaire, son jeton caché contre le
+    double appui (neuf à chaque rendu), le `fieldset`, sa `legend` et les
+    cinq champs. `prefixe` fait les `id` des champs (`<prefixe>-1` …) : ils
+    doivent rester uniques dans la page qui inclut le formulaire.
+
+  Aucun champ de texte libre : des numéros seulement.
+#}
+
+{% macro message_tombola(message) -%}
+<div class="resultat {{ 'resultat-ok' if message.niveau == 'succes' else 'resultat-attention' }} tombola-message">
+        <p>{{ message.texte }}</p>
+        {% if message.en_grand %}
+          <p class="tombola-numeros-grand" aria-hidden="true">
+            {% for n in message.en_grand %}<span>{{ n }}</span>{% endfor %}
+          </p>
+        {% endif %}
+        {% if message.details %}
+          <ul class="tombola-ecartes">
+            {% for d in message.details %}<li>{{ d }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+        {%- if caller is defined %}{{ caller() }}{% endif %}
+      </div>
+{%- endmacro %}
+
+{% macro saisie_tirage(action, jeton, saisies, numero_min, numero_max,
+                       classe_bouton="bouton-principal", prefixe="numero") -%}
+<form method="post" action="{{ action }}">
+    <input type="hidden" name="jeton" value="{{ jeton }}">
+    <fieldset class="tombola-cinq">
+      <legend>Numéros tirés, de 1 à 5 (entre {{ numero_min }} et {{ numero_max }})</legend>
+      {% for s in saisies %}
+        <div class="champ">
+          <label for="{{ prefixe }}-{{ loop.index }}">Numéro {{ loop.index }}</label>
+          <input type="text" id="{{ prefixe }}-{{ loop.index }}" name="numero_{{ loop.index }}"
+                 inputmode="numeric" autocomplete="off" maxlength="12" value="{{ s }}">
+        </div>
+      {% endfor %}
+    </fieldset>
+    <button type="submit" class="bouton {{ classe_bouton }}">Afficher les numéros</button>
+  </form>
+{%- endmacro %}

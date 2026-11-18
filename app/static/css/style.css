@@ -464,6 +464,29 @@ summary:focus-visible,
 .tombola-cinq label { font-size: 0.85rem; }
 .tombola-cinq input { min-width: 0; width: 100%; text-align: center; font-weight: 700; }
 
+/* Bloc « Tombola » de /live/annonce (série tombola, lot 3) : sous les
+   annonces, séparé d'un filet, pour que « Ajouter une annonce » reste le
+   geste de haut de page. Aucune couleur nouvelle. Le message reprend le
+   resserrement de `.annonce-benevole .resultat`. */
+.annonce-tombola { margin-top: 24px; padding-top: 4px; border-top: 1px solid var(--bord); }
+.annonce-tombola h2 { margin: 12px 0 6px; }
+/* Après l'envoi, le navigateur saute à `#tombola` : sans cette marge, le
+   bandeau collant (`.bandeau-groupe`, 83 px mesurés à 375 px, davantage
+   avec le bandeau du mode formation ou du rangement) cachait le titre ET la
+   phrase du résultat. */
+.annonce-tombola h2#tombola { scroll-margin-top: 9rem; }
+.annonce-tombola .resultat.tombola-message { margin: 0 0 10px; }
+.annonce-tombola .tombola-cinq + .bouton { margin-top: 10px; }
+/* Cinq cases sur une ligne à 375 px : 57 px chacune (mesuré). Le retrait
+   horizontal habituel (10 px) ne laissait que 35 px à « 9999 », qui en
+   demande 35,6 ; 4 px lui en laissent 47. Hauteur portée à 44 px : la cible
+   tactile minimale (mesuré à 41 px avant). */
+.annonce-tombola .tombola-cinq input { min-height: 44px; padding-left: 4px; padding-right: 4px; }
+.annonce-tombola-attente { margin: 20px 0 0; font-size: 1.05rem; }
+/* « Gérer la tombola » : cible tactile de 44 px de haut (19 px mesurés en
+   lien de texte simple). */
+.annonce-tombola .lien-fiche a { display: inline-block; padding: 10px 8px; }
+
 /* Supervision : la liste des annonces affichées, sans puce (un texte
    par ligne, entre guillemets), dans le bloc « attention » habituel. */
 .annonces-supervision p { margin: 0; }

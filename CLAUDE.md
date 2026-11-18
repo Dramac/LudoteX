@@ -205,7 +205,9 @@ livré, par module :
   administrables. Consultable par les bénévoles (`/maintenance`, en cartes sur
   téléphone) comme par le bureau (`/admin/signalements`) ; les exports et les
   catégories restent derrière le mot de passe.
-- **Tombola** — tirages à la main ou par l'application, remise des lots,
+- **Tombola** — tirages à la main (aussi depuis le bloc « Tombola » de
+  `/live/annonce`, indépendant de l'interrupteur des annonces) ou par
+  l'application, remise des lots,
   panneau de l'écran de salle, page `/tombola`, bloc de l'accueil,
   statistiques ; désactivée par défaut.
 - **Journal d'activité** — socle à vocabulaire fermé, écran `/admin/journal`,

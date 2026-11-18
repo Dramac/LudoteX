@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Tombola — {{ nom_association }}{% endblock %}
+{% from "_tombola_saisie.html" import message_tombola, saisie_tirage %}
 
 {#
   Page BÉNÉVOLE de la tombola (série tombola, lot 1). Pensée téléphone, un
@@ -45,18 +46,7 @@
      /live/annonce). #}
   <div role="status">
     {% if message %}
-      <div class="resultat {{ 'resultat-ok' if message.niveau == 'succes' else 'resultat-attention' }} tombola-message">
-        <p>{{ message.texte }}</p>
-        {% if message.en_grand %}
-          <p class="tombola-numeros-grand" aria-hidden="true">
-            {% for n in message.en_grand %}<span>{{ n }}</span>{% endfor %}
-          </p>
-        {% endif %}
-        {% if message.details %}
-          <ul class="tombola-ecartes">
-            {% for d in message.details %}<li>{{ d }}</li>{% endfor %}
-          </ul>
-        {% endif %}
+      {% call message_tombola(message) %}
         {# Correction d'une faute de frappe (lot 2) : le numéro correct entre
            DANS LE MÊME TIRAGE. Sans saisie, rien ne se passe : le retrait
            seul reste valable. #}
@@ -77,7 +67,7 @@
             <button type="submit" class="bouton bouton-secondaire bouton-tombola">Annuler<span class="sr-only"> la remise</span></button>
           </form>
         {% endif %}
-      </div>
+      {%- endcall %}
     {% endif %}
   </div>
 
@@ -111,20 +101,7 @@
   {% endif %}
 
   <h2>Saisir un tirage</h2>
-  <form method="post" action="{{ actions.tirage }}">
-    <input type="hidden" name="jeton" value="{{ jeton_manuel }}">
-    <fieldset class="tombola-cinq">
-      <legend>Numéros tirés, de 1 à 5 (entre {{ numero_min }} et {{ numero_max_borne }})</legend>
-      {% for s in saisies %}
-        <div class="champ">
-          <label for="numero-{{ loop.index }}">Numéro {{ loop.index }}</label>
-          <input type="text" id="numero-{{ loop.index }}" name="numero_{{ loop.index }}"
-                 inputmode="numeric" autocomplete="off" maxlength="12" value="{{ s }}">
-        </div>
-      {% endfor %}
-    </fieldset>
-    <button type="submit" class="bouton bouton-principal">Afficher les numéros</button>
-  </form>
+  {{ saisie_tirage(actions.tirage, jeton_manuel, saisies, numero_min, numero_max_borne) }}
 
   <h2>Tirage par l'application</h2>
   <p class="stats-note">En secours, si le tirage à la main est impossible.

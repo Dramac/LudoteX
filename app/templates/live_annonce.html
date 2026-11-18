@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block titre %}Annonce en salle — {{ nom_association }}{% endblock %}
+{% from "_tombola_saisie.html" import message_tombola, saisie_tirage %}
 
 {#
   Page BÉNÉVOLE des annonces de l'écran de salle (série annonce, lots 1 et 2).
@@ -11,6 +12,15 @@
   Jamais publique : les routes portent leur `exiger_jeton` en propre
   (app/routes/live.py), et ne font rien tant que le bureau n'a pas ouvert
   l'annonce aux bénévoles.
+
+  Bloc « Tombola » (série tombola, lot 3) : sous les annonces, seulement
+  quand le module tombola est visible pour ce bénévole (`tombola` vaut
+  None sinon, et la page reste celle d'avant le lot). Il ne dépend PAS de
+  l'interrupteur des annonces : il s'affiche aussi sous l'explication de
+  l'interrupteur fermé. Saisie à la main et lecture seule des numéros en
+  salle ; tout le reste (remise, corrections, tirage par l'application) est
+  sur /tombola/gestion. Son bouton est SECONDAIRE : « Ajouter une annonce »
+  reste le seul bouton principal de la page.
 #}
 
 {% block contenu %}
@@ -18,8 +28,13 @@
   <h1>Annonce en salle</h1>
 
   {% if not ouverte %}
+    {%- if tombola %}
+    <p>Le bureau n'a pas ouvert l'annonce aux bénévoles : vous ne pouvez pas
+      poser d'annonce depuis cette page pour le moment.</p>
+    {%- else %}
     <p>Le bureau n'a pas ouvert l'annonce aux bénévoles : rien ne peut être
       affiché depuis cette page pour le moment.</p>
+    {%- endif %}
     <p class="stats-note">Pour une information urgente à faire passer sur
       l'écran de la salle, adressez-vous au bureau.</p>
     {% if est_admin(request) %}
@@ -27,7 +42,9 @@
         les annonces aux bénévoles, depuis l'écran de salle de
         l'administration</a></p>
     {% endif %}
+    {%- if not tombola %}
     <p class="lien-fiche"><a class="lien" href="/scanner">← Retour au scanner</a></p>
+    {%- endif %}
   {% else %}
     {# Zone de résultat toujours présente, vide sans message : une zone ajoutée
        en même temps que son texte n'est pas toujours lue. #}
@@ -75,8 +92,43 @@
     </form>
 
     {% include "_liste_annonces.html" %}
+    {%- if not tombola %}
 
     <p class="lien-fiche"><a class="lien" href="/live">Voir l'écran de la salle</a></p>
+    {%- endif %}
+  {% endif %}
+
+  {%- if tombola %}
+  <div class="annonce-tombola">
+    <h2 id="{{ tombola.ancre }}">Tombola</h2>
+    {# Zone de résultat propre au bloc, toujours présente : le message du
+       tirage s'affiche ici, sous le titre, pas en haut de la page. #}
+    <div role="status">
+      {% if tombola.message %}
+        {{ message_tombola(tombola.message) }}
+      {% endif %}
+    </div>
+
+    {{ saisie_tirage(tombola.action, tombola.jeton, tombola.saisies,
+                     tombola.numero_min, tombola.numero_max,
+                     classe_bouton="bouton-secondaire", prefixe="tombola-numero") }}
+
+    {# Lecture seule : les numéros encore affichés en salle, sans aucun
+       bouton (la remise est sur la page de la tombola). Rien quand il n'y a
+       rien : jamais de titre vide. #}
+    {% if tombola.tirages %}
+      <h3 class="annonce-tombola-attente">En attente en salle ({{ tombola.nb_en_salle }})</h3>
+      {% with tirages=tombola.tirages, niveau_titre=4 %}
+        {% include "_tombola_tirages.html" %}
+      {% endwith %}
+    {% endif %}
+
+    <p class="lien-fiche"><a class="lien" href="{{ tombola.url_gestion }}">Gérer la tombola</a></p>
+  </div>
+
+  <p class="lien-fiche">
+    {% if ouverte %}<a class="lien" href="/live">Voir l'écran de la salle</a>{% else %}<a class="lien" href="/scanner">← Retour au scanner</a>{% endif %}
+  </p>
   {% endif %}
 </section>
 {% endblock %}

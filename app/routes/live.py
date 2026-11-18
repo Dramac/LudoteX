@@ -18,6 +18,11 @@ Et une page BÉNÉVOLE, la seule écriture de ce module (série annonce) :
 - POST /live/annonce/effacer : en retirer une, n'importe laquelle ;
                    toutes deux derrière le jeton bénévole ET l'interrupteur du
                    bureau (`services.CLE_ANNONCE_BENEVOLES`, fermé par défaut).
+- POST /live/annonce/tombola : saisir un tirage de la tombola depuis la même
+                   page (série tombola, lot 3), derrière le jeton bénévole ET
+                   l'état du module TOMBOLA — vérifié ici à la main, la garde
+                   de ce routeur étant celle du module `live`. INDÉPENDANTE
+                   de l'interrupteur des annonces : deux droits distincts.
 
 Comme partout dans le projet, AUCUNE logique métier ici : on délègue à
 `app.services` (prêt), `app.tombola` (tombola, base de prêt) et
@@ -34,7 +39,8 @@ from fastapi.responses import RedirectResponse
 from app import journal, services, tombola
 from app.auth import exiger_jeton
 from app.db import get_connection
-from app.modules import lire_etat_module
+from app.modules import lire_etat_module, module_visible
+from app.routes import tombola as routes_tombola
 from app.services import FUSEAU_LOCAL
 from app.templating import templates
 from app.tournoi import programme
@@ -730,6 +736,11 @@ CORRECTION_BENEVOLE = ("La durée reçue n'a pas été reconnue : l'heure de fin
 _MOTIF_HEURE = re.compile(r"^\d{2}:\d{2}$")
 URL_ANNONCE_BENEVOLE = "/live/annonce"
 URL_EFFACER_BENEVOLE = "/live/annonce/effacer"
+URL_TOMBOLA_BENEVOLE = "/live/annonce/tombola"
+# Ancre du bloc « Tombola » : le formulaire vise `…/tombola#tombola`, et le
+# navigateur garde l'ancre sur le rendu direct qui suit l'envoi. Sur un
+# téléphone, le résultat du tirage s'affiche donc sans remonter, sans JS.
+ANCRE_TOMBOLA = "tombola"
 
 
 def _vers_annonce(resultat: AnnonceEnregistree | None = None) -> RedirectResponse:
@@ -773,22 +784,59 @@ def _interrupteur_ouvert() -> bool:
         conn.close()
 
 
+def _bloc_tombola(request: Request, conn, message: tombola.Message | None,
+                  saisies: list[str] | None) -> dict | None:
+    """
+    Le bloc « Tombola » de la page (série tombola, lot 3), ou None quand le
+    module n'est pas visible pour ce bénévole : la page est alors IDENTIQUE
+    à celle d'avant le lot, et l'on ne lit pas les données d'un module
+    masqué.
+
+    Ne dépend PAS de l'interrupteur des annonces (décision du lot) : le
+    bloc s'affiche aussi sous l'explication de l'interrupteur fermé.
+
+    Seulement la saisie à la main et la lecture des numéros en salle : la
+    remise, l'annulation, l'erreur de saisie et le tirage par l'application
+    restent sur /tombola/gestion, vers laquelle le bloc renvoie.
+    """
+    if not module_visible(request, "tombola"):
+        return None
+    tirages = tombola.numeros_affiches(conn)
+    saisies = list(saisies or [])
+    saisies += [""] * (tombola.NUMEROS_PAR_TIRAGE - len(saisies))
+    return {"action": f"{URL_TOMBOLA_BENEVOLE}#{ANCRE_TOMBOLA}",
+            "ancre": ANCRE_TOMBOLA,
+            "jeton": tombola.nouveau_jeton(),
+            "saisies": saisies[:tombola.NUMEROS_PAR_TIRAGE],
+            "message": message,
+            "tirages": tirages,
+            "nb_en_salle": sum(len(t["numeros"]) for t in tirages),
+            "numero_min": tombola.NUMERO_MIN,
+            "numero_max": tombola.NUMERO_MAX,
+            "url_gestion": routes_tombola.URL_GESTION}
+
+
 def _page_annonce_benevole(request: Request, message: tuple[str, str] | None = None,
-                           saisie: dict | None = None):
+                           saisie: dict | None = None, *,
+                           message_tombola: tombola.Message | None = None,
+                           saisies_tombola: list[str] | None = None):
     """
     Rendu commun de la page bénévole : le GET, l'ajout refusé par le
     garde-fou (rendu direct, `saisie` remise dans le champ et la durée
-    choisie recochée) et le retrait (rendu direct, message qui nomme
-    l'annonce).
+    choisie recochée), le retrait (rendu direct, message qui nomme
+    l'annonce) et le tirage de la tombola (rendu direct, message dans le
+    bloc « Tombola », saisie remise seulement si rien n'a été affiché).
 
     Interrupteur fermé : une page qui le dit, jamais une erreur, et aucun
-    message ni aucune liste.
+    message ni aucune liste d'annonces. Le bloc « Tombola », lui, suit le
+    seul état du module tombola.
     """
     conn = get_connection()
     try:
         ouverte = services.lire_annonce_benevoles(conn)
         annonces = annonces_affichees(conn) if ouverte else []
         detail_alerte = lire_alerte_detaillee(conn) if ouverte else None
+        bloc_tombola = _bloc_tombola(request, conn, message_tombola, saisies_tombola)
     finally:
         conn.close()
 
@@ -810,7 +858,8 @@ def _page_annonce_benevole(request: Request, message: tuple[str, str] | None = N
          "duree_defaut": duree_choisie,
          "saisie_texte": (saisie or {}).get("texte", ""),
          "longueur_annonce": services.LONGUEUR_ANNONCE,
-         "message": message if ouverte else None},
+         "message": message if ouverte else None,
+         "tombola": bloc_tombola},
     )
 
 
@@ -896,4 +945,43 @@ def annonce_benevole_effacer_get(_=Depends(exiger_jeton)):
     L'adresse d'effacement ouverte en GET (historique du navigateur, onglet
     restauré après un retrait) : retour à la page, jamais une erreur 405.
     """
+    return _vers_annonce()
+
+
+@router.post(URL_TOMBOLA_BENEVOLE)
+def annonce_benevole_tombola(request: Request,
+                             numero_1: str = Form(""), numero_2: str = Form(""),
+                             numero_3: str = Form(""), numero_4: str = Form(""),
+                             numero_5: str = Form(""), jeton: str = Form(""),
+                             _=Depends(exiger_jeton)):
+    """
+    Saisit un tirage de la tombola depuis la page des annonces (série
+    tombola, lot 3), par le MÊME domicile que /tombola/gestion
+    (`routes_tombola.enregistrer_tirage_manuel` : saisie + journal).
+
+    DEUX GARDES, comme toute écriture de la tombola : le jeton bénévole, et
+    l'état du module TOMBOLA, vérifié ici à la main — ce routeur est derrière
+    `garde_module("live")`, pas `garde_module("tombola")`. Module désactivé :
+    rien n'est écrit, rien n'est journalisé, et l'on revient à la page, qui
+    ne montre alors aucun bloc. Jamais une erreur.
+
+    PAS de dépendance à l'interrupteur des annonces (décision du lot).
+
+    RENDU DIRECT, patron de /tombola/gestion : la saisie à corriger revient
+    dans ses champs, le message nomme les numéros écartés. Un rechargement
+    renvoie le même jeton de formulaire : aucun second tirage, le premier
+    résultat est réaffiché.
+    """
+    if not module_visible(request, "tombola"):
+        return _vers_annonce()
+    saisies = [numero_1, numero_2, numero_3, numero_4, numero_5]
+    t = routes_tombola.enregistrer_tirage_manuel(request, saisies, jeton)
+    return _page_annonce_benevole(
+        request, message_tombola=tombola.message_tirage(t),
+        saisies_tombola=routes_tombola.saisies_a_reafficher(t, saisies))
+
+
+@router.get(URL_TOMBOLA_BENEVOLE)
+def annonce_benevole_tombola_get(_=Depends(exiger_jeton)):
+    """L'adresse du tirage ouverte en GET : retour à la page, jamais une 405."""
     return _vers_annonce()

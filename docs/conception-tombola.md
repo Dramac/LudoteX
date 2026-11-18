@@ -1,9 +1,10 @@
 # Note de conception — Tombola
 
-**Statut :** décisions actées avec Simon avant tout développement. Les deux
+**Statut :** décisions actées avec Simon avant tout développement. Les trois
 lots de la série sont livrés : le lot 1 (données, saisie des tirages, remise
-des lots, page bénévole) et le lot 2 (écran de salle, page publique, accueil,
-correction d'une faute de frappe, statistiques et exports).
+des lots, page bénévole), le lot 2 (écran de salle, page publique, accueil,
+correction d'une faute de frappe, statistiques et exports) et le lot 3
+(saisie d'un tirage depuis la page « Annonce en salle », § 11).
 
 À lire avec `docs/specification.md` §2 (« ne jamais bloquer ») et §9.1
 (aucune donnée personnelle), `docs/conception-journal.md` (vocabulaire fermé)
@@ -28,7 +29,8 @@ Les visiteurs viennent chercher leur lot au fil de la journée. Il faut :
    (`app/modules.py`), **désactivé par défaut**. Une base existante ne voit
    rien changer.
 2. **Numéros** : uniquement des entiers de **1 à 9999**.
-3. **Deux façons de saisir un tirage**, sur la même page bénévole :
+3. **Deux façons de saisir un tirage**, sur la même page bénévole (la
+   saisie manuelle a aussi un second point d'entrée depuis le lot 3, § 11) :
    - la **saisie manuelle** de 1 à 5 numéros tirés à la main, le cas normal ;
    - le **tirage par l'application**, en secours : on indique le plus grand
      numéro vendu, l'application tire 5 numéros au hasard parmi ceux de 1 à ce
@@ -263,3 +265,27 @@ couleur). Section absente sans tirage dans la période.
 - **Excel** : feuille « Tombola », cellules écrites par `ecrire_cellule`.
   **PDF** : section cochable `tombola`, cochée par défaut seulement quand
   elle existe ; la case n'apparaît sur la page qu'à la même condition.
+
+## 11. Second point d'entrée : la page « Annonce en salle » (lot 3)
+
+Au stand, c'est souvent le même bénévole qui pose les annonces et saisit les
+numéros tirés. La page `/live/annonce` porte donc, sous les annonces, un bloc
+**Tombola** : le message du dernier tirage, les cinq cases et **Afficher les
+numéros**, les numéros encore affichés en salle en **lecture seule**, et un
+lien **Gérer la tombola**.
+
+**Il ne fait que la saisie à la main.** La remise, son annulation, l'erreur
+de saisie, le remplacement et le tirage par l'application restent sur
+`/tombola/gestion` : ce sont des gestes de la page de la tombola, qui ont
+leurs délais et leurs boutons répétés ; les dupliquer ferait deux pages à
+tenir alignées pour un gain nul (on n'y remet pas de lot).
+
+| Point | Choix | Motif |
+| --- | --- | --- |
+| Un seul domicile | Fragment `_tombola_saisie.html` (deux macros : le message, le formulaire) ; côté route `routes/tombola.py::enregistrer_tirage_manuel` (saisie + journal) et `saisies_a_reafficher` | Une règle de saisie, de réaffichage ou de journal ne peut pas diverger d'une page à l'autre. La fonction vit dans une route parce qu'elle journalise (`docs/conception-journal.md` § 5.2). `routes/live.py` l'importe ; l'inverse n'existe pas (aucun cycle). |
+| Gardes de `POST /live/annonce/tombola` | Le jeton, **et** `module_visible(request, "tombola")` vérifié à la main | Le routeur `live` est derrière `garde_module("live")` : la garde du module tombola ne s'y applique pas. Module désactivé : rien d'écrit, rien au journal, retour 303 à la page. |
+| Interrupteur des annonces | **Sans effet** sur le bloc | Deux droits distincts. Interrupteur fermé, la page garde son explication (reformulée : « vous ne pouvez pas poser d'annonce ») et le bloc vient dessous. Le lien **Annonce en salle** du menu suit, lui, l'interrupteur. |
+| Module masqué | Bloc absent, données non lues | La page est alors identique, à l'octet près, à celle d'avant le lot (vérifié par comparaison du HTML rendu). |
+| Bouton | **Secondaire** | **Ajouter une annonce** reste le seul bouton principal de la page (`docs/ui-composants.md` § 1). |
+| Retour au bloc | Le formulaire vise `…/tombola#tombola`, rendu direct | Le navigateur garde l'ancre : le résultat s'affiche sans remonter, sans JS. `scroll-margin-top` sur le titre, que le bandeau collant cachait. |
+| Identifiants | Cases `tombola-numero-1` … sur la page Annonce, `numero-1` … sur la page de la tombola | Paramètre `prefixe` du formulaire : les `id` restent uniques quelle que soit la page. |

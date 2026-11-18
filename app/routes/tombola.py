@@ -14,6 +14,11 @@ cinq minutes. Toute la logique est dans `app/tombola.py` ; ce module lit les
 formulaires, appelle, JOURNALISE (seules les routes journalisent,
 docs/conception-journal.md § 5.2) et rend la page.
 
+La saisie d'un tirage À LA MAIN a un second point d'entrée depuis le lot 3 :
+le bloc « Tombola » de /live/annonce (`routes/live.py`). Les deux pages
+passent par `enregistrer_tirage_manuel` (saisie + journal) et
+`saisies_a_reafficher`, et par le fragment `_tombola_saisie.html`.
+
 ⚠️ DEUX GARDES, COMME LE CARNET DE MAINTENANCE (`routes/maintenance.py`)
 ------------------------------------------------------------------------
 `main.py` enregistre ce routeur derrière `garde_module("tombola")` : c'est la
@@ -154,6 +159,42 @@ def _journaliser_tirage(request: Request, t: tombola.Tirage) -> None:
                             ref=" ".join(str(n) for n in t.numeros))
 
 
+def enregistrer_tirage_manuel(request: Request, saisies: list[str],
+                              jeton: str) -> tombola.Tirage:
+    """
+    SAISIT un tirage à la main et le JOURNALISE — un seul domicile pour les
+    deux pages qui le proposent : /tombola/gestion (`tirage_manuel`) et le
+    bloc « Tombola » de /live/annonce (`routes/live.py`, lot tombola-3).
+
+    Vit dans une route, pas dans `app/tombola.py`, parce qu'elle journalise
+    et que le journal réclame la requête (docs/conception-journal.md § 5.2).
+    Sens de l'import : `routes/live.py` importe ce module ; celui-ci
+    n'importe rien de `routes/live.py` (aucun cycle).
+
+    Les GARDES restent à l'appelant : le jeton bénévole, et l'état du module
+    tombola, que la garde de routeur ne vérifie pas sous `/live`.
+    """
+    conn = get_connection()
+    try:
+        t = tombola.saisir_tirage(conn, saisies, jeton)
+    finally:
+        conn.close()
+    _journaliser_tirage(request, t)
+    return t
+
+
+def saisies_a_reafficher(t: tombola.Tirage, saisies: list[str]) -> list[str] | None:
+    """
+    La saisie à remettre dans ses champs après un envoi : seulement quand
+    RIEN n'a été affiché (aucun numéro valide, ou formulaire vide) — la
+    saisie n'est alors jamais perdue. Sinon None : les champs se vident pour
+    le tirage suivant. Même règle sur les deux pages.
+    """
+    if t.issue in (tombola.TIRAGE_AUCUN_VALIDE, tombola.TIRAGE_VIDE):
+        return [s[:20] for s in saisies]
+    return None
+
+
 @router.post("/gestion/tirage")
 def tirage_manuel(request: Request,
                   numero_1: str = Form(""), numero_2: str = Form(""),
@@ -166,15 +207,9 @@ def tirage_manuel(request: Request,
     pour le tirage suivant.
     """
     saisies = [numero_1, numero_2, numero_3, numero_4, numero_5]
-    conn = get_connection()
-    try:
-        t = tombola.saisir_tirage(conn, saisies, jeton)
-    finally:
-        conn.close()
-    _journaliser_tirage(request, t)
-    garder = t.issue in (tombola.TIRAGE_AUCUN_VALIDE, tombola.TIRAGE_VIDE)
+    t = enregistrer_tirage_manuel(request, saisies, jeton)
     return _page(request, tombola.message_tirage(t),
-                 saisies=[s[:20] for s in saisies] if garder else None,
+                 saisies=saisies_a_reafficher(t, saisies),
                  focus_remise=False)
 
 
