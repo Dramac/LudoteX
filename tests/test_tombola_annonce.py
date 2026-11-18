@@ -478,3 +478,24 @@ def test_cinq_cases_numeriques_dans_un_groupe_legende(benevole, actif):
     legende = (f"<legend>Numéros tirés, de 1 à {tombola.NUMEROS_PAR_TIRAGE} "
                f"(entre {tombola.NUMERO_MIN} et {tombola.NUMERO_MAX})</legend>")
     assert legende in bloc
+
+
+def test_cases_du_tirage_a_44_px_sur_les_deux_pages():
+    """
+    Les cinq cases, partagées par /tombola/gestion et /live/annonce : 44 px
+    de haut et un retrait horizontal de 4 px (sinon « 9999 » déborde d'une
+    case de 57 px à 375 px, mesuré). Le sélecteur doit battre `.champ
+    input`, déclaré plus loin à spécificité égale : `.tombola-cinq input`
+    seul perdait le retrait (constaté au navigateur). Et la règle ne doit pas
+    être limitée au bloc de la page Annonce.
+    """
+    from pathlib import Path
+
+    css = (Path(__file__).resolve().parent.parent
+           / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+    regle = re.search(r"^\.tombola-cinq \.champ input \{([^}]*)\}", css, re.M)
+    assert regle, "règle `.tombola-cinq .champ input` introuvable"
+    corps = " ".join(regle.group(1).split())
+    assert "min-height: 44px" in corps
+    assert "padding-left: 4px" in corps and "padding-right: 4px" in corps
+    assert ".annonce-tombola .tombola-cinq input" not in css

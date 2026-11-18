@@ -462,7 +462,15 @@ summary:focus-visible,
 .tombola-cinq { border: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .tombola-cinq legend { padding: 0; margin-bottom: 6px; }
 .tombola-cinq label { font-size: 0.85rem; }
+/* Les cinq cases d'un tirage (fragment _tombola_saisie.html, page de la
+   tombola et page Annonce en salle) : sur une ligne à 375 px, 57 px
+   chacune (mesuré). Le retrait horizontal habituel (10 px) ne laissait que
+   35 px à « 9999 », qui en demande 35,6 ; 4 px lui en laissent 47. Hauteur
+   portée à 44 px, la cible tactile minimale (41 px mesurés avant). Le
+   retrait passe par `.tombola-cinq .champ input` : `.champ input`, déclaré
+   plus loin à spécificité égale, l'emporterait sur `.tombola-cinq input`. */
 .tombola-cinq input { min-width: 0; width: 100%; text-align: center; font-weight: 700; }
+.tombola-cinq .champ input { min-height: 44px; padding-left: 4px; padding-right: 4px; }
 
 /* Bloc « Tombola » de /live/annonce (série tombola, lot 3) : sous les
    annonces, séparé d'un filet, pour que « Ajouter une annonce » reste le
@@ -477,11 +485,6 @@ summary:focus-visible,
 .annonce-tombola h2#tombola { scroll-margin-top: 9rem; }
 .annonce-tombola .resultat.tombola-message { margin: 0 0 10px; }
 .annonce-tombola .tombola-cinq + .bouton { margin-top: 10px; }
-/* Cinq cases sur une ligne à 375 px : 57 px chacune (mesuré). Le retrait
-   horizontal habituel (10 px) ne laissait que 35 px à « 9999 », qui en
-   demande 35,6 ; 4 px lui en laissent 47. Hauteur portée à 44 px : la cible
-   tactile minimale (mesuré à 41 px avant). */
-.annonce-tombola .tombola-cinq input { min-height: 44px; padding-left: 4px; padding-right: 4px; }
 .annonce-tombola-attente { margin: 20px 0 0; font-size: 1.05rem; }
 /* « Gérer la tombola » : cible tactile de 44 px de haut (19 px mesurés en
    lien de texte simple). */
