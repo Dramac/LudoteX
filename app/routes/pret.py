@@ -47,6 +47,11 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
         une sortie tournoi, qui n'en avait pas).
     {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
         rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
+    {"type": "retiree"}                                    boîte retirée du parc :
+        prêt, sortie tournoi ou re-prêt refusés par le service, rien
+        d'écrit (lot comptoir-6, `services.BoiteRetiree`)
+    {"type": "nouveau_retire", "nom": …, "code": …}        transfert vers une
+        boîte retirée : rien d'écrit, la pochette reste sur la boîte rendue
     {"type": "signale"}                                    signalement envoyé
     {"type": "pochette_signalee_repret", "numero": n|None}
         seconde issue du re-prêt : la pochette vérifiée n'était pas vide, le
@@ -100,7 +105,8 @@ router = APIRouter(prefix="/pret", tags=["pret"])
 # historiques pour ne garder qu'UN SEUL endroit qui décide de ce qui compte
 # comme un échec dans le journal (docs/conception-journal.md §2.3).
 _ECHECS = {"deja_sorti", "deja_disponible", "occupe",
-           "transfert_impossible", "nouveau_sorti", "pochette_occupee"}
+           "transfert_impossible", "nouveau_sorti", "pochette_occupee",
+           "retiree", "nouveau_retire"}
 
 
 def _journaliser_pret(request: Request, action: str, info: dict, resultat: dict) -> None:
@@ -296,9 +302,15 @@ def _sans_conflit(conn, id_exemplaire: str, ecrire) -> dict:
     Toute autre `OperationalError` (base illisible, disque plein…) est laissée
     remonter : ce n'est pas un conflit, et la page 500 conviviale de main.py
     avec sa trace au journal est alors la bonne réponse.
+
+    `services.BoiteRetiree` (lot comptoir-6) : la boîte a quitté le parc —
+    l'écran ouvert avant son retrait offrait encore « Prêter ». La
+    transaction n'a rien écrit ; l'écran redit « boîte retirée ».
     """
     try:
         return ecrire()
+    except services.BoiteRetiree:
+        return {"type": "retiree"}
     except sqlite3.OperationalError as erreur:
         if not _est_verrou(erreur):
             raise
@@ -567,6 +579,11 @@ def _transfert_ou_refus(conn, id_rendu: str):
     return courant["numero_pochette"], None
 
 
+def _nouveau_retire(id_nouveau: str, nouvelle_info: dict) -> dict:
+    """Le refus d'un transfert vers une boîte retirée (lot comptoir-6)."""
+    return {"type": "nouveau_retire", "nom": nouvelle_info["nom"], "code": id_nouveau}
+
+
 def _escalade(id_nouveau: str, nouvelle_info: dict, numero_oubli) -> dict:
     """
     Décrit, pour le gabarit, le prêt oublié qui tient la boîte que le visiteur
@@ -737,6 +754,10 @@ def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
         if nouvelle_info is None:
             return _rendu(request, id_nouveau)
         meme_boite = id_nouveau == id_rendu
+        if not meme_boite and nouvelle_info["retiree_le"]:
+            # Une boîte retirée ne se prête pas : on le dit AVANT le tap, sur
+            # l'écran de la boîte rendue, où « Transférer » reste à un tap.
+            return _rendu(request, id_rendu, _nouveau_retire(id_nouveau, nouvelle_info))
         escalade = None
         if not meme_boite:
             autre = services.pret_en_cours(conn, id_nouveau)
@@ -793,6 +814,8 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
         def ecrire():
             res = services.transferer_pochette(conn, id_rendu, id_nouveau,
                                                clore_oubli=bool(clore_oubli))
+            if res.get("nouveau_retire"):
+                return _nouveau_retire(id_nouveau, nouvelle_info)
             if res.get("rien_a_rendre"):
                 return {"type": "transfert_impossible", "raison": "rien_a_rendre"}
             if res.get("sans_pochette"):

@@ -11,6 +11,23 @@
        à jour.</p>
     <p><a class="lien" href="/catalogue">Voir le catalogue</a></p>
   </section>
+{# Boîte retirée du parc (lot comptoir-6) : son QR peut rester collé sur une
+   boîte donnée, vendue ou retrouvée. La page le dit, sans erreur, et mène au
+   jeu s'il lui reste une boîte au parc. Ni disponibilité, ni bouton de prêt. #}
+{% elif info.retiree_le %}
+  <section class="carte">
+    <h1>{{ info.nom }}</h1>
+    <p class="etat etat-retiree">Boîte retirée</p>
+    <p>Cette boîte ne fait plus partie du catalogue.</p>
+    {% if autre_boite %}
+    <p><a class="lien" href="/jeu/{{ autre_boite }}">Voir « {{ info.nom }} » au catalogue</a></p>
+    {% else %}
+    <p><a class="lien" href="/catalogue">Voir le catalogue</a></p>
+    {% endif %}
+    {% if est_admin(request) %}
+    <p><a class="lien" href="/admin/jeu/{{ info.reference_titre }}#boite-{{ info.id_exemplaire }}">Gérer cette boîte</a></p>
+    {% endif %}
+  </section>
 {% else %}
   <section class="carte">
     <h1>{{ info.nom }}</h1>

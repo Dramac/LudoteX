@@ -132,6 +132,8 @@ refuser la ligne. Une catégorie que plus aucun jeu ne porte disparaît.
 | `id_exemplaire` | clé primaire, encodée dans le QR |
 | `reference_titre` | clé étrangère → `titres` |
 | *(emplacements)* | où ranger la boîte, deux contextes (`docs/conception-rangement.md`) |
+| `retiree_le` | date du **retrait** de la boîte du parc ; vide tant qu'elle y est (§3.3) |
+| `motif_retrait` | pourquoi : perdue, abîmée, donnée ou vendue, autre — une **liste fermée**, jamais un texte libre ; facultatif |
 
 **`prets`** — l'historique complet de tous les prêts (jamais purgé).
 
@@ -205,6 +207,21 @@ supprimée.
   réutilisable, et effacé de la ligne de prêt à la clôture (§3.2).
 - L'historique des prêts n'est jamais supprimé : il alimente les
   statistiques.
+- **Cycle de vie d'une boîte : au parc, puis éventuellement retirée.** Une
+  boîte perdue, abîmée, donnée ou vendue est **retirée**, jamais supprimée :
+  ses prêts la référencent. Retirée, elle quitte le catalogue, la
+  disponibilité, les étiquettes et le rangement ; elle ne peut plus être
+  prêtée ni sortie pour un tournoi (le refus est dans le service, pas
+  seulement à l'écran), et son QR affiche « Boîte retirée », jamais une
+  erreur. Une boîte sortie ne se retire pas : on la rend d'abord. Le retrait
+  se fait en administration, avec une confirmation, et s'annule
+  (« Remettre en service »). Le code reste pris : c'est la clé de ses
+  prêts. Un jeu dont toutes les boîtes sont retirées disparaît du catalogue
+  public ; sa fiche reste en administration. L'import du tableur ne remet
+  jamais une boîte en service et n'en retire jamais : il signale les boîtes
+  retirées qu'il porte encore. L'export du catalogue ne contient que les
+  boîtes au parc. Une seule date est gardée : une boîte retirée puis remise
+  en service compte comme si elle n'était jamais partie.
 
 ### 3.4 Trois bases indépendantes — invariant
 
@@ -432,6 +449,17 @@ Elles servent d'abord au bilan du bureau : la page et ses exports sont
 **réservés aux bénévoles par défaut**. Faute de donnée personnelle, le bureau
 peut les rouvrir au public depuis la visibilité des modules (§8).
 
+Les **boîtes et les jeux du catalogue** d'une période sont ceux qui étaient
+**au parc pendant la période** : une boîte jamais retirée, ou retirée après
+le début de la période (§3.3). Une boîte retirée en 2027 compte donc toujours
+dans le bilan de 2026, qui ne bouge pas ; une boîte retirée avant une période
+n'y fausse ni le nombre de boîtes d'un jeu, ni « toutes dehors », ni les
+jamais sortis, ni le nombre de jeux du catalogue. Sans début de période
+(« Toute la période »), toutes les boîtes comptent. Les **prêts**, eux, ne
+se filtrent jamais : une boîte ne sort plus après son retrait, tous ses
+prêts restent comptés. La base ne garde pas la date d'**entrée** au parc :
+une boîte ajoutée après une période y compte comme si elle y avait été.
+
 Elles comptent les **prêts au public** : motif `pret`, et motif `oubli` — un
 prêt dont le retour n'a pas été scanné, clos plus tard par un re-prêt ou un
 transfert. Ce dernier est un vrai prêt, mais sa durée est inconnue : il est
@@ -472,8 +500,8 @@ Indicateurs :
     où elle a commencé : une boîte encore dehors le soir, presque toujours
     un retour non scanné, ne compte pas le lendemain. Un retour non scanné
     reste dehors jusqu'à ce qu'on s'en aperçoive (la durée peut être
-    surestimée). Le nombre de boîtes est celui d'aujourd'hui : la base ne
-    garde pas l'historique du parc. Un jeu à moins d'un quart d'heure cumulé
+    surestimée). Le nombre de boîtes est celui des boîtes **au parc pendant
+    la période** (ci-dessous). Un jeu à moins d'un quart d'heure cumulé
     n'est pas montré, ni un jeu à une boîte prêté moins de trois fois ; le
     nombre de ces jeux est dit. La page montre les vingt premiers de chaque
     liste, l'Excel tous. Ces durées disent qu'aucune boîte n'était

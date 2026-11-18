@@ -190,6 +190,46 @@ def _filtre_periode(colonne: str, debut: str | None, fin: str | None) -> tuple[s
     return fragment, params
 
 
+# ---------------------------------------------------------------------------
+# AU PARC — la boîte retirée (série comptoir, lot 6)
+#
+# Une boîte retirée n'est jamais supprimée : ses prêts la référencent. Deux
+# questions, deux fonctions, et AUCUNE condition recopiée à la main dans une
+# requête :
+# - « est-elle au parc aujourd'hui ? » — catalogue, disponibilité, compteurs,
+#   étiquettes, rangement : `condition_au_parc` ;
+# - « était-elle au parc pendant cette période ? » — toute statistique qui
+#   compte des boîtes ou des jeux du catalogue : `condition_au_parc_pendant`.
+#   Une boîte retirée après le début de la période y compte encore, une boîte
+#   retirée avant n'y compte plus : un bilan déjà publié ne bouge pas quand
+#   on retire une boîte l'année suivante.
+# Les PRÊTS, eux, ne se filtrent jamais : une boîte ne sort plus après son
+# retrait, tous ses prêts datent d'avant, et ils restent comptés.
+# ---------------------------------------------------------------------------
+def condition_au_parc(alias: str = "e") -> str:
+    """Fragment SQL : la boîte `alias` est au parc aujourd'hui (non retirée)."""
+    return f"{alias}.retiree_le IS NULL"
+
+
+def condition_au_parc_pendant(debut: str | None,
+                              alias: str = "e") -> tuple[str, list]:
+    """
+    Fragment SQL et paramètres : la boîte `alias` était au parc pendant une
+    période qui commence à `debut` (UTC ISO, le format de `maintenant()`).
+
+    Au parc pendant la période = jamais retirée, ou retirée APRÈS son début.
+    Sans début (« toutes périodes »), toute boîte a été au parc à un moment :
+    elles comptent toutes. La fin de la période n'y joue pas : une boîte
+    retirée en cours de période était là à son début.
+
+    À RÉUTILISER par tout nouveau lecteur qui compte des boîtes ou des jeux
+    dans une statistique (docs/guide-developpeur.md).
+    """
+    if not debut:
+        return "1 = 1", []
+    return f"({alias}.retiree_le IS NULL OR {alias}.retiree_le > ?)", [debut]
+
+
 def maintenant() -> str:
     """
     Horodatage courant au format ISO 8601, en UTC, à la seconde.
@@ -223,15 +263,18 @@ def info_exemplaire(conn: sqlite3.Connection, id_exemplaire: str) -> dict | None
         nb_joueurs_min/max, duree_min, age_min, editeur, auteur, annee_edition,
         descriptif, les trois lettres du code de classement — l'étiquette
         de réimpression en dépend — et l'identifiant BoardGameGeek, pour le
-        lien public quand l'instance l'a choisi), ou ``None`` si l'exemplaire
-        est inconnu.
+        lien public quand l'instance l'a choisi), `retiree_le` et
+        `motif_retrait` (None tant que la boîte est au parc), ou ``None`` si
+        l'exemplaire est inconnu. Une boîte RETIRÉE est trouvée : c'est
+        l'écran qui dit « boîte retirée », jamais un 404.
     """
     row = conn.execute(
         """
         SELECT e.id_exemplaire, t.reference_titre, t.nom, t.type_jeu, t.categorie,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min, t.age_min,
                t.editeur, t.auteur, t.annee_edition, t.descriptif,
-               t.lettre_public, t.lettre_jeu, t.lettre_materiel, t.bgg_id
+               t.lettre_public, t.lettre_jeu, t.lettre_materiel, t.bgg_id,
+               e.retiree_le, e.motif_retrait
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         WHERE e.id_exemplaire = ?
@@ -368,6 +411,17 @@ def message_code_introuvable(code: str, codes_proches: list[str] | None = None) 
         return (f"Plusieurs boîtes ressemblent à « {code} » : {liste}. "
                 "Tapez le code exact, zéros compris.")
     return f"Aucune boîte ne porte le code « {code} ». Vérifiez et réessayez."
+
+
+def message_boite_retiree(info: dict) -> str:
+    """
+    La phrase d'une boîte RETIRÉE trouvée par un code (lot comptoir-6) — un
+    seul domicile pour les écrans du scanner qui la rencontrent sans ouvrir
+    sa page de prêt (mode rangement).
+    """
+    return (f"La boîte « {info['id_exemplaire']} » ({info['nom']}) a été retirée "
+            "du catalogue : elle n'a plus de place à recevoir. Scannez la "
+            "boîte suivante.")
 
 
 def drapeau_url_actif(valeur: str) -> bool:
@@ -651,7 +705,8 @@ def lister_catalogue(conn: sqlite3.Connection, categories: Sequence[str] = (),
                      joueurs: int | None = None,
                      dispo_seulement: bool = False,
                      sans_bgg: bool = False,
-                     pas_sur_bgg: bool = False) -> list[dict]:
+                     pas_sur_bgg: bool = False,
+                     avec_tout_retires: bool = False) -> list[dict]:
     """
     Construit le catalogue AU NIVEAU TITRE, avec disponibilité et filtres.
 
@@ -695,17 +750,26 @@ def lister_catalogue(conn: sqlite3.Connection, categories: Sequence[str] = (),
         sans_bgg: si True, ne garde que les titres à relier à BoardGameGeek.
         pas_sur_bgg: si True, ne garde que les titres marqués « pas sur BGG ».
 
+    Seules les boîtes AU PARC comptent (`condition_au_parc`) : un jeu dont
+    toutes les boîtes sont retirées n'y figure plus. `avec_tout_retires=True`
+    (la liste « Rechercher un jeu » de l'administration, et elle seule) le
+    garde, avec `total` = 0 et `id_repr` = None, pour que sa fiche reste
+    trouvable : les comptes, eux, ne portent toujours que sur le parc.
+
     Returns:
         Liste de dicts {reference_titre, nom, categorie, id_repr, total,
         disponible}, triée par nom (insensible à la casse).
     """
-    sql = """
+    au_parc = condition_au_parc("e")
+    sql = f"""
         SELECT t.reference_titre, t.nom, t.categorie,
-               MIN(e.id_exemplaire) AS id_repr,
-               COUNT(e.id_exemplaire) AS total,
-               SUM(CASE WHEN p.id_pret IS NULL THEN 1 ELSE 0 END) AS disponible
+               MIN(CASE WHEN {au_parc} THEN e.id_exemplaire END) AS id_repr,
+               SUM(CASE WHEN {au_parc} THEN 1 ELSE 0 END) AS total,
+               SUM(CASE WHEN {au_parc} AND p.id_pret IS NULL THEN 1 ELSE 0 END)
+                   AS disponible
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
+                          {"" if avec_tout_retires else "AND " + au_parc}
         LEFT JOIN prets p
                ON p.id_exemplaire = e.id_exemplaire AND p.date_retour IS NULL
     """
@@ -733,7 +797,8 @@ def lister_catalogue(conn: sqlite3.Connection, categories: Sequence[str] = (),
         sql += " WHERE " + " AND ".join(conditions)
     sql += " GROUP BY t.reference_titre, t.nom, t.categorie"
     if dispo_seulement:
-        sql += " HAVING SUM(CASE WHEN p.id_pret IS NULL THEN 1 ELSE 0 END) > 0"
+        sql += (f" HAVING SUM(CASE WHEN {au_parc} AND p.id_pret IS NULL "
+                "THEN 1 ELSE 0 END) > 0")
     sql += " ORDER BY t.nom COLLATE NOCASE"
     return [dict(r) for r in conn.execute(sql, params)]
 
@@ -791,7 +856,21 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
         """,
         params,
     ).fetchone()[0]
-    nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
+    # Jeux du catalogue de la période : un jeu dont TOUTES les boîtes ont été
+    # retirées avant son début n'en est plus (`condition_au_parc_pendant`). Un
+    # titre sans aucune boîte reste compté, comme avant ce lot : une base
+    # d'avant donne le même chiffre.
+    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
+    nb_titres = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM titres t
+        WHERE NOT EXISTS (SELECT 1 FROM exemplaires e
+                          WHERE e.reference_titre = t.reference_titre)
+           OR EXISTS (SELECT 1 FROM exemplaires e
+                      WHERE e.reference_titre = t.reference_titre AND {au_parc})
+        """,
+        params_parc,
+    ).fetchone()[0]
     # Erreurs de prêt : comptées à part, jamais mêlées aux chiffres ci-dessus.
     erreurs = conn.execute(
         f"SELECT COUNT(*) FROM prets WHERE motif = 'erreur'{f}", params
@@ -865,6 +944,9 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
            if metrique == "exemplaire" else "COUNT(p.id_pret)")
     direction = "ASC" if sens == "asc" else "DESC"
     f, params = _filtre_periode("p.date_sortie", debut, fin)
+    # Les boîtes au parc PENDANT la période : une boîte retirée avant son
+    # début ne compte ni dans le nombre de boîtes ni dans « par boîte ».
+    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
     rows = conn.execute(
         f"""
         SELECT t.reference_titre, t.nom,
@@ -874,13 +956,14 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
                    AS par_exemplaire
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
+                          AND {au_parc}
         LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
                           AND p.motif {_SQL_MOTIFS_COMPTES}{f}
         GROUP BY t.reference_titre, t.nom
         ORDER BY {cle} {direction}, t.nom COLLATE NOCASE
         LIMIT ?
         """,
-        params + [limite],
+        params_parc + params + [limite],
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -1131,7 +1214,10 @@ def compter_exemplaires_disponibles(conn: sqlite3.Connection) -> tuple[int, int]
         signifie : aucun prêt en cours (date_retour IS NULL), tous motifs
         confondus (prêt public ou sortie tournoi).
     """
-    total = conn.execute("SELECT COUNT(*) FROM exemplaires").fetchone()[0]
+    # Le parc d'aujourd'hui : une boîte retirée n'est ni au total ni dispo.
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM exemplaires e WHERE {condition_au_parc('e')}"
+    ).fetchone()[0]
     sortis = conn.execute(
         """
         SELECT COUNT(*) FROM exemplaires e
@@ -1222,7 +1308,8 @@ EN_TETES_CATALOGUE = [
 ]
 
 
-def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[dict]]:
+def lignes_export_catalogue(conn: sqlite3.Connection, *,
+                            avec_retirees: bool = False) -> tuple[list[str], list[dict]]:
     """
     Prépare l'export du catalogue (une ligne par exemplaire), au format
     ré-importable par `scripts/import_csv.py`.
@@ -1230,6 +1317,13 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
     Les valeurs normalisées en base sont re-sérialisées dans un format que les
     parseurs de l'import savent relire : joueurs « 2 - 4 », âge « 10 », durée
     « 30 », date d'achat « JJ/MM/AAAA ».
+
+    Les boîtes RETIRÉES n'y sont pas (arbitrage du lot comptoir-6) : l'export
+    est le parc d'aujourd'hui, celui que le bureau recopie dans son tableur.
+    Ré-importé, il ne fait donc rien dire à l'import sur elles, alors qu'un
+    vieux tableur qui les porte encore le dit (`scripts/import_csv.py`).
+    `avec_retirees=True` : toutes les boîtes, pour qui a besoin de décrire
+    une boîte retirée (les jamais sortis d'une période passée, `app/achats.py`).
 
     Returns:
         (en-têtes, lignes) où chaque ligne est un dict clé=en-tête.
@@ -1240,7 +1334,7 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
         return str(a) if a else ""
 
     rows = conn.execute(
-        """
+        f"""
         SELECT e.id_exemplaire, e.emplacement_evenement,
                er.nom AS emplacement_local_nom,
                t.nom, t.type_jeu, t.categorie,
@@ -1251,6 +1345,7 @@ def lignes_export_catalogue(conn: sqlite3.Connection) -> tuple[list[str], list[d
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         LEFT JOIN emplacements_rangement er ON er.id_emplacement = e.emplacement_local_id
+        WHERE {"1 = 1" if avec_retirees else condition_au_parc("e")}
         ORDER BY t.nom COLLATE NOCASE, e.id_exemplaire
         """
     ).fetchall()
@@ -1290,11 +1385,12 @@ def derniers_achats(conn: sqlite3.Connection, n: int = 10) -> list[dict]:
         id_repr} triée du plus récent au plus ancien.
     """
     rows = conn.execute(
-        """
+        f"""
         SELECT t.reference_titre, t.nom, t.date_achat,
                MIN(e.id_exemplaire) AS id_repr
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
+                          AND {condition_au_parc("e")}
         WHERE t.date_achat IS NOT NULL AND t.date_achat <> ''
         GROUP BY t.reference_titre, t.nom, t.date_achat
         ORDER BY t.date_achat DESC, t.nom COLLATE NOCASE
@@ -1326,12 +1422,12 @@ def exemplaires_du_titre(conn: sqlite3.Connection, reference_titre: str) -> list
         prêt en cours (« pret », « tournoi »).
     """
     rows = conn.execute(
-        """
+        f"""
         SELECT e.id_exemplaire, p.motif, p.date_sortie
         FROM exemplaires e
         LEFT JOIN prets p ON p.id_exemplaire = e.id_exemplaire
                          AND p.date_retour IS NULL
-        WHERE e.reference_titre = ?
+        WHERE e.reference_titre = ? AND {condition_au_parc("e")}
         ORDER BY e.id_exemplaire
         """,
         (reference_titre,),
@@ -1358,8 +1454,10 @@ def dispo_par_titre(conn: sqlite3.Connection, reference_titre: str) -> tuple[int
     Returns:
         Un tuple (total_exemplaires, exemplaires_disponibles).
     """
+    # Les boîtes au parc : une boîte retirée n'est ni au total ni disponible.
     total = conn.execute(
-        "SELECT COUNT(*) FROM exemplaires WHERE reference_titre = ?",
+        f"SELECT COUNT(*) FROM exemplaires e "
+        f"WHERE e.reference_titre = ? AND {condition_au_parc('e')}",
         (reference_titre,),
     ).fetchone()[0]
     # « sortis » = exemplaires ayant AU MOINS un prêt non clos.
@@ -1507,8 +1605,9 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
     depuis un bloc déjà ouvert (cas de `repreter`), elle s'y greffe et laisse
     l'appelant committer.
 
-    Cette fonction ne CONTRÔLE PAS que l'exemplaire est disponible et ne refuse
-    jamais rien (« ne jamais bloquer »). Pour un contrôle atomique du type
+    Cette fonction ne CONTRÔLE PAS que l'exemplaire est disponible. Elle ne
+    refuse qu'une chose : une boîte RETIRÉE du parc (`BoiteRetiree`, rien
+    d'écrit). Pour un contrôle atomique du type
     « déjà sortie ? », voir `preter_si_disponible`, que les routes utilisent.
 
     Args:
@@ -1519,6 +1618,9 @@ def preter(conn: sqlite3.Connection, id_exemplaire: str) -> int:
         Le numéro de pochette attribué (à afficher au bénévole).
     """
     with transaction(conn):
+        # Une boîte retirée ne se prête plus (lot comptoir-6) : le refus vit
+        # ICI, pas seulement à l'écran — tout chemin de prêt passe par là.
+        _refuser_si_retiree(conn, id_exemplaire)
         numero = plus_petit_numero_libre(conn)
         conn.execute(
             """
@@ -1663,6 +1765,7 @@ def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
         id_exemplaire: identifiant de la boîte prélevée pour le tournoi.
     """
     with transaction(conn):
+        _refuser_si_retiree(conn, id_exemplaire)   # lot comptoir-6, comme `preter`
         conn.execute(
             """
             INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
@@ -2058,6 +2161,8 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
         `numero_libere` est le numéro rendu au pot par la clôture du prêt
         oublié, None quand il n'y en avait pas (sortie tournoi) ou quand
         aucune escalade n'a eu lieu ;
+        {"nouveau_retire": True} si `id_nouveau` est retirée du parc (lot
+        comptoir-6) : rien n'est écrit ;
         {"rien_a_rendre": True} si `id_rendu` n'a aucun prêt en cours (un autre
         bénévole a pu l'enregistrer entre-temps) ;
         {"sans_pochette": True} si le prêt en cours est une sortie tournoi, qui
@@ -2076,6 +2181,10 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
         if courant["motif"] != "pret" or not numero:
             return {"sans_pochette": True}
         meme_boite = id_nouveau == id_rendu
+        # La boîte à emporter est retirée du parc : rien n'est écrit, la
+        # pochette reste sur la boîte rendue (lot comptoir-6).
+        if not meme_boite and est_retiree(conn, id_nouveau):
+            return {"nouveau_retire": True}
         oubli_clos = False
         numero_libere = None
         if not meme_boite:
@@ -2319,14 +2428,19 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
     si l'emplacement a été archivé depuis — la fiche admin doit continuer à
     l'afficher, §5). `emplacement_local_actif` distingue ce cas.
 
+    Les boîtes RETIRÉES y sont, marquées (lot comptoir-6) : `retiree_le`
+    (None au parc), `retiree_le_txt` (« JJ/MM/AAAA », heure locale) et
+    `motif_retrait_txt` (libellé de `MOTIFS_RETRAIT`, vide sans motif).
+
     Returns:
         Liste de dicts {id_exemplaire, sorti(bool), emplacement_evenement,
-        emplacement_local_id, emplacement_local_nom, emplacement_local_actif},
-        triée par id.
+        emplacement_local_id, emplacement_local_nom, emplacement_local_actif,
+        retiree_le, retiree_le_txt, motif_retrait_txt}, triée par id.
     """
     rows = conn.execute(
         "SELECT x.id_exemplaire, x.emplacement_evenement, x.emplacement_local_id, "
-        "       er.nom AS emplacement_local_nom, er.actif AS emplacement_local_actif "
+        "       er.nom AS emplacement_local_nom, er.actif AS emplacement_local_actif, "
+        "       x.retiree_le, x.motif_retrait "
         "FROM exemplaires x "
         "LEFT JOIN emplacements_rangement er ON er.id_emplacement = x.emplacement_local_id "
         "WHERE x.reference_titre = ? "
@@ -2344,9 +2458,149 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
                 bool(r["emplacement_local_actif"])
                 if r["emplacement_local_actif"] is not None else None
             ),
+            "retiree_le": r["retiree_le"],
+            "retiree_le_txt": date_retrait_txt(r["retiree_le"]),
+            "motif_retrait_txt": MOTIFS_RETRAIT.get(r["motif_retrait"] or "", ""),
         }
         for r in rows
     ]
+
+
+# ===========================================================================
+# RETIRER UNE BOÎTE DU PARC (série comptoir, lot 6)
+#
+# Retirer, JAMAIS supprimer : une boîte a un historique, ses prêts, qui la
+# référencent par une clé étrangère sans cascade. La supprimer effacerait des
+# prêts déjà comptés dans un bilan publié. Retirée, elle disparaît du
+# catalogue, du rangement et des étiquettes, ne peut plus être prêtée ni
+# sortie pour un tournoi (`preter`, `sortir_tournoi` et le transfert le
+# refusent, pas seulement l'écran), et son QR dit « boîte retirée ». Son code
+# reste pris : c'est la clé de ses prêts.
+#
+# Rien de personnel : une date, et un motif choisi dans une liste FERMÉE —
+# jamais de texte libre (décision de Simon, 2026-11-18).
+# ===========================================================================
+
+# Motifs d'un retrait : code stocké -> libellé affiché. Ajouter un motif ne
+# demande aucune migration (pas de CHECK en base, voir app/db.py).
+MOTIFS_RETRAIT = {
+    "perdue": "Perdue",
+    "abimee": "Abîmée",
+    "donnee": "Donnée ou vendue",
+    "autre": "Autre",
+}
+
+
+class BoiteRetiree(Exception):
+    """
+    Une écriture de prêt vise une boîte retirée du parc. Levée SOUS la
+    transaction, qui revient donc en arrière : rien n'est écrit. Les routes de
+    prêt la traduisent en message (`routes/pret.py::_sans_conflit`), jamais
+    en erreur brute.
+    """
+
+    def __init__(self, id_exemplaire: str):
+        super().__init__(id_exemplaire)
+        self.id_exemplaire = id_exemplaire
+
+
+def date_retrait_txt(retiree_le: str | None) -> str:
+    """« JJ/MM/AAAA » (heure locale) d'un retrait, ou « » au parc."""
+    return format_local(retiree_le)[:10] if retiree_le else ""
+
+
+def est_retiree(conn: sqlite3.Connection, id_exemplaire: str) -> bool:
+    """Vrai si la boîte existe et est retirée du parc."""
+    row = conn.execute(
+        "SELECT retiree_le FROM exemplaires WHERE id_exemplaire = ?",
+        (id_exemplaire,)).fetchone()
+    return bool(row and row[0])
+
+
+def _refuser_si_retiree(conn: sqlite3.Connection, id_exemplaire: str) -> None:
+    """Lève `BoiteRetiree` si la boîte est retirée. À appeler sous transaction."""
+    if est_retiree(conn, id_exemplaire):
+        raise BoiteRetiree(id_exemplaire)
+
+
+def retirer_exemplaire(conn: sqlite3.Connection, id_exemplaire: str,
+                       motif: str | None = None) -> dict:
+    """
+    Retire une boîte du parc, sous `transaction` (lecture de l'état et
+    écriture indivisibles : un prêt ne peut pas s'intercaler).
+
+    Refus, sans rien écrire :
+    - `inconnue` : aucun exemplaire ne porte ce code ;
+    - `sortie` : un prêt (ou une sortie tournoi) est en cours. La boîte est
+      dehors : on la rend d'abord, ou on attend la clôture. On ne clôt jamais
+      un prêt en silence depuis l'administration.
+    Une boîte DÉJÀ retirée (double envoi de la confirmation) n'est pas un
+    refus : `deja_retiree`, rien ne change, la date du premier retrait reste.
+
+    Un motif inconnu (formulaire forgé) est enregistré comme « sans motif »
+    plutôt que refusé : le geste n'est jamais bloqué pour un détail.
+
+    Returns:
+        {"statut": "retiree" | "deja_retiree" | "sortie" | "inconnue",
+         "reference_titre": str | None, "motif": code | None,
+         "retiree_le": iso | None}
+    """
+    code_motif = motif if motif in MOTIFS_RETRAIT else None
+    with transaction(conn):
+        row = conn.execute(
+            "SELECT reference_titre, retiree_le, motif_retrait FROM exemplaires "
+            "WHERE id_exemplaire = ?", (id_exemplaire,)).fetchone()
+        if row is None:
+            return {"statut": "inconnue", "reference_titre": None,
+                    "motif": None, "retiree_le": None}
+        ref = row["reference_titre"]
+        if row["retiree_le"]:
+            return {"statut": "deja_retiree", "reference_titre": ref,
+                    "motif": row["motif_retrait"], "retiree_le": row["retiree_le"]}
+        if pret_en_cours(conn, id_exemplaire) is not None:
+            return {"statut": "sortie", "reference_titre": ref,
+                    "motif": None, "retiree_le": None}
+        instant = maintenant()
+        conn.execute(
+            "UPDATE exemplaires SET retiree_le = ?, motif_retrait = ? "
+            "WHERE id_exemplaire = ?", (instant, code_motif, id_exemplaire))
+    return {"statut": "retiree", "reference_titre": ref, "motif": code_motif,
+            "retiree_le": instant}
+
+
+def remettre_en_service(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
+    """
+    Annule le retrait d'une boîte : elle revient au parc, au catalogue, et se
+    prête de nouveau. La date et le motif du retrait sont effacés : la
+    colonne ne garde que le DERNIER retrait (une boîte retirée puis remise en
+    service compte donc dans toutes les périodes, comme si elle n'était
+    jamais partie — limite assumée, écrite au compte rendu du lot).
+
+    Returns:
+        {"statut": "remise" | "deja_au_parc" | "inconnue",
+         "reference_titre": str | None}
+    """
+    with transaction(conn):
+        row = conn.execute(
+            "SELECT reference_titre, retiree_le FROM exemplaires "
+            "WHERE id_exemplaire = ?", (id_exemplaire,)).fetchone()
+        if row is None:
+            return {"statut": "inconnue", "reference_titre": None}
+        if not row["retiree_le"]:
+            return {"statut": "deja_au_parc", "reference_titre": row["reference_titre"]}
+        conn.execute(
+            "UPDATE exemplaires SET retiree_le = NULL, motif_retrait = NULL "
+            "WHERE id_exemplaire = ?", (id_exemplaire,))
+    return {"statut": "remise", "reference_titre": row["reference_titre"]}
+
+
+def premiere_boite_au_parc(conn: sqlite3.Connection, reference_titre: str) -> str | None:
+    """Le plus petit code des boîtes au parc d'un jeu, ou None s'il n'en a plus."""
+    row = conn.execute(
+        f"SELECT MIN(e.id_exemplaire) FROM exemplaires e "
+        f"WHERE e.reference_titre = ? AND {condition_au_parc('e')}",
+        (reference_titre,)).fetchone()
+    return row[0] if row else None
 
 
 # ===========================================================================
@@ -3079,8 +3333,11 @@ def reprendre_valeurs_bgg(valeurs: dict, copie: dict | None, *,
 # le même nombre. Un titre sans boîte (né d'un import qui a fait passer ses
 # boîtes sous un autre nom) n'a rien à relier.
 # ---------------------------------------------------------------------------
+# Une boîte AU PARC (lot comptoir-6), comme `lister_catalogue` : un jeu dont
+# toutes les boîtes sont retirées n'est plus à relier.
 _SQL_A_RELIER = ("t.bgg_id IS NULL AND t.bgg_absent = 0 AND EXISTS "
-                 "(SELECT 1 FROM exemplaires e WHERE e.reference_titre = t.reference_titre)")
+                 "(SELECT 1 FROM exemplaires e WHERE e.reference_titre = t.reference_titre"
+                 f" AND {condition_au_parc('e')})")
 
 
 def compter_a_relier(conn: sqlite3.Connection) -> int:
@@ -3189,11 +3446,12 @@ def titres_pour_etiquettes(conn: sqlite3.Connection,
         Liste de dicts {reference_titre, nom, categorie, nb_exemplaires}, triée
         par nom.
     """
-    sql = """
+    sql = f"""
         SELECT t.reference_titre, t.nom, t.categorie,
                COUNT(e.id_exemplaire) AS nb_exemplaires
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
+                          AND {condition_au_parc("e")}
     """
     params: list = []
     if categorie:
@@ -3220,17 +3478,19 @@ def exemplaires_pour_etiquettes(conn: sqlite3.Connection,
         nb_joueurs_max, duree_min, lettre_public, lettre_jeu, lettre_materiel},
         triée par nom puis id (étiquettes d'un même jeu groupées).
     """
-    sql = """
+    # Une boîte retirée n'a plus d'étiquette à recevoir.
+    sql = f"""
         SELECT e.id_exemplaire, t.nom, t.categorie, t.age_min,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min,
                t.lettre_public, t.lettre_jeu, t.lettre_materiel
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
+        WHERE {condition_au_parc("e")}
     """
     params: list = []
     if references:
         marques = ",".join("?" * len(references))
-        sql += f" WHERE e.reference_titre IN ({marques})"
+        sql += f" AND e.reference_titre IN ({marques})"
         params = list(references)
     sql += " ORDER BY t.nom COLLATE NOCASE, e.id_exemplaire"
     return [dict(r) for r in conn.execute(sql, params)]
@@ -4514,14 +4774,18 @@ def affecter_emplacement(
     Permis quel que soit l'état de prêt de la boîte (une boîte sortie garde
     son étagère d'origine) : ne touche JAMAIS aux tables prets/pochettes.
 
+    Une boîte RETIRÉE (lot comptoir-6) n'est pas touchée : elle n'a plus de
+    place à recevoir. Ses infos sont rendues quand même, `retiree_le` posé,
+    pour que l'écran le dise (`message_boite_retiree`) au lieu de confirmer.
+
     Returns:
         Les infos de la boîte (`info_exemplaire`, dont le nom du jeu — utile
         pour le message de confirmation), ou None si `id_exemplaire` est
         inconnu (rien n'est modifié, jamais bloquant).
     """
     info = info_exemplaire(conn, id_exemplaire)
-    if info is None:
-        return None
+    if info is None or info["retiree_le"]:
+        return info
     colonne = "emplacement_local_id" if contexte == "local" else "emplacement_evenement"
     conn.execute(
         f"UPDATE exemplaires SET {colonne} = ? WHERE id_exemplaire = ?",
@@ -4696,7 +4960,8 @@ def _filtre_manques(conn: sqlite3.Connection, q: str | None):
     passait depuis que « Ranger les jeux » a remplacé la page des manques.
     """
     contexte = rangement_contexte(conn)
-    conditions = [_clause_sans_emplacement(contexte)]
+    # Une boîte retirée n'a plus de place à recevoir (lot comptoir-6).
+    conditions = [_clause_sans_emplacement(contexte), condition_au_parc("x")]
     params: list = []
     if q:
         conditions.append("t.nom LIKE ? COLLATE NOCASE")
@@ -4753,7 +5018,7 @@ def _resume_emplacement_titres(
                COUNT(DISTINCT {valeur_expr}) AS nb_distinct,
                MIN({valeur_expr}) AS valeur
         FROM exemplaires x
-        WHERE x.reference_titre IN ({placeholders})
+        WHERE x.reference_titre IN ({placeholders}) AND {condition_au_parc("x")}
         GROUP BY x.reference_titre
         """,
         reference_titres,
@@ -4844,7 +5109,8 @@ def affecter_emplacement_lot(
         return {"titres": 0, "boites": 0}
     colonne = "emplacement_local_id" if contexte == "local" else "emplacement_evenement"
     placeholders = ",".join("?" * len(reference_titres))
-    where = f"reference_titre IN ({placeholders})"
+    # Les boîtes au parc seulement : une boîte retirée ne se range plus.
+    where = f"reference_titre IN ({placeholders}) AND {condition_au_parc('exemplaires')}"
     params: list = list(reference_titres)
     if not ecraser:
         where += " AND " + _clause_sans_emplacement(contexte).replace("x.", "")

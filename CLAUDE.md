@@ -216,7 +216,8 @@ livré, par module :
   appareils, création et **correction de la fiche d'un jeu** (référence
   figée au renommage, avertissement quand un import défait une correction,
   **rattachement des boîtes d'un jeu à un autre**, signalé quand deux jeux
-  portent le même nom, jeu vidé supprimé après complétion),
+  portent le même nom, jeu vidé supprimé après complétion ; **retrait d'une
+  boîte**, jamais supprimée, réversible),
   **données BoardGameGeek** (seul site appelé, jeton facultatif en `.env`,
   copie datée récupérée sur demande, jamais à l'affichage ; **image de la
   boîte copiée sur le serveur**, réencodée en WebP, hors sauvegarde,

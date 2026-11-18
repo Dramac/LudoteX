@@ -133,6 +133,13 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 }
 .etat-dispo { background: var(--vert-clair); color: var(--vert); }
 .etat-sorti { background: var(--rouge-clair); color: var(--rouge); }
+/* Boîte retirée du parc (lot comptoir-6) : ni verte ni rouge, ce n'est pas
+   un état de prêt. Le MOT porte le sens ; gris sur blanc, 6,0:1. */
+.etat-retiree, .badge-retiree {
+  background: transparent;
+  color: var(--gris);
+  border: 1px solid var(--bord-champ);
+}
 .dispo-titre { color: var(--gris); margin-top: 0; }
 
 /* Caractéristiques */
@@ -1050,6 +1057,20 @@ summary:focus-visible,
 
 .case { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .case input { width: auto; }
+/* Motifs d'un retrait de boîte (lot comptoir-6) : chaque libellé, case
+   comprise, est une cible de 44 px de haut, au doigt sur un téléphone. */
+.motifs-retrait .case { min-height: 44px; }
+.motifs-retrait { margin-bottom: 16px; }
+/* Le lien « Retirer » d'une boîte, sur la fiche d'un jeu : une cible de
+   44 px de haut, à part des formulaires de rangement. */
+.retirer-boite { margin: 12px 0 0; }
+.retirer-boite a { display: inline-flex; align-items: center; min-height: 44px; }
+.boite-retiree form { margin-top: 8px; }
+.boite-retiree form button { min-height: 44px; }
+/* L'ancre d'une boîte (`#boite-<code>`) : la barre du haut, collante, en
+   cachait le début — le code et l'état. Même marge que l'ancre de la
+   tombola (lot tombola-3). */
+.etiquette-bloc[id^="boite-"] { scroll-margin-top: 9rem; }
 
 /* Bloc des catégories de jeu en cases (_cases_categories.html : catalogue,
    éditeur de fiche, « Créer un jeu »). Deux colonnes dès 375 px (une seule

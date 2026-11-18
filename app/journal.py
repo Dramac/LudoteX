@@ -161,6 +161,12 @@ ACTIONS = {
     # de nom à lire. `ref` = la référence cible. JAMAIS le texte tapé dans la
     # recherche qui a mené au jeu cible : un champ libre ne s'écrit nulle part.
     "exemplaires_rattaches",
+    # Une boîte retirée du parc, puis remise en service (série comptoir,
+    # lot 6). `ref` = le CODE de la boîte, `objet` = le LIBELLÉ du motif,
+    # choisi dans une liste fermée (`services.MOTIFS_RETRAIT`) — vide sans
+    # motif, et jamais rien d'autre : le retrait n'a pas de champ libre.
+    "exemplaire_retire",
+    "exemplaire_remis_en_service",
     # Un import a défait des corrections faites à l'écran. `objet` porte le
     # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
     # message affiché au bureau, pas ici.

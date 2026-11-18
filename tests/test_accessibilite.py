@@ -92,11 +92,13 @@ def test_l_analyse_reconnait_les_cas_connus():
     """
     Vérifiée sur des occurrences connues avant qu'on se fie à son verdict :
     le développement des macros (h2 de la saisie manuelle dans scanner.html),
-    et les deux h1 exclusifs de fiche.html.
+    et les trois h1 exclusifs de fiche.html (boîte inconnue, boîte retirée
+    depuis le lot comptoir-6, boîte au parc).
     """
     assert 2 in [n for n, _ in _titres(_source("scanner.html"))]
     h1 = [c for n, c in _titres(_source("fiche.html")) if n == 1]
-    assert len(h1) == 2 and _exclusifs(h1[0], h1[1])
+    assert len(h1) == 3
+    assert all(_exclusifs(a, b) for i, a in enumerate(h1) for b in h1[i + 1:])
     assert len(PAGES) > 60
 
 

@@ -256,6 +256,22 @@
           </p>
         {% endif %}
       </section>
+    {# Boîte retirée du parc (lot comptoir-6) : l'écran ouvert avant son
+       retrait offrait encore un bouton ; le service a refusé, rien n'est
+       écrit. La carte ci-dessous dit « Boîte retirée » et n'a plus d'action. #}
+    {% elif resultat.type == "retiree" %}
+      <section class="resultat resultat-attention">
+        <p>Cette boîte a été retirée du catalogue entre-temps.
+           <strong>Rien n'a été enregistré.</strong></p>
+      </section>
+    {# Transfert vers une boîte retirée : la pochette reste sur la boîte
+       rendue, dont « Rendre et prêter un nouveau jeu » est juste en dessous. #}
+    {% elif resultat.type == "nouveau_retire" %}
+      <section class="resultat resultat-attention" role="alert">
+        <p>La boîte {{ resultat.code }} ({{ resultat.nom }}) a été retirée du
+           catalogue : elle ne peut plus être prêtée. <strong>Rien n'a été
+           enregistré.</strong> Proposez une autre boîte.</p>
+      </section>
     {% elif resultat.type == "transfert_impossible" %}
       <section class="resultat resultat-attention">
         <p>
@@ -337,6 +353,17 @@
           Le re-prêter <span class="bouton-sous">oubli de scan : nouveau prêt</span>
         </button>
       </form>
+    {# Boîte retirée du parc (lot comptoir-6) : aucune action de prêt. Le
+       service refuse de toute façon (`services.BoiteRetiree`) ; l'écran ne
+       propose donc pas un bouton voué au refus. Après les deux branches
+       « sorti » : un prêt ouvert se rend toujours (ne jamais bloquer). #}
+    {% elif info.retiree_le %}
+      <p class="etat etat-retiree">Boîte retirée</p>
+      <p>Cette boîte ne fait plus partie du catalogue depuis le
+         {{ date_retrait_txt(info.retiree_le) }} : elle ne peut plus être
+         prêtée ni sortie pour un tournoi. Si vous l'avez en main, remettez-la
+         au bureau.</p>
+      <a class="bouton bouton-secondaire" href="/catalogue">Voir le catalogue</a>
     {% else %}
       <p class="etat etat-dispo">Disponible</p>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/preter">
@@ -361,6 +388,13 @@
       <a class="lien" href="/pret/{{ info.id_exemplaire }}/signaler">⚠️ Signaler un problème</a>
       &nbsp;·&nbsp;
       <a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a>
+      {# Administrateur connecté (lot comptoir-6) : la fiche du jeu, à
+         l'ancre de CETTE boîte, où la retirer ou la remettre en service.
+         On scanne la boîte, puis deux taps. Rien pour un bénévole. #}
+      {% if est_admin(request) %}
+      &nbsp;·&nbsp;
+      <a class="lien" href="/admin/jeu/{{ info.reference_titre }}#boite-{{ info.id_exemplaire }}">Gérer cette boîte</a>
+      {% endif %}
     </p>
   </section>
 {% endif %}

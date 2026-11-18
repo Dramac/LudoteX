@@ -97,7 +97,7 @@
     <li class="jeu">
       <a class="jeu-lien" href="/admin/jeu/{{ jeu.reference_titre }}">
         <span class="jeu-nom">{{ jeu.nom }}</span>
-        <span class="jeu-categorie">{{ jeu.total }} {{ pluriel(jeu.total, 'exemplaire', 'exemplaires') }}</span>
+        <span class="jeu-categorie">{% if jeu.total %}{{ jeu.total }} {{ pluriel(jeu.total, 'exemplaire', 'exemplaires') }}{% else %}toutes ses boîtes sont retirées{% endif %}</span>
       </a>
     </li>
   {% else %}

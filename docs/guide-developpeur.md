@@ -78,7 +78,8 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 ## 4. Modèle de données de la base de prêt (voir `app/models.py`)
 
 - `titres` (PK `reference_titre`) : catalogue + colonnes optionnelles nullables.
-- `exemplaires` (PK `id_exemplaire`, FK → titres).
+- `exemplaires` (PK `id_exemplaire`, FK → titres). `retiree_le` non nul :
+  boîte **retirée** du parc, jamais supprimée (voir § 10, retrait).
 - `prets` (historique complet, jamais purgé) : `date_retour IS NULL` ⇒ sorti.
 - `pochettes` : occupation du moment des numéros (recyclés, sans plafond).
 - Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches
@@ -198,6 +199,16 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   existante, elle, demande son `ALTER TABLE` (`_MIGRATIONS_COLONNES`).
 - **Ajouter une page** : créer `app/routes/xxx.py` exposant un `router`, l'inclure
   dans `app/main.py`, ajouter un gabarit. Mettre la logique dans `services.py`.
+- **Lire les boîtes (`exemplaires`) dans un nouveau lecteur** : décider ce
+  qu'il fait d'une boîte retirée, et passer par l'une des deux fonctions de
+  `services`, jamais par une condition recopiée. Un écran du parc
+  d'aujourd'hui (catalogue, disponibilité, étiquettes, rangement) :
+  `condition_au_parc(alias)`. Une **statistique** qui compte des boîtes ou
+  des jeux du catalogue : `condition_au_parc_pendant(debut, alias)` — au
+  parc pendant la période, c'est-à-dire jamais retirée ou retirée après son
+  début ; un bilan publié ne bouge pas quand on retire une boîte l'année
+  suivante. Les prêts, eux, ne se filtrent pas. Un historique (prêts,
+  signalements, sortis) ne change pas.
 - **Ajouter un filtre catalogue** : étendre `services.lister_catalogue` (clause
   WHERE paramétrée) + le formulaire de `catalogue.html` + la normalisation dans
   `routes/catalogue.py`.
@@ -264,6 +275,17 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   (la règle de `resoudre_reference` est inchangée), mais
   `corrections_defaites` le signale comme une boîte qui quitte une fiche
   corrigée.
+- **Une boîte se retire, elle ne se supprime pas.** `prets` et
+  `signalements` la référencent sans cascade : la supprimer effacerait des
+  prêts déjà comptés. `services.retirer_exemplaire` /
+  `remettre_en_service` (section « Retirer une boîte du parc »), sous
+  `transaction` ; une boîte sortie est refusée. `preter`, `sortir_tournoi`
+  et `transferer_pochette` refusent une boîte retirée eux-mêmes
+  (`BoiteRetiree`, que `routes/pret.py::_sans_conflit` traduit en message) :
+  ne pas se fier au seul écran. Le code reste pris ; l'import met de côté
+  toute ligne qui le porte (`import_csv.ecarter_retirees`) — sans quoi un
+  autre nom ferait changer de jeu la boîte retirée, ses prêts avec. Une
+  seule date est gardée : la remise en service l'efface.
 - **`titres.categorie` est une copie verrouillée : ne jamais l'écrire à la
   main.** La liste des catégories d'un titre fait foi (`titres_categories`) ;
   la colonne en garde la jointure (« Cartes, Ambiance ») pour ce qui

@@ -602,8 +602,8 @@ def test_le_scenario_de_production_se_repare_par_le_rattachement(client, bases, 
     from tests.test_fiche_jeu import _enregistrer
     _executer("INSERT INTO titres (reference_titre, nom) VALUES ('TIMELINES', 'Timelines')")
     _executer("INSERT INTO titres (reference_titre, nom) VALUES ('TIME_LINE', 'time line')")
-    _executer("INSERT INTO exemplaires VALUES ('020', 'TIMELINES', NULL, NULL)")
-    _executer("INSERT INTO exemplaires VALUES ('010', 'TIME_LINE', NULL, NULL)")
+    _executer("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('020', 'TIMELINES')")
+    _executer("INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES ('010', 'TIME_LINE')")
     _enregistrer(client, "TIME_LINE", nom="Timelines")
     _importer(_exporter(tmp_path / "avant.csv"))
     assert _boites("TIME_LINE") == ["010"]                 # toujours à part

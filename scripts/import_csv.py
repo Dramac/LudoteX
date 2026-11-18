@@ -342,6 +342,10 @@ class EtatBase:
     exemplaires: dict[str, str] = field(default_factory=dict)
     titres: dict[str, dict] = field(default_factory=dict)
     categories: dict[str, str] = field(default_factory=dict)
+    # Boîtes RETIRÉES du parc (lot comptoir-6) : id_exemplaire ->
+    # reference_titre. Elles restent aussi dans `exemplaires` (la règle 1 de
+    # `resoudre_reference` les reconnaît) ; l'import n'y touche jamais.
+    retirees: dict[str, str] = field(default_factory=dict)
     # slug du nom ACTUEL -> références des titres qui portent ce nom.
     _par_slug: dict[str, list[str]] = field(default_factory=dict, repr=False)
 
@@ -373,8 +377,16 @@ def lire_etat_base(conn: sqlite3.Connection | None) -> EtatBase:
     except sqlite3.OperationalError:
         # Tables absentes (base jamais initialisée) : rien à retrouver.
         return EtatBase()
+    try:
+        retirees = {r[0]: r[1] for r in conn.execute(
+            "SELECT id_exemplaire, reference_titre FROM exemplaires "
+            "WHERE retiree_le IS NOT NULL")}
+    except sqlite3.OperationalError:
+        # Base d'avant le lot comptoir-6 (simulation sans migration) : la
+        # colonne n'existe pas, aucune boîte n'est retirée.
+        retirees = {}
     return EtatBase(exemplaires=exemplaires, titres=titres,
-                    categories=_lire_vocabulaire(conn))
+                    categories=_lire_vocabulaire(conn), retirees=retirees)
 
 
 def _lire_vocabulaire(conn: sqlite3.Connection) -> dict[str, str]:
@@ -437,6 +449,88 @@ def resoudre_reference(id_exemplaire: str, nom: str, base: EtatBase | None) -> s
     if len(candidats) == 1:
         return candidats[0]
     return ref
+
+
+# ---------------------------------------------------------------------------
+# Boîtes retirées du parc (lot comptoir-6)
+# ---------------------------------------------------------------------------
+def ecarter_retirees(lignes: list[dict], index: dict[str, str | None],
+                     base: EtatBase) -> tuple[list[dict], list[dict]]:
+    """
+    Met de côté les lignes du fichier dont le code est celui d'une boîte
+    RETIRÉE. Le retrait est un geste de l'application, le tableur ne le
+    défait pas : une telle ligne n'écrit RIEN — ni la boîte (elle resterait
+    retirée, mais un autre nom la ferait changer de jeu, et ses prêts avec),
+    ni son titre (un code repris pour un autre jeu créerait un jeu sans
+    boîte). L'import ne retire pas non plus une boîte absente du fichier.
+
+    Deux cas, que le compte rendu distingue (`phrases_retirees`) :
+    - `meme_jeu` : le tableur n'a pas été mis à jour après le retrait ;
+    - sinon : le code, toujours pris par la boîte retirée (c'est la clé de
+      ses prêts), a été donné à un autre jeu dans le tableur.
+
+    Returns:
+        (lignes gardées, [{"code", "nom_fichier", "nom_base", "meme_jeu"}]
+        dans l'ordre du fichier, un code une seule fois).
+    """
+    col_id, col_nom = index.get("id_exemplaire"), index.get("nom")
+    if not col_id or not base.retirees:
+        return lignes, []
+    gardees, ecartees, vus = [], [], set()
+    for ligne in lignes:
+        code = (ligne.get(col_id, "") or "").strip()
+        if code not in base.retirees:
+            gardees.append(ligne)
+            continue
+        if code in vus:
+            continue
+        vus.add(code)
+        ref = base.retirees[code]
+        nom = nettoyer_nom(ligne.get(col_nom, "") if col_nom else "")
+        ecartees.append({
+            "code": code,
+            "nom_fichier": nom,
+            "nom_base": (base.titres.get(ref) or {}).get("nom") or ref,
+            "meme_jeu": not nom or resoudre_reference(code, nom, base) == ref,
+        })
+    return gardees, ecartees
+
+
+# Au-delà, la liste des codes d'une phrase est coupée (« et 12 autres »).
+CODES_RETIREES_AFFICHES = 10
+
+
+def phrases_retirees(ecartees: list[dict]) -> list[str]:
+    """
+    Les phrases du compte rendu de l'import sur les boîtes retirées — UN SEUL
+    DOMICILE pour l'administration et la ligne de commande.
+    """
+    def liste(lignes, avec_nom):
+        morceaux = [f"{e['code']} ({e['nom_base']})" if avec_nom else e["code"]
+                    for e in lignes[:CODES_RETIREES_AFFICHES]]
+        reste = len(lignes) - CODES_RETIREES_AFFICHES
+        return ", ".join(morceaux) + (f" et {reste} autre(s)" if reste > 0 else "")
+
+    phrases = []
+    memes = [e for e in ecartees if e["meme_jeu"]]
+    autres = [e for e in ecartees if not e["meme_jeu"]]
+    if memes:
+        n = len(memes)
+        phrases.append(
+            (f"{n} boîte retirée est encore dans le tableur : " if n == 1 else
+             f"{n} boîtes retirées sont encore dans le tableur : ")
+            + liste(memes, True)
+            + (". Elle reste retirée : supprimez sa ligne du tableur." if n == 1 else
+               ". Elles restent retirées : supprimez leurs lignes du tableur."))
+    for e in autres[:CODES_RETIREES_AFFICHES]:
+        phrases.append(
+            f"Le code {e['code']} est celui d'une boîte retirée de « {e['nom_base']} » : "
+            f"la ligne « {e['nom_fichier']} » n'a pas été importée. Donnez-lui un "
+            "autre code dans le tableur.")
+    if len(autres) > CODES_RETIREES_AFFICHES:
+        phrases.append(f"Et {len(autres) - CODES_RETIREES_AFFICHES} autre(s) ligne(s) "
+                       "dont le code est celui d'une boîte retirée.")
+    return phrases
 
 
 def construire_donnees(lignes: list[dict], index: dict[str, str | None],
@@ -705,6 +799,9 @@ def importer(chemin: Path, dry_run: bool = False,
             base = lire_etat_base(conn)
         finally:
             conn.close()
+    # Les lignes des boîtes retirées n'écrivent rien (lot comptoir-6), en
+    # simulation comme en import réel : écartées AVANT tout calcul.
+    lignes, retirees_ecartees = ecarter_retirees(lignes, index, base)
     (exemplaires, titres, groupes, ignores, lettres_refusees,
      bgg_refusees, categories_nouvelles) = construire_donnees(lignes, index, base)
     defaites = corrections_defaites(titres, exemplaires, base)
@@ -852,6 +949,9 @@ def importer(chemin: Path, dry_run: bool = False,
         # Fiches corrigées à l'écran que ce fichier défait (voir
         # `corrections_defaites`), relevées avant l'écriture.
         "corrections_defaites": defaites,
+        # Lignes du fichier qui portent le code d'une boîte retirée, laissées
+        # de côté (`ecarter_retirees`) ; dites par `phrases_retirees`.
+        "retirees_ecartees": retirees_ecartees,
         # True : le fichier n'était pas de l'UTF-8, il a été lu comme un CSV
         # d'Excel. À dire à l'utilisateur (voir `detecter_encodage`).
         "encodage_repli": detecter_encodage(chemin) == ENCODAGE_EXCEL,
@@ -891,6 +991,8 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
     if res.get("bgg_refusees"):
         print(f"Fiches BoardGameGeek non reconnues : {res['bgg_refusees']} "
               "ligne(s), importées sans leur fiche BoardGameGeek")
+    for phrase in phrases_retirees(res.get("retirees_ecartees") or []):
+        print(phrase)
     for fiche in res.get("corrections_defaites") or []:
         print(f"Correction faite à l'écran défaite : {fiche['nom']} "
               f"[{fiche['reference_titre']}]")

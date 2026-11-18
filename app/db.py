@@ -139,6 +139,13 @@ _MIGRATIONS_COLONNES = [
     # Pochette écartée par un changement de numéro (1.35) : 0 sur une base
     # existante, aucun numéro écarté, attribution identique à avant.
     ("pochettes", "ecartee", "INTEGER NOT NULL DEFAULT 0"),
+    # Retrait d'une boîte du parc (série comptoir, lot 6) : NULL sur une base
+    # existante, aucune boîte retirée, tout se comporte comme avant. Le motif
+    # est un CODE de `services.MOTIFS_RETRAIT`, jamais un texte libre ; pas de
+    # CHECK, pour qu'un motif ajouté plus tard n'impose pas de recopier la
+    # table — le service refuse ce qu'il ne connaît pas.
+    ("exemplaires", "retiree_le", "TEXT"),
+    ("exemplaires", "motif_retrait", "TEXT"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titre %}Retirer une boîte — Administration — {{ nom_association }}{% endblock %}
+
+{# Confirmation du retrait d'une boîte (série comptoir, lot 6). Une LECTURE :
+   rien n'est écrit avant le bouton. Elle dit ce que fait le retrait ET ce
+   qu'il ne fait pas. Sans JS : un formulaire, des boutons radio. Le motif est
+   choisi dans une liste FERMÉE (services.MOTIFS_RETRAIT) : aucun champ libre. #}
+{% block contenu %}
+<section class="carte carte-rattacher">
+{% if info is none %}
+  <h1>Boîte inconnue</h1>
+  <p class="resultat resultat-attention" role="alert">Aucune boîte de ce jeu ne
+     porte le code « {{ id_exemplaire }} ». Rien n'a été modifié.</p>
+  <p><a class="lien" href="{% if titre %}/admin/jeu/{{ reference_titre }}{% else %}/admin/jeux{% endif %}">← Revenir à la fiche du jeu</a></p>
+{% elif info.retiree_le %}
+  <h1>Boîte {{ info.id_exemplaire }} — {{ info.nom }}</h1>
+  <p class="resultat resultat-info" role="status">Cette boîte est déjà retirée
+     du catalogue depuis le {{ date_retrait_txt(info.retiree_le) }}{% if motifs.get(info.motif_retrait or '') %}
+     ({{ motifs[info.motif_retrait] | lower }}){% endif %}. Rien n'a été modifié.</p>
+  <form method="post" action="/admin/jeu/{{ reference_titre }}/exemplaire/{{ info.id_exemplaire }}/remettre">
+    <button type="submit" class="bouton bouton-secondaire">Remettre en service</button>
+  </form>
+  <p><a class="lien" href="/admin/jeu/{{ reference_titre }}#boite-{{ info.id_exemplaire }}">← Revenir à la fiche du jeu</a></p>
+{% elif refus == "sortie" %}
+  <h1>Boîte {{ info.id_exemplaire }} — {{ info.nom }}</h1>
+  <div class="resultat resultat-attention" role="alert">
+    <p>Cette boîte est sortie{% if pret and pret.motif == "tournoi" %} pour un tournoi{% endif %} :
+       elle ne peut pas être retirée tant qu'elle est dehors. Rien n'a été modifié.</p>
+    <p>Si elle est revenue, enregistrez d'abord son retour. Si elle n'est
+       jamais revenue, attendez la clôture de fin d'événement, qui la rend,
+       puis retirez-la.</p>
+  </div>
+  <p><a class="bouton bouton-principal" href="/pret/{{ info.id_exemplaire }}">Ouvrir sa page de prêt pour la rendre</a></p>
+  <p><a class="lien" href="/admin/jeu/{{ reference_titre }}#boite-{{ info.id_exemplaire }}">← Revenir à la fiche du jeu</a></p>
+{% else %}
+  <h1>Retirer la boîte {{ info.id_exemplaire }} — {{ info.nom }}</h1>
+  <p><a class="lien" href="/admin/jeu/{{ reference_titre }}#boite-{{ info.id_exemplaire }}">← Annuler et revenir à la fiche du jeu</a></p>
+
+  <h2>Ce que fait le retrait</h2>
+  <ul>
+    <li>La boîte disparaît du catalogue, des étiquettes et du rangement.</li>
+    <li>Elle ne peut plus être prêtée ni sortie pour un tournoi. Son QR code
+        affiche « Boîte retirée ».</li>
+    {% if derniere %}
+    <li>C'est la <strong>dernière boîte</strong> de ce jeu au catalogue : le
+        jeu n'apparaîtra plus au catalogue public. Sa fiche reste ici.</li>
+    {% endif %}
+  </ul>
+
+  <h2>Ce qu'il ne fait pas</h2>
+  <ul>
+    <li>La boîte n'est pas supprimée.
+        {%- if nb_prets %} Ses {{ nb_prets }} {{ pluriel(nb_prets, 'prêt passé reste compté', 'prêts passés restent comptés') }}
+        dans les statistiques des périodes où elle était au catalogue.
+        {%- else %} Elle reste comptée dans les statistiques des périodes où elle était au catalogue.{% endif %}</li>
+    <li>Son code n'est pas libéré : aucune autre boîte ne pourra le porter.</li>
+    <li>Votre tableur du catalogue n'est pas modifié : retirez-y sa ligne.
+        Un import ne la remettra pas en service.</li>
+    <li>Le geste s'annule : « Remettre en service », sur la fiche du jeu.</li>
+  </ul>
+
+  <form method="post" action="/admin/jeu/{{ reference_titre }}/exemplaire/{{ info.id_exemplaire }}/retirer">
+    <fieldset class="champ champ-groupe motifs-retrait">
+      <legend>Pourquoi la retirer ? (facultatif)</legend>
+      {% for code, libelle in motifs.items() %}
+      <label class="case"><input type="radio" name="motif" value="{{ code }}"> {{ libelle }}</label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit" class="bouton bouton-principal">Retirer cette boîte</button>
+  </form>
+{% endif %}
+</section>
+{% endblock %}

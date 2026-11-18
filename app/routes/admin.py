@@ -315,8 +315,12 @@ def liste_jeux(request: Request, q: str | None = None,
     try:
         vocabulaire = {c["cle"]: c["nom"] for c in services.lister_categories_jeu(conn)}
         cles = categories_jeu.cles_du_filtre(categorie, vocabulaire)
+        # Un jeu dont toutes les boîtes sont retirées reste trouvable ici
+        # (lot comptoir-6), sauf dans la liste à relier, que son compteur
+        # (`services.compter_a_relier`) borne aux jeux qui ont une boîte.
         jeux = services.lister_catalogue(conn, cles, q=q, sans_bgg=filtre_bgg,
-                                         pas_sur_bgg=filtre_absents)
+                                         pas_sur_bgg=filtre_absents,
+                                         avec_tout_retires=not filtre_bgg)
         restantes = _bgg_restantes(conn) if disponible else 0
         relier = {"restants": services.compter_a_relier(conn),
                   "premier": services.jeu_suivant_a_relier(conn),
@@ -459,7 +463,7 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                 candidats: str = "", recherche: str = "",
                 fait: str = "", precedent: str = "", enchainer: str = "",
                 rattacher: str = "", boites: str = "", depuis: str = "",
-                repris: str = ""):
+                repris: str = "", boite: str = ""):
     """
     Fiche admin d'un jeu : l'éditeur de ses champs, ses lettres de
     classement, ses exemplaires + l'étiquette de chacun.
@@ -496,10 +500,19 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
     après un rattachement. Un nombre, une référence (`MOTIF_REFERENCE`) et
     des codes fermés (`services.CHAMPS_REPRIS_RATTACHEMENT`) : le nom du jeu
     supprimé n'est plus en base, et aucun texte libre ne passe par l'adresse.
+
+    `ok=retiree|deja_retiree|remise|deja_au_parc` et `boite` : on arrive ici
+    après un retrait ou une remise en service (lot comptoir-6). Le code de la
+    boîte n'entre dans le message que s'il désigne une boîte DE CE JEU, relue
+    en base ; sinon la phrase sans code.
     """
     if (garde := _garde(request)):
         return garde
+    message_boite = (_message_retrait(reference_titre, ok, boite)
+                     if ok in MESSAGES_RETRAIT else None)
     message = (_message_rattachement(boites, depuis, repris) if ok == "rattache"
+               else None if message_boite and message_boite["code"]
+               else message_boite["texte"] if message_boite
                else MESSAGES_FICHE.get(ok))
     return _rendre_fiche(request, reference_titre,
                          message=message,
@@ -509,7 +522,7 @@ def fiche_admin(request: Request, reference_titre: str, ok: str = "",
                          candidats=_lire_candidats(candidats),
                          recherche=recherche, fait=fait, precedent=precedent,
                          enchainer=bool(enchainer.strip()),
-                         rattacher=rattacher)
+                         rattacher=rattacher, message_boite=message_boite)
 
 
 # Ce que dit chaque position du code de classement (app/classement.py).
@@ -626,9 +639,14 @@ def _contexte_relier(conn, titre: dict, candidats: list[int], recherche: str,
 def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
                   etiquette_perimee=False, saisie=None, erreurs=None,
                   bgg_echec="", reprise="", candidats=(), recherche="",
-                  fait="", precedent="", enchainer=False, rattacher=""):
+                  fait="", precedent="", enchainer=False, rattacher="",
+                  message_boite=None):
     """
     Rend la fiche d'administration d'un jeu.
+
+    `message_boite` : {"code", "texte"}, le message d'après un retrait ou une
+    remise en service (lot comptoir-6), affiché DANS la carte de la boîte —
+    c'est là que mène l'ancre de la redirection, le haut de page est loin.
 
     `saisie` : le formulaire tel que reçu, réaffiché après un refus — rien de
     ce que le bureau a tapé ne se perd. Sans refus, l'éditeur est pré-rempli
@@ -669,7 +687,8 @@ def _rendre_fiche(request: Request, reference_titre: str, *, message=None,
     finally:
         conn.close()
     contexte = {"titre": titre, "exemplaires": exemplaires,
-                "emplacements_locaux": emplacements_locaux}
+                "emplacements_locaux": emplacements_locaux,
+                "message_boite": message_boite}
     vignette_locale = (vignettes.url(copie_bgg["bgg_id"], copie_bgg.get("vignette"))
                        if copie_bgg and copie_bgg["trouve"] else None)
     if titre:
@@ -1369,6 +1388,155 @@ def rattacher_appliquer(request: Request, reference_titre: str,
     return RedirectResponse(url, status_code=303)
 
 
+# ---------------------------------------------------------------------------
+# Retirer une boîte du parc, la remettre en service (série comptoir, lot 6)
+#
+# Retirer, jamais supprimer : `services.retirer_exemplaire`. Le geste passe
+# par une CONFIRMATION sans JS, sur le patron du rattachement : elle dit ce
+# que fait le retrait et ce qu'il ne fait pas. La remise en service, elle, se
+# fait d'un tap : elle défait une erreur de manipulation, rien ne s'y perd.
+# ---------------------------------------------------------------------------
+# Messages de la fiche après le geste, par code fermé. `{code}` n'est rempli
+# que d'un code relu en base (`_message_retrait`).
+MESSAGES_RETRAIT = {
+    "retiree": ("La boîte {code} est retirée du catalogue. Pensez à retirer "
+                "sa ligne de votre tableur du catalogue."),
+    "deja_retiree": "La boîte {code} était déjà retirée : rien n'a changé.",
+    "remise": "La boîte {code} est remise en service : elle se prête de nouveau.",
+    "deja_au_parc": "La boîte {code} était déjà au catalogue : rien n'a changé.",
+}
+
+
+def _message_retrait(reference_titre: str, ok: str, boite: str) -> dict:
+    """
+    Le message d'après le geste, {"code", "texte"} ; le code seulement s'il
+    désigne une boîte de ce jeu (sinon vide : la phrase va en haut de page).
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, boite) if boite else None
+    finally:
+        conn.close()
+    code = (info["id_exemplaire"] if info and info["reference_titre"] == reference_titre
+            else "")
+    texte = MESSAGES_RETRAIT[ok].format(code=code)
+    return {"code": code, "texte": " ".join(texte.split())}   # sans code : un espace
+
+
+def _vers_boite(reference_titre: str, ok: str, id_exemplaire: str) -> RedirectResponse:
+    """Redirection 303 vers la fiche du jeu, à l'ancre de la boîte."""
+    return RedirectResponse(
+        f"/admin/jeu/{quote(reference_titre)}?ok={ok}&boite={quote(id_exemplaire)}"
+        f"#boite-{quote(id_exemplaire)}", status_code=303)
+
+
+def _rendre_retrait(request: Request, reference_titre: str, id_exemplaire: str,
+                    *, refus: str | None = None, status_code: int = 200):
+    """
+    L'écran de confirmation du retrait — une LECTURE : y arriver n'écrit rien.
+
+    `refus` : « sortie » (la boîte est dehors), réaffichée après un envoi
+    refusé. La même page le dit d'elle-même à l'ouverture si un prêt est en
+    cours : le bouton n'y est alors pas, mais le lien vers sa page de prêt, oui.
+    """
+    conn = get_connection()
+    try:
+        titre = services.get_titre(conn, reference_titre)
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is not None and info["reference_titre"] != reference_titre:
+            info = None
+        pret = services.pret_en_cours(conn, id_exemplaire) if info else None
+        nb_prets = (conn.execute("SELECT COUNT(*) FROM prets WHERE id_exemplaire = ?",
+                                 (id_exemplaire,)).fetchone()[0] if info else 0)
+        au_parc = (conn.execute(
+            f"SELECT COUNT(*) FROM exemplaires e WHERE e.reference_titre = ? "
+            f"AND {services.condition_au_parc('e')}", (reference_titre,)).fetchone()[0]
+            if info else 0)
+    finally:
+        conn.close()
+    if titre is None or info is None:
+        status_code = 404
+    elif pret is not None and status_code == 200:
+        refus = "sortie"
+    contexte = {"titre": titre, "info": info, "id_exemplaire": id_exemplaire,
+                "reference_titre": reference_titre, "pret": pret,
+                "refus": refus, "nb_prets": nb_prets,
+                "derniere": au_parc == 1 and info is not None and not info["retiree_le"],
+                "motifs": services.MOTIFS_RETRAIT}
+    return templates.TemplateResponse(request, "admin_retirer.html", contexte,
+                                      status_code=status_code)
+
+
+@router.get("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/retirer")
+def retirer_confirmer(request: Request, reference_titre: str, id_exemplaire: str):
+    """« Retirer » : l'écran de confirmation. Une lecture, rien n'est écrit."""
+    if (garde := _garde(request)):
+        return garde
+    return _rendre_retrait(request, reference_titre, id_exemplaire)
+
+
+@router.post("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/retirer")
+def retirer_appliquer(request: Request, reference_titre: str, id_exemplaire: str,
+                      motif: str = Form("")):
+    """
+    Retire la boîte, puis revient à la fiche du jeu, à l'ancre de la boîte.
+
+    Double envoi (deux taps, un retour arrière) : `deja_retiree`, la fiche le
+    dit, rien ne change et rien n'est journalisé de plus. Boîte sortie : la
+    confirmation réaffichée avec le lien vers sa page de prêt (409), rien
+    d'écrit. Boîte inconnue ou d'un autre jeu : 404, avec le retour à la fiche.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None or info["reference_titre"] != reference_titre:
+            resultat = None
+        else:
+            resultat = services.retirer_exemplaire(conn, id_exemplaire, motif)
+    finally:
+        conn.close()
+    if resultat is None or resultat["statut"] == "inconnue":
+        return _rendre_retrait(request, reference_titre, id_exemplaire, status_code=404)
+    if resultat["statut"] == "sortie":
+        return _rendre_retrait(request, reference_titre, id_exemplaire,
+                               refus="sortie", status_code=409)
+    if resultat["statut"] == "retiree":
+        journal.journaliser(
+            request, "catalogue", "exemplaire_retire",
+            objet=services.MOTIFS_RETRAIT.get(resultat["motif"] or "") or None,
+            ref=id_exemplaire)
+    return _vers_boite(reference_titre, resultat["statut"], id_exemplaire)
+
+
+@router.post("/jeu/{reference_titre}/exemplaire/{id_exemplaire}/remettre")
+def remettre_en_service(request: Request, reference_titre: str, id_exemplaire: str):
+    """
+    Remet une boîte retirée en service, d'un tap depuis la fiche du jeu (ou
+    depuis la confirmation d'une boîte déjà retirée). Une boîte déjà au parc
+    (double envoi) : `deja_au_parc`, rien ne change.
+    """
+    if (garde := _garde(request)):
+        return garde
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None or info["reference_titre"] != reference_titre:
+            resultat = None
+        else:
+            resultat = services.remettre_en_service(conn, id_exemplaire)
+    finally:
+        conn.close()
+    if resultat is None or resultat["statut"] == "inconnue":
+        return _rendre_retrait(request, reference_titre, id_exemplaire, status_code=404)
+    if resultat["statut"] == "remise":
+        journal.journaliser(request, "catalogue", "exemplaire_remis_en_service",
+                            objet=services.MOTIFS_RETRAIT.get(info["motif_retrait"] or "") or None,
+                            ref=id_exemplaire)
+    return _vers_boite(reference_titre, resultat["statut"], id_exemplaire)
+
+
 @router.post("/jeu/{reference_titre}/exemplaire")
 def ajouter_exemplaire(request: Request, reference_titre: str):
     """Ajoute un exemplaire (id auto) au titre, puis revient à sa fiche."""
@@ -1713,7 +1881,10 @@ def _page_donnees(
     conn = get_connection()
     try:
         nb_titres = conn.execute("SELECT COUNT(*) FROM titres").fetchone()[0]
-        nb_ex = conn.execute("SELECT COUNT(*) FROM exemplaires").fetchone()[0]
+        # Les boîtes au parc (lot comptoir-6) : celles de l'export.
+        nb_ex = conn.execute(
+            f"SELECT COUNT(*) FROM exemplaires e WHERE {services.condition_au_parc('e')}"
+        ).fetchone()[0]
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -1843,6 +2014,11 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
             texte += (f" Fiche BoardGameGeek non reconnue sur {bgg_refusees} "
                       "ligne(s) : ces jeux sont importés sans elle. Mettez le "
                       "numéro de la fiche ou l'adresse de sa page.")
+        # Boîtes retirées encore dans le tableur, ou code d'une boîte retirée
+        # donné à un autre jeu (lot comptoir-6) : rien n'est écrit pour ces
+        # lignes, et c'est dit, jamais tu.
+        for phrase in import_csv.phrases_retirees(res.get("retirees_ecartees") or []):
+            texte += " " + phrase
         if res.get("encodage_repli"):
             texte += (" Ce fichier a été lu comme un CSV enregistré par Excel : "
                       "vérifiez dans le catalogue qu'un nom accentué s'affiche "

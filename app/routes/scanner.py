@@ -203,6 +203,13 @@ def saisie_manuelle(request: Request, code: str = "", lettres: str = "",
                         code_saisi=saisi,
                     ),
                 )
+            if resultat["retiree_le"]:
+                return templates.TemplateResponse(
+                    request, "scanner.html",
+                    _contexte_scanner(conn, request, etat,
+                                      erreur=services.message_boite_retiree(resultat),
+                                      code_saisi=""),
+                )
             return templates.TemplateResponse(
                 request, "scanner.html",
                 _contexte_scanner(
@@ -269,6 +276,13 @@ def ranger(request: Request, code: str = "", lettres: str = "",
                     erreur=services.message_code_introuvable(id_exemplaire),
                     code_saisi=id_exemplaire,
                 ),
+            )
+        if resultat["retiree_le"]:
+            return templates.TemplateResponse(
+                request, "scanner.html",
+                _contexte_scanner(conn, request, etat,
+                                  erreur=services.message_boite_retiree(resultat),
+                                  code_saisi=""),
             )
         return templates.TemplateResponse(
             request, "scanner.html",

@@ -204,12 +204,22 @@ CREATE TABLE IF NOT EXISTS categories_signalement (
 # docs/conception-rangement.md). Deux contextes nullables, sans effet sur la
 # logique de prêt : événement = texte libre (salle qui change chaque année),
 # local = FK vers emplacements_rangement (liste stable, gérée en admin).
+#
+# retiree_le / motif_retrait (série comptoir, lot 6) : une boîte perdue,
+# abîmée, donnée ou vendue est RETIRÉE, jamais supprimée — ses prêts et ses
+# signalements la référencent (clés étrangères sans cascade) et restent
+# comptés dans les périodes où elle était au parc. Retirée = disparue du
+# catalogue, du rangement et des étiquettes, impossible à prêter ; son QR dit
+# « boîte retirée ». Les lecteurs passent par `services.condition_au_parc`
+# (aujourd'hui) ou `services.condition_au_parc_pendant` (statistiques).
 SCHEMA_EXEMPLAIRES = """
 CREATE TABLE IF NOT EXISTS exemplaires (
     id_exemplaire         TEXT PRIMARY KEY,            -- encodé dans le QR ; TEXT (zéros de tête)
     reference_titre       TEXT NOT NULL,               -- FK -> titres.reference_titre
     emplacement_evenement TEXT,                        -- libellé libre, contexte événement
     emplacement_local_id  INTEGER,                     -- FK -> emplacements_rangement, contexte local
+    retiree_le            TEXT,                        -- retrait du parc, UTC ISO ; NULL = au parc
+    motif_retrait         TEXT,                        -- code de services.MOTIFS_RETRAIT, ou NULL
     FOREIGN KEY (reference_titre) REFERENCES titres (reference_titre),
     FOREIGN KEY (emplacement_local_id) REFERENCES emplacements_rangement (id_emplacement)
 );

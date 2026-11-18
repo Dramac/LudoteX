@@ -202,8 +202,10 @@ def fiche(request: Request, id_exemplaire: str):
         id_exemplaire: identifiant lu dans l'URL (TEXT).
 
     Returns:
-        La page fiche.html. Statut 200 si l'exemplaire existe, 404 sinon (le
-        gabarit gère le cas « inconnu » avec un message convivial).
+        La page fiche.html. Statut 200 si l'exemplaire existe — retiré du
+        parc compris, la page dit alors « Cette boîte ne fait plus partie du
+        catalogue » —, 404 sinon (le gabarit gère le cas « inconnu » avec un
+        message convivial).
     """
     conn = get_connection()
     try:
@@ -214,7 +216,13 @@ def fiche(request: Request, id_exemplaire: str):
         image_boite = None
         categories = []
         boites = []
-        if info is not None:
+        autre_boite = None
+        if info is not None and info["retiree_le"]:
+            # Boîte RETIRÉE (lot comptoir-6) : son QR est peut-être encore
+            # collé. Jamais un 404 : la page le dit, et mène au jeu s'il lui
+            # reste une boîte au parc. Rien d'autre n'est calculé.
+            autre_boite = services.premiere_boite_au_parc(conn, info["reference_titre"])
+        elif info is not None:
             total, disponible = services.dispo_par_titre(conn, info["reference_titre"])
             # État de chaque boîte, avec la durée de sortie : bénévoles
             # seulement (retour terrain, 1.34). Pas de requête pour le public.
@@ -258,7 +266,8 @@ def fiche(request: Request, id_exemplaire: str):
         {"id_exemplaire": id_exemplaire, "info": info,
          "total": total, "disponible": disponible, "emplacement": emplacement,
          "lien_bgg": lien_bgg, "image_boite": image_boite,
-         "liens_categories": liens_categories, "boites": boites},
+         "liens_categories": liens_categories, "boites": boites,
+         "autre_boite": autre_boite},
         status_code=200 if info else 404,
     )
 

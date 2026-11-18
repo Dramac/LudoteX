@@ -96,6 +96,7 @@ from app.achats import fin_de_journee
 from app.categories_jeu import cle as cle_pliee
 from app.comptoir import lire_instant
 from app.services import (MOTIF_OUBLI, MOTIFS_COMPTES, _filtre_periode,
+                          condition_au_parc_pendant,
                           format_duree, pluriel)
 
 # Un groupe de moins de SEUIL_JEUX jeux n'est pas classé (voir l'en-tête).
@@ -396,14 +397,19 @@ def ce_qui_plait(conn: sqlite3.Connection, debut: str | None,
         Une ligne : {cle, nom, nb_titres, nb_prets, par_titre,
         par_titre_txt, petit, barre (0-100, ou None sans barre)}.
     """
+    # Les jeux du catalogue de la période : au moins une boîte au parc
+    # pendant la période (lot comptoir-6, `condition_au_parc_pendant`).
+    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
     titres = conn.execute(
-        """
+        f"""
         SELECT t.reference_titre, t.nom, t.nb_joueurs_min, t.nb_joueurs_max,
                t.age_min, t.duree_min, COUNT(e.id_exemplaire) AS nb
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
+                          AND {au_parc}
         GROUP BY t.reference_titre
-        """
+        """,
+        params_parc,
     ).fetchall()
     liaisons = conn.execute(
         """

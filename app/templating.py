@@ -136,6 +136,10 @@ templates.env.globals["nom_evenement"] = services.nom_evenement
 # type « jeu(x) », « prêt(s) » (docs/idees-ux.md Q2).
 templates.env.globals["pluriel"] = services.pluriel
 
+# La date d'un retrait de boîte (lot comptoir-6), « JJ/MM/AAAA » en heure
+# locale : page de prêt, fiche publique et fiche d'administration.
+templates.env.globals["date_retrait_txt"] = services.date_retrait_txt
+
 # Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
 # Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).
 templates.env.filters["dt_local"] = services.format_local

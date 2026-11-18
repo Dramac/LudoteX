@@ -103,6 +103,7 @@ from datetime import datetime, time, timedelta
 from app.comptoir import HEURE_DEBUT_JOURNEE, debut_heure, journee, lire_instant
 from app.categories_jeu import cle
 from app.services import (FUSEAU_LOCAL, FUSEAU_UTC, MOTIFS_COMPTES,
+                          condition_au_parc_pendant,
                           format_duree, lignes_export_catalogue, pluriel)
 
 # En dessous de cette durée CUMULÉE, un jeu n'est pas montré : quelques
@@ -340,13 +341,19 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
           "nb_titres": titres qui ont au moins une boîte
         }
     """
+    # Les boîtes au parc PENDANT la période (lot comptoir-6) : une boîte
+    # retirée avant son début ne compte ni dans « tous sortis » ni parmi les
+    # jamais sortis. Les prêts, eux, ne se filtrent pas (`services`).
+    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
     titres = conn.execute(
-        """
+        f"""
         SELECT t.reference_titre, t.nom, COUNT(e.id_exemplaire) AS nb
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
+                          AND {au_parc}
         GROUP BY t.reference_titre, t.nom
-        """
+        """,
+        params_parc,
     ).fetchall()
     lignes = conn.execute(
         """
@@ -460,7 +467,9 @@ def detailler_jamais_sortis(conn: sqlite3.Connection,
         row["id_exemplaire"]: row["reference_titre"]
         for row in conn.execute("SELECT id_exemplaire, reference_titre FROM exemplaires")
         if row["reference_titre"] in refs}
-    _, catalogue = lignes_export_catalogue(conn)
+    # Avec les boîtes retirées : un jeu jamais sorti d'une période passée a
+    # pu perdre une boîte depuis, elle se décrit quand même.
+    _, catalogue = lignes_export_catalogue(conn, avec_retirees=True)
     par_ref: dict[str, list[dict]] = defaultdict(list)
     for ligne in catalogue:
         ref = boite_vers_ref.get(ligne["Code jeu"])

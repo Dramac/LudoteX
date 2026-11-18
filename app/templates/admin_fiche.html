@@ -15,6 +15,11 @@
     <p><a class="lien" href="/admin/jeux">← Retour à la liste</a></p>
   </section>
 {% else %}
+  {# Boîtes au parc et boîtes retirées (lot comptoir-6) : toutes sont
+     listées plus bas, les retirées marquées. La fiche publique et les
+     compteurs ne parlent que des boîtes au parc. #}
+  {% set au_parc = exemplaires | selectattr("retiree_le", "none") | list %}
+  {% set nb_retirees = exemplaires | length - au_parc | length %}
   <section class="carte">
     <h1>{{ titre.nom }}</h1>
     {# La fiche publique est celle d'une BOÎTE (/jeu/<id_exemplaire>) : un
@@ -22,8 +27,8 @@
        tableur fait passer toutes ses boîtes sous un autre nom ; sa fiche doit
        rester ouverte (ne jamais bloquer). #}
     <p><a class="lien" href="/admin/jeux">← Liste</a>
-       {%- if exemplaires %} ·
-       <a class="lien" href="/jeu/{{ exemplaires[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a>
+       {%- if au_parc %} ·
+       <a class="lien" href="/jeu/{{ au_parc[0].id_exemplaire }}" target="_blank">Voir la fiche publique</a>
        {%- endif %}</p>
     {# Le lien vers BoardGameGeek n'est plus ici : il vit sous la case « Fiche
        BoardGameGeek », avec le nom du jeu chez BGG. Un seul lien, à côté de
@@ -82,10 +87,15 @@
     <p class="dispo-titre">
        {% if titre.type_jeu %}{{ titre.type_jeu }} · {% endif %}
        Référence : <code>{{ titre.reference_titre }}</code> ·
-       {{ exemplaires | length }} {{ pluriel(exemplaires | length, 'exemplaire', 'exemplaires') }}</p>
+       {{ au_parc | length }} {{ pluriel(au_parc | length, 'exemplaire', 'exemplaires') }}
+       {%- if nb_retirees %} · {{ nb_retirees }} {{ pluriel(nb_retirees, 'boîte retirée', 'boîtes retirées') }}{% endif %}</p>
     {% if not exemplaires %}
     <p class="stats-note">Ce jeu n'a plus aucune boîte : il n'apparaît pas
        au catalogue public. Ajoutez un exemplaire pour imprimer son étiquette.</p>
+    {% elif not au_parc %}
+    <p class="stats-note">Toutes les boîtes de ce jeu sont retirées : il
+       n'apparaît pas au catalogue public. Ses prêts passés restent comptés.
+       Remettez une boîte en service, ou ajoutez un exemplaire.</p>
     {% endif %}
 
     <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/exemplaire">
@@ -113,11 +123,11 @@
     </form>
     {% else %}
     <p class="stats-note">{{ relier.restants }} {{ pluriel(relier.restants, 'jeu', 'jeux') }}
-       à relier{% if exemplaires %}, celui-ci compris{% endif %}.</p>
+       à relier{% if au_parc %}, celui-ci compris{% endif %}.</p>
     {% if relier.suivant %}
     <p><a class="lien" href="/admin/jeu/{{ relier.suivant.reference_titre }}?enchainer=1#relier-bgg">Passer au jeu suivant :
        « {{ relier.suivant.nom }} »</a></p>
-    {% elif exemplaires %}
+    {% elif au_parc %}
     <p class="stats-note">C'est le dernier jeu à relier.</p>
     {% endif %}
 
@@ -321,7 +331,26 @@
 
   <div class="exemplaires-grille">
   {% for ex in exemplaires %}
-    <section class="carte etiquette-bloc">
+    {# Ancre de la boîte : « Gérer cette boîte », depuis sa page de prêt,
+       et le retour du retrait mènent ici (lot comptoir-6). #}
+    {% if ex.retiree_le %}
+    {# Boîte retirée : ni étiquette ni rangement, elle n'en reçoit plus. Le
+       mot « retirée » porte le sens, jamais la couleur seule. #}
+    <section class="carte etiquette-bloc boite-retiree" id="boite-{{ ex.id_exemplaire }}">
+      <div class="etiquette-entete">
+        <span><strong>{{ ex.id_exemplaire }}</strong>
+          <span class="badge badge-retiree">retirée le {{ ex.retiree_le_txt }}</span>
+        </span>
+      </div>
+      {% if message_boite and message_boite.code == ex.id_exemplaire %}<p class="resultat resultat-ok" role="status">{{ message_boite.texte }}</p>{% endif %}
+      {% if ex.motif_retrait_txt %}<p class="stats-note">Motif : {{ ex.motif_retrait_txt | lower }}</p>{% endif %}
+      <p class="stats-note">Hors du catalogue. Ses prêts passés restent comptés.</p>
+      <form method="post" action="/admin/jeu/{{ titre.reference_titre }}/exemplaire/{{ ex.id_exemplaire }}/remettre">
+        <button type="submit" class="bouton-filtrer">Remettre en service<span class="sr-only"> la boîte {{ ex.id_exemplaire }}</span></button>
+      </form>
+    </section>
+    {% else %}
+    <section class="carte etiquette-bloc" id="boite-{{ ex.id_exemplaire }}">
       <div class="etiquette-entete">
         <span><strong>{{ ex.id_exemplaire }}</strong>
           {% if ex.sorti %}<span class="badge badge-sorti">sorti</span>
@@ -331,6 +360,9 @@
           Ouvrir / imprimer l'étiquette
         </a>
       </div>
+      {# Message d'après un geste sur CETTE boîte (remise en service, double
+         envoi) : dans la carte, là où mène l'ancre. #}
+      {% if message_boite and message_boite.code == ex.id_exemplaire %}<p class="resultat resultat-ok" role="status">{{ message_boite.texte }}</p>{% endif %}
       <img class="etiquette-apercu" src="/admin/etiquette/{{ ex.id_exemplaire }}.png"
            alt="Étiquette {{ ex.id_exemplaire }}">
 
@@ -365,7 +397,11 @@
           <button type="submit" class="bouton-filtrer">Enregistrer</button>
         </form>
       </div>
+      {# Retirer (lot comptoir-6) : un LIEN vers une confirmation, qui dit ce
+         que le retrait fait et ne fait pas. Rien n'est écrit ici. #}
+      <p class="retirer-boite"><a class="lien" href="/admin/jeu/{{ titre.reference_titre }}/exemplaire/{{ ex.id_exemplaire }}/retirer">Retirer<span class="sr-only"> la boîte {{ ex.id_exemplaire }} du catalogue</span></a></p>
     </section>
+    {% endif %}
   {% endfor %}
   </div>
 
