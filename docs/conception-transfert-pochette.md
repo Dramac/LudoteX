@@ -35,7 +35,7 @@ JEU associé qui change.
 | Question | Décision |
 |---|---|
 | Enchaînement des deux scans | **Écran de transfert avec scan intégré.** Rien n'est écrit tant que la seconde boîte n'est pas scannée. |
-| Point d'entrée | **Uniquement l'écran de la boîte rendue**, à l'état « Sorti », à côté de « Rendre ». |
+| Point d'entrée | **L'écran de la boîte rendue**, à l'état « Sorti », à côté de « Rendre ». *Depuis le lot comptoir-7 (2026-11-18), aussi l'écran de la boîte emportée, à l'état « Disponible » : voir §5 bis et §10.* |
 | Libellé du bouton | **« Rendre et prêter un nouveau jeu sans retour PI »** (formulation de Simon, conservée telle quelle). |
 | Numéro de pochette | **Conservé à l'identique.** Le nouveau prêt réutilise le n°7. |
 
@@ -99,12 +99,16 @@ boîte) est satisfait par le contrôle d'état fait en tête de transaction.
 2. Ce bouton ouvre un **écran de transfert** dédié, qui embarque la caméra
    (même composant que `/scanner`) et rappelle en tête ce qui est en cours :
    « Pochette n°7 conservée — scannez le nouveau jeu ».
-3. Le scan de la seconde boîte déclenche l'**opération unique** : clôture +
-   ouverture, en une transaction.
+3. Le scan de la seconde boîte ouvre un **écran de confirmation** qui nomme
+   les deux jeux et la pochette conservée ; c'est son bouton **Confirmer** qui
+   déclenche l'**opération unique** : clôture + ouverture, en une transaction.
+   *(Correction du 2026-11-18 : cette étape disait que le scan écrivait
+   directement. La confirmation existe depuis la première livraison ; la note
+   ne l'avait pas suivie.)*
 4. L'écran de résultat porte trois informations, dans cet ordre : la pochette
    n°7 **inchangée**, où ranger la boîte rendue, et le nouveau jeu prêté.
 
-**Rien n'est écrit avant l'étape 3.** C'est ce qui rend l'abandon inoffensif :
+**Rien n'est écrit avant Confirmer.** C'est ce qui rend l'abandon inoffensif :
 si le visiteur change d'avis, si la caméra refuse de démarrer, si le bénévole
 ferme l'écran, la base est intacte — la boîte rendue est simplement encore
 « sortie », et le bouton **Rendre** classique reste à un tap. Aucun état en
@@ -113,6 +117,28 @@ suspens, aucune pochette occupée sans prêt ouvert, aucun rattrapage à écrire
 Une **saisie manuelle de secours** est disponible sur l'écran de transfert, sur
 le modèle exact de celle du scanner (`/scanner/saisie`) : le geste ne doit pas
 dépendre d'une caméra capricieuse.
+
+### 5 bis. Déroulé inverse : « Échanger contre un jeu rendu » (lot comptoir-7)
+
+Le bénévole a scanné d'abord la boîte que le visiteur **veut** (B) : l'écran
+dit « Disponible ». Le même transfert se prend alors par l'autre bout :
+
+1. Sous **Prêter**, qui reste l'action principale, l'action secondaire
+   **« Échanger contre un jeu rendu »** (un lien, elle n'écrit rien) ouvre
+   `GET /pret/<B>/echange` : caméra et saisie manuelle, « **B** — scannez le
+   jeu que le visiteur rapporte ».
+2. Le scan de la boîte rendue (A) mène à `GET /pret/<B>/echange/<A>` (la
+   saisie passe par `GET /pret/<B>/echange/saisie`, qui la résout comme
+   `/scanner/saisie`). Cette route n'écrit rien : elle affiche la
+   **confirmation** « **A** (rendu) → **B** (emporté) — pochette n°N
+   conservée », ou l'écran d'échange avec un message (§6).
+3. **Confirmer** poste vers `/pret/<A>/transfert/<B>` : **la même route**, le
+   même service, le même journal. Il n'y a qu'une écriture de transfert dans
+   l'application.
+
+Une fois confirmé, le geste est un transfert ordinaire, et ses écrans de refus
+restent ceux du sens habituel : la pochette est celle de A, la caméra cherche
+un autre jeu pour le visiteur. Le segment d'URL est `echange`, sans accent.
 
 ## 6. Cas limites — jamais bloquant
 
@@ -124,6 +150,20 @@ dépendre d'une caméra capricieuse.
 | La première boîte a été rendue entre-temps par un autre bénévole | Rien n'est écrit. Message : il n'y a plus de pochette à transférer. |
 | La première boîte est une **sortie tournoi** (pochette n°0) | Le bouton n'est pas affiché — il n'y a pas de pièce d'identité. Le service refuse également, l'URL étant forgeable. |
 | Deux bénévoles transfèrent la même boîte au même instant | Le second se heurte au verrou d'écriture ou aux index UNIQUE, et reçoit le message « occupé » existant. Rien n'est enregistré deux fois. |
+
+**Dans le sens inverse (§5 bis)**, rien n'est écrit avant Confirmer, et la
+caméra reste active sur l'écran d'échange :
+
+| Situation | Comportement |
+|---|---|
+| La boîte rendue scannée est **la boîte emportée** elle-même | « C'est le jeu que le visiteur emporte. Scannez celui qu'il rapporte. » |
+| La boîte rendue **n'est pas sortie** (déjà rendue, jamais prêtée) | « **A** n'est pas noté sorti : il n'y a pas de pochette à reprendre. » Bouton **Prêter B** (le prêt ordinaire). |
+| La boîte rendue est une **sortie tournoi** | « **A** est sorti pour un tournoi : il n'a pas de pièce d'identité. » Bouton **Prêter B** et lien vers l'écran de A (**Rendre**, retour de tournoi). |
+| La boîte rendue **n'existe pas** (code tapé ou QR étranger) | Message de `message_code_introuvable` sur l'écran d'échange, et non la page « exemplaire inconnu » du sens habituel : le bénévole tient déjà B, il ne doit pas la perdre. |
+| La boîte emportée est **sortie** à l'ouverture de l'écran d'échange | L'écran de B, avec ses propres actions : pas d'écran de scan pour rien. |
+| La boîte emportée est **prêtée entre l'écran et la confirmation** | La confirmation porte le bloc d'escalade du §6 bis, **Confirmer** à côté : le POST fait foi. |
+| La boîte emportée est **retirée** entre-temps | Refus `nouveau_retire` existant, sur l'écran de B. |
+| La boîte rendue est **retirée mais encore sortie** | Transférée, comme dans le sens habituel (le service ne refuse que la boîte emportée retirée). |
 
 ### 6 bis. Escalade « clôturer le prêt oublié » — ajout de septembre 2026
 
@@ -272,9 +312,16 @@ demandée sur une boîte revenue entre-temps produit un `transfert` ordinaire.
 
 ## 10. Hors périmètre
 
-- Le point d'entrée inverse (« prêter en réutilisant une pochette », depuis
+- ~~Le point d'entrée inverse (« prêter en réutilisant une pochette », depuis
   l'écran d'une boîte disponible) : écarté, deux chemins pour un même geste à
-  expliquer à des bénévoles qui découvrent l'outil.
+  expliquer à des bénévoles qui découvrent l'outil.~~ **Sorti du hors
+  périmètre le 2026-11-18** (lot comptoir-7, choisi par Simon). Le terrain a
+  tranché contre l'argument : à l'édition 2026, une bénévole a demandé deux
+  fois de pouvoir commencer par le jeu que le visiteur veut, l'ordre dans
+  lequel les boîtes arrivent en pleine affluence ; sans cette entrée, il
+  fallait revenir en arrière, scanner le jeu rendu, puis rescanner le jeu
+  voulu. Les deux chemins mènent à la même confirmation et au même POST : il
+  n'y a qu'un geste à expliquer, pris par l'un ou l'autre bout. Voir §5 bis.
 - Un mode « transfert en cours » mémorisé sur l'appareil (cookie, à la manière
   du mode rangement) : écarté avec l'atomicité, qui rend l'état en suspens et
   son rattrapage inutiles.

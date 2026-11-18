@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% from "_pochette_oubliee.html" import escalade_oubli %}
-{% block titre %}Confirmer le transfert — Prêt / retour — {{ nom_association }}{% endblock %}
+{#- Deux sens (lot comptoir-7) : `echange` vrai quand le transfert a été
+    pris par le jeu qui SORT (routes/pret.py::echange_confirmation). Le
+    formulaire est le même dans les deux sens, seuls le titre, l'ordre lu et
+    les liens de retour changent. Le sens habituel rend EXACTEMENT le HTML
+    d'avant le lot (un test le verrouille). #}
+{% block titre %}Confirmer {% if echange %}l'échange{% else %}le transfert{% endif %} — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
-  <h1>Confirmer le transfert</h1>
+  <h1>Confirmer {% if echange %}l'échange{% else %}le transfert{% endif %}</h1>
 
   {# Rien n'a encore été écrit : c'est ici que le bénévole rattrape un scan
      de la mauvaise boîte, avant tout enregistrement (§5 de la note). #}
@@ -14,7 +19,7 @@
     </p>
   {% else %}
     <p class="resultat resultat-info">
-      <strong>{{ info.nom }}</strong> → <strong>{{ nouvelle_info.nom }}</strong><br>
+      <strong>{{ info.nom }}</strong>{% if echange %} (rendu){% endif %} → <strong>{{ nouvelle_info.nom }}</strong>{% if echange %} (emporté){% endif %}<br>
       Pochette n°{{ numero }} conservée — la pièce d'identité ne bouge pas.
     </p>
   {% endif %}
@@ -33,9 +38,15 @@
     <button class="bouton bouton-principal" type="submit">Confirmer</button>
   </form>
   <p class="lien-fiche">
+{%- if echange %}
+    <a class="lien" href="/pret/{{ id_nouveau }}/echange">Rescanner le jeu rendu</a>
+    &nbsp;·&nbsp;
+    <a class="lien" href="/pret/{{ id_nouveau }}">Annuler — rien n'a été écrit</a>
+{%- else %}
     <a class="lien" href="/pret/{{ id_rendu }}/transfert">Rescanner</a>
     &nbsp;·&nbsp;
     <a class="lien" href="/pret/{{ id_rendu }}">Annuler — rien n'a été écrit</a>
+{%- endif %}
   </p>
 </section>
 {% endblock %}

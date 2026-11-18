@@ -1,25 +1,77 @@
 {% extends "base.html" %}
 {% from "_pochette_oubliee.html" import escalade_oubli %}
 {% from "_saisie_manuelle.html" import saisie_manuelle %}
-{% block titre %}Transfert — Prêt / retour — {{ nom_association }}{% endblock %}
+{#- DEUX SENS, UN SEUL GABARIT (lot comptoir-7). Sans `echange`, le transfert
+    habituel, ouvert depuis le jeu RENDU : on scanne le jeu emporté. Avec
+    `echange` ({id, nom} de la boîte emportée), le même transfert pris par
+    l'autre bout : on scanne le jeu rendu. Le contexte vient de
+    `_contexte_transfert` ou `_contexte_echange` (routes/pret.py), qui
+    partagent `_contexte_scan`.
+
+    Les `{%- … %}` ne sont pas décoratifs : le sens habituel rend EXACTEMENT
+    le HTML d'avant le lot, octet pour octet (un test le verrouille). #}
+{% block titre %}{% if echange %}Échange{% else %}Transfert{% endif %} — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {# Cible du scan caméra, lue par scanner.js (voir sa docstring `ouvrir()`) :
    prioritaire sur le mode rangement, puisqu'il s'agit ici d'une action
    délibérée du bénévole (ouvrir l'écran de transfert), pas d'un mode
    d'appareil. Réutilise le même mécanisme que le mode rangement
    (data-rangement) plutôt que d'en inventer un second. #}
-{% block body_attrs %} data-scan-cible="/pret/{{ id_rendu }}/transfert/"{% endblock %}
+{% block body_attrs %}{% if echange %} data-scan-cible="/pret/{{ echange.id }}/echange/"{% else %} data-scan-cible="/pret/{{ id_rendu }}/transfert/"{% endif %}{% endblock %}
 
 {% block contenu %}
 <section class="carte">
+{%- if echange %}
+  <h1>Échanger contre un jeu rendu</h1>
+  <p class="resultat resultat-info">
+    <strong>{{ echange.nom }}</strong> — scannez le jeu que le visiteur rapporte.
+  </p>
+{%- else %}
   <h1>Transfert de pochette</h1>
   <p class="resultat resultat-info">
     Pochette n°{{ numero }} conservée — scannez le nouveau jeu.
   </p>
+{%- endif %}
 
   {% if erreur %}
     <p class="resultat resultat-attention" id="code-erreur">{{ erreur }}</p>
   {% endif %}
+{%- if refus %}
+  {#- Le jeu scanné ne peut pas être rendu dans cet échange
+      (routes/pret.py::echange_confirmation). Rien n'est écrit ; la caméra,
+      dessous, reste active pour viser le bon jeu, et le prêt simple de B
+      reste à un tap quand il n'y a pas de pochette à reprendre. #}
+  <div class="resultat resultat-attention" role="status">
+    {%- if refus.raison == "meme_boite" %}
+    <p>C'est le jeu que le visiteur emporte. Scannez celui qu'il rapporte.</p>
+    {%- elif refus.raison == "inconnu" %}
+    <p>{{ refus.message }}</p>
+    {%- elif refus.raison == "rien_a_rendre" %}
+    <p><strong>{{ refus.nom_rendu }}</strong> n'est pas noté sorti : il n'y a
+       pas de pochette à reprendre.</p>
+    {%- else %}
+    <p><strong>{{ refus.nom_rendu }}</strong> est sorti pour un tournoi : il
+       n'a pas de pièce d'identité.</p>
+    {%- endif %}
+    {%- if refus.raison in ("rien_a_rendre", "sans_pochette") %}
+    <form method="post" action="/pret/{{ echange.id }}/preter">
+      <button class="bouton bouton-principal" type="submit">
+        Prêter {{ echange.nom }}
+        <span class="bouton-sous">nouvelle pochette : le visiteur y dépose sa pièce d'identité</span>
+      </button>
+    </form>
+    {%- endif %}
+    {%- if refus.raison == "sans_pochette" %}
+    <a class="bouton bouton-secondaire" href="/pret/{{ refus.id_rendu }}">
+      Ouvrir {{ refus.nom_rendu }} pour le rendre
+      <span class="bouton-sous">retour de tournoi</span>
+    </a>
+    {%- endif %}
+    {%- if refus.raison in ("rien_a_rendre", "sans_pochette") %}
+    <p>Ou scannez ci-dessous un autre jeu que le visiteur rapporte.</p>
+    {%- endif %}
+  </div>
+{%- endif %}
 
   {# Le POST vient de refuser : la boîte visée est tenue par un prêt jamais
      scanné en retour. Le bloc d'escalade s'intercale AU-DESSUS de la caméra,
@@ -53,22 +105,40 @@
   </div>
   <canvas id="canvas" hidden></canvas>
   <p class="scanner-aide">
+{%- if echange %}
+    Visez le QR code du jeu que le visiteur rapporte : sa pièce d'identité
+    reste dans sa pochette, qui passe sur {{ echange.nom }}.
+{%- else %}
     Visez le QR code de la nouvelle boîte : la pochette n°{{ numero }} ne
     bouge pas, seul le jeu qui lui est associé change.
+{%- endif %}
     Votre téléphone ne demandera l'autorisation caméra qu'une seule fois.
   </p>
 
   <p class="lien-fiche">
+{%- if echange %}
+    <a class="lien" href="/pret/{{ echange.id }}">Annuler — rien n'a été écrit, le prêt simple reste possible</a>
+{%- else %}
     <a class="lien" href="/pret/{{ id_rendu }}">Annuler — rien n'a été écrit, le retour classique reste possible</a>
+{%- endif %}
   </p>
 </section>
 
+{% if echange -%}
+{{ saisie_manuelle(
+     action="/pret/" ~ echange.id ~ "/echange/saisie",
+     bouton="Continuer",
+     aide="QR illisible ou caméra capricieuse ? Tapez le code du jeu que le visiteur rapporte.",
+     code_saisi=code_saisi, erreur=erreur, erreur_id='code-erreur', lettres=lettres,
+     lien_bascule=lien_bascule) }}
+{%- else -%}
 {{ saisie_manuelle(
      action="/pret/" ~ id_rendu ~ "/transfert/saisie",
      bouton="Continuer",
      aide="QR illisible ou caméra capricieuse ? Tapez le code de la nouvelle boîte.",
      code_saisi=code_saisi, erreur=erreur, erreur_id='code-erreur', lettres=lettres,
      lien_bascule=lien_bascule) }}
+{%- endif %}
 
 <!-- Décodage QR côté navigateur — même script que /scanner, aucune duplication. -->
 <script src="/static/js/jsQR.js?v={{ asset_v('js/jsQR.js') }}"></script>

@@ -67,6 +67,10 @@ Quatre routes dédiées, à la suite de celles-ci (« Rendre » puis « Prêter 
 sans jamais faire ressortir la pièce d'identité de son casier). Voir leurs
 docstrings pour le détail de chaque écran.
 
+Depuis le lot comptoir-7, trois écrans GET de plus (« ÉCHANGE », plus bas)
+prennent le même transfert par le jeu qui SORT : ils n'écrivent rien et
+mènent à la même confirmation, donc au même POST.
+
 CARNET DE MAINTENANCE (docs/conception-signalements.md)
 ---------------------------------------------------------
 Trois routes dédiées, à la suite du transfert : `GET .../signaler` ouvre un
@@ -624,17 +628,30 @@ def _contexte_transfert(request: Request, id_rendu: str, info: dict, numero: int
     un iPhone sans aucun moyen de taper un code d'extension : un blocage net,
     exactement ce que ce projet refuse.
     """
+    return _contexte_scan(request, f"/pret/{id_rendu}/transfert?lettres=1",
+                          id_rendu=id_rendu, info=info, numero=numero, **extra)
+
+
+def _contexte_scan(request: Request, repli_bascule: str, **cles) -> dict:
+    """
+    Le cœur commun des contextes de `transfert_scan.html`, dans ses DEUX sens
+    (lot comptoir-7) : le clavier de la saisie manuelle et son lien de
+    bascule, le reste tel que l'appelant le donne.
+
+    `repli_bascule` est la cible du lien quand l'écran suit un POST (voir
+    `_contexte_transfert`). L'échange ne s'affiche que sur des GET : il le
+    passe par principe, sans qu'il serve.
+    """
     ctx = {
-        "id_rendu": id_rendu, "info": info, "numero": numero,
         "lettres": services.clavier_lettres_demande(
             request.query_params.get("lettres", "")
         ),
         "lien_bascule": (
             services.lien_bascule_clavier(request) if request.method == "GET"
-            else f"/pret/{id_rendu}/transfert?lettres=1"
+            else repli_bascule
         ),
     }
-    ctx.update(extra)
+    ctx.update(cles)
     return ctx
 
 
@@ -923,6 +940,180 @@ def transfert_pochette_non_vide(request: Request, id_rendu: str, id_nouveau: str
             request, id_rendu, info, numero,
             pochette_signalee={"nom": nouvelle_info["nom"],
                                "numero": oubli["numero_pochette"] if oubli else None}),
+    )
+
+
+# ===========================================================================
+# ÉCHANGE : LE TRANSFERT PRIS PAR LE JEU QUI SORT (lot comptoir-7)
+# ===========================================================================
+# Le même transfert, commencé par l'autre bout : le bénévole a scanné d'abord
+# le jeu que le visiteur VEUT (B, disponible), puis scanne celui qu'il REND
+# (A). Trois écrans GET qui n'écrivent rien, puis la confirmation habituelle,
+# dont le bouton poste vers `/pret/<A>/transfert/<B>` — la seule route qui
+# écrit un transfert (docs/conception-transfert-pochette.md §5 et §10).
+#
+# Le segment d'URL est « echange », sans accent : il se lit dans la barre
+# d'adresse, et le mot affiché (« Échanger contre un jeu rendu ») n'a pas à
+# le recopier.
+#
+# Le POST n'est PAS touché : une fois confirmé, le geste est un transfert
+# ordinaire, et ses écrans de refus (pensés depuis A) restent justes — la
+# pochette est celle de A, la caméra cherche un autre jeu pour le visiteur.
+
+def _echange_ou_ecran_de_b(request: Request, conn, id_nouveau: str):
+    """
+    Contrôle EN LECTURE SEULE de la boîte que le visiteur emporte, à
+    l'ouverture de l'écran d'échange et à la saisie manuelle.
+
+    Returns:
+        (info, None) si l'échange peut commencer, (None, réponse) sinon — la
+        réponse étant l'écran de B lui-même : 404 pour une boîte inconnue
+        (patron de `_rendu`), « Boîte retirée » pour une boîte retirée, et
+        ses propres actions pour une boîte sortie entre-temps (un autre
+        bénévole l'a prêtée). Aucun écran de scan pour rien.
+    """
+    info = services.info_exemplaire(conn, id_nouveau)
+    if (info is None or info["retiree_le"]
+            or services.pret_en_cours(conn, id_nouveau) is not None):
+        return None, _rendu(request, id_nouveau)
+    return info, None
+
+
+def _contexte_echange(request: Request, id_nouveau: str, nouvelle_info: dict,
+                      **extra) -> dict:
+    """
+    Contexte de `transfert_scan.html` dans le sens de l'échange : la clé
+    `echange` (la boîte emportée) bascule le gabarit. Même cœur que le sens
+    habituel (`_contexte_scan`), donc même clavier et même bascule.
+    """
+    return _contexte_scan(
+        request, f"/pret/{id_nouveau}/echange?lettres=1",
+        echange={"id": id_nouveau, "nom": nouvelle_info["nom"]}, **extra)
+
+
+def _ecran_echange(request: Request, id_nouveau: str, nouvelle_info: dict,
+                   status: int = 200, **extra):
+    """L'écran de scan de l'échange, avec un éventuel message (`refus`)."""
+    return templates.TemplateResponse(
+        request, "transfert_scan.html",
+        _contexte_echange(request, id_nouveau, nouvelle_info, **extra),
+        status_code=status,
+    )
+
+
+@router.get("/{id_nouveau}/echange")
+def echange_ecran(request: Request, id_nouveau: str, lettres: str = "",
+                  _=Depends(exiger_jeton)):
+    """
+    Écran d'échange : caméra embarquée pour scanner le jeu que le visiteur
+    RAPPORTE. N'écrit rien. Le scan mène à `/pret/<B>/echange/<A>`
+    (`data-scan-cible`, préfixe auquel scanner.js concatène l'id scanné).
+    """
+    conn = get_connection()
+    try:
+        nouvelle_info, ecran_b = _echange_ou_ecran_de_b(request, conn, id_nouveau)
+    finally:
+        conn.close()
+    if ecran_b is not None:
+        return ecran_b
+    return _ecran_echange(request, id_nouveau, nouvelle_info)
+
+
+@router.get("/{id_nouveau}/echange/saisie")
+def echange_saisie(request: Request, id_nouveau: str, code: str = "",
+                   lettres: str = "", _=Depends(exiger_jeton)):
+    """
+    Secours clavier de l'écran d'échange (patron de `transfert_saisie`).
+    N'ÉCRIT RIEN : redirige (303) vers `/echange/<A>` si le code correspond
+    à une boîte connue, sinon réaffiche l'écran avec le message et le champ
+    prérempli.
+
+    ⚠️ DÉCLARÉE AVANT `/echange/{id_rendu}`, sinon FastAPI prendrait
+    « saisie » pour un code de boîte (un test le verrouille).
+
+    Le drapeau du clavier à lettres suit la redirection : si A est refusé
+    (pas sorti, sortie tournoi…), l'écran d'échange se réaffiche, et le
+    bénévole qui tapait des lettres doit les retrouver.
+    """
+    saisi = (code or "").strip()
+    conn = get_connection()
+    try:
+        nouvelle_info, ecran_b = _echange_ou_ecran_de_b(request, conn, id_nouveau)
+        if ecran_b is not None:
+            return ecran_b
+        if not saisi:
+            return _ecran_echange(request, id_nouveau, nouvelle_info,
+                                  erreur="Veuillez saisir un code.", code_saisi="")
+        id_rendu, proches = services.resoudre_code_saisi(conn, saisi)
+    finally:
+        conn.close()
+    if id_rendu is None:
+        return _ecran_echange(
+            request, id_nouveau, nouvelle_info,
+            erreur=services.message_code_introuvable(saisi, proches),
+            code_saisi=saisi)
+    suite = "?lettres=1" if services.clavier_lettres_demande(lettres) else ""
+    return RedirectResponse(f"/pret/{id_nouveau}/echange/{id_rendu}{suite}",
+                            status_code=303)
+
+
+@router.get("/{id_nouveau}/echange/{id_rendu}")
+def echange_confirmation(request: Request, id_nouveau: str, id_rendu: str,
+                         lettres: str = "", _=Depends(exiger_jeton)):
+    """
+    Le jeu rendu (A) vient d'être scanné ou saisi : confirmation A → B, ou
+    l'écran d'échange avec le message qui dit pourquoi pas. N'ÉCRIT RIEN.
+
+    Ordre des contrôles, tous en lecture seule (le POST les refait sous le
+    verrou) :
+    1. B inconnue → 404 par `_rendu` ; B retirée entre-temps → l'écran de B
+       avec le refus `nouveau_retire` existant ;
+    2. A inconnu → message sur l'écran d'échange, caméra active. ÉCART
+       ASSUMÉ au patron du sens habituel (404) : ici le bénévole tient déjà
+       le jeu que le visiteur veut, une page « exemplaire inconnu » lui
+       ferait perdre B ;
+    3. A = B → le bénévole a rescanné le jeu voulu : on le lui dit ;
+    4. A sans pochette à reprendre (pas sorti, ou sortie tournoi) → message
+       et rattrapages : **Prêter <B>** et, pour un tournoi, la page de A ;
+    5. B sortie entre-temps → la confirmation porte le bloc d'escalade du
+       sens habituel (`_escalade`), « Confirmer » reste à côté ;
+    sinon, la confirmation.
+
+    Une boîte A retirée mais encore sortie se transfère, comme dans le sens
+    habituel (le service ne refuse que la boîte EMPORTÉE retirée).
+    """
+    conn = get_connection()
+    try:
+        nouvelle_info = services.info_exemplaire(conn, id_nouveau)
+        if nouvelle_info is None:
+            return _rendu(request, id_nouveau)
+        if nouvelle_info["retiree_le"]:
+            return _rendu(request, id_nouveau, _nouveau_retire(id_nouveau, nouvelle_info))
+        info = services.info_exemplaire(conn, id_rendu)
+        if info is None:
+            return _ecran_echange(
+                request, id_nouveau, nouvelle_info, status=404,
+                refus={"raison": "inconnu",
+                       "message": services.message_code_introuvable(id_rendu)})
+        if id_rendu == id_nouveau:
+            return _ecran_echange(request, id_nouveau, nouvelle_info,
+                                  refus={"raison": "meme_boite"})
+        numero, refus = _transfert_ou_refus(conn, id_rendu)
+        if refus:
+            return _ecran_echange(
+                request, id_nouveau, nouvelle_info,
+                refus={"raison": refus["raison"], "id_rendu": id_rendu,
+                       "nom_rendu": info["nom"]})
+        autre = services.pret_en_cours(conn, id_nouveau)
+        escalade = (_escalade(id_nouveau, nouvelle_info, autre["numero_pochette"])
+                    if autre is not None else None)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "transfert_confirmation.html",
+        {"id_rendu": id_rendu, "id_nouveau": id_nouveau, "info": info,
+         "nouvelle_info": nouvelle_info, "numero": numero,
+         "meme_boite": False, "escalade": escalade, "echange": True},
     )
 
 

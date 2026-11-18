@@ -64,8 +64,8 @@ worker). Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
   prêt). Un seul jeu par PI / par numéro. Le numéro reste physiquement attaché
   à la PI.
 - **Logique de scan** :
-  - exemplaire **DISPONIBLE** → action unique « Prêter » (attribue + affiche le
-    numéro de pochette en grand).
+  - exemplaire **DISPONIBLE** → « Prêter » (numéro en grand) ou
+    « Échanger » (transfert inverse).
   - exemplaire **SORTI** → « Rendre » (principale, libère le numéro), « Le
     re-prêter » (oubli de scan : clôt l'ancien prêt et en rouvre un) et
     « Transférer » (rendre une boîte et en prêter une autre sans changer de
@@ -171,7 +171,7 @@ livré, par module :
 
 - **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
   scanner caméra (jsQR) avec saisie manuelle de secours, prêt / retour /
-  re-prêt / **transfert de pochette**, sortie « tournoi » exclue des stats,
+  re-prêt / **transfert de pochette** (deux sens), sortie « tournoi » hors stats,
   **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), **retours
   non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue
   « pochette pas vide » qui prévient le bureau, clôture de fin d'événement.

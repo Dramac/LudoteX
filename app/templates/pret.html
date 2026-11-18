@@ -369,6 +369,15 @@
       <form method="post" action="/pret/{{ info.id_exemplaire }}/preter">
         <button class="bouton bouton-principal" type="submit">Prêter</button>
       </form>
+      {# Échange (lot comptoir-7) : le visiteur tend le jeu qu'il VEUT avant
+         celui qu'il rend. Le même transfert, pris par l'autre bout
+         (docs/conception-transfert-pochette.md §5). Sous « Prêter », qui
+         reste le geste principal, et AVANT le tournoi, bien plus rare. Un
+         LIEN : il ouvre l'écran de scan du jeu rendu, il n'écrit rien. #}
+      <a class="bouton bouton-secondaire" href="/pret/{{ info.id_exemplaire }}/echange">
+        Échanger contre un jeu rendu
+        <span class="bouton-sous">sa pièce d'identité reste dans sa pochette</span>
+      </a>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/tournoi">
         <button class="bouton bouton-secondaire" type="submit">
           Sortir pour un tournoi <span class="bouton-sous">sans pièce d'identité, hors statistiques</span>

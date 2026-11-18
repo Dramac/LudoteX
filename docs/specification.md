@@ -287,9 +287,14 @@ Déclenché par un scan. Le système connaît l'état de l'exemplaire et
 
 **Cas — exemplaire DISPONIBLE** (pas d'ambiguïté)
 → Action principale : **Prêter**. Le système attribue le plus petit numéro de
-pochette libre et l'affiche en grand. Un seul tap. Une action secondaire sort
-la boîte **pour un tournoi** : sans pièce d'identité ni pochette, hors
-statistiques.
+pochette libre et l'affiche en grand. Un seul tap. Deux actions secondaires
+suivent :
+- **Échanger contre un jeu rendu** — le visiteur a tendu d'abord le jeu qu'il
+  veut, et rapporte aussi une boîte : on scanne celle-ci, et c'est le
+  **transfert** du cas SORTI, pris par l'autre bout (même confirmation, même
+  écriture ; `docs/conception-transfert-pochette.md` §5).
+- **Sortir pour un tournoi** : sans pièce d'identité ni pochette, hors
+  statistiques.
 
 **Cas — exemplaire SORTI** (ambiguïté possible, choix explicite requis)
 - **Rendre** *(action principale)* — clôt le prêt en cours et libère la
