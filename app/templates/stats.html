@@ -414,6 +414,14 @@
      la clôture reste un geste de l'administration. #}
   <p class="org-ouverts">{{ orga.phrase_ouverts(g.en_cours, org.periode_finie) }}
     {% if g.en_cours %}{% if est_admin(request) %}<a class="lien lien-cible" href="{{ orga.URL_CLOTURE }}">{{ orga.LIEN_CLOTURE }}</a>{% else %}{{ orga.PHRASE_DEMANDER_BUREAU }}{% endif %}{% endif %}</p>
+  {# Sorties « démo » (lot comptoir-3) : avec le travail du comptoir, et
+     non dans le volet des tournois — une démo ne dépend pas de ce module,
+     la phrase s'affiche toujours, même à 0. #}
+  {% if org.sorties_demo is not none %}
+    {% set phrase_demo, note_demo = orga.lignes_sorties_demo(org.sorties_demo) %}
+  <p>{{ phrase_demo }}</p>
+  <p class="stats-note">{{ note_demo }}</p>
+  {% endif %}
 
   <h3>{{ orga.TITRE_SIGNALEMENTS }}</h3>
   {% set sig = org.signalements %}
@@ -525,10 +533,8 @@
       {% endif %}
       {% if tr.sans_date %}<p class="stats-note">{{ orga.phrase_tournois_sans_date(tr.sans_date) }}</p>{% endif %}
     {% endif %}
-    {% if org.sorties_sans_pochette is not none %}
-      {% for phrase in orga.phrases_sorties_sans_pochette(org.sorties_sans_pochette) %}
-      <p>{{ phrase }}</p>
-      {% endfor %}
+    {% if org.sorties_tournoi is not none %}
+      <p>{{ orga.phrase_sorties_tournoi(org.sorties_tournoi) }}</p>
       <p class="stats-note">{{ orga.NOTE_SORTIES_TOURNOI }}</p>
     {% endif %}
     {% if tp.programme %}

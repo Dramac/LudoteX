@@ -525,8 +525,10 @@ def test_organisation_compte_les_demos_a_part(conn):
     _base_stats(conn, DEMO)
     assert organisation.sorties_sans_pochette(conn) == {TOURNOI: 0, DEMO: 4}
     assert organisation.sorties_sans_pochette(conn, _iso(1), _iso(5.5)) == {TOURNOI: 0, DEMO: 2}
-    assert organisation.phrases_sorties_sans_pochette({TOURNOI: 0, DEMO: 4}) == [
-        "Sorties « tournoi » du prêt : 0.", "Sorties « démo » du prêt : 4."]
+    assert organisation.lignes_sorties_demo(4) == [
+        "Sorties « démo » du prêt : 4.", organisation.NOTE_SORTIES_DEMO]
+    assert "tournoi" not in organisation.NOTE_SORTIES_DEMO
+    assert "démo" not in organisation.NOTE_SORTIES_TOURNOI
     assert organisation.phrase_sorties_tournoi(3) == "Sorties « tournoi » du prêt : 3."
 
 
@@ -536,7 +538,16 @@ def test_page_stats_organisation_phrase_demo(client):
     r = client.get("/stats")
     assert "<p>Sorties « tournoi » du prêt : 1.</p>" in r.text
     assert "<p>Sorties « démo » du prêt : 1.</p>" in r.text
-    assert r.text.index("Sorties « tournoi »") < r.text.index("Sorties « démo »")
+    # La démo suit le travail du comptoir (sous les prêts encore ouverts),
+    # le tournoi reste dans son volet ; chacune avec sa note.
+    i_ouverts = r.text.index('<p class="org-ouverts">')
+    i_demo = r.text.index("Sorties « démo »")
+    i_volet = r.text.index('<details class="org-volet" id="tournois">')
+    assert i_ouverts < i_demo < i_volet < r.text.index("Sorties « tournoi »")
+    from app import organisation
+    from markupsafe import escape
+    assert r.text.count(escape(organisation.NOTE_SORTIES_DEMO)) == 1
+    assert r.text.count(escape(organisation.NOTE_SORTIES_TOURNOI)) == 1
 
 
 def test_page_stats_phrase_demo_meme_a_zero(client):
@@ -544,12 +555,49 @@ def test_page_stats_phrase_demo_meme_a_zero(client):
     assert "<p>Sorties « démo » du prêt : 0.</p>" in client.get("/stats").text
 
 
-def test_page_stats_module_tournois_masque_ni_tournoi_ni_demo(client, conn):
+def test_page_stats_module_tournois_masque_la_demo_reste(client, conn):
+    """Une démo ne dépend pas des tournois : module masqué, la phrase de la
+    démo et sa note restent, celle du tournoi disparaît."""
+    from markupsafe import escape
+    from app import organisation
     services.ecrire_parametre(conn, "module_tournois", "desactive")
     conn.commit()
     client.post("/pret/001/demo")
+    client.post("/pret/002/tournoi")
     html = client.get("/stats").text
-    assert "Sorties « démo »" not in html and "Sorties « tournoi »" not in html
+    assert "<p>Sorties « démo » du prêt : 1.</p>" in html
+    assert escape(organisation.NOTE_SORTIES_DEMO) in html
+    assert "Sorties « tournoi »" not in html
+    assert escape(organisation.NOTE_SORTIES_TOURNOI) not in html
+
+
+def test_page_stats_tournois_et_programme_masques_la_demo_reste(client, conn):
+    services.ecrire_parametre(conn, "module_tournois", "desactive")
+    services.ecrire_parametre(conn, "module_programme", "desactive")
+    conn.commit()
+    client.post("/pret/001/demo")
+    html = client.get("/stats").text
+    assert 'id="tournois"' not in html
+    assert "<p>Sorties « démo » du prêt : 1.</p>" in html
+
+
+def test_exports_module_tournois_masque_la_demo_reste(client, conn):
+    import openpyxl
+    from app import organisation
+    from tests.outils_pdf import texte_pdf
+    services.ecrire_parametre(conn, "module_tournois", "desactive")
+    conn.commit()
+    client.post("/pret/001/demo")
+    client.post("/pret/002/tournoi")
+    classeur = openpyxl.load_workbook(BytesIO(client.get("/stats/export.xlsx").content))
+    plat = [str(v) for f in classeur for l in f.iter_rows(values_only=True)
+            for v in l if v is not None]
+    assert "Sorties « démo » du prêt : 1." in plat
+    assert organisation.NOTE_SORTIES_DEMO in plat
+    assert not any("Sorties « tournoi »" in c for c in plat)
+    texte = texte_pdf(client.get("/stats/export.pdf").content)
+    assert "Sorties « démo » du prêt : 1." in " ".join(texte.split())
+    assert "Sorties « tournoi »" not in texte
 
 
 def test_exports_portent_la_demo(client):

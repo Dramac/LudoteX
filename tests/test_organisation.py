@@ -422,11 +422,14 @@ def test_modules_masques_rien_n_est_calcule(tournois, benevole, monkeypatch):
     appels = []
     monkeypatch.setattr(tournoi_services, "bilan_periode", lambda *a, **k: appels.append("t"))
     monkeypatch.setattr(programme_services, "compter_publies", lambda *a, **k: appels.append("p"))
-    monkeypatch.setattr(organisation, "sorties_sans_pochette", lambda *a, **k: appels.append("s"))
     _parametre("module_tournois", "desactive")
     _parametre("module_programme", "desactive")
     html = benevole.get(EDITION).text
     assert 'id="tournois"' not in html and appels == []
+    # Rien des tournois ne s'affiche ; les sorties « démo », qui ne dépendent
+    # pas de ce module, restent (correctif du lot comptoir-3).
+    assert "Sorties « tournoi »" not in html
+    assert _e(organisation.phrase_sorties("demo", 0)) in html
 
 
 def test_programme_seul(tournois, benevole):

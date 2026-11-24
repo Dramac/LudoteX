@@ -605,6 +605,8 @@ Indicateurs :
     d'événement n'a pas été faite, et la page le dit. Elle renvoie un
     administrateur connecté à la clôture, et dit aux autres de la demander
     au bureau ; aucun bouton d'action sur la page ;
+  - les **sorties « démo »** du prêt, une phrase même à 0, toujours
+    affichée : une démo ne dépend pas du module des tournois ;
   - les **signalements du carnet** ouverts pendant la période (date
     d'ouverture), traités depuis ou encore à traiter, par catégorie
     (« Non classé » pour ceux qui n'en ont pas) ;
@@ -612,8 +614,7 @@ Indicateurs :
     des tirages dans la période), les **tournois et le programme** (quand
     l'un des deux modules est visible : tournois par état et inscriptions,
     à la date du tournoi, un tournoi sans date n'étant pas compté ; sorties
-    tournoi et sorties démo du prêt, une phrase chacune ; animations
-    publiées), et la **liste détaillée** des
+    tournoi du prêt, module des tournois visible ; animations publiées), et la **liste détaillée** des
     prêts.
 
   La section ne montre **que des comptes** : jamais le texte d'un

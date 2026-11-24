@@ -498,11 +498,11 @@ def lignes_organisation(g: dict) -> list[tuple[str, int]]:
     ]
 
 
-def lignes_tournois(tp: dict | None, sorties: dict | None) -> list[str]:
+def lignes_tournois(tp: dict | None, sorties: int | None) -> list[str]:
     """Les phrases du bloc « Tournois et programme » qui suivent le tableau
     des états, mêmes pour les deux exports et pour la page. `sorties` : les
-    sorties sans pochette par motif (`organisation.sorties_sans_pochette`),
-    ou None quand elles ne sont pas montrées."""
+    sorties « tournoi » du prêt, ou None quand le module est masqué (les
+    sorties « démo », elles, suivent le travail du comptoir)."""
     if not tp:
         return []
     phrases = [organisation.PHRASE_BASE_ILLISIBLE] if tp["illisible"] else []
@@ -516,7 +516,7 @@ def lignes_tournois(tp: dict | None, sorties: dict | None) -> list[str]:
         if tr["sans_date"]:
             phrases.append(organisation.phrase_tournois_sans_date(tr["sans_date"]))
     if sorties is not None:
-        phrases += [*organisation.phrases_sorties_sans_pochette(sorties),
+        phrases += [organisation.phrase_sorties_tournoi(sorties),
                     organisation.NOTE_SORTIES_TOURNOI]
     if tp["programme"]:
         phrases.append(organisation.phrase_programme(tp["programme"]["publies"]))
@@ -538,7 +538,9 @@ def feuille_organisation(wb, g: dict, org: dict, periode_txt: str, gras):
         ligne += 1
     for phrase in (organisation.DEF_ERREURS, organisation.DEF_OUBLIS,
                    organisation.phrase_ouverts(g.get("en_cours", 0),
-                                               org.get("periode_finie", False))):
+                                               org.get("periode_finie", False)),
+                   *(organisation.lignes_sorties_demo(org["sorties_demo"])
+                     if org.get("sorties_demo") is not None else ())):
         wo[f"A{ligne}"] = phrase
         ligne += 1
 
@@ -580,7 +582,7 @@ def feuille_organisation(wb, g: dict, org: dict, periode_txt: str, gras):
             wo.cell(row=ligne, column=1, value="Total").font = gras
             wo.cell(row=ligne, column=2, value=tr["total"])
             ligne += 1
-        for phrase in lignes_tournois(tp, org.get("sorties_sans_pochette")):
+        for phrase in lignes_tournois(tp, org.get("sorties_tournoi")):
             wo[f"A{ligne}"] = phrase
             ligne += 1
     return wo
@@ -1224,6 +1226,10 @@ def construire_pdf(data: dict, periode_txt: str,
             elements.append(p(phrase, note))
         elements.append(p(organisation.phrase_ouverts(g.get("en_cours", 0),
                                                       org.get("periode_finie", False))))
+        if org.get("sorties_demo") is not None:
+            phrase_demo, note_demo = organisation.lignes_sorties_demo(org["sorties_demo"])
+            elements.append(p(phrase_demo))
+            elements.append(p(note_demo, note))
         sig = org.get("signalements")
         if sig is not None:
             if sig["total"]:
@@ -1246,7 +1252,7 @@ def construire_pdf(data: dict, periode_txt: str,
                           in organisation.LIBELLES_ETATS_TOURNOI.items()]
                          + [["Total", tr["total"]]], [0.46, 0.18], hors_classement=1)
                  if tr and tr["total"] else None,
-                 *[p(phrase) for phrase in lignes_tournois(tp, org.get("sorties_sans_pochette"))])
+                 *[p(phrase) for phrase in lignes_tournois(tp, org.get("sorties_tournoi"))])
 
     # --- 7. Tombola (bénévoles seulement, et si elle a eu lieu) ---
     if "tombola" in sections and tombola:

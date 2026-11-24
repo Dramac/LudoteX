@@ -43,10 +43,14 @@ LES DÉFINITIONS :
   été depuis, à n'importe quelle date, sinon « à traiter » — les mots du
   carnet (`carnet.LIBELLES_ETAT`). Sans catégorie, ou avec une catégorie
   disparue : « Non classé ». Les catégories archivées gardent leur nom.
-- **Sorties sans pochette** : les prêts `motif = 'tournoi'`, puis
-  `motif = 'demo'` (lot comptoir-3), de la période (date de sortie), déjà
-  exclus de tous les autres chiffres. Une phrase par motif, même à 0, dans
-  l'ordre de `services.SORTIES_SANS_POCHETTE`.
+- **Sorties sans pochette** : les prêts `motif = 'tournoi'` et
+  `motif = 'demo'` (lot comptoir-3) de la période (date de sortie), déjà
+  exclus de tous les autres chiffres. Deux phrases, deux places, deux
+  règles d'affichage (décision de Simon, 2026-11-24) : la phrase du
+  TOURNOI dans le volet « Tournois et programme », seulement module
+  Tournois visible ; celle de la DÉMO avec le travail du comptoir (sous
+  les prêts encore ouverts), toujours, même à 0 — une démo ne dépend pas
+  des tournois. Chacune a sa note.
 """
 
 from __future__ import annotations
@@ -99,9 +103,12 @@ PHRASE_AUCUN_TOURNOI = "Aucun tournoi daté sur la période."
 PHRASE_BASE_ILLISIBLE = ("Les tournois et le programme n'ont pas pu être "
                          "calculés : leur base est absente ou illisible. Les "
                          "autres chiffres de la page n'en dépendent pas.")
-NOTE_SORTIES_TOURNOI = ("Boîtes sorties du prêt pour un tournoi ou une démo, "
-                        "comptées à part : elles n'entrent dans aucun autre "
-                        "chiffre de la page.")
+NOTE_SORTIES_TOURNOI = ("Boîtes sorties du prêt pour un tournoi, comptées à "
+                        "part : elles n'entrent dans aucun autre chiffre de "
+                        "la page.")
+NOTE_SORTIES_DEMO = ("Boîtes sorties du prêt pour une démo, comptées à "
+                     "part : elles n'entrent dans aucun autre chiffre de "
+                     "la page.")
 
 
 def phrase_ouverts(nb: int, periode_finie: bool) -> str:
@@ -178,10 +185,10 @@ def phrase_sorties_tournoi(nb: int) -> str:
     return phrase_sorties("tournoi", nb)
 
 
-def phrases_sorties_sans_pochette(sorties: dict) -> list[str]:
-    """Une phrase par sortie sans pochette, dans l'ordre de la règle, même
-    à 0 : `sorties` vient de `sorties_sans_pochette`."""
-    return [phrase_sorties(m, sorties.get(m, 0)) for m in SORTIES_SANS_POCHETTE]
+def lignes_sorties_demo(nb: int) -> list[str]:
+    """La phrase des sorties « démo » et sa note : page, Excel et PDF, avec
+    le travail du comptoir, quel que soit le module Tournois."""
+    return [phrase_sorties("demo", nb), NOTE_SORTIES_DEMO]
 
 
 def signalements(conn: sqlite3.Connection, debut: str | None = None,
