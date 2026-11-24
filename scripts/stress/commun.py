@@ -98,6 +98,9 @@ _MOTIFS = [
     ("occupe", re.compile(r"Rien n'a été enregistré")),
     ("tournoi_sorti", re.compile(r"Sorti pour un tournoi")),
     ("rendu_tournoi", re.compile(r"Retour de tournoi enregistré")),
+    # Sortie pour une démo (lot comptoir-3) : même écran que le tournoi.
+    ("demo_sortie", re.compile(r"Sorti pour une démo")),
+    ("rendu_demo", re.compile(r"Retour de démo enregistré")),
 ]
 
 

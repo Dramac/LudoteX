@@ -63,7 +63,7 @@
           <li>
             <strong>{{ b.id_exemplaire }}</strong>{% if b.id_exemplaire == info.id_exemplaire %} <span class="stats-note">(cette boîte)</span>{% endif %} —
             {% if b.motif is none %}disponible
-            {% elif b.motif == "tournoi" %}<span class="boites-sortie">en tournoi depuis {{ b.duree_txt }}</span> <span class="stats-note">(à {{ b.heure_sortie }})</span>
+            {% elif sortie_sans_pochette(b.motif) %}<span class="boites-sortie">{{ sortie_sans_pochette(b.motif).en }} depuis {{ b.duree_txt }}</span> <span class="stats-note">(à {{ b.heure_sortie }})</span>
             {% else %}<span class="boites-sortie">sortie depuis {{ b.duree_txt }}</span> <span class="stats-note">(à {{ b.heure_sortie }})</span>
             {% endif %}
           </li>

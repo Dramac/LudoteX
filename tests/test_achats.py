@@ -674,8 +674,8 @@ def test_feuille_jamais_sortis_pour_retrouver_la_boite(base, benevole):
     rangees = _rangees(feuille)
     i = [tuple(r) for r in rangees].index(achats.ENTETES_XLSX_JAMAIS_SORTIS)
     assert rangees[i + 1:] == [
-        ["Azul", "AZUL", 3, "Famille, Tactique", "15/03/2024", "Étagère B", "Table 3", None],
-        ["Splendor", "SPLENDOR", 1, None, None, None, None, "oui"],
+        ["Azul", "AZUL", 3, "Famille, Tactique", "15/03/2024", "Étagère B", "Table 3", None, None],
+        ["Splendor", "SPLENDOR", 1, None, None, None, None, "oui", None],
     ]
 
 

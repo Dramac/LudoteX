@@ -525,8 +525,10 @@
       {% endif %}
       {% if tr.sans_date %}<p class="stats-note">{{ orga.phrase_tournois_sans_date(tr.sans_date) }}</p>{% endif %}
     {% endif %}
-    {% if org.sorties_tournoi is not none %}
-      <p>{{ orga.phrase_sorties_tournoi(org.sorties_tournoi) }}</p>
+    {% if org.sorties_sans_pochette is not none %}
+      {% for phrase in orga.phrases_sorties_sans_pochette(org.sorties_sans_pochette) %}
+      <p>{{ phrase }}</p>
+      {% endfor %}
       <p class="stats-note">{{ orga.NOTE_SORTIES_TOURNOI }}</p>
     {% endif %}
     {% if tp.programme %}

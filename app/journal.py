@@ -240,6 +240,9 @@ ACTIONS = {
     "retour",
     "re_pret",
     "sortie_tournoi",
+    # Sortie pour une démo (lot comptoir-3) : comme le tournoi, sans pochette
+    # ni pièce d'identité — et donc jamais de numéro dans la ligne.
+    "sortie_demo",
     # Transfert de pochette (docs/conception-transfert-pochette.md §9) :
     # rendre une boîte et en prêter une autre sans déplacer la pochette.
     "transfert",

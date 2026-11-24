@@ -9,7 +9,7 @@ PRINCIPES (voir docs/specification.md §5.1, §6, §8)
 - Le serveur fait foi sur l'état : avant chaque action, on relit l'état réel
   pour gérer les conflits (deux bénévoles sur le même exemplaire) sans planter.
   Cette relecture et l'action qui suit se font DANS UNE MÊME TRANSACTION, côté
-  services (`preter_si_disponible`, `sortir_tournoi_si_disponible`) : deux
+  services (`preter_si_disponible`, `sortir_sans_pochette_si_disponible`) : deux
   appuis simultanés passaient sinon le contrôle tous les deux et ouvraient deux
   prêts sur une même boîte (voir docs/protocole-stress-test.md § 2).
 - L'écran est déclenché par un scan : le scanner (routes/scanner.py) redirige
@@ -35,6 +35,9 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
         minute et a donc été requalifié en erreur de prêt (hors statistiques,
         voir services._marquer_erreur_si_immediat). Le geste du bénévole est
         le même dans les deux cas.
+    {"type": "sortie_sans_pochette", "motif": m}          sortie pour un tournoi
+                                                          ou une démo (lot comptoir-3)
+    {"type": "rendu_sans_pochette",  "motif": m}          retour d'une telle sortie
     {"type": "deja_sorti",       "numero": n}             déjà sorti (no-op)
     {"type": "deja_disponible"}                           rien à rendre (no-op)
     {"type": "occupe"}                                    conflit d'accès simultané, rien d'enregistré
@@ -45,10 +48,12 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
         l'escalade a d'abord clôturé un prêt jamais scanné en retour sur la
         boîte emportée, `numero_libere` le numéro alors rendu au pot (None pour
         une sortie tournoi, qui n'en avait pas).
-    {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette"}
-        rien à transférer (boîte déjà rendue entre-temps, ou sortie tournoi)
+    {"type": "transfert_impossible", "raison": "rien_a_rendre"|"sans_pochette",
+                                     "motif": m (pour "sans_pochette")}
+        rien à transférer (boîte déjà rendue entre-temps, ou sortie sans
+        pochette : tournoi, démo)
     {"type": "retiree"}                                    boîte retirée du parc :
-        prêt, sortie tournoi ou re-prêt refusés par le service, rien
+        prêt, sortie sans pochette ou re-prêt refusés par le service, rien
         d'écrit (lot comptoir-6, `services.BoiteRetiree`)
     {"type": "nouveau_retire", "nom": …, "code": …}        transfert vers une
         boîte retirée : rien d'écrit, la pochette reste sur la boîte rendue
@@ -251,10 +256,11 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
         # « Où ranger le jeu » (docs/conception-rangement.md §6) : uniquement
         # calculé pour un retour (jamais bloquant si rien n'est renseigné —
         # emplacement_actuel renvoie alors None, le gabarit n'affiche rien).
-        # Pas de lecture inutile sur les autres écrans (prêt, sortie tournoi...).
+        # Pas de lecture inutile sur les autres écrans (prêt, sortie tournoi
+        # ou démo...).
         if emplacement_rangement is _AUTO:
             emplacement_rangement = None
-            if info and resultat and resultat.get("type") in ("rendu", "rendu_tournoi"):
+            if info and resultat and resultat.get("type") in ("rendu", "rendu_sans_pochette"):
                 emplacement_rangement = services.emplacement_actuel(conn, id_exemplaire)
         # Signalements ouverts (docs/conception-signalements.md §6) : calculés
         # SANS CONDITION sur `resultat`, contrairement à l'emplacement de
@@ -396,8 +402,8 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
             res = services.rendre(conn, id_exemplaire)
             if res.get("deja_disponible"):
                 return {"type": "deja_disponible"}
-            if res.get("motif") == "tournoi":
-                return {"type": "rendu_tournoi"}
+            if res.get("motif") in services.SORTIES_SANS_POCHETTE:
+                return {"type": "rendu_sans_pochette", "motif": res["motif"]}
             return {"type": "rendu", "numero": res["numero_libere"],
                     "erreur": bool(res.get("erreur"))}
 
@@ -408,11 +414,13 @@ def action_rendre(request: Request, id_exemplaire: str, _=Depends(exiger_jeton))
     return _rendu(request, id_exemplaire, resultat)
 
 
-@router.post("/{id_exemplaire}/tournoi")
-def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+def _sortir_sans_pochette(request: Request, id_exemplaire: str, motif: str):
     """
-    Sort l'exemplaire pour un TOURNOI (POST) : pas de PI, pas d'emplacement, hors
-    statistiques. Si déjà sorti, message `deja_sorti` (jamais d'erreur).
+    Le corps commun des sorties SANS POCHETTE (tournoi, démo — lot
+    comptoir-3, `services.SORTIES_SANS_POCHETTE`) : pas de PI, pas
+    d'emplacement, hors statistiques. Si déjà sorti, message `deja_sorti`
+    (jamais d'erreur). Le journal prend l'action propre au motif
+    (`sortie_tournoi`, `sortie_demo`).
     """
     conn = get_connection()
     try:
@@ -421,16 +429,31 @@ def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)
             return _rendu(request, id_exemplaire)
         # Même contrôle atomique que pour le prêt (voir action_preter).
         def ecrire():
-            res = services.sortir_tournoi_si_disponible(conn, id_exemplaire)
+            res = services.sortir_sans_pochette_si_disponible(conn, id_exemplaire, motif)
             if res.get("deja_sorti"):
                 return {"type": "deja_sorti", "numero": res["numero"]}
-            return {"type": "tournoi_sorti"}
+            return {"type": "sortie_sans_pochette", "motif": motif}
 
         resultat = _sans_conflit(conn, id_exemplaire, ecrire)
     finally:
         conn.close()
-    _journaliser_pret(request, "sortie_tournoi", info, resultat)
+    _journaliser_pret(request, services.SORTIES_SANS_POCHETTE[motif]["action_journal"],
+                      info, resultat)
     return _rendu(request, id_exemplaire, resultat)
+
+
+@router.post("/{id_exemplaire}/tournoi")
+def action_tournoi(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """Sort l'exemplaire pour un TOURNOI (POST) — voir `_sortir_sans_pochette`."""
+    return _sortir_sans_pochette(request, id_exemplaire, services.MOTIF_TOURNOI)
+
+
+@router.post("/{id_exemplaire}/demo")
+def action_demo(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """Sort l'exemplaire pour une DÉMO (POST, lot comptoir-3) : une boîte
+    montrée à une table, ni prêt au public ni tournoi — voir
+    `_sortir_sans_pochette`."""
+    return _sortir_sans_pochette(request, id_exemplaire, services.MOTIF_DEMO)
 
 
 @router.post("/{id_exemplaire}/repreter")
@@ -579,7 +602,8 @@ def _transfert_ou_refus(conn, id_rendu: str):
     if courant is None:
         return None, {"type": "transfert_impossible", "raison": "rien_a_rendre"}
     if courant["motif"] != "pret" or not courant["numero_pochette"]:
-        return None, {"type": "transfert_impossible", "raison": "sans_pochette"}
+        return None, {"type": "transfert_impossible", "raison": "sans_pochette",
+                      "motif": courant["motif"]}
     return courant["numero_pochette"], None
 
 
@@ -588,7 +612,8 @@ def _nouveau_retire(id_nouveau: str, nouvelle_info: dict) -> dict:
     return {"type": "nouveau_retire", "nom": nouvelle_info["nom"], "code": id_nouveau}
 
 
-def _escalade(id_nouveau: str, nouvelle_info: dict, numero_oubli) -> dict:
+def _escalade(id_nouveau: str, nouvelle_info: dict, numero_oubli,
+              motif: str | None = None) -> dict:
     """
     Décrit, pour le gabarit, le prêt oublié qui tient la boîte que le visiteur
     veut emporter — et que le bouton d'escalade clôturera
@@ -598,11 +623,13 @@ def _escalade(id_nouveau: str, nouvelle_info: dict, numero_oubli) -> dict:
     (confirmation avant le refus, scan après) la construisent ici, et le
     fragment `_pochette_oubliee.html` la lit telle quelle.
 
-    `numero` peut valoir 0 (sortie tournoi) : le fragment n'annonce alors
-    aucun casier à vérifier, il n'y en a pas.
+    `numero` peut valoir 0 (sortie tournoi ou démo) : le fragment n'annonce
+    alors aucun casier à vérifier, il n'y en a pas. `motif` dit lequel (lot
+    comptoir-3), pour que le bloc dise « pour un tournoi » ou « pour une
+    démo ».
     """
     return {"id_nouveau": id_nouveau, "nom": nouvelle_info["nom"],
-            "numero": numero_oubli}
+            "numero": numero_oubli, "motif": motif}
 
 
 def _contexte_transfert(request: Request, id_rendu: str, info: dict, numero: int,
@@ -780,7 +807,7 @@ def transfert_confirmation(request: Request, id_rendu: str, id_nouveau: str,
             autre = services.pret_en_cours(conn, id_nouveau)
             if autre is not None:
                 escalade = _escalade(id_nouveau, nouvelle_info,
-                                     autre["numero_pochette"])
+                                     autre["numero_pochette"], autre["motif"])
     finally:
         conn.close()
     return templates.TemplateResponse(
@@ -836,9 +863,11 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
             if res.get("rien_a_rendre"):
                 return {"type": "transfert_impossible", "raison": "rien_a_rendre"}
             if res.get("sans_pochette"):
-                return {"type": "transfert_impossible", "raison": "sans_pochette"}
+                return {"type": "transfert_impossible", "raison": "sans_pochette",
+                        "motif": res.get("motif")}
             if res.get("nouveau_sorti"):
-                return {"type": "nouveau_sorti", "numero": res["numero"]}
+                return {"type": "nouveau_sorti", "numero": res["numero"],
+                        "motif": res.get("motif")}
             return {"type": "transfert", "numero": res["numero"],
                     "meme_boite": res["meme_boite"],
                     "oubli_clos": res["oubli_clos"],
@@ -859,7 +888,7 @@ def transfert_confirmer(request: Request, id_rendu: str, id_nouveau: str,
                     request, id_rendu, info,
                     courant["numero_pochette"] if courant else None,
                     escalade=_escalade(id_nouveau, nouvelle_info,
-                                       resultat["numero"])),
+                                       resultat["numero"], resultat.get("motif"))),
             )
         if resultat["type"] != "transfert":
             # transfert_impossible / occupe / deja_sorti (conflit rare, voir
@@ -1032,7 +1061,7 @@ def echange_saisie(request: Request, id_nouveau: str, code: str = "",
     « saisie » pour un code de boîte (un test le verrouille).
 
     Le drapeau du clavier à lettres suit la redirection : si A est refusé
-    (pas sorti, sortie tournoi…), l'écran d'échange se réaffiche, et le
+    (pas sorti, sortie tournoi ou démo…), l'écran d'échange se réaffiche, et le
     bénévole qui tapait des lettres doit les retrouver.
     """
     saisi = (code or "").strip()
@@ -1073,8 +1102,9 @@ def echange_confirmation(request: Request, id_nouveau: str, id_rendu: str,
        le jeu que le visiteur veut, une page « exemplaire inconnu » lui
        ferait perdre B ;
     3. A = B → le bénévole a rescanné le jeu voulu : on le lui dit ;
-    4. A sans pochette à reprendre (pas sorti, ou sortie tournoi) → message
-       et rattrapages : **Prêter <B>** et, pour un tournoi, la page de A ;
+    4. A sans pochette à reprendre (pas sorti, ou sortie tournoi ou démo) →
+       message et rattrapages : **Prêter <B>** et, pour une sortie sans
+       pochette, la page de A ;
     5. B sortie entre-temps → la confirmation porte le bloc d'escalade du
        sens habituel (`_escalade`), « Confirmer » reste à côté ;
     sinon, la confirmation.
@@ -1103,9 +1133,10 @@ def echange_confirmation(request: Request, id_nouveau: str, id_rendu: str,
             return _ecran_echange(
                 request, id_nouveau, nouvelle_info,
                 refus={"raison": refus["raison"], "id_rendu": id_rendu,
-                       "nom_rendu": info["nom"]})
+                       "nom_rendu": info["nom"], "motif": refus.get("motif")})
         autre = services.pret_en_cours(conn, id_nouveau)
-        escalade = (_escalade(id_nouveau, nouvelle_info, autre["numero_pochette"])
+        escalade = (_escalade(id_nouveau, nouvelle_info, autre["numero_pochette"],
+                              autre["motif"])
                     if autre is not None else None)
     finally:
         conn.close()

@@ -275,11 +275,19 @@ Tests : `tests/test_services.py` (logique métier, base en mémoire) et
   (la règle de `resoudre_reference` est inchangée), mais
   `corrections_defaites` le signale comme une boîte qui quitte une fiche
   corrigée.
+- **Une sortie sans pochette ne se teste pas par `motif == "tournoi"`.**
+  Tournoi et démo (lot comptoir-3) sont deux motifs d'une même règle,
+  `services.SORTIES_SANS_POCHETTE` : sans pièce d'identité, numéro 0, hors
+  statistiques. Un lecteur demande `services.sortie_sans_pochette(motif)`
+  (aussi exposé aux gabarits), qui donne les mots à afficher ; le JS de
+  `/live` reçoit le mot déjà calculé (`genre`). Un motif ajouté là l'est
+  partout : écran de prêt, `/sortis`, fiche, écran de salle, journal,
+  organisation, achats.
 - **Une boîte se retire, elle ne se supprime pas.** `prets` et
   `signalements` la référencent sans cascade : la supprimer effacerait des
   prêts déjà comptés. `services.retirer_exemplaire` /
   `remettre_en_service` (section « Retirer une boîte du parc »), sous
-  `transaction` ; une boîte sortie est refusée. `preter`, `sortir_tournoi`
+  `transaction` ; une boîte sortie est refusée. `preter`, `sortir_sans_pochette`
   et `transferer_pochette` refusent une boîte retirée eux-mêmes
   (`BoiteRetiree`, que `routes/pret.py::_sans_conflit` traduit en message) :
   ne pas se fier au seul écran. Le code reste pris ; l'import met de côté

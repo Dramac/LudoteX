@@ -161,10 +161,50 @@ SEUIL_LONGUE_SORTIE_S = 3 * 3600
 # parfois des heures plus tard —, d'où son exclusion de la durée moyenne et un
 # « durée inconnue » dans la liste détaillée.
 MOTIF_OUBLI = "oubli"
-# Motifs des prêts AU PUBLIC, ceux que les statistiques comptent. `tournoi` et
-# `erreur` n'en font pas partie ; la durée moyenne, elle, ne lit que `pret`.
+# Motifs des prêts AU PUBLIC, ceux que les statistiques comptent. `tournoi`,
+# `demo` et `erreur` n'en font pas partie ; la durée moyenne, elle, ne lit
+# que `pret`.
 MOTIFS_COMPTES = ("pret", MOTIF_OUBLI)
 _SQL_MOTIFS_COMPTES = "IN (" + ", ".join(f"'{m}'" for m in MOTIFS_COMPTES) + ")"
+
+# SORTIES SANS POCHETTE (lot comptoir-3). Une boîte sort du prêt sans pièce
+# d'identité ni pochette, hors statistiques : pour un tournoi, ou pour la
+# montrer à une table (démonstration, animation). UNE SEULE RÈGLE pour tous
+# ses lecteurs — écran de prêt, `/sortis`, fiche, écran de salle, journal,
+# organisation, achats : ils demandent « ce motif est-il une sortie sans
+# pochette, et comment la dire ? » ici, au lieu de tester `== "tournoi"`. Un
+# motif ajouté plus tard l'est en une ligne, et nulle part à moitié.
+#
+# L'ordre du dictionnaire est celui des boutons de l'écran « Disponible » et
+# des sections de `/sortis`. `url` est le dernier segment de la route
+# d'écriture (`POST /pret/<id>/<url>`). Les mots servent tels quels : « Sorti
+# {pour} », « {en} depuis… », « {retour} », « Cette sortie est
+# {cette_sortie} ». `action_journal` appartient au vocabulaire fermé du
+# journal (`app/journal.py`).
+MOTIF_TOURNOI = "tournoi"
+MOTIF_DEMO = "demo"
+SORTIES_SANS_POCHETTE = {
+    MOTIF_TOURNOI: {"url": "tournoi", "nom": "tournoi", "pour": "pour un tournoi",
+                    "en": "en tournoi", "section": "En tournoi",
+                    "retour": "retour de tournoi",
+                    "cette_sortie": "un prêt de tournoi",
+                    "action_journal": "sortie_tournoi"},
+    MOTIF_DEMO: {"url": "demo", "nom": "démo", "pour": "pour une démo",
+                 "en": "en démo", "section": "En démo",
+                 "retour": "retour de démo",
+                 "cette_sortie": "une démo",
+                 "action_journal": "sortie_demo"},
+}
+
+
+def sortie_sans_pochette(motif: str | None, defaut: str | None = None) -> dict | None:
+    """Les mots d'une sortie sans pochette (voir `SORTIES_SANS_POCHETTE`),
+    ou None quand `motif` n'en est pas une (prêt au public, erreur, oubli,
+    boîte disponible). `defaut` : le motif dont prendre les mots quand
+    `motif` n'en est pas une — un refus d'avant le lot comptoir-3, qui ne
+    portait pas son motif, parlait toujours de tournoi. Exposée aux
+    gabarits."""
+    return SORTIES_SANS_POCHETTE.get(motif) or SORTIES_SANS_POCHETTE.get(defaut)
 
 
 def _duree_secondes(sortie_iso: str, retour_iso: str | None) -> float:
@@ -1043,8 +1083,8 @@ def lister_prets_en_cours(conn: sqlite3.Connection,
     ANCIENNES sorties en tête.
 
     Sert la page bénévole « Jeux sortis » (`/sortis`, lot bilan-1) : elle
-    INCLUT les sorties tournoi (le comptoir doit les voir), mais dans un bloc
-    distinct des prêts au public. L'ordre est celui du comptoir : la boîte
+    INCLUT les sorties sans pochette (tournoi, démo : le comptoir doit les
+    voir), chacune dans un bloc distinct des prêts au public. L'ordre est celui du comptoir : la boîte
     dehors depuis le plus longtemps est celle qu'on cherche d'abord. Le tri
     est fait ici, dans la requête, et pas à l'appel : la page est l'unique
     consommateur qui regarde l'ordre, et un seul domicile évite qu'un second
@@ -1060,12 +1100,14 @@ def lister_prets_en_cours(conn: sqlite3.Connection,
             par défaut.
 
     Returns:
-        dict {"pret": [...], "tournoi": [...]} ; chaque élément est un dict
+        dict {"pret": [...], "tournoi": [...], "demo": [...]} — une clé par
+        sortie sans pochette (`SORTIES_SANS_POCHETTE`) ; chaque élément est un dict
         {id_exemplaire, nom, numero_pochette, motif, date_sortie,
         sortie_locale, sortie_txt, duree_txt, longue}. `sortie_txt` se lit
         après « sortie » : « à 14:05 » si la sortie date du jour (heure
         locale), « le 15/11 à 14:05 » sinon ; `longue` vaut True pour un prêt au public dehors
-        depuis `SEUIL_LONGUE_SORTIE_S` ou plus, jamais pour un tournoi.
+        depuis `SEUIL_LONGUE_SORTIE_S` ou plus, jamais pour une sortie sans
+        pochette (tournoi, démo).
     """
     instant = instant or datetime.now(timezone.utc)
     aujourd_hui = instant.astimezone(FUSEAU_LOCAL).date()
@@ -1079,7 +1121,9 @@ def lister_prets_en_cours(conn: sqlite3.Connection,
         ORDER BY p.date_sortie ASC, e.id_exemplaire ASC
         """
     ).fetchall()
-    groupes: dict = {"pret": [], "tournoi": []}
+    # Un groupe par sortie sans pochette, même vide : la page affiche
+    # chacune de ses sections (« Aucun. »), dans l'ordre de la règle.
+    groupes: dict = {"pret": [], **{m: [] for m in SORTIES_SANS_POCHETTE}}
     for r in rows:
         d = dict(r)
         d["sortie_locale"] = format_local(d["date_sortie"])
@@ -1419,7 +1463,7 @@ def exemplaires_du_titre(conn: sqlite3.Connection, reference_titre: str) -> list
         Liste triée par code de boîte, de dicts {id_exemplaire, motif,
         heure_sortie, duree_txt} ; `motif` vaut None pour une boîte
         disponible (les deux autres clés sont alors vides), sinon le motif du
-        prêt en cours (« pret », « tournoi »).
+        prêt en cours (« pret », « tournoi », « demo »).
     """
     rows = conn.execute(
         f"""
@@ -1747,40 +1791,48 @@ def changer_pochette(conn: sqlite3.Connection, id_exemplaire: str,
     return {"statut": "change", "ancien": ancien, "numero": numero_voulu}
 
 
-# Numéro de pochette « factice » pour les sorties tournoi (pas d'emplacement).
+# Numéro de pochette « factice » des sorties SANS POCHETTE (tournoi, démo :
+# `SORTIES_SANS_POCHETTE`). Pas un casier : un marqueur « sans emplacement ».
+# Le nom est d'avant le lot comptoir-3, gardé pour ses appelants (scripts de
+# stress compris) ; le marqueur vaut pour toutes les sorties sans pochette.
 NUMERO_TOURNOI = 0
 
 
-def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
+def sortir_sans_pochette(conn: sqlite3.Connection, id_exemplaire: str,
+                         motif: str) -> None:
     """
-    Sort un exemplaire pour un TOURNOI (pas de PI, pas d'emplacement attribué).
+    Sort un exemplaire SANS PIÈCE D'IDENTITÉ ni pochette — pour un tournoi ou
+    une démo (`SORTIES_SANS_POCHETTE`, lot comptoir-3).
 
-    Crée une ligne de prêt `motif='tournoi'` avec `numero_pochette = 0` (marqueur
-    « sans emplacement »). L'exemplaire devient « sorti » (date_retour NULL) donc
-    indisponible, mais ces sorties sont EXCLUES des statistiques (filtre
-    `motif='pret'`). L'appelant garantit que l'exemplaire est disponible.
+    Crée une ligne de prêt `motif=<motif>` avec `numero_pochette = 0`
+    (marqueur « sans emplacement »). L'exemplaire devient « sorti »
+    (date_retour NULL) donc indisponible, mais ces sorties sont EXCLUES des
+    statistiques (filtre `MOTIFS_COMPTES`). La table `pochettes` n'est pas
+    touchée. L'appelant garantit que l'exemplaire est disponible.
 
-    Args:
-        conn: connexion SQLite ouverte.
-        id_exemplaire: identifiant de la boîte prélevée pour le tournoi.
+    Lève `BoiteRetiree` pour une boîte retirée du parc (lot comptoir-6), et
+    `ValueError` pour un motif qui n'est pas une sortie sans pochette : un
+    `prets.motif` n'est contraint par aucun CHECK, le garde-fou est ici.
     """
+    if motif not in SORTIES_SANS_POCHETTE:
+        raise ValueError(f"motif de sortie sans pochette inconnu : {motif!r}")
     with transaction(conn):
         _refuser_si_retiree(conn, id_exemplaire)   # lot comptoir-6, comme `preter`
         conn.execute(
             """
             INSERT INTO prets (id_exemplaire, numero_pochette, date_sortie, motif)
-            VALUES (?, ?, ?, 'tournoi')
+            VALUES (?, ?, ?, ?)
             """,
-            (id_exemplaire, NUMERO_TOURNOI, maintenant()),
+            (id_exemplaire, NUMERO_TOURNOI, maintenant(), motif),
         )
 
 
-def sortir_tournoi_si_disponible(conn: sqlite3.Connection,
-                                 id_exemplaire: str) -> dict:
+def sortir_sans_pochette_si_disponible(conn: sqlite3.Connection,
+                                       id_exemplaire: str, motif: str) -> dict:
     """
-    Sort un exemplaire pour un tournoi APRÈS contrôle atomique de sa
-    disponibilité — pendant de `preter_si_disponible`, même motif et même
-    remède (la route souffrait du même écart entre la vérification et l'action).
+    Sortie sans pochette APRÈS contrôle atomique de la disponibilité —
+    pendant de `preter_si_disponible`, même motif et même remède (deux
+    bénévoles qui sortent la même boîte au même instant : un seul l'obtient).
 
     Returns:
         {"sorti": True} si la sortie vient d'être enregistrée, ou
@@ -1790,8 +1842,21 @@ def sortir_tournoi_si_disponible(conn: sqlite3.Connection,
         courant = pret_en_cours(conn, id_exemplaire)
         if courant is not None:
             return {"deja_sorti": True, "numero": courant["numero_pochette"]}
-        sortir_tournoi(conn, id_exemplaire)
+        sortir_sans_pochette(conn, id_exemplaire, motif)
         return {"sorti": True}
+
+
+def sortir_tournoi(conn: sqlite3.Connection, id_exemplaire: str) -> None:
+    """Sortie pour un TOURNOI : `sortir_sans_pochette(..., MOTIF_TOURNOI)`.
+    Nom gardé pour ses appelants d'avant le lot comptoir-3 (tests)."""
+    sortir_sans_pochette(conn, id_exemplaire, MOTIF_TOURNOI)
+
+
+def sortir_tournoi_si_disponible(conn: sqlite3.Connection,
+                                 id_exemplaire: str) -> dict:
+    """`sortir_sans_pochette_si_disponible(..., MOTIF_TOURNOI)`, nom gardé
+    pour ses appelants d'avant le lot comptoir-3."""
+    return sortir_sans_pochette_si_disponible(conn, id_exemplaire, MOTIF_TOURNOI)
 
 
 def _effacer_pochette(conn: sqlite3.Connection, id_pret: int) -> None:
@@ -1833,9 +1898,10 @@ def _marquer_erreur_si_immediat(conn: sqlite3.Connection, courant: dict | sqlite
     `motif = 'pret'`, l'exclusion est acquise sans toucher une seule d'entre
     elles, et le fait reste consultable (compteur dédié sur /stats).
 
-    Les sorties tournoi (`motif = 'tournoi'`) ne sont jamais requalifiées :
-    elles sont déjà hors statistiques, et leur motif porte une information que
-    « erreur » effacerait.
+    Les sorties sans pochette (`motif = 'tournoi'` ou `'demo'`,
+    `SORTIES_SANS_POCHETTE`) ne sont jamais requalifiées : elles sont déjà
+    hors statistiques, et leur motif porte une information que « erreur »
+    effacerait.
 
     Args:
         conn: connexion SQLite ouverte, déjà en transaction.
@@ -1881,9 +1947,9 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
 
     Returns:
         {"numero_libere": n, "motif": "pret", "erreur": bool} pour un prêt au
-        public, {"motif": "tournoi"} pour un retour de tournoi (pas
-        d'emplacement), ou {"deja_disponible": True} si rien à clore (cas non
-        bloquant).
+        public, {"motif": <motif>} pour le retour d'une sortie sans pochette
+        (« tournoi », « demo » : pas d'emplacement), ou
+        {"deja_disponible": True} si rien à clore (cas non bloquant).
     """
     with transaction(conn):
         # Lecture SOUS le verrou d'écriture : deux retours simultanés sur la
@@ -1899,8 +1965,8 @@ def rendre(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
             (instant, courant["id_pret"]),
         )
         _effacer_pochette(conn, courant["id_pret"])
-        if courant["motif"] == "tournoi":
-            return {"motif": "tournoi"}
+        if courant["motif"] in SORTIES_SANS_POCHETTE:
+            return {"motif": courant["motif"]}
         erreur = _marquer_erreur_si_immediat(conn, courant, instant)
         # Prêt au public : on libère le numéro d'emplacement.
         liberer_numero(conn, numero)
@@ -2011,7 +2077,7 @@ def _clore_pret_oublie(conn: sqlite3.Connection, oublie: dict | sqlite3.Row) -> 
     fausse (elle court jusqu'au moment où quelqu'un s'en aperçoit), et un motif
     posé d'un seul côté rendrait les deux gestes incomparables dans les
     statistiques (fiche ouverte au lot agora-1, close au lot 13 de la série
-    pré-production). Les sorties tournoi gardent leur motif, déjà hors
+    pré-production). Les sorties tournoi et démo gardent leur motif, déjà hors
     statistiques et porteur d'une information qu'« oubli » effacerait — même
     règle que `_marquer_erreur_si_immediat`, qui n'est pas appelée : un prêt
     oublié n'est pas un prêt d'une minute.
@@ -2022,7 +2088,7 @@ def _clore_pret_oublie(conn: sqlite3.Connection, oublie: dict | sqlite3.Row) -> 
 
     Returns:
         Le numéro de pochette libéré, ou None quand il n'y en avait pas à
-        libérer — sortie tournoi (`motif != 'pret'`, numéro 0) ou ligne sans
+        libérer — sortie tournoi ou démo (`motif != 'pret'`, numéro 0) ou ligne sans
         numéro. Ne JAMAIS libérer dans ce cas : le numéro 0 est un marqueur
         « sans emplacement », pas un casier.
     """
@@ -2165,10 +2231,11 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
         comptoir-6) : rien n'est écrit ;
         {"rien_a_rendre": True} si `id_rendu` n'a aucun prêt en cours (un autre
         bénévole a pu l'enregistrer entre-temps) ;
-        {"sans_pochette": True} si le prêt en cours est une sortie tournoi, qui
-        n'a pas de pièce d'identité à transférer ;
-        {"nouveau_sorti": True, "numero": n} si `id_nouveau` est déjà sortie et
-        que `clore_oubli` est faux.
+        {"sans_pochette": True, "motif": m} si le prêt en cours est une sortie
+        sans pochette (tournoi, démo), qui n'a pas de pièce d'identité à
+        transférer ;
+        {"nouveau_sorti": True, "numero": n, "motif": m} si `id_nouveau` est
+        déjà sortie et que `clore_oubli` est faux.
         Dans les trois cas de refus, RIEN n'est écrit : l'écran garde ses
         boutons et le retour classique reste à un tap (« ne jamais bloquer »).
     """
@@ -2177,9 +2244,11 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
         if courant is None:
             return {"rien_a_rendre": True}
         numero = courant["numero_pochette"]
-        # Sortie tournoi (numéro 0) ou ligne sans numéro : rien à transférer.
+        # Sortie sans pochette (tournoi, démo : numéro 0) ou ligne sans
+        # numéro : rien à transférer. Le motif accompagne le refus, pour que
+        # l'écran dise « tournoi » ou « démo » (lot comptoir-3).
         if courant["motif"] != "pret" or not numero:
-            return {"sans_pochette": True}
+            return {"sans_pochette": True, "motif": courant["motif"]}
         meme_boite = id_nouveau == id_rendu
         # La boîte à emporter est retirée du parc : rien n'est écrit, la
         # pochette reste sur la boîte rendue (lot comptoir-6).
@@ -2192,7 +2261,8 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
             if autre is not None:
                 if not clore_oubli:
                     return {"nouveau_sorti": True,
-                            "numero": autre["numero_pochette"]}
+                            "numero": autre["numero_pochette"],
+                            "motif": autre["motif"]}
                 # ESCALADE : la nouvelle boîte est devant le bénévole, mais un
                 # prêt jamais scanné en retour la tient encore. On le clôt
                 # AVANT d'insérer quoi que ce soit — les DEUX clôtures doivent
@@ -2473,8 +2543,8 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
 # référencent par une clé étrangère sans cascade. La supprimer effacerait des
 # prêts déjà comptés dans un bilan publié. Retirée, elle disparaît du
 # catalogue, du rangement et des étiquettes, ne peut plus être prêtée ni
-# sortie pour un tournoi (`preter`, `sortir_tournoi` et le transfert le
-# refusent, pas seulement l'écran), et son QR dit « boîte retirée ». Son code
+# sortie pour un tournoi ou une démo (`preter`, `sortir_sans_pochette` et le
+# transfert le refusent, pas seulement l'écran), et son QR dit « boîte retirée ». Son code
 # reste pris : c'est la clé de ses prêts.
 #
 # Rien de personnel : une date, et un motif choisi dans une liste FERMÉE —
@@ -4915,7 +4985,7 @@ def emplacement_actuel(conn: sqlite3.Connection, id_exemplaire: str) -> str | No
     la boîte garde sa référence, §5) en contexte "local".
 
     Utilisé par l'écran de retour bénévole (/pret/<id>, résultats "rendu" et
-    "rendu_tournoi") : None si rien n'est renseigné -> le gabarit n'affiche
+    "rendu_sans_pochette") : None si rien n'est renseigné -> le gabarit n'affiche
     rien (jamais de "non renseigné" anxiogène, §6). Volontairement séparée de
     `info_exemplaire` (qui reste inchangée) pour ne pas faire fuiter les deux
     colonnes d'emplacement dans les gabarits publics qui réutilisent `info`.

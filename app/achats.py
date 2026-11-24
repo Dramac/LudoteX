@@ -103,6 +103,7 @@ from datetime import datetime, time, timedelta
 from app.comptoir import HEURE_DEBUT_JOURNEE, debut_heure, journee, lire_instant
 from app.categories_jeu import cle
 from app.services import (FUSEAU_LOCAL, FUSEAU_UTC, MOTIFS_COMPTES,
+                          SORTIES_SANS_POCHETTE,
                           condition_au_parc_pendant,
                           format_duree, lignes_export_catalogue, pluriel)
 
@@ -151,8 +152,9 @@ NOTE_DEFINITIONS = (
     "prêt à son retour, et au plus jusqu'à la fermeture du jour de son prêt : "
     "une boîte encore dehors le soir n'est pas comptée le lendemain. Un "
     "retour non scanné la laisse dehors jusqu'à ce qu'on s'en aperçoive, ce "
-    "qui peut allonger la durée. Les sorties pour un tournoi ne comptent "
-    "pas : le bureau choisit les jeux de tournoi. Le nombre de boîtes est "
+    "qui peut allonger la durée. Les sorties pour un tournoi ou une démo ne "
+    "comptent pas : ce n'est pas le public qui choisit ces jeux. Le nombre "
+    "de boîtes est "
     "celui d'aujourd'hui : un jeu dont une boîte a été ajoutée depuis peut "
     "ne pas apparaître."
 )
@@ -164,13 +166,16 @@ TITRE_JAMAIS_SORTIS = "Les jeux jamais sortis"
 FEUILLE_TOUS_SORTIS = "Tous sortis"
 FEUILLE_JAMAIS_SORTIS = "Jamais sortis"
 LIEN_EXCEL = "Télécharger l'Excel"
+# Une colonne par sortie sans pochette (lot comptoir-3) : « Sorti en tournoi
+# seulement », « Sorti en démo seulement », dans l'ordre de la règle.
 ENTETES_XLSX_JAMAIS_SORTIS = ("Jeu", "Référence", "Boîtes", "Catégories",
                               "Date d'achat", "Emplacement au local",
                               "Emplacement à l'événement",
-                              "Sorti en tournoi seulement")
+                              *(f"Sorti {mots['en']} seulement"
+                                for mots in SORTIES_SANS_POCHETTE.values()))
 NOTE_JAMAIS_SORTIS = (
     "Aucun prêt au public sur la période. Un jeu sorti seulement pour un "
-    "tournoi en fait partie : la dernière colonne le signale."
+    "tournoi ou une démo en fait partie : les dernières colonnes le signalent."
 )
 
 
@@ -337,7 +342,8 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
               `PRETS_MIN_UNE_BOITE` fois, même ordre,
           "ecartes_peu_pretes": jeux à une boîte écartés faute de prêts,
           "jamais_sortis": [{reference_titre, nom, nb_exemplaires,
-                             tournoi_seulement}], par nom ;
+                             tournoi_seulement, demo_seulement}], par nom —
+              une clé `<motif>_seulement` par sortie sans pochette ;
           "nb_titres": titres qui ont au moins une boîte
         }
     """
@@ -369,15 +375,17 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
 
     sorties: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     pretes_public: Counter = Counter()          # prêts au public de la période
-    pretes_tournoi: set[str] = set()
+    # Les titres sortis sans pochette sur la période, par motif (tournoi,
+    # démo) : ils signalent un jeu « jamais sorti » qui a pourtant servi.
+    sortis_sans_pochette: dict[str, set[str]] = {m: set() for m in SORTIES_SANS_POCHETTE}
     for l in lignes:
         motif, ref = l["motif"], l["reference_titre"]
         dans = ((debut is None or (l["date_sortie"] or "") >= debut)
                 and (fin is None or (l["date_sortie"] or "") < fin))
         if motif in MOTIFS_COMPTES and dans:
             pretes_public[ref] += 1
-        elif motif == "tournoi" and dans:
-            pretes_tournoi.add(ref)
+        elif motif in sortis_sans_pochette and dans:
+            sortis_sans_pochette[motif].add(ref)
         if motif not in MOTIFS_COMPTES or not plages:
             continue
         sortie = lire_instant(l["date_sortie"])
@@ -432,7 +440,8 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
     jamais_sortis = sorted(
         ({"reference_titre": t["reference_titre"], "nom": t["nom"],
           "nb_exemplaires": t["nb"],
-          "tournoi_seulement": t["reference_titre"] in pretes_tournoi}
+          **{f"{m}_seulement": t["reference_titre"] in refs
+             for m, refs in sortis_sans_pochette.items()}}
          for t in titres if t["reference_titre"] not in pretes_public),
         key=lambda r: (cle(r["nom"]), r["reference_titre"]))
 

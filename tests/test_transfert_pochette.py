@@ -175,7 +175,7 @@ def test_refus_si_sortie_tournoi(conn):
     services.sortir_tournoi(conn, "001")
     res = services.transferer_pochette(conn, "001", "002")
 
-    assert res == {"sans_pochette": True}
+    assert res == {"sans_pochette": True, "motif": "tournoi"}
     assert _nb_prets(conn) == 1
     assert services.est_sorti(conn, "001") is True    # rien n'a été clos
     assert services.est_sorti(conn, "002") is False
@@ -187,7 +187,7 @@ def test_refus_si_la_nouvelle_boite_est_deja_sortie(conn):
 
     res = services.transferer_pochette(conn, "001", "002")
 
-    assert res == {"nouveau_sorti": True, "numero": numero_002}
+    assert res == {"nouveau_sorti": True, "numero": numero_002, "motif": "pret"}
     # Le prêt de 001 est intact : le bénévole peut encore le rendre normalement.
     assert services.pret_en_cours(conn, "001")["numero_pochette"] == numero_001
     assert services.pret_en_cours(conn, "002")["numero_pochette"] == numero_002
@@ -255,7 +255,7 @@ def test_le_refus_reste_effectif_sans_le_drapeau(conn):
 
     res = services.transferer_pochette(conn, "001", "002")
 
-    assert res == {"nouveau_sorti": True, "numero": numero_002}
+    assert res == {"nouveau_sorti": True, "numero": numero_002, "motif": "pret"}
     assert _nb_prets(conn) == 2
     assert services.pret_en_cours(conn, "002")["numero_pochette"] == numero_002
 

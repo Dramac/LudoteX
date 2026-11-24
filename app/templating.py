@@ -140,6 +140,11 @@ templates.env.globals["pluriel"] = services.pluriel
 # locale : page de prêt, fiche publique et fiche d'administration.
 templates.env.globals["date_retrait_txt"] = services.date_retrait_txt
 
+# Les sorties sans pochette (tournoi, démo — lot comptoir-3) : la règle et ses
+# mots, au lieu d'un `motif == "tournoi"` écrit dans chaque gabarit.
+templates.env.globals["sortie_sans_pochette"] = services.sortie_sans_pochette
+templates.env.globals["SORTIES_SANS_POCHETTE"] = services.SORTIES_SANS_POCHETTE
+
 # Filtre d'affichage : un horodatage UTC ISO -> heure locale 'JJ/MM/AAAA HH:MM'.
 # Utilisé par les gabarits des tournois ({{ t.date_heure | dt_local }}).
 templates.env.filters["dt_local"] = services.format_local

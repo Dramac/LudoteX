@@ -264,8 +264,11 @@ CREATE TABLE IF NOT EXISTS signalements (
 # Un exemplaire est SORTI s'il possède une ligne avec date_retour NULL,
 # DISPONIBLE sinon (état déduit, pas stocké).
 #
-# motif — quatre valeurs. 'pret' est un prêt au public ; 'tournoi' marque une
-# sortie pour un tournoi (numéro de pochette 0) ; 'erreur' marque un prêt rendu
+# motif — cinq valeurs. 'pret' est un prêt au public ; 'tournoi' et 'demo'
+# (lot comptoir-3) marquent une SORTIE SANS POCHETTE — pour un tournoi, ou
+# pour montrer le jeu à une table —, sans pièce d'identité, au numéro de
+# pochette 0 et hors statistiques (services.SORTIES_SANS_POCHETTE, la règle
+# que lisent tous les écrans) ; 'erreur' marque un prêt rendu
 # en moins d'une minute, donc une mauvaise boîte scannée ou un visiteur qui se
 # ravise (services._marquer_erreur_si_immediat) ; 'oubli' un prêt au public
 # jamais scanné en retour, clos plus tard par un re-prêt ou par l'escalade du
@@ -273,7 +276,7 @@ CREATE TABLE IF NOT EXISTS signalements (
 # Les statistiques comptent 'pret' et 'oubli' (services.MOTIFS_COMPTES), mais
 # la durée moyenne ne lit que 'pret' : la durée d'un 'oubli' court jusqu'à la
 # découverte de l'oubli. 'erreur' et 'oubli' sont posés À LA CLÔTURE, jamais à
-# la création. Aucune migration n'a été nécessaire pour l'un ni pour l'autre —
+# la création. Aucune migration n'a été nécessaire pour eux, ni pour 'demo' —
 # la colonne existait déjà et son domaine n'est pas contraint en base ; les
 # lignes closes avant leur apparition gardent 'pret'.
 #
@@ -309,7 +312,7 @@ CREATE TABLE IF NOT EXISTS prets (
     numero_pochette  INTEGER,                     -- numéro attribué ; NULL = prêt clos (effacé), 0 = sortie tournoi en cours
     date_sortie      TEXT NOT NULL,               -- horodatage ISO 8601 (UTC)
     date_retour      TEXT,                        -- NULL tant que l'exemplaire est sorti
-    motif            TEXT NOT NULL DEFAULT 'pret', -- 'pret' (au public), 'tournoi' (sortie tournoi), 'erreur' (retour immédiat, hors statistiques) ou 'oubli' (retour non scanné, durée inconnue)
+    motif            TEXT NOT NULL DEFAULT 'pret', -- 'pret' (au public), 'tournoi' ou 'demo' (sorties sans pochette), 'erreur' (retour immédiat, hors statistiques) ou 'oubli' (retour non scanné, durée inconnue)
     FOREIGN KEY (id_exemplaire) REFERENCES exemplaires (id_exemplaire)
 );
 """
@@ -494,8 +497,8 @@ CREATE INDEX IF NOT EXISTS idx_signalements_ouverts
 #   - `numero_pochette IS NOT NULL` : depuis la décision D5, un prêt CLOS a son
 #     numéro effacé. La clause `date_retour IS NULL` l'écarte déjà, celle-ci
 #     rend l'intention lisible et protège d'une évolution du filtre.
-#   - `numero_pochette <> 0` : 0 est le marqueur des SORTIES TOURNOI
-#     (services.NUMERO_TOURNOI), forcément partagé par plusieurs sorties
+#   - `numero_pochette <> 0` : 0 est le marqueur des SORTIES SANS POCHETTE,
+#     tournoi et démo (services.NUMERO_TOURNOI), forcément partagé par plusieurs sorties
 #     simultanées. Sans cette clause, l'index refuserait une situation
 #     parfaitement légitime.
 #

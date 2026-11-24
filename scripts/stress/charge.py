@@ -86,7 +86,7 @@ class Etat:
             pass
 
     async def prendre(self, numero: int | None, boite: str) -> None:
-        if numero is None or numero == 0:  # 0 = sortie tournoi, pas de pochette
+        if numero is None or numero == 0:  # 0 = sortie tournoi ou démo, pas de pochette
             return
         async with self.verrou:
             occupant = self.pochettes.get(numero)
@@ -150,7 +150,7 @@ async def benevole(
                     type_resultat, num = lire_resultat(reponse.text)
                     etat.mesures.resultats[f"rendre: {type_resultat}"] += 1
                     await etat.rendre(num if num is not None else sorties.get(boite))
-                    if type_resultat not in ("rendu", "rendu_tournoi", "occupe"):
+                    if type_resultat not in ("rendu", "rendu_tournoi", "rendu_demo", "occupe"):
                         etat.mesures.incident(
                             f"retour inattendu sur « {boite} » : {type_resultat}"
                         )

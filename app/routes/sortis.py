@@ -39,9 +39,10 @@ LONGUEUR_MAX_RECHERCHE = 100
 def jeux_sortis(request: Request, q: str | None = None,
                 _=Depends(exiger_jeton)):
     """
-    Les jeux dehors à l'instant, prêts au public et sorties tournoi en deux
-    blocs. `q` filtre les deux blocs (nom du jeu ou code de la boîte, sans
-    casse ni accents) ; vide ou absent, tout est affiché.
+    Les jeux dehors à l'instant : prêts au public, puis un bloc par sortie
+    sans pochette (tournoi, démo — `services.SORTIES_SANS_POCHETTE`). `q`
+    filtre tous les blocs (nom du jeu ou code de la boîte, sans casse ni
+    accents) ; vide ou absent, tout est affiché.
     """
     q = (q or "").strip()[:LONGUEUR_MAX_RECHERCHE].strip()
     conn = get_connection()
@@ -49,13 +50,18 @@ def jeux_sortis(request: Request, q: str | None = None,
         en_cours = services.lister_prets_en_cours(conn)
     finally:
         conn.close()
-    nb_pret = len(en_cours["pret"])
-    nb_tournoi = len(en_cours["tournoi"])
     trouves = services.filtrer_sortis(en_cours, q)
+    # Un bloc par sortie sans pochette, dans l'ordre de la règle : ses mots,
+    # ses lignes filtrées, et son nombre AVANT filtre (le résumé).
+    sans_pochette = [
+        {"motif": motif, "mots": mots, "lignes": trouves[motif],
+         "nb": len(en_cours[motif])}
+        for motif, mots in services.SORTIES_SANS_POCHETTE.items()]
     return templates.TemplateResponse(
         request, "sortis.html",
         {"q": q,
-         "sortis_pret": trouves["pret"], "sortis_tournoi": trouves["tournoi"],
-         "nb_sortis": nb_pret + nb_tournoi, "nb_tournoi": nb_tournoi,
+         "sortis_pret": trouves["pret"], "sans_pochette": sans_pochette,
+         "nb_sortis": len(en_cours["pret"]) + sum(b["nb"] for b in sans_pochette),
+         "nb_trouves": len(trouves["pret"]) + sum(len(b["lignes"]) for b in sans_pochette),
          "seuil_heures": services.SEUIL_LONGUE_SORTIE_S // 3600},
     )

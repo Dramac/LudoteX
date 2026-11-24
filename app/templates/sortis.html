@@ -7,11 +7,14 @@
    Des cartes en liste (`.sorties`, docs/ui-composants.md § 9, « Liste de cartes ») plutôt que
    le tableau d'avant, qui coupait les noms au milieu des mots à 375 px. #}
 
-{% macro carte(p, tournoi=false) %}
+{# `sans_pochette` : les mots d'une sortie tournoi ou démo (lot comptoir-3,
+   `services.SORTIES_SANS_POCHETTE`), dits en TEXTE dans la pastille — la
+   classe `--tournoi` n'en est que l'habit, partagé par les deux. #}
+{% macro carte(p, sans_pochette=none) %}
   <li class="sortie{% if p.longue %} sortie--longue{% endif %}">
     <span class="sortie-nom">{{ p.nom }}</span>
-    {% if tournoi %}
-      <span class="sortie-pochette sortie-pochette--tournoi">tournoi</span>
+    {% if sans_pochette %}
+      <span class="sortie-pochette sortie-pochette--tournoi">{{ sans_pochette.nom }}</span>
     {% else %}
       <span class="sortie-pochette">pochette <strong>{{ p.numero_pochette }}</strong></span>
     {% endif %}
@@ -39,15 +42,15 @@
 
   {% if q %}
     <p class="stats-note" role="status">
-      {% set trouves = (sortis_pret | length) + (sortis_tournoi | length) %}
-      {{ trouves }} {{ pluriel(trouves, 'boîte trouvée', 'boîtes trouvées') }} pour « {{ q }} »,
+      {{ nb_trouves }} {{ pluriel(nb_trouves, 'boîte trouvée', 'boîtes trouvées') }} pour « {{ q }} »,
       sur {{ nb_sortis }} {{ pluriel(nb_sortis, 'sortie', 'sorties') }}.
     </p>
   {% endif %}
 
   {% if nb_sortis %}
     <p class="sorties-resume">
-      {{ nb_sortis }} {{ pluriel(nb_sortis, 'jeu dehors', 'jeux dehors') }} en ce moment{% if nb_tournoi %}, dont {{ nb_tournoi }} en tournoi{% endif %}.
+      {% set dont = [] %}{% for b in sans_pochette if b.nb %}{% set _ = dont.append(b.nb ~ " " ~ b.mots.en) %}{% endfor %}
+      {{ nb_sortis }} {{ pluriel(nb_sortis, 'jeu dehors', 'jeux dehors') }} en ce moment{% if dont %}, dont {{ dont | join(" et ") }}{% endif %}.
       Les plus anciennes sorties en tête.
     </p>
   {% else %}
@@ -62,11 +65,13 @@
     <p class="stats-note">Longue sortie : dehors depuis {{ seuil_heures }} heures ou plus.</p>
   {% else %}<p>Aucun.</p>{% endif %}
 
-  <h2>En tournoi <small>({{ sortis_tournoi | length }})</small></h2>
-  {% if sortis_tournoi %}
+  {% for b in sans_pochette %}
+  <h2>{{ b.mots.section }} <small>({{ b.lignes | length }})</small></h2>
+  {% if b.lignes %}
     <ul class="sorties">
-      {% for p in sortis_tournoi %}{{ carte(p, tournoi=true) }}{% endfor %}
+      {% for p in b.lignes %}{{ carte(p, b.mots) }}{% endfor %}
     </ul>
   {% else %}<p>Aucun.</p>{% endif %}
+  {% endfor %}
 </section>
 {% endblock %}

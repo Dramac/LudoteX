@@ -50,7 +50,7 @@
     <p><strong>{{ refus.nom_rendu }}</strong> n'est pas noté sorti : il n'y a
        pas de pochette à reprendre.</p>
     {%- else %}
-    <p><strong>{{ refus.nom_rendu }}</strong> est sorti pour un tournoi : il
+    <p><strong>{{ refus.nom_rendu }}</strong> est sorti {{ sortie_sans_pochette(refus.motif, "tournoi").pour }} : il
        n'a pas de pièce d'identité.</p>
     {%- endif %}
     {%- if refus.raison in ("rien_a_rendre", "sans_pochette") %}
@@ -64,7 +64,7 @@
     {%- if refus.raison == "sans_pochette" %}
     <a class="bouton bouton-secondaire" href="/pret/{{ refus.id_rendu }}">
       Ouvrir {{ refus.nom_rendu }} pour le rendre
-      <span class="bouton-sous">retour de tournoi</span>
+      <span class="bouton-sous">{{ sortie_sans_pochette(refus.motif, "tournoi").retour }}</span>
     </a>
     {%- endif %}
     {%- if refus.raison in ("rien_a_rendre", "sans_pochette") %}

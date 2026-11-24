@@ -51,6 +51,16 @@ router = APIRouter(tags=["live"])
 
 # Fenêtre « prochains tournois » : 2 heures (en minutes).
 FENETRE_A_VENIR_MIN = 120
+def _genre_mouvement(m: dict) -> str:
+    """Le mot d'une ligne du flux des mouvements de /live : « retour »,
+    le nom d'une sortie sans pochette (« tournoi », « démo »), sinon
+    « prêt » (`services.SORTIES_SANS_POCHETTE`, lot comptoir-3)."""
+    if m["type"] != "pret":
+        return "retour"
+    sortie = services.sortie_sans_pochette(m["motif"])
+    return sortie["nom"] if sortie else "prêt"
+
+
 # Nombre de lignes du flux des derniers mouvements. Le flux occupe désormais un
 # demi-bloc de la zone haute (et non plus une colonne pleine hauteur) : au-delà,
 # les lignes en trop ne tiendraient de toute façon pas à l'écran — la page les
@@ -660,11 +670,16 @@ def _collecter_donnees() -> dict:
     if panneaux["programme"]:
         resultat["animations"] = animations
     if panneaux["mouvements"]:
+        # `genre` : le mot affiché, CALCULÉ ICI (lot comptoir-3) — le JS de
+        # /live ne peut pas lire `services.SORTIES_SANS_POCHETTE`, et une
+        # copie de la règle en JS aurait fini par oublier un motif. `motif`
+        # reste publié tel quel, comme avant.
         resultat["mouvements"] = [
             {
                 "type": m["type"],
                 "nom": m["nom"],
                 "motif": m["motif"],
+                "genre": _genre_mouvement(m),
                 "heure": m["heure_locale"],
             }
             for m in mouvements

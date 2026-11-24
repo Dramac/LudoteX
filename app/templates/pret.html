@@ -214,13 +214,15 @@
           <p class="resultat-consigne">Retour immédiat : compté comme une erreur de prêt, hors statistiques.</p>
         {% endif %}
       </section>
-    {% elif resultat.type == "tournoi_sorti" %}
+    {# Sorties sans pochette (tournoi, démo — lot comptoir-3) : les mots
+       viennent de `services.SORTIES_SANS_POCHETTE`. #}
+    {% elif resultat.type == "sortie_sans_pochette" %}
       <section class="resultat resultat-info">
-        <p>Sorti pour un tournoi (sans pochette). Ce jeu n'est pas comptabilisé dans les statistiques.</p>
+        <p>Sorti {{ sortie_sans_pochette(resultat.motif).pour }} (sans pochette). Ce jeu n'est pas comptabilisé dans les statistiques.</p>
       </section>
-    {% elif resultat.type == "rendu_tournoi" %}
+    {% elif resultat.type == "rendu_sans_pochette" %}
       <section class="resultat resultat-ok">
-        <p>Retour de tournoi enregistré.</p>
+        <p>{{ sortie_sans_pochette(resultat.motif).retour | capitalize }} enregistré.</p>
       </section>
     {% elif resultat.type == "deja_sorti" %}
       <section class="resultat resultat-attention">
@@ -278,7 +280,7 @@
           {% if resultat.raison == "rien_a_rendre" %}
             Cette boîte a déjà été rendue par un autre bénévole entre-temps. Il n'y a plus de pochette à transférer.
           {% else %}
-            Cette sortie est un prêt de tournoi : il n'y a pas de pièce d'identité à transférer.
+            Cette sortie est {{ sortie_sans_pochette(resultat.motif, "tournoi").cette_sortie }} : il n'y a pas de pièce d'identité à transférer.
           {% endif %}
         </p>
       </section>
@@ -320,11 +322,12 @@
   <section class="carte">
     <h1>{{ info.nom }}</h1>
 
-    {% if pret_actuel and pret_actuel.motif == "tournoi" %}
-      <p class="etat etat-sorti">Sorti — tournoi</p>
+    {% set sans_pochette = sortie_sans_pochette(pret_actuel.motif) if pret_actuel else none %}
+    {% if sans_pochette %}
+      <p class="etat etat-sorti">Sorti — {{ sans_pochette.nom }}</p>
       <form method="post" action="/pret/{{ info.id_exemplaire }}/rendre">
         <button class="bouton bouton-principal" type="submit">
-          Rendre <span class="bouton-sous">retour de tournoi</span>
+          Rendre <span class="bouton-sous">{{ sans_pochette.retour }}</span>
         </button>
       </form>
     {% elif pret_actuel %}
@@ -335,7 +338,7 @@
          scan, il n'écrit rien.
 
          Transfert de pochette (docs/conception-transfert-pochette.md) :
-         UNIQUEMENT pour un prêt au public — jamais pour une sortie tournoi,
+         UNIQUEMENT pour un prêt au public — jamais pour une sortie tournoi ou démo,
          qui n'a pas de pièce d'identité (branche juste au-dessus). Un lien,
          pas un bouton POST : il OUVRE un écran, il n'écrit rien (§2 des
          trois pièges de la note d'implémentation). #}
@@ -361,7 +364,7 @@
       <p class="etat etat-retiree">Boîte retirée</p>
       <p>Cette boîte ne fait plus partie du catalogue depuis le
          {{ date_retrait_txt(info.retiree_le) }} : elle ne peut plus être
-         prêtée ni sortie pour un tournoi. Si vous l'avez en main, remettez-la
+         prêtée ni sortie pour un tournoi ou une démo. Si vous l'avez en main, remettez-la
          au bureau.</p>
       <a class="bouton bouton-secondaire" href="/catalogue">Voir le catalogue</a>
     {% else %}
@@ -378,11 +381,16 @@
         Échanger contre un jeu rendu
         <span class="bouton-sous">sa pièce d'identité reste dans sa pochette</span>
       </a>
-      <form method="post" action="/pret/{{ info.id_exemplaire }}/tournoi">
+      {# Sorties sans pochette (lot comptoir-3) : tournoi, puis démo, dans
+         l'ordre de `services.SORTIES_SANS_POCHETTE`. Sous Prêter et
+         l'échange : elles ne peuvent pas repousser Prêter hors de l'écran. #}
+      {% for sp in SORTIES_SANS_POCHETTE.values() %}
+      <form method="post" action="/pret/{{ info.id_exemplaire }}/{{ sp.url }}">
         <button class="bouton bouton-secondaire" type="submit">
-          Sortir pour un tournoi <span class="bouton-sous">sans pièce d'identité, hors statistiques</span>
+          Sortir {{ sp.pour }} <span class="bouton-sous">sans pièce d'identité, hors statistiques</span>
         </button>
       </form>
+      {% endfor %}
     {% endif %}
 
     <p class="lien-fiche">

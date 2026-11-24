@@ -144,7 +144,7 @@ refuser la ligne. Une catégorie que plus aucun jeu ne porte disparaît.
 | `numero_pochette` | numéro attribué pour ce prêt ; **effacé une fois le prêt clos** (voir ci-dessous) |
 | `date_sortie` | horodatage de sortie |
 | `date_retour` | horodatage de retour ; **vide tant que le jeu est sorti** |
-| `motif` | `pret` (au public), `tournoi` (sortie pour un tournoi, sans pochette), `erreur` (rendu en moins d'une minute), `oubli` (retour jamais scanné, clos plus tard) — voir §7 |
+| `motif` | `pret` (au public), `tournoi` ou `demo` (sorties sans pochette : pour un tournoi, pour une démo), `erreur` (rendu en moins d'une minute), `oubli` (retour jamais scanné, clos plus tard) — voir §7 |
 
 > **Durée de vie du numéro de pochette — décision du 2026-07-18.**
 > Le numéro de pochette est une donnée **sensible** : il désigne le casier où
@@ -211,7 +211,7 @@ supprimée.
   boîte perdue, abîmée, donnée ou vendue est **retirée**, jamais supprimée :
   ses prêts la référencent. Retirée, elle quitte le catalogue, la
   disponibilité, les étiquettes et le rangement ; elle ne peut plus être
-  prêtée ni sortie pour un tournoi (le refus est dans le service, pas
+  prêtée ni sortie pour un tournoi ou une démo (le refus est dans le service, pas
   seulement à l'écran), et son QR affiche « Boîte retirée », jamais une
   erreur. Une boîte sortie ne se retire pas : on la rend d'abord. Le retrait
   se fait en administration, avec une confirmation, et s'annule
@@ -287,14 +287,17 @@ Déclenché par un scan. Le système connaît l'état de l'exemplaire et
 
 **Cas — exemplaire DISPONIBLE** (pas d'ambiguïté)
 → Action principale : **Prêter**. Le système attribue le plus petit numéro de
-pochette libre et l'affiche en grand. Un seul tap. Deux actions secondaires
+pochette libre et l'affiche en grand. Un seul tap. Trois actions secondaires
 suivent :
 - **Échanger contre un jeu rendu** — le visiteur a tendu d'abord le jeu qu'il
   veut, et rapporte aussi une boîte : on scanne celle-ci, et c'est le
   **transfert** du cas SORTI, pris par l'autre bout (même confirmation, même
   écriture ; `docs/conception-transfert-pochette.md` §5).
-- **Sortir pour un tournoi** : sans pièce d'identité ni pochette, hors
-  statistiques.
+- **Sortir pour un tournoi**, puis **Sortir pour une démo** (une boîte
+  qu'un bénévole montre à une table) : sans pièce d'identité ni pochette,
+  hors statistiques. Ce sont les deux **sorties sans pochette** ; une boîte
+  ainsi sortie n'offre que **Rendre** (« retour de tournoi », « retour de
+  démo »), jamais le transfert ni le re-prêt.
 
 **Cas — exemplaire SORTI** (ambiguïté possible, choix explicite requis)
 - **Rendre** *(action principale)* — clôt le prêt en cours et libère la
@@ -319,11 +322,11 @@ physique peut diverger de la base. Un conflit entre deux bénévoles sur la mêm
 boîte donne un message, jamais une erreur (§2).
 
 **Jeux sortis** (`/sortis`, bénévole) — la liste des boîtes dehors à
-l'instant, pour retrouver un jeu et sa pochette au comptoir : prêts au public
-et sorties tournoi en deux blocs, les plus anciennes sorties en tête, une
-recherche par nom ou par code. Un prêt au public dehors depuis 3 heures ou
-plus porte la mention « Longue sortie » ; une sortie tournoi jamais, un
-tournoi long étant normal. La page relève du prêt et non des statistiques :
+l'instant, pour retrouver un jeu et sa pochette au comptoir : prêts au public,
+sorties tournoi et sorties démo en trois blocs, les plus anciennes sorties
+en tête, une recherche par nom ou par code. Un prêt au public dehors depuis
+3 heures ou plus porte la mention « Longue sortie » ; une sortie sans
+pochette jamais, un tournoi ou une démo longs étant normaux. La page relève du prêt et non des statistiques :
 elle reste ouverte aux bénévoles quel que soit le réglage de ce module.
 
 ### 5.2 Catalogue public (consultation)
@@ -472,7 +475,9 @@ exclu de la durée moyenne et affiché à part (« retours non scannés »). Un
 prêt **fermé par la clôture** de fin d'événement reste un vrai prêt, compté
 dans le total, mais sa « durée » court jusqu'à la clôture : il est lui aussi
 exclu de la durée moyenne, reconnu comme le fait le comptoir (ci-dessous). Les
-sorties tournoi et les erreurs de prêt sont hors statistiques.
+sorties sans pochette (tournoi, démo) et les erreurs de prêt sont hors
+statistiques ; les sorties tournoi et démo sont seulement comptées à part,
+dans l'organisation.
 
 Indicateurs :
 
@@ -497,9 +502,9 @@ Indicateurs :
     pour eux, « toutes dehors » veut seulement dire « prêté », et c'est le
     nombre de prêts qui dit la demande (calibré sur l'édition 2026, où 163
     des 182 jeux concernés n'avaient qu'une boîte). Une boîte est
-    dehors de son prêt au public à son retour ; une sortie tournoi ne la
-    rend pas dehors (le bureau choisit les jeux de tournoi, leur absence
-    est voulue), une erreur de prêt non plus. Seules comptent les heures
+    dehors de son prêt au public à son retour ; une sortie tournoi ou démo
+    ne la rend pas dehors (ce n'est pas le public qui choisit ces jeux,
+    leur absence est voulue), une erreur de prêt non plus. Seules comptent les heures
     d'ouverture du comptoir heure par heure (par journée, de la première à
     la dernière heure active), et une sortie ne compte que dans la journée
     où elle a commencé : une boîte encore dehors le soir, presque toujours
@@ -520,7 +525,8 @@ Indicateurs :
   - les **jeux jamais sortis** : les titres qui ont au moins une boîte et
     aucun prêt au public dans la période — on part de **tous les titres du
     catalogue** (« catalogue d'abord »), faute de quoi ils seraient
-    invisibles. Un jeu sorti seulement en tournoi en fait partie, signalé.
+    invisibles. Un jeu sorti seulement en tournoi ou en démo en fait
+    partie, signalé.
     La page en donne le nombre ; la liste est une feuille de l'Excel, avec
     de quoi retrouver chaque boîte (catégories, date d'achat, emplacements).
     Elle remplace le palmarès des moins prêtés, dont le bas n'était fait
@@ -606,7 +612,8 @@ Indicateurs :
     des tirages dans la période), les **tournois et le programme** (quand
     l'un des deux modules est visible : tournois par état et inscriptions,
     à la date du tournoi, un tournoi sans date n'étant pas compté ; sorties
-    tournoi du prêt ; animations publiées), et la **liste détaillée** des
+    tournoi et sorties démo du prêt, une phrase chacune ; animations
+    publiées), et la **liste détaillée** des
     prêts.
 
   La section ne montre **que des comptes** : jamais le texte d'un

@@ -34,6 +34,7 @@ from io import BytesIO
 # littéral par défaut (voir app/services.py) — il n'est jamais recopié.
 from app import achats, comptoir, gouts, organisation
 from app.services import (COULEUR_ASSOCIATION_DEFAUT, DEF_DUREE_MOYENNE,
+                          SORTIES_SANS_POCHETTE,
                           couleur_texte_sur, nom_association, nuances_theme)
 
 
@@ -330,7 +331,8 @@ def feuille_jamais_sortis(wb, achats_donnees: dict, periode_txt: str, gras):
                 (r["nom"], r["reference_titre"], r["nb_exemplaires"],
                  r.get("categories", ""), r.get("date_achat", ""),
                  r.get("emplacement_local", ""), r.get("emplacement_evenement", ""),
-                 "oui" if r["tournoi_seulement"] else ""), start=1):
+                 *("oui" if r[f"{m}_seulement"] else ""
+                   for m in SORTIES_SANS_POCHETTE)), start=1):
             ecrire_cellule(wj, ligne, col, valeur)
     return wj
 
@@ -496,9 +498,11 @@ def lignes_organisation(g: dict) -> list[tuple[str, int]]:
     ]
 
 
-def lignes_tournois(tp: dict | None, sorties: int | None) -> list[str]:
+def lignes_tournois(tp: dict | None, sorties: dict | None) -> list[str]:
     """Les phrases du bloc « Tournois et programme » qui suivent le tableau
-    des états, mêmes pour les deux exports et pour la page."""
+    des états, mêmes pour les deux exports et pour la page. `sorties` : les
+    sorties sans pochette par motif (`organisation.sorties_sans_pochette`),
+    ou None quand elles ne sont pas montrées."""
     if not tp:
         return []
     phrases = [organisation.PHRASE_BASE_ILLISIBLE] if tp["illisible"] else []
@@ -512,7 +516,7 @@ def lignes_tournois(tp: dict | None, sorties: int | None) -> list[str]:
         if tr["sans_date"]:
             phrases.append(organisation.phrase_tournois_sans_date(tr["sans_date"]))
     if sorties is not None:
-        phrases += [organisation.phrase_sorties_tournoi(sorties),
+        phrases += [*organisation.phrases_sorties_sans_pochette(sorties),
                     organisation.NOTE_SORTIES_TOURNOI]
     if tp["programme"]:
         phrases.append(organisation.phrase_programme(tp["programme"]["publies"]))
@@ -576,7 +580,7 @@ def feuille_organisation(wb, g: dict, org: dict, periode_txt: str, gras):
             wo.cell(row=ligne, column=1, value="Total").font = gras
             wo.cell(row=ligne, column=2, value=tr["total"])
             ligne += 1
-        for phrase in lignes_tournois(tp, org.get("sorties_tournoi")):
+        for phrase in lignes_tournois(tp, org.get("sorties_sans_pochette")):
             wo[f"A{ligne}"] = phrase
             ligne += 1
     return wo
@@ -1242,7 +1246,7 @@ def construire_pdf(data: dict, periode_txt: str,
                           in organisation.LIBELLES_ETATS_TOURNOI.items()]
                          + [["Total", tr["total"]]], [0.46, 0.18], hors_classement=1)
                  if tr and tr["total"] else None,
-                 *[p(phrase) for phrase in lignes_tournois(tp, org.get("sorties_tournoi"))])
+                 *[p(phrase) for phrase in lignes_tournois(tp, org.get("sorties_sans_pochette"))])
 
     # --- 7. Tombola (bénévoles seulement, et si elle a eu lieu) ---
     if "tombola" in sections and tombola:

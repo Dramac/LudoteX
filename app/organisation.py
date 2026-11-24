@@ -43,15 +43,17 @@ LES DÉFINITIONS :
   été depuis, à n'importe quelle date, sinon « à traiter » — les mots du
   carnet (`carnet.LIBELLES_ETAT`). Sans catégorie, ou avec une catégorie
   disparue : « Non classé ». Les catégories archivées gardent leur nom.
-- **Sorties tournoi** : les prêts `motif = 'tournoi'` de la période (date de
-  sortie), déjà exclus de tous les autres chiffres.
+- **Sorties sans pochette** : les prêts `motif = 'tournoi'`, puis
+  `motif = 'demo'` (lot comptoir-3), de la période (date de sortie), déjà
+  exclus de tous les autres chiffres. Une phrase par motif, même à 0, dans
+  l'ordre de `services.SORTIES_SANS_POCHETTE`.
 """
 
 from __future__ import annotations
 
 import sqlite3
 
-from app.services import _filtre_periode, pluriel
+from app.services import SORTIES_SANS_POCHETTE, _filtre_periode, pluriel
 
 TITRE_SECTION = "Organisation"
 PHRASE_SENS = ("Le travail au comptoir et l'état des boîtes : ce qui a coincé "
@@ -97,9 +99,9 @@ PHRASE_AUCUN_TOURNOI = "Aucun tournoi daté sur la période."
 PHRASE_BASE_ILLISIBLE = ("Les tournois et le programme n'ont pas pu être "
                          "calculés : leur base est absente ou illisible. Les "
                          "autres chiffres de la page n'en dépendent pas.")
-NOTE_SORTIES_TOURNOI = ("Boîtes sorties du prêt pour un tournoi, comptées à "
-                        "part : elles n'entrent dans aucun autre chiffre de "
-                        "la page.")
+NOTE_SORTIES_TOURNOI = ("Boîtes sorties du prêt pour un tournoi ou une démo, "
+                        "comptées à part : elles n'entrent dans aucun autre "
+                        "chiffre de la page.")
 
 
 def phrase_ouverts(nb: int, periode_finie: bool) -> str:
@@ -164,9 +166,22 @@ def phrase_programme_sans_date(nb: int) -> str:
     return f"{nb} animations publiées sans date ne sont pas comptées."
 
 
+def phrase_sorties(motif: str, nb: int) -> str:
+    """« Sorties « tournoi » du prêt : 10. », « Sorties « démo » du prêt : 0. »"""
+    return f"Sorties « {SORTIES_SANS_POCHETTE[motif]['nom']} » du prêt : {nb}."
+
+
 def phrase_sorties_tournoi(nb: int) -> str:
-    """« Sorties tournoi du prêt : 10. »"""
-    return f"Sorties « tournoi » du prêt : {nb}."
+    """« Sorties tournoi du prêt : 10. » — `phrase_sorties` pour un tournoi,
+    nom gardé pour les tests qui vérifient la phrase d'avant le lot
+    comptoir-3."""
+    return phrase_sorties("tournoi", nb)
+
+
+def phrases_sorties_sans_pochette(sorties: dict) -> list[str]:
+    """Une phrase par sortie sans pochette, dans l'ordre de la règle, même
+    à 0 : `sorties` vient de `sorties_sans_pochette`."""
+    return [phrase_sorties(m, sorties.get(m, 0)) for m in SORTIES_SANS_POCHETTE]
 
 
 def signalements(conn: sqlite3.Connection, debut: str | None = None,
@@ -211,10 +226,15 @@ def signalements(conn: sqlite3.Connection, debut: str | None = None,
             "lignes": lignes}
 
 
-def sorties_tournoi(conn: sqlite3.Connection, debut: str | None = None,
-                    fin: str | None = None) -> int:
-    """Les sorties tournoi (prêts `motif = 'tournoi'`) sorties pendant la période."""
+def sorties_sans_pochette(conn: sqlite3.Connection, debut: str | None = None,
+                          fin: str | None = None) -> dict[str, int]:
+    """Les sorties sans pochette (tournoi, démo) sorties pendant la période,
+    comptées par motif : {"tournoi": n, "demo": m}, chaque motif présent
+    même à 0."""
     f, params = _filtre_periode("date_sortie", debut, fin)
-    return conn.execute(
-        f"SELECT COUNT(*) FROM prets WHERE motif = 'tournoi'{f}", params
-    ).fetchone()[0]
+    marques = ", ".join("?" for _ in SORTIES_SANS_POCHETTE)
+    comptes = dict(conn.execute(
+        f"SELECT motif, COUNT(*) FROM prets WHERE motif IN ({marques}){f} "
+        "GROUP BY motif", (*SORTIES_SANS_POCHETTE, *params)
+    ).fetchall())
+    return {m: comptes.get(m, 0) for m in SORTIES_SANS_POCHETTE}

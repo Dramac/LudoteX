@@ -148,7 +148,7 @@ un autre jeu pour le visiteur. Le segment d'URL est `echange`, sans accent.
 | La seconde boîte est **déjà sortie** | Rien n'est écrit d'emblée : message, et on reste sur l'écran de transfert. Le message porte désormais un bouton d'**escalade** — voir §6 bis. |
 | La seconde boîte n'existe pas dans le catalogue | Message, écran de transfert réaffiché, champ prérempli (patron de `/scanner/saisie`). |
 | La première boîte a été rendue entre-temps par un autre bénévole | Rien n'est écrit. Message : il n'y a plus de pochette à transférer. |
-| La première boîte est une **sortie tournoi** (pochette n°0) | Le bouton n'est pas affiché — il n'y a pas de pièce d'identité. Le service refuse également, l'URL étant forgeable. |
+| La première boîte est une **sortie tournoi ou démo** (pochette n°0) | Le bouton n'est pas affiché — il n'y a pas de pièce d'identité. Le service refuse également, l'URL étant forgeable ; le message dit « un prêt de tournoi » ou « une démo » (lot comptoir-3). |
 | Deux bénévoles transfèrent la même boîte au même instant | Le second se heurte au verrou d'écriture ou aux index UNIQUE, et reçoit le message « occupé » existant. Rien n'est enregistré deux fois. |
 
 **Dans le sens inverse (§5 bis)**, rien n'est écrit avant Confirmer, et la
@@ -158,7 +158,7 @@ caméra reste active sur l'écran d'échange :
 |---|---|
 | La boîte rendue scannée est **la boîte emportée** elle-même | « C'est le jeu que le visiteur emporte. Scannez celui qu'il rapporte. » |
 | La boîte rendue **n'est pas sortie** (déjà rendue, jamais prêtée) | « **A** n'est pas noté sorti : il n'y a pas de pochette à reprendre. » Bouton **Prêter B** (le prêt ordinaire). |
-| La boîte rendue est une **sortie tournoi** | « **A** est sorti pour un tournoi : il n'a pas de pièce d'identité. » Bouton **Prêter B** et lien vers l'écran de A (**Rendre**, retour de tournoi). |
+| La boîte rendue est une **sortie tournoi** (ou **démo**) | « **A** est sorti pour un tournoi (pour une démo) : il n'a pas de pièce d'identité. » Bouton **Prêter B** et lien vers l'écran de A (**Rendre**, retour de tournoi ou de démo). |
 | La boîte rendue **n'existe pas** (code tapé ou QR étranger) | Message de `message_code_introuvable` sur l'écran d'échange, et non la page « exemplaire inconnu » du sens habituel : le bénévole tient déjà B, il ne doit pas la perdre. |
 | La boîte emportée est **sortie** à l'ouverture de l'écran d'échange | L'écran de B, avec ses propres actions : pas d'écran de scan pour rien. |
 | La boîte emportée est **prêtée entre l'écran et la confirmation** | La confirmation porte le bloc d'escalade du §6 bis, **Confirmer** à côté : le POST fait foi. |
@@ -212,8 +212,8 @@ prochain emprunt »). Cette formulation a **un seul domicile**, le fragment
 `app/templates/_pochette_oubliee.html`, partagé avec le message du re-prêt qui
 libère lui aussi un numéro en silence.
 
-**Cas de la sortie tournoi jamais rentrée** (atteignable) : le prêt oublié est
-clôturé, mais **aucun numéro n'est libéré** — le numéro 0 est un marqueur
+**Cas de la sortie tournoi ou démo jamais rentrée** (atteignable) : le prêt
+oublié est clôturé, mais **aucun numéro n'est libéré** — le numéro 0 est un marqueur
 « sans emplacement », pas un casier.
 
 **Le drapeau n'est qu'une autorisation** : si la boîte a été rendue entre
@@ -228,7 +228,7 @@ jusqu'à la découverte de l'oubli. Une seule fonction écrit cette clôture,
 plus diverger. Les statistiques comptent ces prêts (ce sont de vrais prêts),
 mais la durée moyenne les ignore, et la liste détaillée comme les exports
 affichent « non scanné » et « inconnue » à la place d'un retour et d'une durée
-inventés. Les sorties tournoi gardent leur motif. Les lignes closes avant ce
+inventés. Les sorties tournoi et démo gardent leur motif. Les lignes closes avant ce
 lot gardent `pret` : rien ne permet de les distinguer, aucune migration ne les
 requalifie.
 

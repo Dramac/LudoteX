@@ -161,7 +161,9 @@ def _organisation(request: Request, conn, debut_utc: str | None,
 
     Returns:
         {"signalements", "voir_carnet", "tournois_programme",
-         "sorties_tournoi" (None si le module tournois est masqué),
+         "sorties_sans_pochette" ({motif: n} des sorties tournoi et démo,
+             `organisation.sorties_sans_pochette` ; None si le module
+             tournois est masqué, comme avant le lot comptoir-3),
          "periode_finie"}
     """
     if not auth.peut_ecrire(request):
@@ -171,8 +173,9 @@ def _organisation(request: Request, conn, debut_utc: str | None,
         "signalements": organisation.signalements(conn, debut_utc, fin_utc),
         "voir_carnet": module_visible(request, "maintenance"),
         "tournois_programme": tp,
-        "sorties_tournoi": (organisation.sorties_tournoi(conn, debut_utc, fin_utc)
-                            if tp and tp["voir_tournois"] else None),
+        "sorties_sans_pochette": (
+            organisation.sorties_sans_pochette(conn, debut_utc, fin_utc)
+            if tp and tp["voir_tournois"] else None),
         # Une période dont la fin est passée : des prêts encore ouverts y
         # veulent dire que la clôture n'a pas été faite.
         "periode_finie": bool(fin_utc) and fin_utc <= services.maintenant(),

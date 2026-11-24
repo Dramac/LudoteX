@@ -41,20 +41,21 @@
    il y a une pochette à vérifier — « Pochette vide, je continue » (clôture
    du prêt oublié, puis transfert) et « Pochette pas vide — prévenir le
    bureau » (aucun transfert, un signalement). Une seule pour une sortie
-   tournoi, qui n'a pas de pochette. Affiché sur l'écran de confirmation AVANT
+   tournoi ou démo, qui n'a pas de pochette. Affiché sur l'écran de confirmation AVANT
    le refus, et sur l'écran de scan APRÈS lui — même texte, mêmes actions,
    mêmes URL.
 
-   `escalade` vient de routes/pret.py::_escalade : {id_nouveau, nom, numero}.
-   `escalade.numero` vaut 0 pour une sortie tournoi : il n'y a alors aucun
-   casier à vérifier, et la clôture ne libérera aucun numéro.
+   `escalade` vient de routes/pret.py::_escalade : {id_nouveau, nom, numero, motif}.
+   `escalade.numero` vaut 0 pour une sortie sans pochette (tournoi, démo) :
+   il n'y a alors aucun casier à vérifier, et la clôture ne libérera aucun
+   numéro ; `escalade.motif` dit laquelle (lot comptoir-3).
    `numero_conserve` est la pochette du visiteur, celle qui ne bouge pas. #}
 {% macro escalade_oubli(id_rendu, escalade, numero_conserve) -%}
 <div class="resultat resultat-attention">
   <p>
     ⚠️ <strong>{{ escalade.nom }}</strong> est déjà sortie{% if escalade.numero %},
     enregistrée sur la <strong>pochette n°{{ escalade.numero }}</strong>{% else %}
-    pour un tournoi (sans pochette){% endif %}.
+    {{ sortie_sans_pochette(escalade.motif, "tournoi").pour }} (sans pochette){% endif %}.
     Si la boîte est devant vous, c'est un retour qui n'a pas été scanné.
   </p>
   {% if escalade.numero %}

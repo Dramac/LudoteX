@@ -275,7 +275,9 @@ dont `display: block` efface la sémantique.
   qu'un mot plus long que la carte).
 - `.sortie-pochette` — « pochette » puis le numéro en gros (`--texte`, pas
   `--primaire` : § 16 réserve la couleur d'identité au numéro qui ne bouge
-  pas). Variante `--tournoi` : le mot « tournoi » à la place.
+  pas). Variante `--tournoi` : le mot de la sortie sans pochette à la place,
+  « tournoi » ou « démo » (lot comptoir-3) — c'est le texte qui distingue
+  les deux, la classe est la même.
 - `.sortie-detail` — code de la boîte, heure de sortie, durée.
 - `.sortie--longue` + `.sortie-repere` — longue sortie : bord gauche épais en
   `--orange` **et** la mention « Longue sortie » en toutes lettres, jamais la

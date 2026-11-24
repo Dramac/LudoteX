@@ -242,7 +242,9 @@ def test_le_repere_est_ecrit_pas_seulement_colore(client):
 def test_aucun_jeu_sorti(client):
     html = _benevole(client).get("/sortis").text
     assert "Aucun jeu n'est sorti en ce moment." in html
-    assert html.count("<p>Aucun.</p>") == 2
+    # Prêtés au public, puis une section par sortie sans pochette (tournoi,
+    # démo — lot comptoir-3).
+    assert html.count("<p>Aucun.</p>") == 1 + len(services.SORTIES_SANS_POCHETTE)
 
 
 def test_resume_et_carte_tournoi(quatre_sorties):

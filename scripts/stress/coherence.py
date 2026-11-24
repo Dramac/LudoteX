@@ -32,7 +32,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# Numéro « factice » des sorties tournoi : pas une vraie pochette, donc exclu
+# Numéro « factice » des sorties tournoi et démo : pas une vraie pochette, donc exclu
 # des contrôles d'unicité (voir services.NUMERO_TOURNOI).
 NUMERO_TOURNOI = 0
 

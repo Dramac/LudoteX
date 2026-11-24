@@ -202,7 +202,8 @@ gros), un **second bloc « 🗄️ Où ranger le jeu »** affichant l'emplacemen
 **contexte actif**. Même gabarit visuel que le bloc pochette, teinte de rangement
 distincte du vert de retour et du numéro.
 
-Cas **`rendu_tournoi`** (retour d'une sortie tournoi, sans pochette) : la boîte
+Cas **`rendu_sans_pochette`** (retour d'une sortie tournoi ou démo, sans
+pochette ; `rendu_tournoi` avant le lot comptoir-3) : la boîte
 doit **aussi** être rerangée → on affiche le même bloc « où ranger » (c'est le
 seul contenu utile de cet écran, aujourd'hui presque vide). La **sortie** tournoi
 elle-même, comme le prêt et le re-prêt, **n'affiche rien** sur le rangement (on
@@ -258,8 +259,9 @@ Rappel (déjà tranché plus haut, regroupé ici pour lever l'ambiguïté) :
 
 - La **sortie** tournoi ne concerne pas le rangement : aucun affichage, aucune
   écriture d'emplacement.
-- Le **retour** de tournoi (`rendu_tournoi`) affiche « où ranger » comme un
-  retour normal (§6).
+- Le **retour** de tournoi (`rendu_sans_pochette`) affiche « où ranger » comme un
+  retour normal (§6). Depuis le lot comptoir-3, la sortie **démo** suit
+  exactement la même règle.
 - L'affectation d'un emplacement (mode rangement) est **indépendante de l'état de
   prêt** : ranger une boîte sortie en tournoi est permis et sans effet sur le
   prêt.

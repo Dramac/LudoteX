@@ -690,13 +690,13 @@
       }
       el.innerHTML = liste.map(m => {
         const estPret = m.type === "pret";
-        const genre = estPret
-          ? (m.motif === "tournoi" ? "tournoi" : "prêt")
-          : "retour";
+        // Le mot vient du serveur (routes/live.py::_genre_mouvement, lot
+        // comptoir-3) : « prêt », « retour », « tournoi », « démo »…
+        const genre = m.genre;
         return `
         <div class="mouv ${estPret ? "pret" : "retour"}" data-ligne>
           <span class="pastille"></span>
-          <span class="genre">${genre}</span>
+          <span class="genre">${echapper(genre)}</span>
           <span class="nom">${echapper(m.nom)}</span>
           <span class="quand">${echapper(m.heure)}</span>
         </div>`;

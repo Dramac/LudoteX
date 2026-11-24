@@ -24,7 +24,7 @@
 {% elif refus == "sortie" %}
   <h1>Boîte {{ info.id_exemplaire }} — {{ info.nom }}</h1>
   <div class="resultat resultat-attention" role="alert">
-    <p>Cette boîte est sortie{% if pret and pret.motif == "tournoi" %} pour un tournoi{% endif %} :
+    <p>Cette boîte est sortie{% if pret and sortie_sans_pochette(pret.motif) %} {{ sortie_sans_pochette(pret.motif).pour }}{% endif %} :
        elle ne peut pas être retirée tant qu'elle est dehors. Rien n'a été modifié.</p>
     <p>Si elle est revenue, enregistrez d'abord son retour. Si elle n'est
        jamais revenue, attendez la clôture de fin d'événement, qui la rend,
@@ -39,7 +39,7 @@
   <h2>Ce que fait le retrait</h2>
   <ul>
     <li>La boîte disparaît du catalogue, des étiquettes et du rangement.</li>
-    <li>Elle ne peut plus être prêtée ni sortie pour un tournoi. Son QR code
+    <li>Elle ne peut plus être prêtée ni sortie pour un tournoi ou une démo. Son QR code
         affiche « Boîte retirée ».</li>
     {% if derniere %}
     <li>C'est la <strong>dernière boîte</strong> de ce jeu au catalogue : le
