@@ -205,7 +205,9 @@ def fiche(request: Request, id_exemplaire: str):
         La page fiche.html. Statut 200 si l'exemplaire existe — retiré du
         parc compris, la page dit alors « Cette boîte ne fait plus partie du
         catalogue » —, 404 sinon (le gabarit gère le cas « inconnu » avec un
-        message convivial).
+        message convivial). Un QR ÉPHÉMÈRE encore vierge (lot comptoir-8a)
+        reste un 404 — la page n'existe pas encore — mais dit au visiteur de
+        demander à un bénévole, et au bénévole mène à « Nommer ce jeu ».
     """
     conn = get_connection()
     try:
@@ -267,7 +269,8 @@ def fiche(request: Request, id_exemplaire: str):
          "total": total, "disponible": disponible, "emplacement": emplacement,
          "lien_bgg": lien_bgg, "image_boite": image_boite,
          "liens_categories": liens_categories, "boites": boites,
-         "autre_boite": autre_boite},
+         "autre_boite": autre_boite,
+         "ephemere_vierge": info is None and services.est_code_ephemere(id_exemplaire)},
         status_code=200 if info else 404,
     )
 

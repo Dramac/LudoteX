@@ -1366,8 +1366,12 @@ def lignes_export_catalogue(conn: sqlite3.Connection, *,
     est le parc d'aujourd'hui, celui que le bureau recopie dans son tableur.
     Ré-importé, il ne fait donc rien dire à l'import sur elles, alors qu'un
     vieux tableur qui les porte encore le dit (`scripts/import_csv.py`).
-    `avec_retirees=True` : toutes les boîtes, pour qui a besoin de décrire
-    une boîte retirée (les jamais sortis d'une période passée, `app/achats.py`).
+    Les boîtes ÉPHÉMÈRES (lot comptoir-8a) n'y sont pas non plus, ni donc le
+    titre qui n'a qu'elles : le tableur du bureau est le parc PERMANENT, et
+    l'import met de côté toute ligne au code éphémère.
+    `avec_retirees=True` : toutes les boîtes, éphémères comprises, pour qui a
+    besoin de décrire une boîte hors du parc permanent (les jamais sortis
+    d'une période passée, `app/achats.py`).
 
     Returns:
         (en-têtes, lignes) où chaque ligne est un dict clé=en-tête.
@@ -1389,7 +1393,8 @@ def lignes_export_catalogue(conn: sqlite3.Connection, *,
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
         LEFT JOIN emplacements_rangement er ON er.id_emplacement = e.emplacement_local_id
-        WHERE {"1 = 1" if avec_retirees else condition_au_parc("e")}
+        WHERE {"1 = 1" if avec_retirees
+               else condition_au_parc("e") + " AND " + condition_non_ephemere("e")}
         ORDER BY t.nom COLLATE NOCASE, e.id_exemplaire
         """
     ).fetchall()
@@ -2307,8 +2312,9 @@ def transferer_pochette(conn: sqlite3.Connection, id_rendu: str,
 # ===========================================================================
 # ADMINISTRATION — création/édition du catalogue depuis l'application
 # ===========================================================================
-# Préfixe des id_exemplaire créés via l'appli (≠ codes numériques du CSV et des
-# codes « E… » existants), pour garantir l'absence de collision.
+# Préfixe des id_exemplaire créés via l'appli (≠ codes numériques du CSV, des
+# codes « E… » existants et des codes éphémères « X… », voir
+# `PREFIXE_EPHEMERE`), pour garantir l'absence de collision.
 PREFIXE_ID_ADMIN = "A"
 
 
@@ -2485,6 +2491,270 @@ def ajouter_exemplaire(conn: sqlite3.Connection, reference_titre: str) -> str:
     )
     conn.commit()
     return id_ex
+
+
+# ===========================================================================
+# JEUX ÉPHÉMÈRES (série comptoir, lot 8a) — docs/conception-jeux-ephemeres.md
+#
+# Une feuille de QR imprimée d'avance, sans nom de jeu. Le jour J, on colle un
+# QR vierge sur une boîte arrivée sans étiquette (jeu apporté, jeu trop récent),
+# et le PREMIER SCAN propose de nommer le jeu ; ensuite la boîte se prête comme
+# les autres.
+#
+# Un code éphémère n'existe en base qu'une fois NOMMÉ : l'impression ne crée
+# rien, la feuille est du papier. Un code « vierge » est un code de la forme
+# éphémère SANS boîte en base. Aucune colonne, aucune table : la forme du code
+# suffit à le reconnaître. Tout ce qui doit le reconnaître appelle les
+# fonctions de cette section, jamais une expression recopiée.
+# ===========================================================================
+# « X » : le seul préfixe libre parmi les formes connues (chiffres seuls au
+# tableur, « E » des extensions du tableur, « A » de l'administration). Deux
+# chiffres : 99 codes suffisent à une édition, et un code de trois signes se
+# tape vite quand le QR ne se lit pas.
+PREFIXE_EPHEMERE = "X"
+EPHEMERE_MIN, EPHEMERE_MAX = 1, 99
+_FORME_EPHEMERE = re.compile(rf"{PREFIXE_EPHEMERE}([0-9]{{2}})")
+# Forme RAPPROCHÉE par la saisie au clavier (`cle_saisie` : majuscules, zéros
+# de tête ôtés) : « x1 », « X01 », « X001 » donnent tous « X1 ».
+_CLE_EPHEMERE = re.compile(rf"{PREFIXE_EPHEMERE}([1-9][0-9]*)")
+
+# Borne du nom saisi au comptoir. Le plus long nom du catalogue de 2026 fait
+# une soixantaine de caractères ; au-delà, c'est autre chose qu'un nom de jeu.
+LONGUEUR_MAX_NOM_EPHEMERE = 80
+
+MESSAGES_NOM_EPHEMERE = {
+    "vide": "Écrivez le nom du jeu avant d'enregistrer.",
+    "long": (f"Ce nom est trop long : {LONGUEUR_MAX_NOM_EPHEMERE} caractères "
+             "au plus. Gardez le nom du jeu seulement."),
+}
+
+
+def est_code_ephemere(code: str | None) -> bool:
+    """
+    Vrai si `code` est EXACTEMENT un code éphémère imprimé : « X » majuscule
+    suivi de deux chiffres, de X01 à X99.
+
+    INVARIANT (préparé pour le lot comptoir-8b) : seule la forme exacte du
+    code IMPRIMÉ est éphémère. Ni « X1 », ni « x01 », ni un code renommé en
+    fin d'événement (« X01-… ») ne le sont. Le renommage de fin d'événement
+    donnera à la boîte un code de forme différente : elle cessera alors
+    d'être éphémère, et le code imprimé redeviendra vierge. Une forme
+    approchée tapée au clavier se ramène au code exact par
+    `code_ephemere_saisi`, jamais par cette fonction.
+    """
+    m = _FORME_EPHEMERE.fullmatch(code or "")
+    return bool(m) and EPHEMERE_MIN <= int(m.group(1)) <= EPHEMERE_MAX
+
+
+def code_ephemere(numero: int) -> str:
+    """Le code imprimé du numéro `numero` (1 → « X01 ») ; ValueError hors bornes."""
+    if not EPHEMERE_MIN <= numero <= EPHEMERE_MAX:
+        raise ValueError(f"Numéro éphémère hors bornes : {numero}")
+    return f"{PREFIXE_EPHEMERE}{numero:02d}"
+
+
+def code_ephemere_saisi(code: str | None) -> str | None:
+    """
+    Le code éphémère EXACT que désigne une saisie au clavier, ou None.
+
+    Même rapprochement que pour toute boîte (`cle_saisie`) : « x1 », « X 01 »
+    et « X001 » désignent X01. Sert à la saisie manuelle (code encore
+    vierge, que `resoudre_code_saisi` ne trouve pas en base) et à l'import,
+    qui met de côté toute ligne dont le code SE LIT comme un code éphémère.
+    Aucun code du catalogue ne peut s'y rapprocher : chiffres seuls, « A… »
+    et « E… » ne commencent pas par « X » une fois normalisés.
+    """
+    m = _CLE_EPHEMERE.fullmatch(cle_saisie(code or ""))
+    if not m or not EPHEMERE_MIN <= int(m.group(1)) <= EPHEMERE_MAX:
+        return None
+    return code_ephemere(int(m.group(1)))
+
+
+def condition_non_ephemere(alias: str = "e") -> str:
+    """
+    Fragment SQL : la boîte `alias` n'est PAS éphémère. Même forme que
+    `est_code_ephemere` (GLOB est sensible à la casse) ; un test vérifie
+    qu'ils s'accordent. Sert à l'export du catalogue et aux étiquettes en
+    lot, qui décrivent le parc permanent.
+    """
+    return (f"NOT ({alias}.id_exemplaire GLOB '{PREFIXE_EPHEMERE}[0-9][0-9]' "
+            f"AND {alias}.id_exemplaire <> '{PREFIXE_EPHEMERE}00')")
+
+
+class NomEphemereRefuse(ValueError):
+    """Nom refusé au comptoir ; `raison` est une clé de `MESSAGES_NOM_EPHEMERE`."""
+
+    def __init__(self, raison: str):
+        super().__init__(MESSAGES_NOM_EPHEMERE[raison])
+        self.raison = raison
+
+
+def valider_nom_ephemere(nom: str | None) -> str:
+    """
+    Le nom nettoyé (`nettoyer_nom`), ou `NomEphemereRefuse`. Un nom sans
+    lettre ni chiffre (« ??? ») n'a pas de référence (`slug_titre` vide) :
+    refusé comme un nom vide.
+    """
+    nom = nettoyer_nom(nom)
+    if not nom or not slug_titre(nom):
+        raise NomEphemereRefuse("vide")
+    if len(nom) > LONGUEUR_MAX_NOM_EPHEMERE:
+        raise NomEphemereRefuse("long")
+    return nom
+
+
+def noms_pour_suggestions(conn: sqlite3.Connection) -> list[str]:
+    """
+    Les noms du catalogue proposés sous le champ « Nom du jeu » (`datalist`),
+    dans l'ordre alphabétique, sans doublon. Choisir une suggestion donne la
+    référence du titre existant (`slug_titre`), donc la boîte le rejoint.
+    """
+    return list(dict.fromkeys(
+        r[0] for r in conn.execute("SELECT nom FROM titres ORDER BY nom COLLATE NOCASE")))
+
+
+def _titre_ou_creer(conn: sqlite3.Connection, nom: str) -> tuple[dict, bool]:
+    """
+    Le titre de référence `slug_titre(nom)`, créé s'il n'existe pas — NOM
+    SEUL, sans catégorie ni autre champ. Un titre existant n'est JAMAIS
+    modifié (à la différence de `creer_jeu`, qui fait un UPSERT : le comptoir
+    ne doit pas pouvoir réécrire une fiche du catalogue).
+
+    Returns:
+        (titre, créé ?)
+    """
+    ref = slug_titre(nom)
+    titre = get_titre(conn, ref)
+    if titre is not None:
+        return titre, False
+    conn.execute("INSERT INTO titres (reference_titre, nom) VALUES (?, ?)", (ref, nom))
+    return get_titre(conn, ref), True
+
+
+def nommer_code_ephemere(conn: sqlite3.Connection, code: str, nom: str) -> dict:
+    """
+    Nomme un QR éphémère vierge : crée la boîte `code` dans le titre du nom
+    donné (existant, ou créé nom seul), en UNE transaction.
+
+    Ne jamais bloquer : si la boîte existe déjà (un autre bénévole l'a nommée
+    une fraction de seconde plus tôt, ou le formulaire est parti deux fois),
+    rien n'est écrit et le résultat le dit (`deja_nomme`), avec le nom en
+    base ; la route mène alors à la page de prêt de la boîte.
+
+    Raises:
+        ValueError: `code` n'est pas un code éphémère (URL forgée).
+        NomEphemereRefuse: nom vide ou trop long (rien n'est écrit).
+
+    Returns:
+        {"deja_nomme", "titre_nouveau", "reference_titre", "nom"}.
+    """
+    if not est_code_ephemere(code):
+        raise ValueError(f"Pas un code éphémère : {code}")
+    nom = valider_nom_ephemere(nom)
+    with transaction(conn):
+        existante = conn.execute(
+            "SELECT t.reference_titre, t.nom FROM exemplaires e "
+            "JOIN titres t ON t.reference_titre = e.reference_titre "
+            "WHERE e.id_exemplaire = ?", (code,)).fetchone()
+        if existante is not None:
+            return {"deja_nomme": True, "titre_nouveau": False,
+                    "reference_titre": existante["reference_titre"],
+                    "nom": existante["nom"],
+                    "meme_titre": existante["reference_titre"] == slug_titre(nom)}
+        titre, cree = _titre_ou_creer(conn, nom)
+        conn.execute(
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
+            (code, titre["reference_titre"]))
+    return {"deja_nomme": False, "titre_nouveau": cree,
+            "reference_titre": titre["reference_titre"], "nom": titre["nom"],
+            "meme_titre": True}
+
+
+def nom_ephemere_corrigeable(conn: sqlite3.Connection, code: str, *,
+                             par_le_bureau: bool = False) -> bool:
+    """
+    Le nom d'une boîte éphémère non retirée se corrige AU COMPTOIR tant
+    qu'elle n'a jamais été sortie (aucun prêt, quel qu'en soit le motif) ;
+    au-delà, par le BUREAU seulement (administrateur connecté), au même
+    écran. Pourquoi pas le rattachement de la fiche d'administration :
+    `rattacher_exemplaires` y déplace TOUTES les boîtes d'un jeu, et une
+    boîte éphémère rattachée par erreur à un jeu du catalogue n'en sortirait
+    qu'avec les boîtes de ce jeu.
+    """
+    if not est_code_ephemere(code):
+        return False
+    ligne = conn.execute(
+        "SELECT retiree_le, EXISTS (SELECT 1 FROM prets p WHERE p.id_exemplaire = e.id_exemplaire) "
+        "FROM exemplaires e WHERE e.id_exemplaire = ?", (code,)).fetchone()
+    return (ligne is not None and ligne[0] is None
+            and (par_le_bureau or not ligne[1]))
+
+
+def corriger_nom_ephemere(conn: sqlite3.Connection, code: str, nom: str, *,
+                          par_le_bureau: bool = False) -> dict:
+    """
+    Corrige le nom d'une boîte éphémère, en UNE transaction — jamais sortie,
+    ou à toute heure par le bureau (`nom_ephemere_corrigeable`). Ses prêts la
+    suivent dans son nouveau jeu, comme dans un rattachement.
+
+    - nouveau nom d'un AUTRE titre (existant, ou créé nom seul) : la boîte le
+      rejoint ; le titre quitté, s'il n'a plus aucune boîte, est supprimé
+      (comme le jeu vidé d'un rattachement), et les catégories orphelines
+      purgées ;
+    - même référence (« catane » → « Catane ») : le nom du titre est réécrit
+      seulement si cette boîte est sa SEULE boîte — un titre du catalogue
+      n'est jamais renommé depuis le comptoir.
+
+    Ne jamais bloquer : une boîte devenue non corrigeable entre l'affichage
+    et l'envoi (prêtée entre-temps) n'est pas modifiée ; `refus` le dit.
+
+    Raises:
+        NomEphemereRefuse: nom vide ou trop long (rien n'est écrit).
+
+    Returns:
+        {"refus": None|"non_corrigeable", "ancien_nom", "nom",
+         "titre_nouveau", "titre_supprime", "change"}.
+    """
+    nom = valider_nom_ephemere(nom)
+    with transaction(conn):
+        ancien = conn.execute(
+            "SELECT t.reference_titre, t.nom FROM exemplaires e "
+            "JOIN titres t ON t.reference_titre = e.reference_titre "
+            "WHERE e.id_exemplaire = ?", (code,)).fetchone()
+        if ancien is None or not nom_ephemere_corrigeable(
+                conn, code, par_le_bureau=par_le_bureau):
+            return {"refus": "non_corrigeable",
+                    "ancien_nom": ancien["nom"] if ancien else None,
+                    "nom": ancien["nom"] if ancien else None,
+                    "titre_nouveau": False, "titre_supprime": False, "change": False}
+        ancienne_ref = ancien["reference_titre"]
+        seule_boite = conn.execute(
+            "SELECT COUNT(*) FROM exemplaires WHERE reference_titre = ?",
+            (ancienne_ref,)).fetchone()[0] == 1
+        resultat = {"refus": None, "ancien_nom": ancien["nom"], "nom": ancien["nom"],
+                    "titre_nouveau": False, "titre_supprime": False, "change": False}
+        if slug_titre(nom) == ancienne_ref:
+            if seule_boite and nom != ancien["nom"]:
+                conn.execute("UPDATE titres SET nom = ? WHERE reference_titre = ?",
+                             (nom, ancienne_ref))
+                resultat.update(nom=nom, change=True)
+            return resultat
+        titre, cree = _titre_ou_creer(conn, nom)
+        conn.execute("UPDATE exemplaires SET reference_titre = ? WHERE id_exemplaire = ?",
+                     (titre["reference_titre"], code))
+        if seule_boite:
+            conn.execute("DELETE FROM titres WHERE reference_titre = ?", (ancienne_ref,))
+            purger_categories_orphelines(conn)
+        resultat.update(nom=titre["nom"], titre_nouveau=cree,
+                        titre_supprime=seule_boite, change=True)
+    return resultat
+
+
+def codes_ephemeres_nommes(conn: sqlite3.Connection) -> list[str]:
+    """Les codes éphémères qui portent une boîte en base, dans l'ordre."""
+    return sorted(r[0] for r in conn.execute(
+        "SELECT id_exemplaire FROM exemplaires WHERE id_exemplaire LIKE ?",
+        (PREFIXE_EPHEMERE + "%",)) if est_code_ephemere(r[0]))
 
 
 def lister_exemplaires_du_titre(conn: sqlite3.Connection,
@@ -3522,6 +3792,7 @@ def titres_pour_etiquettes(conn: sqlite3.Connection,
         FROM titres t
         JOIN exemplaires e ON e.reference_titre = t.reference_titre
                           AND {condition_au_parc("e")}
+                          AND {condition_non_ephemere("e")}
     """
     params: list = []
     if categorie:
@@ -3548,14 +3819,15 @@ def exemplaires_pour_etiquettes(conn: sqlite3.Connection,
         nb_joueurs_max, duree_min, lettre_public, lettre_jeu, lettre_materiel},
         triée par nom puis id (étiquettes d'un même jeu groupées).
     """
-    # Une boîte retirée n'a plus d'étiquette à recevoir.
+    # Une boîte retirée n'a plus d'étiquette à recevoir ; une boîte éphémère
+    # a la sienne, vierge, imprimée par la feuille de QR éphémères.
     sql = f"""
         SELECT e.id_exemplaire, t.nom, t.categorie, t.age_min,
                t.nb_joueurs_min, t.nb_joueurs_max, t.duree_min,
                t.lettre_public, t.lettre_jeu, t.lettre_materiel
         FROM exemplaires e
         JOIN titres t ON t.reference_titre = e.reference_titre
-        WHERE {condition_au_parc("e")}
+        WHERE {condition_au_parc("e")} AND {condition_non_ephemere("e")}
     """
     params: list = []
     if references:

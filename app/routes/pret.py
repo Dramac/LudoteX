@@ -57,6 +57,14 @@ DICTIONNAIRE `resultat` (passé au gabarit pret.html)
         d'écrit (lot comptoir-6, `services.BoiteRetiree`)
     {"type": "nouveau_retire", "nom": …, "code": …}        transfert vers une
         boîte retirée : rien d'écrit, la pochette reste sur la boîte rendue
+    {"type": "nomme", "nom": …, "titre_nouveau": bool}     QR éphémère nommé
+        (lot comptoir-8a) ; aussi le double envoi du même nom
+    {"type": "deja_nomme", "nom": …}                       QR éphémère nommé
+        AUTREMENT par un autre bénévole entre l'affichage et l'envoi : rien
+        d'écrit, le nom en base est montré
+    {"type": "nom_corrige", "nom": …, "change": bool}      nom corrigé
+    {"type": "nom_non_corrigeable"}                        la boîte a été sortie
+        (ou retirée) entre-temps : rien d'écrit, la correction passe au bureau
     {"type": "signale"}                                    signalement envoyé
     {"type": "pochette_signalee_repret", "numero": n|None}
         seconde issue du re-prêt : la pochette vérifiée n'était pas vide, le
@@ -100,7 +108,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
-from app import carnet, journal, services
+from app import admin_auth, carnet, journal, services
 from app.auth import exiger_jeton
 from app.db import get_connection
 from app.templating import templates
@@ -268,8 +276,17 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
         # l'écran (GET), AVANT toute action, pas seulement dans la confirmation
         # qui suit un retour (piège 1 du lot 2 de l'implémentation).
         signalements_ouverts = services.signalements_ouverts(conn, id_exemplaire) if info else []
+        # Boîte éphémère jamais sortie (lot comptoir-8a) : « Corriger le nom ».
+        nom_corrigeable = bool(info) and services.nom_ephemere_corrigeable(
+            conn, id_exemplaire, par_le_bureau=admin_auth.admin_connecte(request))
     finally:
         conn.close()
+    # QR éphémère encore VIERGE (lot comptoir-8a) : au lieu de « Exemplaire
+    # inconnu », l'écran qui le nomme — quel que soit le chemin d'arrivée
+    # (scan, saisie, ou action postée sur un code qui n'est pas encore nommé).
+    if info is None and services.est_code_ephemere(id_exemplaire):
+        return _ecran_nom(request, id_exemplaire,
+                          arrivee_par_saisie=arrivee_par_saisie)
     return templates.TemplateResponse(
         request,
         "pret.html",
@@ -277,7 +294,8 @@ def _rendu(request: Request, id_exemplaire: str, resultat: dict | None = None,
          "pret_actuel": pret_actuel, "resultat": resultat,
          "emplacement_rangement": emplacement_rangement,
          "signalements_ouverts": signalements_ouverts,
-         "arrivee_par_saisie": arrivee_par_saisie},
+         "arrivee_par_saisie": arrivee_par_saisie,
+         "nom_corrigeable": nom_corrigeable},
         status_code=status if info else 404,
     )
 
@@ -1151,6 +1169,135 @@ def echange_confirmation(request: Request, id_nouveau: str, id_rendu: str,
 # ===========================================================================
 # CARNET DE MAINTENANCE (docs/conception-signalements.md)
 # ===========================================================================
+# ---------------------------------------------------------------------------
+# JEUX ÉPHÉMÈRES (série comptoir, lot 8a) — docs/conception-jeux-ephemeres.md
+#
+# Un QR éphémère vierge se NOMME au premier scan ; tant que la boîte n'a jamais
+# été sortie, son nom se CORRIGE ici. Une seule paire de routes pour les deux
+# gestes (`mode`), un seul gabarit. Le champ « Nom du jeu » est une PORTE
+# (texte libre saisi par n'importe quel bénévole) : consigne sous le champ, et
+# le texte ne va au journal qu'en `objet`, comme le nom du jeu de toute action
+# de prêt — jamais un texte refusé.
+# ---------------------------------------------------------------------------
+_MODES_NOM = ("nommer", "corriger")
+
+
+def _ecran_nom(request: Request, code: str, *, mode: str = "nommer",
+               info: dict | None = None, nom_saisi: str = "",
+               erreur: str | None = None, status: int = 200,
+               arrivee_par_saisie: bool = False):
+    """L'écran « Nommer ce jeu » / « Corriger le nom » (pret_nommer.html)."""
+    conn = get_connection()
+    try:
+        suggestions = services.noms_pour_suggestions(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "pret_nommer.html",
+        {"id_exemplaire": code, "mode": mode, "info": info,
+         "nom_saisi": nom_saisi, "erreur": erreur, "suggestions": suggestions,
+         "longueur_max": services.LONGUEUR_MAX_NOM_EPHEMERE,
+         "arrivee_par_saisie": arrivee_par_saisie},
+        status_code=status,
+    )
+
+
+@router.get("/{id_exemplaire}/nom")
+def nom_ecran(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
+    """
+    Ouvre l'écran du nom (rien n'est écrit) : « Nommer ce jeu » pour un QR
+    éphémère vierge, « Corriger le nom » pour une boîte éphémère jamais
+    sortie. Toute autre boîte : son écran de prêt, qui dit pourquoi
+    (`nom_non_corrigeable`) ; un code inconnu non éphémère : le 404 habituel.
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        corrigeable = info is not None and services.nom_ephemere_corrigeable(
+            conn, id_exemplaire, par_le_bureau=admin_auth.admin_connecte(request))
+    finally:
+        conn.close()
+    if info is None:
+        return _rendu(request, id_exemplaire)
+    if not corrigeable:
+        return _rendu(request, id_exemplaire, {"type": "nom_non_corrigeable"})
+    return _ecran_nom(request, id_exemplaire, mode="corriger", info=info,
+                      nom_saisi=info["nom"])
+
+
+@router.post("/{id_exemplaire}/nom")
+def nom_enregistrer(request: Request, id_exemplaire: str, nom: str = Form(""),
+                    mode: str = Form("nommer"), _=Depends(exiger_jeton)):
+    """
+    Enregistre le nom d'un QR éphémère, puis rend l'ÉCRAN DE PRÊT de la boîte :
+    « Prêter » est à un tap.
+
+    Jamais bloquant : nom vide ou trop long → l'écran du nom revient avec le
+    message et la saisie ; QR nommé entre-temps par un autre bénévole → la
+    page de prêt montre le nom en base (le même nom envoyé deux fois est un
+    succès) ; boîte sortie entre l'affichage et la correction → la page de
+    prêt le dit. Un code qui n'est pas éphémère n'écrit rien : son écran
+    habituel (404 s'il est inconnu).
+    """
+    if not services.est_code_ephemere(id_exemplaire):
+        return _rendu(request, id_exemplaire)
+    mode = mode if mode in _MODES_NOM else "nommer"
+    action = "ephemere_nomme" if mode == "nommer" else "ephemere_nom_corrige"
+    refus = occupe = None
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        try:
+            if mode == "corriger":
+                res = services.corriger_nom_ephemere(
+                    conn, id_exemplaire, nom,
+                    par_le_bureau=admin_auth.admin_connecte(request))
+            else:
+                res = services.nommer_code_ephemere(conn, id_exemplaire, nom)
+        except services.NomEphemereRefuse as exc:
+            refus = exc
+        except sqlite3.OperationalError as erreur:
+            if not _est_verrou(erreur):
+                raise
+            occupe = erreur
+    finally:
+        conn.close()
+    # Journal APRÈS la fermeture, comme les actions de prêt (`journaliser`
+    # ouvre sa propre connexion). Jamais le texte refusé : il n'est le nom
+    # de rien.
+    if refus is not None:
+        journal.journaliser(request, "catalogue", action, ref=id_exemplaire,
+                            ok=False, detail=refus.raison)
+        return _ecran_nom(request, id_exemplaire, mode=mode, info=info,
+                          nom_saisi=nom, erreur=str(refus), status=400)
+    if occupe is not None:
+        return _ecran_nom(
+            request, id_exemplaire, mode=mode, info=info, nom_saisi=nom,
+            erreur=("Un autre bénévole enregistrait une opération au même "
+                    "moment. Rien n'a été enregistré : appuyez à nouveau."),
+            status=409)
+
+    if mode == "corriger":
+        if res["refus"]:
+            return _rendu(request, id_exemplaire, {"type": "nom_non_corrigeable"})
+        if res["change"]:
+            journal.journaliser(request, "catalogue", action,
+                                objet=res["nom"], ref=id_exemplaire)
+        return _rendu(request, id_exemplaire,
+                      {"type": "nom_corrige", "nom": res["nom"], "change": res["change"]})
+
+    if res["deja_nomme"] and not res["meme_titre"]:
+        journal.journaliser(request, "catalogue", action, objet=res["nom"],
+                            ref=id_exemplaire, ok=False, detail="deja_nomme")
+        return _rendu(request, id_exemplaire, {"type": "deja_nomme", "nom": res["nom"]})
+    if not res["deja_nomme"]:
+        journal.journaliser(request, "catalogue", action,
+                            objet=res["nom"], ref=id_exemplaire)
+    return _rendu(request, id_exemplaire,
+                  {"type": "nomme", "nom": res["nom"],
+                   "titre_nouveau": res["titre_nouveau"]})
+
+
 @router.get("/{id_exemplaire}/signaler")
 def signaler_ecran(request: Request, id_exemplaire: str, _=Depends(exiger_jeton)):
     """

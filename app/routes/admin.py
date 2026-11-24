@@ -1650,8 +1650,11 @@ def etiquette_png(request: Request, id_exemplaire: str):
     if info is None:
         return Response(status_code=404)
     url = url_fiche(_base_url(request), id_exemplaire)
+    # Boîte éphémère (lot comptoir-8a) : sa réimpression est l'étiquette
+    # VIERGE de la feuille, le nom s'écrit au crayon.
     img = image_etiquette(url, info, charger_logo(), afficher_code=afficher_code,
-                          format_code=format_code)
+                          format_code=format_code,
+                          ephemere=services.est_code_ephemere(id_exemplaire))
     buf = BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
@@ -1674,7 +1677,8 @@ def _cle_de_filtre(valeur: str | None, categories: list[dict]) -> str | None:
 # ---------------------------------------------------------------------------
 @router.get("/etiquettes")
 def etiquettes_selection(request: Request, categorie: str | None = None,
-                         message: str | None = None):
+                         message: str | None = None,
+                         premier: str = "", dernier: str = ""):
     """
     Page de sélection des jeux à imprimer + paramètres de planche.
 
@@ -1692,11 +1696,19 @@ def etiquettes_selection(request: Request, categorie: str | None = None,
         jeux = services.titres_pour_etiquettes(conn, filtre)
         afficher_code = services.lire_etiquette_code(conn)
         format_code = services.lire_etiquette_format(conn)
+        codes_ephemeres = services.codes_ephemeres_nommes(conn)
     finally:
         conn.close()
     return templates.TemplateResponse(
         request, "admin_etiquettes.html",
         {"jeux": jeux, "categories": categories, "filtre": filtre,
+         # Feuille de QR éphémères (lot comptoir-8a) : les codes déjà nommés,
+         # pour choisir les numéros d'une nouvelle feuille, et la saisie
+         # précédente rendue après un refus.
+         "codes_ephemeres": codes_ephemeres,
+         "ephemere_min": services.EPHEMERE_MIN,
+         "ephemere_max": services.EPHEMERE_MAX,
+         "premier_saisi": premier, "dernier_saisi": dernier,
          "base_url": _base_url(request), "message": message,
          # Le réglage TEL QU'ENREGISTRÉ : la case doit rouvrir dans l'état où
          # le bureau l'a laissée, jamais sur son défaut.
@@ -1837,6 +1849,78 @@ def etiquettes_pdf(
     return Response(
         content=pdf, media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="etiquettes.pdf"'},
+    )
+
+
+def _numero_ephemere(valeur: str) -> int | None:
+    """Un numéro de QR éphémère saisi (« 3 » ou « X03 »), ou None s'il est illisible."""
+    valeur = (valeur or "").strip()
+    if valeur.isdigit():
+        return int(valeur)
+    code = services.code_ephemere_saisi(valeur)
+    return int(code[len(services.PREFIXE_EPHEMERE):]) if code else None
+
+
+@router.post("/etiquettes/ephemeres")
+def etiquettes_ephemeres_pdf(
+    request: Request,
+    premier: str = Form(""),
+    dernier: str = Form(""),
+    lignes: int = Form(8),
+    colonnes: int = Form(2),
+    marge_gauche: str = Form("8"),
+    marge_droite: str = Form("8"),
+    marge_haut: str = Form("8"),
+    marge_bas: str = Form("8"),
+):
+    """
+    « Imprimer une feuille de QR éphémères » (série comptoir, lot 8a) : la
+    planche des codes X<premier> à X<dernier>, étiquettes VIERGES (nom au
+    crayon), même mise en page que les étiquettes du catalogue — le bouton
+    partage le formulaire de la page et ses champs de mise en page.
+
+    Rien n'est écrit en base : un code n'existe qu'une fois nommé au
+    comptoir. Un code déjà nommé se réimprime tel quel (étiquette perdue).
+    Bornes illisibles, hors 1–99 ou à l'envers : la page revient avec un
+    message et la saisie, jamais une erreur brute.
+    """
+    if (garde := _garde(request)):
+        return garde
+    debut, fin = _numero_ephemere(premier), _numero_ephemere(dernier)
+    bornes = f"{services.EPHEMERE_MIN} et {services.EPHEMERE_MAX}"
+    message = None
+    if debut is None or fin is None:
+        message = f"Indiquez le premier et le dernier numéro, entre {bornes}."
+    elif not (services.EPHEMERE_MIN <= debut <= services.EPHEMERE_MAX
+              and services.EPHEMERE_MIN <= fin <= services.EPHEMERE_MAX):
+        message = (f"Les numéros des QR éphémères vont de {services.EPHEMERE_MIN} "
+                   f"à {services.EPHEMERE_MAX}.")
+    elif debut > fin:
+        message = "Le premier numéro doit être plus petit que le dernier."
+    elif lignes < 1 or colonnes < 1:
+        message = "Le nombre de lignes et de colonnes doit être ≥ 1."
+    if message:
+        return etiquettes_selection(request, message=message,
+                                    premier=premier, dernier=dernier)
+    codes = [{"id_exemplaire": services.code_ephemere(n), "nom": ""}
+             for n in range(debut, fin + 1)]
+    try:
+        pdf = planche_pdf(
+            codes, _base_url(request), charger_logo(),
+            lignes=lignes, colonnes=colonnes,
+            marge_gauche_mm=_float_ou(8, marge_gauche),
+            marge_droite_mm=_float_ou(8, marge_droite),
+            marge_haut_mm=_float_ou(8, marge_haut),
+            marge_bas_mm=_float_ou(8, marge_bas),
+            ephemere=True,
+        )
+    except ValueError as exc:
+        return etiquettes_selection(request, message=str(exc),
+                                    premier=premier, dernier=dernier)
+    nom_fichier = f"qr-ephemeres-{codes[0]['id_exemplaire']}-{codes[-1]['id_exemplaire']}.pdf"
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nom_fichier}"'},
     )
 
 
@@ -2018,6 +2102,8 @@ def donnees_import(request: Request, fichier: UploadFile = File(...)):
         # donné à un autre jeu (lot comptoir-6) : rien n'est écrit pour ces
         # lignes, et c'est dit, jamais tu.
         for phrase in import_csv.phrases_retirees(res.get("retirees_ecartees") or []):
+            texte += " " + phrase
+        for phrase in import_csv.phrases_ephemeres(res.get("ephemeres_ecartees") or []):
             texte += " " + phrase
         if res.get("encodage_repli"):
             texte += (" Ce fichier a été lu comme un CSV enregistré par Excel : "

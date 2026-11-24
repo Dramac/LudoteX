@@ -293,6 +293,26 @@
         <p>Un autre bénévole enregistrait une opération au même moment.
            <strong>Rien n'a été enregistré.</strong> Appuyez à nouveau sur le bouton.</p>
       </section>
+    {# QR éphémère (série comptoir, lot 8a). Bandeaux COURTS : « Prêter »,
+       juste en dessous, doit rester dans l'écran d'un téléphone. #}
+    {% elif resultat.type == "nomme" %}
+      <section class="resultat resultat-ok" role="status">
+        <p>QR {{ info.id_exemplaire }} : « {{ resultat.nom }} » enregistré{% if resultat.titre_nouveau %}, nouveau jeu au catalogue{% endif %}.</p>
+      </section>
+    {% elif resultat.type == "deja_nomme" %}
+      <section class="resultat resultat-attention" role="alert">
+        <p>Un autre bénévole vient de nommer ce QR « {{ resultat.nom }} ». Rien
+           n'a été modifié : vérifiez que c'est bien le jeu que vous avez en main.</p>
+      </section>
+    {% elif resultat.type == "nom_corrige" %}
+      <section class="resultat resultat-ok" role="status">
+        <p>{% if resultat.change %}Nom corrigé : « {{ resultat.nom }} ».{% else %}Rien n'a changé : le nom reste « {{ resultat.nom }} ».{% endif %}</p>
+      </section>
+    {% elif resultat.type == "nom_non_corrigeable" %}
+      <section class="resultat resultat-attention" role="alert">
+        <p>Le nom ne se corrige plus ici : cette boîte a déjà été sortie. Signalez
+           l'erreur au bureau, qui peut encore le corriger.</p>
+      </section>
     {% elif resultat.type == "signale" %}
       <section class="resultat resultat-info">
         <p>Signalement envoyé. Merci !</p>
@@ -403,6 +423,13 @@
          disponible (les trois branches ci-dessus rejoignent ce pied commun).
          N'écrit rien, ouvre un écran. #}
       <a class="lien" href="/pret/{{ info.id_exemplaire }}/signaler">⚠️ Signaler un problème</a>
+      {# Boîte éphémère (lot comptoir-8a) : une faute de frappe dans le nom
+         se corrige au comptoir tant que la boîte n'est jamais sortie ;
+         ensuite, par l'administrateur connecté seulement, au même écran. #}
+      {% if nom_corrigeable %}
+      &nbsp;·&nbsp;
+      <a class="lien" href="/pret/{{ info.id_exemplaire }}/nom">Corriger le nom</a>
+      {% endif %}
       &nbsp;·&nbsp;
       <a class="lien" href="/jeu/{{ info.id_exemplaire }}">Voir la fiche publique</a>
       {# Administrateur connecté (lot comptoir-6) : la fiche du jeu, à

@@ -167,6 +167,14 @@ ACTIONS = {
     # motif, et jamais rien d'autre : le retrait n'a pas de champ libre.
     "exemplaire_retire",
     "exemplaire_remis_en_service",
+    # Un QR éphémère nommé au comptoir, puis son nom corrigé tant que la
+    # boîte n'est jamais sortie (série comptoir, lot 8a). `ref` = le CODE
+    # (« X03 »), `objet` = le NOM DU JEU en base — un nom d'objet, comme celui
+    # que portent toutes les actions de prêt. Un refus (nom vide, trop long,
+    # QR nommé autrement entre-temps) part en `ok=False`, la raison en
+    # `detail`, et JAMAIS le texte refusé : le champ est une porte.
+    "ephemere_nomme",
+    "ephemere_nom_corrige",
     # Un import a défait des corrections faites à l'écran. `objet` porte le
     # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
     # message affiché au bureau, pas ici.

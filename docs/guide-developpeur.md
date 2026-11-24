@@ -79,7 +79,11 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
 
 - `titres` (PK `reference_titre`) : catalogue + colonnes optionnelles nullables.
 - `exemplaires` (PK `id_exemplaire`, FK → titres). `retiree_le` non nul :
-  boîte **retirée** du parc, jamais supprimée (voir § 10, retrait).
+  boîte **retirée** du parc, jamais supprimée (voir § 10, retrait). Un code
+  de forme `X01`…`X99` est **éphémère** : il ne se reconnaît qu'à sa forme,
+  par `services.est_code_ephemere` (jamais une expression recopiée ; en SQL,
+  `services.condition_non_ephemere`), et n'existe en base qu'une fois nommé
+  au comptoir (`docs/conception-jeux-ephemeres.md`).
 - `prets` (historique complet, jamais purgé) : `date_retour IS NULL` ⇒ sorti.
 - `pochettes` : occupation du moment des numéros (recyclés, sans plafond).
 - Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches

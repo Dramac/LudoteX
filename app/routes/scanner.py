@@ -219,6 +219,10 @@ def saisie_manuelle(request: Request, code: str = "", lettres: str = "",
             )
 
         # Hors mode rangement : comportement historique (ouvre la fiche de prêt).
+        # QR éphémère encore vierge (lot comptoir-8a) : absent de la base,
+        # mais attendu — « x1 » mène à l'écran qui nomme X01.
+        if id_exemplaire is None and not proches:
+            id_exemplaire = services.code_ephemere_saisi(saisi)
         if id_exemplaire is None:
             return templates.TemplateResponse(
                 request, "scanner.html",

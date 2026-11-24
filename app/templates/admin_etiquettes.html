@@ -7,7 +7,7 @@
   <h1>Imprimer des étiquettes</h1>
   <p><a class="lien" href="/admin">← Tableau de bord</a></p>
 
-  {% if message %}<p class="resultat resultat-attention">{{ message }}</p>{% endif %}
+  {% if message %}<p class="resultat resultat-attention" role="status">{{ message }}</p>{% endif %}
 
   {% if not logo_regle %}
     <p class="resultat resultat-info">
@@ -119,6 +119,38 @@
     </div>
 
     <button type="submit" class="bouton-filtrer">Générer le PDF</button>
+
+    {# Feuille de QR éphémères (série comptoir, lot 8a). DANS ce formulaire,
+       pour partager ses champs de mise en page ; son bouton l'envoie ailleurs
+       (`formaction`). Rien n'est écrit en base : un code n'existe qu'une fois
+       nommé au comptoir. #}
+    <div class="etiquettes-ephemeres">
+    <h2 id="ephemeres">QR éphémères</h2>
+    <p class="stats-note">
+      Pour les jeux arrivés sans étiquette (jeu apporté, jeu trop récent) :
+      des QR vierges, numérotés de X{{ '%02d' % ephemere_min }} à
+      X{{ '%02d' % ephemere_max }}, avec une ligne pour écrire le nom du jeu au
+      crayon. Au premier scan, le bénévole nomme le jeu, puis le prête.
+      Ces boîtes ne vont ni dans l'export du catalogue ni dans les étiquettes
+      ci-dessus.
+    </p>
+    <p class="stats-note">
+      {% if codes_ephemeres %}
+        Déjà nommés : {{ codes_ephemeres | join(", ") }}. Réimprimer un code
+        déjà nommé donne la même étiquette vierge.
+      {% else %}
+        Aucun QR éphémère n'est encore nommé.
+      {% endif %}
+    </p>
+    <div class="grille-params">
+      <label>Du numéro <input type="number" name="premier" min="{{ ephemere_min }}"
+             max="{{ ephemere_max }}" step="1" value="{{ premier_saisi }}" inputmode="numeric"></label>
+      <label>au numéro <input type="number" name="dernier" min="{{ ephemere_min }}"
+             max="{{ ephemere_max }}" step="1" value="{{ dernier_saisi }}" inputmode="numeric"></label>
+    </div>
+    <button type="submit" class="bouton-filtrer" formaction="/admin/etiquettes/ephemeres"
+            formnovalidate>Imprimer une feuille de QR éphémères</button>
+    </div>
   </form>
 </section>
 

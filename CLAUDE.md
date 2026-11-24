@@ -83,10 +83,11 @@ worker). Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
   personnelle doit être **signalée comme telle avant d'être écrite**. **Un
   champ de texte libre est une porte** : quelqu'un finira par y taper un nom.
   Portes ouvertes, chacune avec sa consigne sous le champ : détail d'un
-  signalement (jamais public, jamais journalisé, jamais purgé), libellé
-  d'appareil (bureau), annonces de l'écran de salle (publiques, 12 h au plus,
-  jamais journalisées ni archivées). Données personnelles assumées : le planning
-  (base séparée, finalité unique, purge par le bureau) et le pseudo de
+  signalement (jamais public ni journalisé ni purgé), libellé d'appareil
+  (bureau), annonces de l'écran de salle (publiques, 12 h au plus, jamais
+  journalisées ni archivées), nom d'un jeu éphémère (tout bénévole). Données
+  personnelles assumées : le planning (base séparée, finalité unique, purge
+  par le bureau) et le pseudo de
   tournoi. Les textes que le bureau publie (identité, programme, tournois)
   et les noms d'objets ne sont pas des portes. Liste complète, avec qui lit
   et ce qui efface : `wiki/Rgpd.md`. Une suppression promise se vérifie sur
@@ -137,8 +138,8 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
   `parametres`. L'état par défaut est *tous*, donc aucune migration pour les
   bases existantes. **Un module peut restreindre ces deux règles** : la
   tombola a *désactivé* pour défaut ; les statistiques ont *bénévoles* pour
-  défaut mais acceptent *tous*, que le bureau peut rétablir (pas de jeton en
-  propre sur `/stats`, à dessein) ; le carnet
+  défaut mais acceptent *tous* (sans jeton en propre sur `/stats`, à
+  dessein) ; le carnet
   de maintenance a *bénévoles* pour défaut et refuse *tous* (drapeau
   `jamais_public`, case masquée à l'écran et valeur refusée en écriture). La
   visibilité reste un réglage d'affichage : une route qui exige un jeton porte
@@ -164,14 +165,13 @@ Détail des colonnes : lire les fichiers `models.py`, ils sont commentés.
 **Dernière version au dépôt : 1.36.0** (voir `VERSION` et `CHANGELOG.md`,
 verrouillés ensemble par `tests/test_version_coherente.py`). **La version
 servie en production ne figure pas ici**, volontairement : elle peut diverger
-du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, et se lira
-sur `/sante` dès qu'une version qui l'y publie est déployée ; `update.sh` l'affiche
-alors pour chaque instance. Ce qui est
-livré, par module :
+du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, puis sur
+`/sante` dès qu'une version qui l'y publie est déployée (`update.sh` l'affiche
+alors par instance). Ce qui est livré, par module :
 
-- **Prêt** — catalogue public avec recherche et filtres, fiche par exemplaire,
-  scanner caméra (jsQR) avec saisie manuelle de secours, prêt / retour /
-  re-prêt / **transfert de pochette** (deux sens), sorties tournoi et démo,
+- **Prêt** — catalogue public, fiche par exemplaire, **QR éphémères** (`X01`…,
+  nommés au premier scan), scanner caméra (jsQR) et saisie de secours,
+  prêt / retour / re-prêt / **transfert de pochette** (deux sens), sorties tournoi et démo,
   **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), **retours
   non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue
   « pochette pas vide » qui prévient le bureau, clôture de fin d'événement.
@@ -311,8 +311,8 @@ commit, quel que soit le sujet du chantier.
 ### Tenir ce fichier — règle née de sa refonte du 2026-09-01
 
 `CLAUDE.md` avait atteint **225 Ko**, dont 87 % de journal de sessions accumulé
-sans jamais rien retirer. Relu en entier à chaque démarrage, il coûtait cher,
-noyait les règles qui comptent et se contredisait. Il a été ramené à une
+sans jamais rien retirer. Relu à chaque démarrage, il coûtait cher, noyait les
+règles qui comptent et se contredisait. Il a été ramené à une
 vingtaine de kilo-octets, le journal archivé dans `interne/historique-sessions.md`.
 
 **La règle, pour que ça ne recommence pas** : en fin de session, on **remplace**

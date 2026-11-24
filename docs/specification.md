@@ -84,7 +84,10 @@ stables :
   QR imprimé et collé, même si l'on modifie l'éditeur, la catégorie, etc. Il
   est stocké en **texte**, jamais réinterprété comme un entier, pour préserver
   un éventuel zéro de tête (`00472`). Une boîte ajoutée depuis
-  l'administration reçoit un identifiant généré.
+  l'administration reçoit un identifiant généré (`A0001`…). Les **codes
+  éphémères** (`X01` à `X99`) sont réservés aux jeux de passage (§4) : une
+  boîte n'en porte un qu'une fois nommée au comptoir, et ni l'import ni
+  l'administration n'en fabriquent.
 - **`reference_titre`** — clé de regroupement commune à tous les exemplaires
   d'un **même jeu** : trois boîtes de Catan partagent la référence `CATAN`.
   Elle est dérivée du nom du jeu, par la même règle à l'import et dans
@@ -273,6 +276,16 @@ entre jamais).
   imprimée ne change pas de sens. Elles ne s'impriment que si les trois sont
   valides ; aucune ne l'est tant que les listes 2 et 3 sont vides. Ce code
   n'est **pas un identifiant** : il ne sert ni à chercher, ni à saisir.
+- **QR éphémères** : pour un jeu arrivé sans étiquette (apporté pendant
+  l'événement, trop récent), le bureau imprime d'avance une feuille de QR
+  **vierges**, numérotés `X01` à `X99`, avec une ligne pour écrire le nom au
+  crayon. Au premier scan, un bénévole **nomme le jeu** (un nom du catalogue
+  rattache la boîte à ce jeu sans le modifier, un autre nom crée un jeu, nom
+  seul) ; la boîte se prête ensuite comme les autres. Ces boîtes comptent
+  dans les statistiques, mais pas dans l'export du catalogue ni dans les
+  étiquettes en lot : le tableur du bureau reste le parc permanent, et
+  l'import met de côté toute ligne au code éphémère. Leur libération en fin
+  d'événement est à venir (`docs/conception-jeux-ephemeres.md`).
 - Le QR ne comporte **aucun secret** : il donne le même accès que le catalogue
   public (lecture seule).
 
@@ -316,6 +329,13 @@ peut encore contenir une pièce d'identité —, l'écran demande de vérifier q
 la pochette est vide et offre, si elle ne l'est pas, de **prévenir le
 bureau** : un signalement rédigé par l'application, sans champ à remplir (`docs/conception-transfert-pochette.md`
 §6 bis et §6 ter).
+
+**Cas — QR éphémère VIERGE** (code `X01`… sans boîte en base) → le bénévole
+voit « Ce QR éphémère n'est rattaché à aucun jeu » et **Nommer ce jeu**,
+puis l'écran de prêt de la boîte. Tant que la boîte n'a jamais été sortie,
+**Corriger le nom** reste offert ; ensuite, au seul administrateur connecté. Un visiteur qui ouvre ce QR lit « Ce jeu n'est pas
+encore enregistré. Demandez à un bénévole. ». Tout autre code inconnu garde
+la page « Exemplaire inconnu ».
 
 C'est le seul écran où un choix explicite est demandé, parce que la réalité
 physique peut diverger de la base. Un conflit entre deux bénévoles sur la même
@@ -727,7 +747,8 @@ Par conception, le modèle de données du prêt **ne prévoit aucune donnée
 personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa
 pièce d'identité reste physiquement au comptoir et lui est rendue au retour du
 jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un
-appareil, annonces de l'écran de salle) pourraient recevoir un nom : ils portent
+appareil, annonces de l'écran de salle, nom d'un jeu éphémère saisi au
+comptoir) pourraient recevoir un nom : ils portent
 une consigne, et leur liste, avec ce que chacun garde, vit dans
 `wiki/Rgpd.md`. La tombola n'en ouvre aucune : elle ne garde que des
 numéros et des heures, ne note jamais le nom d'un gagnant et n'a aucun champ

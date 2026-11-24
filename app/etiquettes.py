@@ -301,9 +301,26 @@ def texte_imprime(ex: dict, format_code: str = FORMAT_DEFAUT) -> tuple[str, str]
     return (ex.get("nom") or "", code_classement(ex, format_code))
 
 
+# ---------------------------------------------------------------------------
+# ÉTIQUETTE ÉPHÉMÈRE (série comptoir, lot 8a) — la même étiquette, vierge.
+# ---------------------------------------------------------------------------
+# Le nom du jeu laisse place à une ligne où l'écrire au crayon (une seule :
+# l'étiquette garde la hauteur d'un nom imprimé, donc le QR sa taille), le
+# code est TOUJOURS imprimé (c'est lui qu'on tape si le QR ne se lit pas,
+# quel que soit le réglage du bureau), et la case du code de classement, qui
+# n'a rien à dire d'un jeu inconnu, porte le mot « éphémère ». Ce mot vit dans
+# le cadre existant et non sous le QR : ajouter de la hauteur rétrécirait le QR
+# (mesure du commentaire « CODE DE LA BOÎTE » ci-dessus). Même logo, même
+# repli, même noir : rien n'est recopié, `image_etiquette` prend un drapeau.
+MOT_EPHEMERE = "éphémère"
+INVITE_NOM_EPHEMERE = "Nom du jeu :"
+LIGNES_NOM_EPHEMERE = 1
+
+
 def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
                     box: int = 8, *, afficher_code: bool = True,
-                    format_code: str = FORMAT_DEFAUT) -> Image.Image:
+                    format_code: str = FORMAT_DEFAUT,
+                    ephemere: bool = False) -> Image.Image:
     """
     Compose l'étiquette complète d'un exemplaire (format paysage).
 
@@ -336,6 +353,9 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
             (constantes de `app.classement`). Même chemin que
             `afficher_code` : le domicile du réglage est
             `services.lire_etiquette_format`, transmis par les appelants.
+        ephemere: étiquette d'un QR éphémère (voir `MOT_EPHEMERE`) : zone
+            vide pour le nom, code toujours imprimé, `afficher_code` et
+            `format_code` sans effet.
 
     Returns:
         Une image PIL RGB prête à enregistrer/placer.
@@ -353,12 +373,13 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     f_small = _police(13)
 
     code = str(ex.get("id_exemplaire") or "")
-    montrer_code = bool(afficher_code and code)
+    montrer_code = bool((afficher_code or ephemere) and code)
 
     # Mesure préalable (sur une image jetable) pour calculer la hauteur finale
     # en fonction du nombre de lignes du nom, et éviter tout débordement.
     mesure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    lignes = _wrap(mesure, ex.get("nom", ""), f_nom, panel_w, max_lignes=3)
+    lignes = ([""] * LIGNES_NOM_EPHEMERE if ephemere
+              else _wrap(mesure, ex.get("nom", ""), f_nom, panel_w, max_lignes=3))
     lh = mesure.textbbox((0, 0), "Ag", font=f_nom)[3] + 8
     header_h = max(logo_h, gom_d + 16)
     panel_h = header_h + 22 + len(lignes) * lh + 22 + classif_h
@@ -390,14 +411,23 @@ def image_etiquette(url: str, ex: dict, logo: Image.Image | None = None,
     haut_entete = pad + header_h
     bas_code = H - pad - classif_h
     ny = haut_entete + (bas_code - haut_entete - len(lignes) * lh) // 2
-    for ligne in lignes:
-        _texte_centre(d, panel_cx, ny, ligne, f_nom)
-        ny += lh
+    if ephemere:
+        # Zone d'écriture : l'invite, puis une ligne de pointillés en bas de
+        # la ligne du nom (on écrit DESSUS).
+        d.text((px, ny - f_small.size - 4), INVITE_NOM_EPHEMERE, fill=NOIR, font=f_small)
+        for _ in lignes:
+            ny += lh
+            for x in range(px, px + panel_w, 12):
+                d.line([x, ny - 4, min(x + 6, px + panel_w), ny - 4], fill=NOIR, width=2)
+    else:
+        for ligne in lignes:
+            _texte_centre(d, panel_cx, ny, ligne, f_nom)
+            ny += lh
 
     # Cadre du bas : code de la boîte (à gauche) et code de classement.
     cy = H - pad - classif_h
     d.rectangle([px, cy, px + panel_w, cy + classif_h], outline=NOIR, width=3)
-    classement = code_classement(ex, format_code)
+    classement = MOT_EPHEMERE if ephemere else code_classement(ex, format_code)
     if montrer_code:
         _dessiner_cadre_partage(d, code, classement, px, cy,
                                 panel_w, classif_h)
@@ -459,7 +489,8 @@ ESPACE_CELLULE_MM = 1.5
 def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
                 marge_gauche_mm=8.0, marge_droite_mm=8.0,
                 marge_haut_mm=8.0, marge_bas_mm=8.0,
-                afficher_code=True, format_code=FORMAT_DEFAUT) -> bytes:
+                afficher_code=True, format_code=FORMAT_DEFAUT,
+                ephemere=False) -> bytes:
     """
     Construit une planche A4 d'étiquettes (PDF couleur) et renvoie les octets.
 
@@ -484,6 +515,8 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
             du réglage appartient à l'appelant.
         format_code: format du code de classement (voir `image_etiquette`),
             transmis tel quel lui aussi.
+        ephemere: planche de QR éphémères vierges (voir `MOT_EPHEMERE`) ;
+            `exemplaires` ne porte alors que des `id_exemplaire`.
 
     Returns:
         Le contenu binaire du PDF.
@@ -529,7 +562,7 @@ def planche_pdf(exemplaires, base_url, logo=None, *, lignes=8, colonnes=2,
         for j, ex in enumerate(exemplaires[i:i + par_page]):
             url = url_fiche(base_url, ex["id_exemplaire"])
             label = image_etiquette(url, ex, logo, afficher_code=afficher_code,
-                                    format_code=format_code)
+                                    format_code=format_code, ephemere=ephemere)
             iw, ih = label.size
             col, row = j % colonnes, j // colonnes
             avail_w, avail_h = cw - 2 * pad, ch - 2 * pad

@@ -50,7 +50,8 @@ from app.db import get_connection, init_db  # noqa: E402
 # CHAMPS_FICHE : les colonnes que l'écran corrige et que l'import écrase.
 # ecrire_categories_titre : seul chemin d'écriture des catégories d'un titre
 # (liaison et copie `titres.categorie`), partagé avec l'écran.
-from app.services import (CHAMPS_FICHE, ecrire_categories_titre,  # noqa: E402
+from app.services import (CHAMPS_FICHE, code_ephemere_saisi,  # noqa: E402
+                          ecrire_categories_titre,
                           lire_vocabulaire_categories, nettoyer_nom,
                           obtenir_ou_creer_emplacement_rangement,
                           purger_categories_orphelines, slug_titre)
@@ -500,6 +501,58 @@ def ecarter_retirees(lignes: list[dict], index: dict[str, str | None],
 CODES_RETIREES_AFFICHES = 10
 
 
+# ---------------------------------------------------------------------------
+# Codes éphémères (série comptoir, lot 8a)
+# ---------------------------------------------------------------------------
+def ecarter_ephemeres(lignes: list[dict],
+                      index: dict[str, str | None]) -> tuple[list[dict], list[dict]]:
+    """
+    Met de côté les lignes dont le code SE LIT comme un code éphémère
+    (`services.code_ephemere_saisi` : « X01 », mais aussi « x1 » ou « X001 »,
+    que la saisie au clavier confondrait avec lui). Un jeu éphémère se nomme
+    au comptoir, il n'entre pas au catalogue par le tableur, et l'export ne
+    le porte pas : une telle ligne vient d'une erreur de frappe ou d'un
+    tableur rempli à la main. Elle n'écrit RIEN, et c'est dit
+    (`phrases_ephemeres`).
+
+    Returns:
+        (lignes gardées, [{"code", "nom_fichier"}] dans l'ordre du fichier,
+        un code une seule fois).
+    """
+    col_id, col_nom = index.get("id_exemplaire"), index.get("nom")
+    if not col_id:
+        return lignes, []
+    gardees, ecartees, vus = [], [], set()
+    for ligne in lignes:
+        code = (ligne.get(col_id, "") or "").strip()
+        if code_ephemere_saisi(code) is None:
+            gardees.append(ligne)
+            continue
+        if code not in vus:
+            vus.add(code)
+            ecartees.append({"code": code, "nom_fichier": nettoyer_nom(
+                ligne.get(col_nom, "") if col_nom else "")})
+    return gardees, ecartees
+
+
+def phrases_ephemeres(ecartees: list[dict]) -> list[str]:
+    """Les phrases du compte rendu de l'import sur les codes éphémères."""
+    if not ecartees:
+        return []
+    codes = ", ".join(e["code"] for e in ecartees[:CODES_RETIREES_AFFICHES])
+    reste = len(ecartees) - CODES_RETIREES_AFFICHES
+    if reste > 0:
+        codes += f" et {reste} autre(s)"
+    n = len(ecartees)
+    return [
+        (f"{n} ligne n'a pas été importée : son code ({codes}) est celui d'un "
+         "QR éphémère. " if n == 1 else
+         f"{n} lignes n'ont pas été importées : leurs codes ({codes}) sont ceux "
+         "de QR éphémères. ")
+        + "Les jeux de passage se nomment au comptoir, pas dans le tableur ; "
+        "donnez un autre code à un jeu du catalogue."]
+
+
 def phrases_retirees(ecartees: list[dict]) -> list[str]:
     """
     Les phrases du compte rendu de l'import sur les boîtes retirées — UN SEUL
@@ -802,6 +855,8 @@ def importer(chemin: Path, dry_run: bool = False,
     # Les lignes des boîtes retirées n'écrivent rien (lot comptoir-6), en
     # simulation comme en import réel : écartées AVANT tout calcul.
     lignes, retirees_ecartees = ecarter_retirees(lignes, index, base)
+    # Codes éphémères (lot comptoir-8a) : jamais par le tableur.
+    lignes, ephemeres_ecartees = ecarter_ephemeres(lignes, index)
     (exemplaires, titres, groupes, ignores, lettres_refusees,
      bgg_refusees, categories_nouvelles) = construire_donnees(lignes, index, base)
     defaites = corrections_defaites(titres, exemplaires, base)
@@ -952,6 +1007,9 @@ def importer(chemin: Path, dry_run: bool = False,
         # Lignes du fichier qui portent le code d'une boîte retirée, laissées
         # de côté (`ecarter_retirees`) ; dites par `phrases_retirees`.
         "retirees_ecartees": retirees_ecartees,
+        # Lignes au code éphémère, laissées de côté (`ecarter_ephemeres`) ;
+        # dites par `phrases_ephemeres`.
+        "ephemeres_ecartees": ephemeres_ecartees,
         # True : le fichier n'était pas de l'UTF-8, il a été lu comme un CSV
         # d'Excel. À dire à l'utilisateur (voir `detecter_encodage`).
         "encodage_repli": detecter_encodage(chemin) == ENCODAGE_EXCEL,
@@ -992,6 +1050,8 @@ def afficher_rapport(res: dict, montrer_groupes: bool) -> None:
         print(f"Fiches BoardGameGeek non reconnues : {res['bgg_refusees']} "
               "ligne(s), importées sans leur fiche BoardGameGeek")
     for phrase in phrases_retirees(res.get("retirees_ecartees") or []):
+        print(phrase)
+    for phrase in phrases_ephemeres(res.get("ephemeres_ecartees") or []):
         print(phrase)
     for fiche in res.get("corrections_defaites") or []:
         print(f"Correction faite à l'écran défaite : {fiche['nom']} "

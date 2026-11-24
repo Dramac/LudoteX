@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block titre %}{{ "Corriger le nom" if mode == "corriger" else "QR éphémère " ~ id_exemplaire }} — Prêt / retour — {{ nom_association }}{% endblock %}
+
+{# Nommer un QR éphémère vierge, ou corriger son nom tant que la boîte n'est
+   jamais sortie (série comptoir, lot 8a ; docs/conception-jeux-ephemeres.md).
+   Le champ « Nom du jeu » est une PORTE : texte libre saisi par n'importe
+   quel bénévole. Sa consigne est VISIBLE sous le champ et reliée par
+   aria-describedby. Suggestions du catalogue par <datalist>, sans JS :
+   choisir un nom existant rattache la boîte à ce jeu, sans rien en modifier. #}
+{% block contenu %}
+<section class="carte">
+  {% if mode == "corriger" %}
+    <h1>Corriger le nom</h1>
+    <p>Boîte <strong>{{ id_exemplaire }}</strong>, aujourd'hui « {{ info.nom }} ». Le nom
+       se corrige ici tant que la boîte n'a jamais été prêtée (ensuite, par le
+       bureau seulement).</p>
+  {% else %}
+    <h1>QR éphémère {{ id_exemplaire }}</h1>
+    {% if arrivee_par_saisie %}
+      <p class="stats-note">⌨️ Code tapé au clavier : vérifiez que l'étiquette porte bien
+         <strong>{{ id_exemplaire }}</strong>.</p>
+    {% endif %}
+    <p>Ce QR éphémère n'est rattaché à aucun jeu. Écrivez le nom du jeu de la
+       boîte : vous pourrez ensuite la prêter.</p>
+  {% endif %}
+
+  {% if erreur %}
+    <div class="resultat resultat-attention" role="alert"><p>{{ erreur }}</p></div>
+  {% endif %}
+
+  <form method="post" action="/pret/{{ id_exemplaire }}/nom">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <div class="champ">
+      <label for="nom-jeu">Nom du jeu</label>
+      <input type="text" id="nom-jeu" name="nom" value="{{ nom_saisi }}"
+             list="noms-catalogue" maxlength="{{ longueur_max }}" required
+             autocomplete="off" autocapitalize="sentences"
+             aria-describedby="nom-jeu-consigne"
+             {% if erreur %}aria-invalid="true"{% endif %}>
+      <p class="stats-note" id="nom-jeu-consigne">Le nom du jeu seulement — jamais
+         le nom de la personne qui l'a apporté.</p>
+    </div>
+    <datalist id="noms-catalogue">
+      {% for n in suggestions %}<option value="{{ n }}">{% endfor %}
+    </datalist>
+    <button type="submit" class="bouton bouton-principal">
+      {{ "Corriger le nom" if mode == "corriger" else "Nommer ce jeu" }}
+    </button>
+  </form>
+
+  <p class="lien-fiche">
+    {% if mode == "corriger" %}
+      <a class="lien" href="/pret/{{ id_exemplaire }}">← Retour à la boîte</a>
+    {% else %}
+      <a class="lien" href="/scanner">Scanner un autre jeu</a>
+    {% endif %}
+  </p>
+</section>
+{% endblock %}

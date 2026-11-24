@@ -941,6 +941,8 @@ summary:focus-visible,
    bouscule pas ici. Même chose pour le lien de /stats qui y mène. */
 .recherche-form--comptoir .champ input,
 .recherche-form--comptoir .bouton-filtrer { min-height: 44px; }
+/* Feuille de QR éphémères (lot comptoir-8a) : cible de 44 px. */
+.etiquettes-ephemeres .bouton-filtrer { min-height: 44px; }
 .recherche-form--comptoir .lien,
 .stats-vers-sortis .lien { display: inline-flex; align-items: center; min-height: 44px; }
 /* Menu « Période » de /stats et section « Éditions » de /admin/evenement

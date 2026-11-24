@@ -1,9 +1,23 @@
 {% extends "base.html" %}
 {% from "_vignette_bgg.html" import vignette_bgg %}
-{% block titre %}{{ info.nom if info else "Jeu inconnu" }} — {{ nom_association }}{% endblock %}
+{% block titre %}{{ info.nom if info else ("QR éphémère " ~ id_exemplaire if ephemere_vierge else "Jeu inconnu") }} — {{ nom_association }}{% endblock %}
 
 {% block contenu %}
-{% if info is none %}
+{# QR éphémère encore vierge (lot comptoir-8a) : collé sur une boîte arrivée
+   sans étiquette, pas encore nommé. Le visiteur n'a rien à faire ici que
+   demander ; le bénévole est à un tap de l'écran qui nomme le jeu. #}
+{% if info is none and ephemere_vierge %}
+  <section class="carte">
+    <h1>QR éphémère {{ id_exemplaire }}</h1>
+    {% if est_benevole(request) %}
+      <p>Ce QR éphémère n'est rattaché à aucun jeu.</p>
+      <a class="bouton bouton-principal" href="/pret/{{ id_exemplaire }}">Nommer ce jeu</a>
+    {% else %}
+      <p>Ce jeu n'est pas encore enregistré. Demandez à un bénévole.</p>
+    {% endif %}
+    <p><a class="lien" href="/catalogue">Voir le catalogue</a></p>
+  </section>
+{% elif info is none %}
   <section class="carte">
     <h1>Exemplaire inconnu</h1>
     <p>Le code <strong>{{ id_exemplaire }}</strong> ne correspond à aucun jeu du
@@ -36,6 +50,11 @@
       <p class="etat etat-dispo">Disponible</p>
     {% else %}
       <p class="etat etat-sorti">Actuellement tout sorti</p>
+    {% endif %}
+    {# Boîte éphémère (lot comptoir-8a) : une ligne, pour qui se demande
+       pourquoi l'étiquette est écrite au crayon. #}
+    {% if est_code_ephemere(info.id_exemplaire) %}
+      <p class="stats-note">Boîte de passage : elle est prêtée le temps de l'événement.</p>
     {% endif %}
     <p class="dispo-titre">{{ disponible }} / {{ total }} {{ pluriel(total, 'exemplaire', 'exemplaires') }}
        de ce jeu {{ pluriel(total, 'disponible', 'disponibles') }}</p>
