@@ -181,9 +181,6 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
    texte blanc sur --orange : 5,9:1. */
 .bouton-orange { background: var(--orange); }
 
-/* « Utiliser une autre pochette » sous le grand numéro (pret.html). Le
-   texte hérite de la couleur du bandeau (vert ou orange), lisible sur son
-   fond clair ; le champ et le bouton restent sur une ligne à 375 px. */
 /* État de chaque boîte d'un jeu sur la fiche, vue bénévole (fiche.html). */
 .boites-titre { font-size: 1.05rem; margin: 16px 0 6px; }
 .boites-etat { list-style: none; padding: 0; margin: 0 0 12px; }
@@ -191,11 +188,40 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .boites-etat li:last-child { border-bottom: none; }
 .boites-sortie { color: var(--rouge); font-weight: 600; }
 
+/* « Utiliser une autre pochette » sous le grand numéro (pret.html,
+   docs/ui-composants.md § 2 ter). Le `summary` porte `.bouton
+   .bouton-secondaire` (lot comptoir-9 : souligné comme un lien, on le
+   cherchait), resserré pour tenir dans le bandeau : 50 px de haut au lieu
+   de 75. Texte et contour prennent la couleur du bandeau, pas le gris du
+   bouton secondaire, pour deux raisons mesurées : le gris --bord-champ ne
+   fait que 2,7:1 contre le vert pâle du bandeau (il faut 3:1 au contour
+   d'un composant), et un second cadre gris aurait l'air du « Scanner le jeu
+   suivant » posé juste dessous. Vert sur blanc 5,37:1, orange sur blanc
+   5,93:1 ; contour contre le fond du bandeau 4,73:1 et 5,44:1. Le marqueur
+   natif cède la place à un chevron dessiné en CSS (aucun texte : rien à
+   lire pour un lecteur d'écran, qui annonce déjà « réduit / développé »).
+   Le champ et le bouton Changer restent sur une ligne à 375 px ; le liseré
+   du champ passe en --gris pour la même raison que le contour
+   (--bord-champ : 2,7:1 et 2,8:1 sur les deux bandeaux ; --gris : 5,3:1 et
+   5,6:1) ; au focus, `.champ input:focus`, plus bas, reprend la main. */
 .pochette-forcer { margin-top: 12px; text-align: left; }
-.pochette-forcer > summary { cursor: pointer; font-weight: 600; text-decoration: underline; min-height: 44px; display: flex; align-items: center; }
+.pochette-forcer > summary.bouton {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  list-style: none; margin: 0; padding: 10px 16px; min-height: 48px;
+  font-size: 1.1rem;
+}
+.pochette-forcer > summary::-webkit-details-marker { display: none; }
+.pochette-forcer > summary::after {
+  content: ""; flex: 0 0 auto; width: 8px; height: 8px;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+.pochette-forcer[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+.resultat-ok .pochette-forcer > summary { color: var(--vert); border-color: var(--vert); }
+.resultat-attention .pochette-forcer > summary { color: var(--orange); border-color: var(--orange); }
 .pochette-forcer-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
 .pochette-forcer-form .champ { flex: 1 1 auto; min-width: 0; margin: 0; }
-.pochette-forcer-form .champ input { font-size: 1.4rem; font-weight: 700; }
+.pochette-forcer-form .champ input { font-size: 1.4rem; font-weight: 700; border-color: var(--gris); }
 .pochette-forcer-form .bouton { flex: 0 0 auto; width: auto; margin: 0; padding: 12px 18px; min-height: 48px; font-size: 1.1rem; }
 /* Bouton désactivé (générique, tout usage) : avant cette règle, chaque écran
    qui en avait besoin réinventait son propre gris en style inline

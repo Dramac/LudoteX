@@ -4,11 +4,21 @@
 
 {# Changer le numéro de pochette proposé (retour terrain, 1.34) : replié par
    défaut sous le grand numéro, pour que le cas courant — on prend le numéro
-   proposé — ne voie qu'une ligne de plus. Ouvert d'office après un refus.
-   `inputmode="numeric"` : clavier chiffres sur téléphone. #}
+   proposé — ne voie qu'un bouton de plus. Ouvert d'office après un refus.
+   `inputmode="numeric"` : clavier chiffres sur téléphone.
+
+   Le `summary` a l'allure d'un BOUTON (lot comptoir-9) : souligné comme un
+   lien, les bénévoles le cherchaient. Il reste un `summary` natif — annoncé
+   « réduit / développé » par les lecteurs d'écran, sans JS — et il reste
+   replié : le cas courant ne gagne ni tap ni champ. Pas de focus posé sur le
+   champ à l'ouverture : il faudrait du JS, et iOS n'ouvre pas le clavier sur
+   un focus donné hors du geste lui-même ; le tap sur le champ reste.
+   Proposé après Prêter, après un changement, et après un re-prêt, qui
+   annonce lui aussi une pochette nouvelle ; jamais après un transfert ou un
+   échange, où la pochette ne change pas. #}
 {% macro forcer_pochette(id_exemplaire, ouvert) %}
   <details class="pochette-forcer"{% if ouvert %} open{% endif %}>
-    <summary>Utiliser une autre pochette</summary>
+    <summary class="bouton bouton-secondaire">Utiliser une autre pochette</summary>
     <form method="post" action="/pret/{{ id_exemplaire }}/pochette" class="pochette-forcer-form">
       <label class="champ">Numéro de la pochette
         <input type="text" name="numero" inputmode="numeric" pattern="[0-9]*"
@@ -180,6 +190,10 @@
           {{ pochette_pas_vide("/pret/" ~ info.id_exemplaire ~ "/repreter/pochette-non-vide",
                                "le nouveau prêt reste enregistré", resultat.ancien) }}
         {% endif %}
+        {# Même geste qu'après Prêter (lot comptoir-9) : le re-prêt ouvre un
+           prêt neuf, sur le plus petit numéro libre. En dernier : la seconde
+           issue ci-dessus répond à la phrase de vérification qui la précède. #}
+        {{ forcer_pochette(info.id_exemplaire, false) }}
       </section>
     {% elif resultat.type == "pochette_signalee_repret" %}
       {# Après la seconde issue du re-prêt. La consigne n'est PAS celle du

@@ -331,7 +331,8 @@ suivent :
   qui change (`docs/conception-transfert-pochette.md`).
 - **Le re-prêter** *(cas d'oubli de scan)* — l'ancien prêt est clos
   (motif `oubli`, §7), puis un nouveau prêt s'ouvre, avec le plus petit numéro
-  libre (§6) — souvent celui qu'on vient de libérer.
+  libre (§6) — souvent celui qu'on vient de libérer. Comme après un prêt, le
+  numéro proposé peut être remplacé par celui de la pochette qu'on a en main.
 
 Quand un geste rencontre un **retour jamais scanné** — la pochette libérée
 peut encore contenir une pièce d'identité —, l'écran demande de vérifier que
@@ -463,7 +464,7 @@ plafond** : on ne refuse jamais un prêt.
 - **Deux exceptions, assumées.** Le **transfert** (§5.1) réutilise le numéro
   du prêt qu'il clôt, même si un plus petit est libre — la pochette n'a jamais
   été vidée (`docs/conception-transfert-pochette.md` §3). Et juste après un
-  prêt, le bénévole peut **remplacer le numéro proposé** par celui de la
+  prêt ou un re-prêt, le bénévole peut **remplacer le numéro proposé** par celui de la
   pochette qu'il a réellement en main (« Utiliser une autre pochette ») :
   refusé, sans rien écrire, si un autre prêt ouvert tient déjà ce numéro ;
   l'ancien numéro redevient libre mais est **écarté** : il n'est plus proposé

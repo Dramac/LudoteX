@@ -56,6 +56,41 @@ coup d'œil distinguables au comptoir. Seul emploi : `pret.html`, boîte
 sortie — « Rendre et prêter un nouveau jeu » (vert) puis « Rendre » (orange),
 ordre demandé par les bénévoles après usage en salle.
 
+## 2 ter. Volet repliable en bouton — `<summary class="bouton bouton-secondaire">`
+
+```html
+<details class="pochette-forcer">
+  <summary class="bouton bouton-secondaire">Utiliser une autre pochette</summary>
+  <form>…</form>
+</details>
+```
+
+Un `<summary>` qui porte le gabarit du bouton secondaire, pour un geste de
+**correction** qu'on doit trouver sans le chercher mais qui ne doit rien
+coûter au cas courant : il reste replié, et le formulaire ne s'ouvre qu'au
+tap. Seul emploi : `pret.html`, sous le grand numéro de pochette (après
+**Prêter**, après un changement, après un re-prêt ; ouvert d'office après
+un refus). Lot comptoir-9 : souligné comme un lien, les bénévoles le
+cherchaient.
+
+Règles d'emploi :
+
+- **Garder le `<summary>` natif** : pas de `role`, pas de `aria-expanded`
+  ajouté à la main, pas de JS. Le lecteur d'écran annonce déjà « réduit /
+  développé » ; le focus clavier reprend la règle globale de
+  `summary:focus-visible`.
+- **Resserré** (50 px de haut, texte 1.1rem) : un bouton secondaire plein
+  gabarit (75 px) repousserait d'autant ce qui suit le bandeau.
+- **Texte et contour de la couleur du bandeau** qui le contient (`--vert`,
+  `--orange`), pas le gris du bouton secondaire : `--bord-champ` tombe sous
+  3:1 sur les fonds pâles des bandeaux, et un second cadre gris se
+  confondrait avec « Scanner le jeu suivant » posé juste dessous. Mesuré :
+  texte 5,37:1 (vert) et 5,93:1 (orange) sur le blanc du bouton, contour
+  4,73:1 et 5,44:1 contre le fond du bandeau. Un nouvel emploi dans un
+  bandeau bleu (`.resultat-info`) ajouterait sa propre règle de couleur.
+- Le marqueur natif est remplacé par un **chevron dessiné en CSS**
+  (bordures, aucun texte) qui pivote à l'ouverture, sans transition.
+
 ## 3. Bouton compact — `.bouton-filtrer`
 
 ```html

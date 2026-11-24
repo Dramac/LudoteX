@@ -11,6 +11,13 @@ import json
 
 import pytest
 
+# Libellé cité mot pour mot par le wiki (Module-Pret, Guide-Benevole) et la
+# spécification : le changer, c'est changer ces pages aussi.
+LIBELLE = "Utiliser une autre pochette"
+# Le geste replié, en bouton (lot comptoir-9), et le même déplié d'office.
+REPLIE = '<details class="pochette-forcer">'
+OUVERT = '<details class="pochette-forcer" open>'
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -67,15 +74,89 @@ def _pochettes():
 # ---------------------------------------------------------------------------
 def test_le_formulaire_suit_le_numero_propose(client):
     r = client.post("/pret/001/preter")
-    assert "Utiliser une autre pochette" in r.text
+    assert LIBELLE in r.text
     assert 'action="/pret/001/pochette"' in r.text
     # Replié par défaut : le cas courant ne doit voir qu'une ligne de plus.
-    assert '<details class="pochette-forcer">' in r.text
+    assert REPLIE in r.text
+
+
+def test_le_geste_a_l_allure_d_un_bouton(client):
+    # Lot comptoir-9 : souligné comme un lien, on le cherchait. Le `summary`
+    # natif reste (sémantique « réduit / développé » sans JS), sans `role`.
+    r = client.post("/pret/001/preter")
+    assert f'<summary class="bouton bouton-secondaire">{LIBELLE}</summary>' in r.text
+
+
+def test_le_geste_suit_un_changement_reussi(client):
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/pochette", data={"numero": "4"})
+    assert LIBELLE in r.text
+    assert REPLIE in r.text
 
 
 def test_le_formulaire_n_apparait_pas_sur_un_simple_affichage(client):
     client.post("/pret/001/preter")
-    assert "Utiliser une autre pochette" not in client.get("/pret/001").text
+    assert LIBELLE not in client.get("/pret/001").text
+
+
+@pytest.mark.parametrize("geste", ["rendre", "tournoi", "demo"])
+def test_le_geste_est_absent_hors_pret_ouvert_avec_pochette(client, geste):
+    if geste == "rendre":
+        client.post("/pret/001/preter")
+    r = client.post(f"/pret/001/{geste}")
+    assert r.status_code == 200
+    assert LIBELLE not in r.text
+
+
+def test_le_geste_est_absent_apres_un_transfert(client):
+    # La pochette ne change pas au transfert (ni à l'échange, qui poste vers
+    # la même route) : rien à corriger.
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/transfert/002")
+    assert "Pochette inchangée" in r.text
+    assert LIBELLE not in r.text
+
+
+# ---------------------------------------------------------------------------
+# Après un re-prêt (lot comptoir-9) : il ouvre un prêt neuf sur le plus petit
+# numéro libre, le bénévole peut tenir un autre jeton.
+# ---------------------------------------------------------------------------
+def test_le_geste_suit_un_repret(client):
+    client.post("/pret/001/preter")
+    r = client.post("/pret/001/repreter")
+    assert "Nouvelle pochette n°" in r.text
+    assert LIBELLE in r.text
+    assert REPLIE in r.text
+    assert 'action="/pret/001/pochette"' in r.text
+
+
+def test_repret_puis_changement(client):
+    client.post("/pret/001/preter")                  # 001 sur 1
+    client.post("/pret/002/preter")                  # 002 sur 2
+    client.post("/pret/001/repreter")                # 1 libéré puis repris
+    assert _pochette_du_pret("001") == 1
+
+    r = client.post("/pret/001/pochette", data={"numero": "3"})
+
+    assert '<p class="pochette-num">3</p>' in r.text
+    assert "la pochette n°1" in r.text
+    assert _pochette_du_pret("001") == 3
+    assert _pochette_du_pret("002") == 2             # l'autre prêt intact
+    assert _pochettes() == {1: 0, 2: 1, 3: 1}
+    assert _ecartees() == [1]
+    # L'ancien prêt reste clos par le re-prêt, un seul prêt ouvert sur 001.
+    ouverts = _lire("SELECT COUNT(*) FROM prets WHERE id_exemplaire = '001' "
+                    "AND date_retour IS NULL")[0][0]
+    assert ouverts == 1
+
+
+def test_repret_d_une_sortie_tournoi_propose_aussi_le_geste(client):
+    # Le re-prêt d'une sortie sans pochette ouvre un vrai prêt, avec pochette.
+    client.post("/pret/001/tournoi")
+    r = client.post("/pret/001/repreter")
+    assert LIBELLE in r.text
+    client.post("/pret/001/pochette", data={"numero": "2"})
+    assert _pochette_du_pret("001") == 2
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +277,7 @@ def test_numero_deja_pris_par_un_autre_pret(client):
     assert "Catan" in r.text
     assert "Rien n'a été modifié" in r.text
     assert "Le prêt reste sur la pochette" in r.text
-    assert '<details class="pochette-forcer" open>' in r.text
+    assert OUVERT in r.text
     assert _pochette_du_pret("001") == 1
     assert _pochette_du_pret("002") == 2
 
@@ -208,7 +289,7 @@ def test_saisie_invalide(client, saisie):
 
     assert r.status_code == 200
     assert "Rien n'a été modifié" in r.text
-    assert '<details class="pochette-forcer" open>' in r.text
+    assert OUVERT in r.text
     assert _pochette_du_pret("001") == 1
     assert _pochettes() == {1: 1}
 
