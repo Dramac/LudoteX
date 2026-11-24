@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block titre %}Libérer les QR éphémères — Administration — {{ nom_association }}{% endblock %}
+
+{# Libérer les QR éphémères en fin d'événement (série comptoir, lot 8b).
+   Confirmation PUIS résultat, sur le même écran, sans JS. Arriver ici
+   n'écrit rien ; le bouton libère les codes MONTRÉS (champs cachés), chacun
+   dans sa transaction (`services.liberer_code_ephemere`). Une liste et non un
+   tableau : elle doit se lire à 375 px. Aucun champ libre. #}
+{% block contenu %}
+<section class="carte carte-rattacher">
+  <h1>Libérer les QR éphémères</h1>
+  <p><a class="lien" href="/admin/etiquettes#ephemeres">← Revenir aux étiquettes</a></p>
+
+  {% if resultat %}
+    {% set n = resultat.liberees | length %}
+    {% if n %}
+    <div class="resultat resultat-ok resultat-liberation" role="status">
+      <p>{{ n }} {{ pluriel(n, 'QR éphémère libéré', 'QR éphémères libérés') }} :
+         {{ pluriel(n, 'le code imprimé est de nouveau vierge', 'les codes imprimés sont de nouveau vierges') }},
+         la feuille resservira.
+         {{ pluriel(n, 'La boîte est retirée', 'Les boîtes sont retirées') }} du catalogue
+         sous {{ pluriel(n, 'son nouveau code', 'leur nouveau code') }} ;
+         {{ pluriel(n, 'ses prêts restent comptés', 'leurs prêts restent comptés') }}.</p>
+      <ul class="liste-liberation">
+        {% for l in resultat.liberees %}
+        <li><strong>{{ l.code }}</strong> → {{ l.nouveau_code }} <span class="liberation-nom">{{ l.nom }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% elif not resultat.sorties and not resultat.occupees %}
+    <p class="resultat resultat-info" role="status">Ces QR éphémères étaient déjà
+       libérés : rien n'a changé.</p>
+    {% endif %}
+    {% if resultat.sorties %}
+    {% set s = resultat.sorties | length %}
+    <div class="resultat resultat-attention resultat-liberation" role="alert">
+      <p>{{ s }} {{ pluriel(s, "boîte est encore sortie : elle n'a pas été libérée", "boîtes sont encore sorties : elles n'ont pas été libérées") }}
+         ({% for l in resultat.sorties %}{{ l.code }}, {{ l.nom }}{{ " ; " if not loop.last }}{% endfor %}).
+         Enregistrez {{ pluriel(s, 'son retour', 'leur retour') }} au comptoir —
+         ou, {{ pluriel(s, "si elle n'est jamais revenue", "si elles ne sont jamais revenues") }},
+         <a class="lien" href="/admin#fin-evenement">clôturez les prêts</a> —,
+         puis libérez de nouveau.</p>
+    </div>
+    {% endif %}
+    {% if resultat.occupees %}
+    <p class="resultat resultat-attention" role="alert">Un autre geste
+       s'enregistrait au même moment : {{ resultat.occupees | join(", ") }}
+       {{ pluriel(resultat.occupees | length, "n'a pas été libéré", "n'ont pas été libérés") }}.
+       Appuyez de nouveau sur « Libérer ces QR éphémères ».</p>
+    {% endif %}
+  {% endif %}
+
+  {% if not apercu %}
+    <p>{% if resultat %}Tous les QR éphémères sont vierges : il n'y a plus rien à libérer.
+       {% else %}Aucun QR éphémère n'est nommé : il n'y a rien à libérer.{% endif %}</p>
+  {% else %}
+    {% if not resultat %}
+    <p class="stats-note">À faire après la clôture des prêts de fin d'événement,
+       quand les jeux de passage repartent.</p>
+    <h2>Ce que fait la libération</h2>
+    <ul>
+      <li>Chaque boîte prend un nouveau code, celui de la liste ci-dessous, et
+          quitte le catalogue (motif « {{ motif_passage }} »).</li>
+      <li>Le code imprimé redevient vierge : au prochain scan, un bénévole
+          pourra nommer un autre jeu. La feuille de QR resservira.</li>
+    </ul>
+    <h2>Ce qu'elle ne fait pas</h2>
+    <ul>
+      <li>Les prêts ne sont pas effacés : ils suivent la boîte, et les
+          statistiques de l'événement ne changent pas.</li>
+      <li>Le nom du jeu n'est pas effacé : il reste sur sa fiche, en administration.</li>
+      <li>Une boîte encore sortie n'est pas libérée.</li>
+    </ul>
+    {% endif %}
+
+    {% if resultat %}
+    <h2>{{ pluriel(apercu | length, 'Le QR encore nommé', 'Les QR encore nommés') }}</h2>
+    {% else %}
+    <h2>{{ pluriel(apercu | length, 'Le QR nommé', 'Les QR nommés') }}</h2>
+    {% endif %}
+    <ul class="liste-liberation liste-liberation-apercu">
+      {% for l in apercu %}
+      <li><strong>{{ l.code }}</strong> <span class="liberation-nom">{{ l.nom }}</span>
+        {% if l.sortie %}
+          <span class="liberation-etat">sortie : ne sera pas libérée</span>
+          <a class="lien" href="/pret/{{ l.code }}">Ouvrir sa page de prêt</a>
+        {% else %}
+          <span class="liberation-etat">deviendra {{ l.nouveau_code }}{% if l.retiree_le_txt %} (déjà retirée le {{ l.retiree_le_txt }}){% endif %}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if liberables %}
+    <form method="post" action="/admin/etiquettes/ephemeres/liberer">
+      {# TOUS les codes montrés, sorties comprises : une boîte sortie est
+         refusée par le service et nommée dans le résultat, avec la marche à
+         suivre — et une boîte rendue entre-temps est libérée. #}
+      {% for l in apercu %}<input type="hidden" name="codes" value="{{ l.code }}">{% endfor %}
+      <button type="submit" class="bouton bouton-principal">Libérer ces QR éphémères</button>
+    </form>
+    {% elif not (resultat and resultat.sorties) %}
+    <p class="resultat resultat-attention" role="alert">{{ pluriel(sorties | length, 'Cette boîte est sortie', 'Toutes ces boîtes sont sorties') }} :
+       aucun QR ne peut être libéré pour l'instant. Enregistrez {{ pluriel(sorties | length, 'son retour', 'leur retour') }}, ou
+       <a class="lien" href="/admin#fin-evenement">clôturez les prêts</a>, puis revenez ici.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

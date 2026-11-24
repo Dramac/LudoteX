@@ -175,6 +175,15 @@ ACTIONS = {
     # `detail`, et JAMAIS le texte refusé : le champ est une porte.
     "ephemere_nomme",
     "ephemere_nom_corrige",
+    # Un QR éphémère libéré en fin d'événement (série comptoir, lot 8b) : sa
+    # boîte prend un autre code et quitte le parc, le code imprimé redevient
+    # vierge. `ref` = « ANCIEN → NOUVEAU » (« X03 → X03-2026 ») : les deux
+    # codes s'y retrouvent par une recherche ; `objet` = le NOM DU JEU en
+    # base, comme `ephemere_nomme`. UNE ligne par boîte : le retrait qui
+    # l'accompagne (motif `passage`) n'écrit pas `exemplaire_retire`, il
+    # fait partie du même geste. Rien n'est écrit pour une boîte sortie ou
+    # un QR déjà vierge.
+    "ephemere_libere",
     # Un import a défait des corrections faites à l'écran. `objet` porte le
     # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
     # message affiché au bureau, pas ici.

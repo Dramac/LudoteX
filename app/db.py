@@ -146,6 +146,10 @@ _MIGRATIONS_COLONNES = [
     # table — le service refuse ce qu'il ne connaît pas.
     ("exemplaires", "retiree_le", "TEXT"),
     ("exemplaires", "motif_retrait", "TEXT"),
+    # Entrée au parc d'une boîte éphémère (série comptoir, lot 8b) : NULL sur
+    # une base existante, « au parc depuis toujours », donc toutes les
+    # statistiques donnent exactement les mêmes chiffres qu'avant.
+    ("exemplaires", "entree_le", "TEXT"),
 ]
 
 # Premier remplissage de la liste des emplacements de rangement LOCAL (voir

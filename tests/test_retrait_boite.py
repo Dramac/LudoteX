@@ -151,7 +151,11 @@ def test_motif_inconnu_ou_absent_enregistre_sans_motif(bases):
 
 
 def test_les_motifs_sont_une_liste_fermee():
-    assert list(services.MOTIFS_RETRAIT) == ["perdue", "abimee", "donnee", "autre"]
+    # `passage` (lot comptoir-8b) n'est posé que par la libération des QR
+    # éphémères : il n'est pas proposé au retrait ordinaire.
+    assert list(services.MOTIFS_RETRAIT) == [
+        "perdue", "abimee", "donnee", "autre", services.MOTIF_PASSAGE]
+    assert list(services.MOTIFS_RETRAIT_PROPOSES) == ["perdue", "abimee", "donnee", "autre"]
     assert services.MOTIFS_RETRAIT["donnee"] == "Donnée ou vendue"
 
 
@@ -341,8 +345,9 @@ def test_la_confirmation_dit_ce_que_fait_et_ne_fait_pas_le_retrait(client):
     assert "<h2>Ce que fait le retrait</h2>" in page
     assert "<h2>Ce qu'il ne fait pas</h2>" in page
     assert "Ses 1 prêt passé reste compté dans les statistiques" in _texte(page)
-    for libelle in services.MOTIFS_RETRAIT.values():
+    for libelle in services.MOTIFS_RETRAIT_PROPOSES.values():
         assert f'"> {libelle}</label>' in page
+    assert services.MOTIFS_RETRAIT[services.MOTIF_PASSAGE] not in page
     assert "dernière boîte" not in page
     assert "<textarea" not in page and 'type="text"' not in page   # aucun champ libre
 
@@ -577,8 +582,8 @@ def _chiffres(debut=DEBUT, fin=FIN):
 
 
 def test_condition_au_parc_pendant():
-    assert services.condition_au_parc_pendant(None) == ("1 = 1", [])
-    assert services.condition_au_parc_pendant(DEBUT, "x") == (
+    assert services.condition_au_parc_pendant(None, None) == ("1 = 1", [])
+    assert services.condition_au_parc_pendant(DEBUT, None, "x") == (
         "(x.retiree_le IS NULL OR x.retiree_le > ?)", [DEBUT])
     assert services.condition_au_parc("x") == "x.retiree_le IS NULL"
 

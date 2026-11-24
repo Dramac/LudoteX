@@ -13,6 +13,15 @@
         {{ message[1] }}
       </p>
     {% endif %}
+    {# Après la clôture (lot comptoir-8b) : des QR éphémères sont encore
+       nommés. La clôture ne les libère pas, elle le propose. #}
+    {% if ephemeres_nommes %}
+      <p class="resultat resultat-info">
+        {{ ephemeres_nommes }} {{ pluriel(ephemeres_nommes, 'QR éphémère est encore nommé', 'QR éphémères sont encore nommés') }}.
+        Quand les jeux de passage sont repartis :
+        <a class="lien" href="/admin/etiquettes/ephemeres/liberer">Libérer les QR éphémères</a>.
+      </p>
+    {% endif %}
     {# Échéance du jeton : rappelée ICI, en tête, parce que la colonne de
        supervision est masquée sur téléphone — et que c'est sur téléphone que
        le bureau ouvre l'administration un jour d'événement. Même lecture que

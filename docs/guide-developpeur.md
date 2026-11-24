@@ -83,7 +83,12 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
   de forme `X01`…`X99` est **éphémère** : il ne se reconnaît qu'à sa forme,
   par `services.est_code_ephemere` (jamais une expression recopiée ; en SQL,
   `services.condition_non_ephemere`), et n'existe en base qu'une fois nommé
-  au comptoir (`docs/conception-jeux-ephemeres.md`).
+  au comptoir (`docs/conception-jeux-ephemeres.md`). `entree_le` : entrée au
+  parc d'une boîte qui n'y était pas depuis toujours (posée quand on nomme un
+  QR éphémère) ; NULL = depuis toujours. Le seul code qui change est celui
+  d'une boîte éphémère libérée (`services.liberer_code_ephemere`) : une table
+  nouvelle qui référence `exemplaires` doit rejoindre
+  `services.TABLES_CODE_DE_BOITE` (un test compare la liste au schéma).
 - `prets` (historique complet, jamais purgé) : `date_retour IS NULL` ⇒ sorti.
 - `pochettes` : occupation du moment des numéros (recyclés, sans plafond).
 - Tables annexes de la même base, dont `fiches_bgg` : copie datée des fiches
@@ -245,10 +250,12 @@ donnent pas exactement les mêmes octets pour ces images-là.
   `services`, jamais par une condition recopiée. Un écran du parc
   d'aujourd'hui (catalogue, disponibilité, étiquettes, rangement) :
   `condition_au_parc(alias)`. Une **statistique** qui compte des boîtes ou
-  des jeux du catalogue : `condition_au_parc_pendant(debut, alias)` — au
-  parc pendant la période, c'est-à-dire jamais retirée ou retirée après son
-  début ; un bilan publié ne bouge pas quand on retire une boîte l'année
-  suivante. Les prêts, eux, ne se filtrent pas. Un historique (prêts,
+  des jeux du catalogue : `condition_au_parc_pendant(debut, fin, alias)` —
+  au parc pendant la période, c'est-à-dire jamais retirée ou retirée après
+  son début, ET entrée au parc avant sa fin (`entree_le`) ou depuis
+  toujours ; un bilan publié ne bouge pas quand on retire une boîte l'année
+  suivante, ni quand un jeu de passage est nommé l'année suivante. Une
+  borne absente ne filtre rien de son côté. Les prêts, eux, ne se filtrent pas. Un historique (prêts,
   signalements, sortis) ne change pas.
 - **Ajouter un filtre catalogue** : étendre `services.lister_catalogue` (clause
   WHERE paramétrée) + le formulaire de `catalogue.html` + la normalisation dans

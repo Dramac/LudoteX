@@ -142,6 +142,13 @@
         Aucun QR éphémère n'est encore nommé.
       {% endif %}
     </p>
+    {# Fin d'événement (lot comptoir-8b) : un lien vers la confirmation, qui
+       est une lecture — il peut vivre dans ce formulaire. #}
+    {% if codes_ephemeres %}
+    <p class="stats-note">En fin d'événement, quand les jeux de passage repartent,
+      libérez ces QR pour que la feuille resserve.</p>
+    <p><a class="bouton bouton-secondaire" href="/admin/etiquettes/ephemeres/liberer">Libérer les QR éphémères</a></p>
+    {% endif %}
     <div class="grille-params">
       <label>Du numéro <input type="number" name="premier" min="{{ ephemere_min }}"
              max="{{ ephemere_max }}" step="1" value="{{ premier_saisi }}" inputmode="numeric"></label>

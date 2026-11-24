@@ -242,7 +242,9 @@ def _filtre_periode(colonne: str, debut: str | None, fin: str | None) -> tuple[s
 #   compte des boîtes ou des jeux du catalogue : `condition_au_parc_pendant`.
 #   Une boîte retirée après le début de la période y compte encore, une boîte
 #   retirée avant n'y compte plus : un bilan déjà publié ne bouge pas quand
-#   on retire une boîte l'année suivante.
+#   on retire une boîte l'année suivante. Symétriquement (lot comptoir-8b),
+#   une boîte ENTRÉE au parc après la fin de la période n'y compte pas :
+#   un jeu de passage nommé en 2026 n'entre pas dans le bilan de 2025.
 # Les PRÊTS, eux, ne se filtrent jamais : une boîte ne sort plus après son
 # retrait, tous ses prêts datent d'avant, et ils restent comptés.
 # ---------------------------------------------------------------------------
@@ -251,23 +253,35 @@ def condition_au_parc(alias: str = "e") -> str:
     return f"{alias}.retiree_le IS NULL"
 
 
-def condition_au_parc_pendant(debut: str | None,
+def condition_au_parc_pendant(debut: str | None, fin: str | None,
                               alias: str = "e") -> tuple[str, list]:
     """
-    Fragment SQL et paramètres : la boîte `alias` était au parc pendant une
-    période qui commence à `debut` (UTC ISO, le format de `maintenant()`).
+    Fragment SQL et paramètres : la boîte `alias` était au parc pendant la
+    période [`debut`, `fin`[ (UTC ISO, le format de `maintenant()` ; fin
+    EXCLUSIVE, comme `_filtre_periode`).
 
-    Au parc pendant la période = jamais retirée, ou retirée APRÈS son début.
-    Sans début (« toutes périodes »), toute boîte a été au parc à un moment :
-    elles comptent toutes. La fin de la période n'y joue pas : une boîte
-    retirée en cours de période était là à son début.
+    Au parc pendant la période =
+    - jamais retirée, ou retirée APRÈS son début (`retiree_le`) ;
+    - ET entrée au parc avant sa fin (`entree_le`), ou depuis toujours
+      (`entree_le` NULL : toute boîte du tableur, de l'administration, et
+      toute boîte d'une base d'avant le lot comptoir-8b).
+    Une borne absente ne filtre rien de son côté : « toutes périodes » (ni
+    début ni fin) compte toutes les boîtes, et une période sans fin
+    (l'édition en cours) n'écarte aucune boîte selon son entrée.
 
     À RÉUTILISER par tout nouveau lecteur qui compte des boîtes ou des jeux
     dans une statistique (docs/guide-developpeur.md).
     """
-    if not debut:
+    conditions, params = [], []
+    if debut:
+        conditions.append(f"({alias}.retiree_le IS NULL OR {alias}.retiree_le > ?)")
+        params.append(debut)
+    if fin:
+        conditions.append(f"({alias}.entree_le IS NULL OR {alias}.entree_le < ?)")
+        params.append(fin)
+    if not conditions:
         return "1 = 1", []
-    return f"({alias}.retiree_le IS NULL OR {alias}.retiree_le > ?)", [debut]
+    return " AND ".join(conditions), params
 
 
 def maintenant() -> str:
@@ -900,7 +914,7 @@ def stats_globales(conn: sqlite3.Connection, debut: str | None = None,
     # retirées avant son début n'en est plus (`condition_au_parc_pendant`). Un
     # titre sans aucune boîte reste compté, comme avant ce lot : une base
     # d'avant donne le même chiffre.
-    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
+    au_parc, params_parc = condition_au_parc_pendant(debut, fin, "e")
     nb_titres = conn.execute(
         f"""
         SELECT COUNT(*) FROM titres t
@@ -986,7 +1000,7 @@ def palmares(conn: sqlite3.Connection, sens: str = "desc",
     f, params = _filtre_periode("p.date_sortie", debut, fin)
     # Les boîtes au parc PENDANT la période : une boîte retirée avant son
     # début ne compte ni dans le nombre de boîtes ni dans « par boîte ».
-    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
+    au_parc, params_parc = condition_au_parc_pendant(debut, fin, "e")
     rows = conn.execute(
         f"""
         SELECT t.reference_titre, t.nom,
@@ -2662,9 +2676,12 @@ def nommer_code_ephemere(conn: sqlite3.Connection, code: str, nom: str) -> dict:
                     "nom": existante["nom"],
                     "meme_titre": existante["reference_titre"] == slug_titre(nom)}
         titre, cree = _titre_ou_creer(conn, nom)
+        # `entree_le` (lot comptoir-8b) : la boîte n'était pas au parc avant
+        # ce jour ; une période passée ne la comptera pas.
         conn.execute(
-            "INSERT INTO exemplaires (id_exemplaire, reference_titre) VALUES (?, ?)",
-            (code, titre["reference_titre"]))
+            "INSERT INTO exemplaires (id_exemplaire, reference_titre, entree_le) "
+            "VALUES (?, ?, ?)",
+            (code, titre["reference_titre"], maintenant()))
     return {"deja_nomme": False, "titre_nouveau": cree,
             "reference_titre": titre["reference_titre"], "nom": titre["nom"],
             "meme_titre": True}
@@ -2823,12 +2840,23 @@ def lister_exemplaires_du_titre(conn: sqlite3.Connection,
 
 # Motifs d'un retrait : code stocké -> libellé affiché. Ajouter un motif ne
 # demande aucune migration (pas de CHECK en base, voir app/db.py).
+#
+# `passage` (lot comptoir-8b) n'est posé QUE par la libération des QR
+# éphémères (`liberer_code_ephemere`) : il dit « jeu de passage, reparti ».
+# Il n'est pas proposé au retrait ordinaire (`MOTIFS_RETRAIT_PROPOSES`), où il
+# n'aurait aucun sens pour une boîte du parc permanent ; il s'affiche, lui,
+# partout où un motif se lit (fiche d'administration, journal).
+MOTIF_PASSAGE = "passage"
 MOTIFS_RETRAIT = {
     "perdue": "Perdue",
     "abimee": "Abîmée",
     "donnee": "Donnée ou vendue",
     "autre": "Autre",
+    MOTIF_PASSAGE: "Jeu de passage, reparti",
 }
+# Ceux que propose le formulaire « Retirer » et qu'accepte `retirer_exemplaire`.
+MOTIFS_RETRAIT_PROPOSES = {code: libelle for code, libelle in MOTIFS_RETRAIT.items()
+                           if code != MOTIF_PASSAGE}
 
 
 class BoiteRetiree(Exception):
@@ -2878,14 +2906,15 @@ def retirer_exemplaire(conn: sqlite3.Connection, id_exemplaire: str,
     refus : `deja_retiree`, rien ne change, la date du premier retrait reste.
 
     Un motif inconnu (formulaire forgé) est enregistré comme « sans motif »
-    plutôt que refusé : le geste n'est jamais bloqué pour un détail.
+    plutôt que refusé : le geste n'est jamais bloqué pour un détail. Le motif
+    `passage`, réservé à la libération des QR éphémères, est traité de même.
 
     Returns:
         {"statut": "retiree" | "deja_retiree" | "sortie" | "inconnue",
          "reference_titre": str | None, "motif": code | None,
          "retiree_le": iso | None}
     """
-    code_motif = motif if motif in MOTIFS_RETRAIT else None
+    code_motif = motif if motif in MOTIFS_RETRAIT_PROPOSES else None
     with transaction(conn):
         row = conn.execute(
             "SELECT reference_titre, retiree_le, motif_retrait FROM exemplaires "
@@ -2932,6 +2961,142 @@ def remettre_en_service(conn: sqlite3.Connection, id_exemplaire: str) -> dict:
             "UPDATE exemplaires SET retiree_le = NULL, motif_retrait = NULL "
             "WHERE id_exemplaire = ?", (id_exemplaire,))
     return {"statut": "remise", "reference_titre": row["reference_titre"]}
+
+
+# ===========================================================================
+# LIBÉRER LES QR ÉPHÉMÈRES (série comptoir, lot 8b) — docs/conception-jeux-ephemeres.md §7
+#
+# En fin d'événement, le jeu de passage repart et la feuille de QR doit
+# resservir. La boîte nommée PREND UN AUTRE CODE (`code_libere` : « X01 » →
+# « X01-2026 »), garde ses prêts et ses signalements, et est RETIRÉE du parc
+# (motif `passage`) ; le code imprimé redevient vierge.
+#
+# EXCEPTION ASSUMÉE à « un code de boîte ne change jamais »
+# (docs/specification.md §3.1), limitée aux codes de forme éphémère : leur QR
+# n'a jamais désigné un objet durable. `liberer_code_ephemere` refuse tout
+# autre code.
+#
+# Les clés étrangères de `prets` et `signalements` n'ont pas de cascade
+# (`ON UPDATE NO ACTION`, `foreign_keys = ON`) : la boîte est recopiée sous
+# son nouveau code, ses lignes repointées, puis l'ancienne supprimée, en UNE
+# transaction. Aucune autre table, dans aucune des trois bases, ne porte un
+# code de boîte (relevé par `PRAGMA foreign_key_list` et `table_info`, CR 8a
+# et 8b). Le journal, lui, garde ses lignes : un code réemployé y désigne deux
+# boîtes successives, on ne le réécrit pas.
+# ===========================================================================
+def annee_locale() -> int:
+    """L'année en cours, à l'heure de l'événement (`FUSEAU_LOCAL`)."""
+    return datetime.now(FUSEAU_LOCAL).year
+
+
+def code_libere(conn: sqlite3.Connection, code: str, annee: int) -> str:
+    """
+    Le code que prend la boîte du QR éphémère `code` quand on le libère :
+    « X01-2026 » ; « X01-2026-2 », « -3 »… si la clé de saisie est déjà prise
+    (deux libérations du même QR la même année). SEUL DOMICILE de ce code.
+
+    Pourquoi cette forme : le bureau la lit (« c'était le X01 de 2026 ») ; elle
+    n'est jamais éphémère (`est_code_ephemere` : forme exacte `X` + deux
+    chiffres) et ne s'y rapproche pas à la saisie (`cle_saisie` donne
+    « X1-2026 », que `code_ephemere_saisi` ne lit pas) ; `prochain_id_exemplaire`
+    ne fabrique que des « A… ». La collision se teste sur la CLÉ DE SAISIE et
+    non sur le code exact : deux codes de même clé rendraient la saisie au
+    clavier ambiguë (`resoudre_code_saisi`).
+    """
+    pris = {cle_saisie(r[0]) for r in conn.execute("SELECT id_exemplaire FROM exemplaires")}
+    candidat, n = f"{code}-{annee}", 1
+    while cle_saisie(candidat) in pris:
+        n += 1
+        candidat = f"{code}-{annee}-{n}"
+    return candidat
+
+
+def liberer_code_ephemere(conn: sqlite3.Connection, code: str, *,
+                          annee: int | None = None) -> dict:
+    """
+    Libère UN QR éphémère, en UNE transaction (`transaction`) : la boîte
+    prend son code libéré (`code_libere`), ses prêts et ses signalements la
+    suivent, elle est retirée du parc (motif `passage`), et `code` redevient
+    vierge.
+
+    1. relire la boîte ; ne rien écrire si `code` n'a pas la forme
+       éphémère, s'il est vierge, ou si la boîte est sortie (`pret_en_cours`) ;
+    2. recopier la ligne sous le nouveau code, TOUTES colonnes (lues sur le
+       schéma par `PRAGMA table_info`, jamais énumérées à la main) ;
+    3. repointer `prets` et `signalements` ;
+    4. supprimer l'ancienne ligne ;
+    5. retirer la nouvelle : maintenant, motif `passage`. Une boîte déjà
+       retirée (perdue pendant l'événement…) garde sa date et son motif.
+    Une erreur à n'importe quelle étape annule tout : aucune ligne n'a bougé.
+
+    Ne jamais bloquer : un code vierge (formulaire envoyé deux fois, wifi
+    lent) n'est pas une erreur, rien n'est à faire (`vierge`).
+
+    Returns:
+        {"statut": "liberee" | "vierge" | "sortie" | "non_ephemere",
+         "code", "nouveau_code" (None sauf « liberee »),
+         "reference_titre", "nom" (None si vierge ou non éphémère)}
+    """
+    resultat = {"statut": "non_ephemere", "code": code, "nouveau_code": None,
+                "reference_titre": None, "nom": None}
+    if not est_code_ephemere(code):
+        return resultat
+    annee = annee or annee_locale()
+    with transaction(conn):
+        boite = conn.execute(
+            "SELECT e.reference_titre, e.retiree_le, t.nom FROM exemplaires e "
+            "JOIN titres t ON t.reference_titre = e.reference_titre "
+            "WHERE e.id_exemplaire = ?", (code,)).fetchone()
+        if boite is None:
+            return {**resultat, "statut": "vierge"}
+        resultat.update(reference_titre=boite["reference_titre"], nom=boite["nom"])
+        if pret_en_cours(conn, code) is not None:
+            return {**resultat, "statut": "sortie"}
+        nouveau = code_libere(conn, code, annee)
+        colonnes = [r[1] for r in conn.execute("PRAGMA table_info(exemplaires)")]
+        lues = ", ".join("?" if c == "id_exemplaire" else c for c in colonnes)
+        conn.execute(
+            f"INSERT INTO exemplaires ({', '.join(colonnes)}) "
+            f"SELECT {lues} FROM exemplaires WHERE id_exemplaire = ?", (nouveau, code))
+        for table in TABLES_CODE_DE_BOITE:
+            conn.execute(f"UPDATE {table} SET id_exemplaire = ? WHERE id_exemplaire = ?",
+                         (nouveau, code))
+        conn.execute("DELETE FROM exemplaires WHERE id_exemplaire = ?", (code,))
+        if not boite["retiree_le"]:
+            conn.execute(
+                "UPDATE exemplaires SET retiree_le = ?, motif_retrait = ? "
+                "WHERE id_exemplaire = ?", (maintenant(), MOTIF_PASSAGE, nouveau))
+    return {**resultat, "statut": "liberee", "nouveau_code": nouveau}
+
+
+# Les tables qui référencent `exemplaires.id_exemplaire` (sans cascade). Un
+# test compare cette liste à `PRAGMA foreign_key_list` de toutes les tables :
+# une table nouvelle qui pointe une boîte fera échouer la libération en test,
+# pas en production.
+TABLES_CODE_DE_BOITE = ("prets", "signalements")
+
+
+def apercu_liberation(conn: sqlite3.Connection, *,
+                      annee: int | None = None) -> list[dict]:
+    """
+    L'écran de confirmation : chaque QR éphémère nommé, dans l'ordre, avec ce
+    que la libération en ferait. Une LECTURE.
+
+    Returns:
+        [{"code", "nom", "nouveau_code", "sortie" (bool), "retiree_le_txt"}]
+    """
+    annee = annee or annee_locale()
+    lignes = []
+    for code in codes_ephemeres_nommes(conn):
+        boite = conn.execute(
+            "SELECT t.nom, e.retiree_le FROM exemplaires e "
+            "JOIN titres t ON t.reference_titre = e.reference_titre "
+            "WHERE e.id_exemplaire = ?", (code,)).fetchone()
+        lignes.append({"code": code, "nom": boite["nom"],
+                       "nouveau_code": code_libere(conn, code, annee),
+                       "sortie": est_sorti(conn, code),
+                       "retiree_le_txt": date_retrait_txt(boite["retiree_le"])})
+    return lignes
 
 
 def premiere_boite_au_parc(conn: sqlite3.Connection, reference_titre: str) -> str | None:

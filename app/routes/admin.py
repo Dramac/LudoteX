@@ -20,6 +20,7 @@ déclarées par `_envoi_admin`, qui pose la même garde AVANT la lecture du corp
 import json
 import os
 import re
+import sqlite3
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -118,7 +119,7 @@ def _base_url(request: Request) -> str:
     return os.getenv("BASE_URL") or str(request.base_url).rstrip("/")
 
 
-def _rendre_dashboard(request: Request, message):
+def _rendre_dashboard(request: Request, message, *, ephemeres_nommes: int = 0):
     """
     Rend le tableau de bord admin, avec l'état de supervision (bases, disque,
     sauvegarde, jeton, version) embarqué dans la colonne dédiée sur grand
@@ -140,7 +141,10 @@ def _rendre_dashboard(request: Request, message):
         conn.close()
     return templates.TemplateResponse(
         request, "admin_dashboard.html",
-        {"message": message, "etat": etat, "nb_signalements": nb_signalements},
+        {"message": message, "etat": etat, "nb_signalements": nb_signalements,
+         # Après la clôture (lot comptoir-8b) : les QR éphémères encore
+         # nommés, pour proposer de les libérer. 0 ailleurs : rien ne s'affiche.
+         "ephemeres_nommes": ephemeres_nommes},
     )
 
 
@@ -1462,7 +1466,8 @@ def _rendre_retrait(request: Request, reference_titre: str, id_exemplaire: str,
                 "reference_titre": reference_titre, "pret": pret,
                 "refus": refus, "nb_prets": nb_prets,
                 "derniere": au_parc == 1 and info is not None and not info["retiree_le"],
-                "motifs": services.MOTIFS_RETRAIT}
+                "motifs": services.MOTIFS_RETRAIT,
+                "motifs_proposes": services.MOTIFS_RETRAIT_PROPOSES}
     return templates.TemplateResponse(request, "admin_retirer.html", contexte,
                                       status_code=status_code)
 
@@ -1922,6 +1927,82 @@ def etiquettes_ephemeres_pdf(
         content=pdf, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{nom_fichier}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Libérer les QR éphémères en fin d'événement (série comptoir, lot 8b)
+#
+# Un geste du BUREAU, après la clôture des prêts : chaque boîte nommée prend
+# son code libéré (`services.code_libere`), garde ses prêts, quitte le parc,
+# et la feuille de QR resservira. Une CONFIRMATION (une lecture) liste ce qui
+# va se passer ; un seul bouton libère toutes les boîtes libérables, chacune
+# dans sa transaction — une boîte encore sortie n'empêche jamais les autres.
+# Le formulaire porte la liste des codes MONTRÉS : un QR nommé au comptoir
+# entre l'affichage et l'envoi n'est pas libéré sans avoir été vu.
+# ---------------------------------------------------------------------------
+def _ecran_liberation(request: Request, *, resultat: dict | None = None):
+    """L'écran « Libérer les QR éphémères » : confirmation, puis résultat."""
+    conn = get_connection()
+    try:
+        apercu = services.apercu_liberation(conn)
+    finally:
+        conn.close()
+    return templates.TemplateResponse(
+        request, "admin_liberer_ephemeres.html",
+        {"apercu": apercu,
+         "liberables": [l for l in apercu if not l["sortie"]],
+         "sorties": [l for l in apercu if l["sortie"]],
+         "motif_passage": services.MOTIFS_RETRAIT[services.MOTIF_PASSAGE],
+         "resultat": resultat})
+
+
+@router.get("/etiquettes/ephemeres/liberer")
+def liberer_ephemeres_confirmer(request: Request):
+    """« Libérer les QR éphémères » : la confirmation. Rien n'est écrit."""
+    if (garde := _garde(request)):
+        return garde
+    return _ecran_liberation(request)
+
+
+@router.post("/etiquettes/ephemeres/liberer")
+def liberer_ephemeres_appliquer(request: Request, codes: list[str] = Form([])):
+    """
+    Libère les QR éphémères listés par la confirmation, un par un.
+
+    Un code qui n'est pas éphémère (formulaire forgé) est ignoré ; un QR déjà
+    vierge (double envoi) ne compte pas, sans message d'erreur ; une boîte
+    sortie est nommée avec la marche à suivre ; un conflit d'accès
+    simultané (`database is locked`) laisse la boîte nommée et le dit.
+    Une ligne de journal par boîte libérée (`ephemere_libere`).
+    """
+    if (garde := _garde(request)):
+        return garde
+    resultat = {"liberees": [], "sorties": [], "occupees": [], "vierges": 0}
+    conn = get_connection()
+    try:
+        for code in dict.fromkeys(c.strip() for c in codes):
+            if not services.est_code_ephemere(code):
+                continue
+            try:
+                r = services.liberer_code_ephemere(conn, code)
+            except sqlite3.OperationalError as erreur:
+                texte = str(erreur).lower()
+                if "lock" not in texte and "busy" not in texte:
+                    raise
+                resultat["occupees"].append(code)
+                continue
+            if r["statut"] == "liberee":
+                resultat["liberees"].append(r)
+                journal.journaliser(request, "catalogue", "ephemere_libere",
+                                    objet=r["nom"],
+                                    ref=f"{r['code']} → {r['nouveau_code']}")
+            elif r["statut"] == "sortie":
+                resultat["sorties"].append(r)
+            elif r["statut"] == "vierge":
+                resultat["vierges"] += 1
+    finally:
+        conn.close()
+    return _ecran_liberation(request, resultat=resultat)
 
 
 # ---------------------------------------------------------------------------
@@ -3914,6 +3995,10 @@ def cloturer_prets(request: Request):
     conn = get_connection()
     try:
         cloture = services.cloturer_evenement(conn)
+        # La libération des QR éphémères n'est PAS liée à la clôture (geste
+        # déjà chargé, et un bureau peut garder un jeu de passage d'une
+        # édition à l'autre) : on la propose seulement (lot comptoir-8b).
+        ephemeres_nommes = len(services.codes_ephemeres_nommes(conn))
     finally:
         conn.close()
     nb = cloture.prets
@@ -3944,7 +4029,7 @@ def cloturer_prets(request: Request):
         texte += (f" La tombola est terminée : {n} "
                   f"{services.pluriel(n, 'numéro non réclamé', 'numéros non réclamés')}.")
     message = ("succes", texte)
-    return _rendre_dashboard(request, message)
+    return _rendre_dashboard(request, message, ephemeres_nommes=ephemeres_nommes)
 
 
 # ---------------------------------------------------------------------------

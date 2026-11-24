@@ -212,6 +212,12 @@ CREATE TABLE IF NOT EXISTS categories_signalement (
 # catalogue, du rangement et des étiquettes, impossible à prêter ; son QR dit
 # « boîte retirée ». Les lecteurs passent par `services.condition_au_parc`
 # (aujourd'hui) ou `services.condition_au_parc_pendant` (statistiques).
+#
+# entree_le (série comptoir, lot 8b) : l'entrée au parc d'une boîte qui n'y
+# était pas depuis toujours — aujourd'hui, la boîte d'un QR éphémère, posée
+# quand on la nomme. NULL = au parc depuis toujours (tableur, administration,
+# toute base d'avant) : une période qui finit avant l'entrée ne compte pas la
+# boîte (`services.condition_au_parc_pendant`).
 SCHEMA_EXEMPLAIRES = """
 CREATE TABLE IF NOT EXISTS exemplaires (
     id_exemplaire         TEXT PRIMARY KEY,            -- encodé dans le QR ; TEXT (zéros de tête)
@@ -220,6 +226,7 @@ CREATE TABLE IF NOT EXISTS exemplaires (
     emplacement_local_id  INTEGER,                     -- FK -> emplacements_rangement, contexte local
     retiree_le            TEXT,                        -- retrait du parc, UTC ISO ; NULL = au parc
     motif_retrait         TEXT,                        -- code de services.MOTIFS_RETRAIT, ou NULL
+    entree_le             TEXT,                        -- entrée au parc, UTC ISO ; NULL = depuis toujours
     FOREIGN KEY (reference_titre) REFERENCES titres (reference_titre),
     FOREIGN KEY (emplacement_local_id) REFERENCES emplacements_rangement (id_emplacement)
 );

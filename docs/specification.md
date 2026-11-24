@@ -87,7 +87,11 @@ stables :
   l'administration reçoit un identifiant généré (`A0001`…). Les **codes
   éphémères** (`X01` à `X99`) sont réservés aux jeux de passage (§4) : une
   boîte n'en porte un qu'une fois nommée au comptoir, et ni l'import ni
-  l'administration n'en fabriquent.
+  l'administration n'en fabriquent. **Seule exception** à « ne change
+  jamais » : en fin d'événement, le bureau **libère** ces codes — la boîte
+  nommée prend un code d'une autre forme (`X01-2026`), garde ses prêts et
+  quitte le parc, et le QR imprimé redevient vierge. Un QR éphémère n'a
+  jamais désigné un objet durable.
 - **`reference_titre`** — clé de regroupement commune à tous les exemplaires
   d'un **même jeu** : trois boîtes de Catan partagent la référence `CATAN`.
   Elle est dérivée du nom du jeu, par la même règle à l'import et dans
@@ -284,8 +288,13 @@ entre jamais).
   seul) ; la boîte se prête ensuite comme les autres. Ces boîtes comptent
   dans les statistiques, mais pas dans l'export du catalogue ni dans les
   étiquettes en lot : le tableur du bureau reste le parc permanent, et
-  l'import met de côté toute ligne au code éphémère. Leur libération en fin
-  d'événement est à venir (`docs/conception-jeux-ephemeres.md`).
+  l'import met de côté toute ligne au code éphémère. En fin d'événement,
+  après la clôture, le bureau **libère** les QR éphémères depuis
+  l'administration : chaque boîte prend un code d'une autre forme
+  (`X01-2026`), garde ses prêts (les statistiques de l'édition ne bougent
+  pas) et est retirée du parc (motif « Jeu de passage, reparti ») ; la
+  feuille resservira. Une boîte encore sortie n'est pas libérée, sans
+  empêcher les autres (`docs/conception-jeux-ephemeres.md`).
 - Le QR ne comporte **aucun secret** : il donne le même accès que le catalogue
   public (lecture seule).
 

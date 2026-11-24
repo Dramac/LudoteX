@@ -170,7 +170,7 @@ du dépôt sans que rien ne le signale. Elle se lit sur `/apropos`, puis sur
 alors par instance). Ce qui est livré, par module :
 
 - **Prêt** — catalogue public, fiche par exemplaire, **QR éphémères** (`X01`…,
-  nommés au premier scan), scanner caméra (jsQR) et saisie de secours,
+  nommés au scan puis libérés), scanner (jsQR) et saisie de secours,
   prêt / retour / re-prêt / **transfert de pochette** (deux sens), sorties tournoi et démo,
   **erreurs de prêt** (retour en moins d'une minute, motif `erreur`), **retours
   non scannés** (motif `oubli`, comptés mais hors durée moyenne), seconde issue

@@ -399,7 +399,7 @@ def ce_qui_plait(conn: sqlite3.Connection, debut: str | None,
     """
     # Les jeux du catalogue de la période : au moins une boîte au parc
     # pendant la période (lot comptoir-6, `condition_au_parc_pendant`).
-    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
+    au_parc, params_parc = condition_au_parc_pendant(debut, fin, "e")
     titres = conn.execute(
         f"""
         SELECT t.reference_titre, t.nom, t.nb_joueurs_min, t.nb_joueurs_max,

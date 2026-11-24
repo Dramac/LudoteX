@@ -4,7 +4,8 @@
 {# Confirmation du retrait d'une boîte (série comptoir, lot 6). Une LECTURE :
    rien n'est écrit avant le bouton. Elle dit ce que fait le retrait ET ce
    qu'il ne fait pas. Sans JS : un formulaire, des boutons radio. Le motif est
-   choisi dans une liste FERMÉE (services.MOTIFS_RETRAIT) : aucun champ libre. #}
+   choisi dans une liste FERMÉE (services.MOTIFS_RETRAIT_PROPOSES : sans le motif
+   « passage », réservé à la libération des QR éphémères) : aucun champ libre. #}
 {% block contenu %}
 <section class="carte carte-rattacher">
 {% if info is none %}
@@ -62,7 +63,7 @@
   <form method="post" action="/admin/jeu/{{ reference_titre }}/exemplaire/{{ info.id_exemplaire }}/retirer">
     <fieldset class="champ champ-groupe motifs-retrait">
       <legend>Pourquoi la retirer ? (facultatif)</legend>
-      {% for code, libelle in motifs.items() %}
+      {% for code, libelle in motifs_proposes.items() %}
       <label class="case"><input type="radio" name="motif" value="{{ code }}"> {{ libelle }}</label>
       {% endfor %}
     </fieldset>

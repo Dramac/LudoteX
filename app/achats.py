@@ -350,7 +350,7 @@ def pour_les_achats(conn: sqlite3.Connection, debut: str | None,
     # Les boîtes au parc PENDANT la période (lot comptoir-6) : une boîte
     # retirée avant son début ne compte ni dans « tous sortis » ni parmi les
     # jamais sortis. Les prêts, eux, ne se filtrent pas (`services`).
-    au_parc, params_parc = condition_au_parc_pendant(debut, "e")
+    au_parc, params_parc = condition_au_parc_pendant(debut, fin, "e")
     titres = conn.execute(
         f"""
         SELECT t.reference_titre, t.nom, COUNT(e.id_exemplaire) AS nb

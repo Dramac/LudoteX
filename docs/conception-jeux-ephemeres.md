@@ -1,7 +1,7 @@
 # Jeux éphémères — conception
 
-Série « comptoir », lots 8a (imprimer, nommer, prêter : **livré**) et 8b
-(libérer les QR en fin d'événement : **à venir**).
+Série « comptoir », lots 8a (imprimer, nommer, prêter) et 8b (libérer les
+QR en fin d'événement), **livrés**.
 
 ## 1. Le besoin
 
@@ -31,10 +31,12 @@ prête comme les autres.
   par un test). Aucune colonne, aucune table : la forme suffit.
 - **Un code n'existe en base qu'une fois nommé.** Imprimer ne crée rien. Un
   code **vierge** est un code de forme éphémère sans boîte en base.
-- **Invariant pour 8b** : seule la forme **exacte** du code imprimé est
-  éphémère. Une boîte renommée en fin d'événement prendra un code d'une autre
-  forme ; elle cessera alors d'être éphémère, et le code imprimé redeviendra
-  vierge.
+- **Invariant** : seule la forme **exacte** du code imprimé est éphémère.
+  Une boîte libérée en fin d'événement prend un code d'une autre forme
+  (§ 7) ; elle cesse alors d'être éphémère, et le code imprimé redevient
+  vierge. Vérifié par les tests : `X01-2026` n'est ni éphémère
+  (`est_code_ephemere`), ni rapproché d'un code éphémère à la saisie
+  (`code_ephemere_saisi`), ni écarté comme tel par l'import.
 - Personne d'autre ne fabrique ce code : `prochain_id_exemplaire` a son
   préfixe ; l'import **met de côté** toute ligne dont le code se lit comme un
   code éphémère, et le dit (`import_csv.ecarter_ephemeres`).
@@ -118,23 +120,115 @@ Exclue de l'**export du catalogue** (et le titre qui n'a qu'elle) et des
 **étiquettes en lot** : le tableur du bureau est le parc permanent. Les jamais
 sortis d'une période (`app/achats.py`, `avec_retirees=True`) la décrivent.
 
-## 7. Ce que le lot 8b devra faire
+## 7. Libérer les QR en fin d'événement
 
-Libérer les QR en fin d'événement :
+Après l'événement, les jeux de passage repartent et la feuille de QR doit
+resservir. **Exception assumée** à « un code de boîte ne change jamais »
+(`docs/specification.md` § 3.1), limitée aux codes de forme éphémère : leur
+QR n'a jamais désigné un objet durable.
 
-1. **Renommer** la boîte d'un code éphémère vers un code d'une autre forme
-   (à choisir en 8b, jamais reconnu par `est_code_ephemere`). Exception
-   assumée à « un code ne change jamais », pour les seuls codes éphémères.
-2. Cascade **manuelle**, sous une transaction : `prets.id_exemplaire` et
-   `signalements.id_exemplaire` référencent `exemplaires.id_exemplaire`
-   **sans** `ON UPDATE CASCADE` (relevé par `PRAGMA foreign_key_list`).
-   Avec `foreign_keys = ON`, il faut insérer la boîte sous son nouveau code,
-   repointer prêts et signalements, puis supprimer l'ancienne ligne.
-3. **Retirer** la boîte renommée (`retiree_le`), pour qu'elle quitte le
-   catalogue en gardant ses prêts. Limite connue de comptoir-6 : une seule
-   date de retrait, aucune date d'entrée.
-4. Le code imprimé redevient **vierge** : la feuille resservira.
-5. Refuser de renommer une boîte **sortie** (prêt ouvert).
-6. Le journal porte des codes en `ref` (`exemplaire_retire`,
-   `ephemere_nomme`) : un code réemployé y désignera deux boîtes
-   successives ; c'est un fichier à rotation, à ne pas réécrire.
+### 7.1 Le geste
+
+Un geste du **bureau** (administration), après la clôture des prêts, jamais
+lié à elle : la clôture est déjà chargée, et un bureau peut garder un jeu de
+passage d'une édition à l'autre.
+
+- `/admin/etiquettes`, bloc « QR éphémères » : lien **Libérer les QR
+  éphémères** dès qu'un code est nommé. Après **Clôturer tous les prêts en
+  cours**, le tableau de bord le propose aussi s'il reste des codes nommés.
+- `/admin/etiquettes/ephemeres/liberer` (une **lecture**) : chaque code
+  nommé, son jeu, le code qu'il prendra, ou « sortie : ne sera pas
+  libérée ». Une liste, pas un tableau : elle se lit à 375 px.
+- Bouton **Libérer ces QR éphémères** : libère les codes **montrés** (champs
+  cachés), chacun dans sa transaction. Un QR nommé au comptoir entre
+  l'affichage et l'envoi n'est pas libéré sans avoir été vu.
+- Résultat sur le même écran : combien sont libérés (`role="status"`), les
+  boîtes restées dehors nommées avec la marche à suivre — rendre au
+  comptoir, ou clôturer les prêts — (`role="alert"`). **Une boîte sortie
+  n'empêche jamais les autres.** Double envoi : « Ces QR éphémères étaient
+  déjà libérés : rien n'a changé. »
+
+Pas de libération boîte par boîte depuis la fiche d'administration : trente
+gestes au lieu d'un, en fin de journée, pour un besoin que personne n'a
+exprimé.
+
+### 7.2 Le nouveau code
+
+`services.code_libere`, seul domicile : l'ancien code, un tiret, l'année
+(heure locale) de la libération — `X01-2026` ; `X01-2026-2`, `-3`… si la
+**clé de saisie** est déjà prise (deux libérations du même QR la même
+année, ou un code `X1-2026` venu du tableur, qui rendrait la saisie
+ambiguë). Le bureau le lit (« c'était le X01 de 2026 ») ; la saisie
+`x1-2026` le retrouve, `x1` désigne toujours le QR vierge ;
+`prochain_id_exemplaire` ne fabrique que des `A…` ; une ligne de tableur
+`X01-2026` est celle d'une boîte retirée, mise de côté comme telle.
+
+### 7.3 Le renommage
+
+`services.liberer_code_ephemere`, sous `transaction`, pour une boîte :
+
+1. relire ; ne rien écrire si le code n'est pas éphémère (`non_ephemere`),
+   s'il est vierge (`vierge` : double envoi, rien à faire) ou si la boîte
+   est sortie (`sortie`, `pret_en_cours` : prêt, tournoi, démo) ;
+2. recopier la ligne `exemplaires` sous le nouveau code, **toutes
+   colonnes**, lues par `PRAGMA table_info` ;
+3. repointer `services.TABLES_CODE_DE_BOITE` (`prets`, `signalements` :
+   clés étrangères sans cascade). Aucune autre table des trois bases ne
+   porte un code de boîte (relevé par `PRAGMA foreign_key_list` et
+   `table_info`) ; un test compare la liste au schéma ;
+4. supprimer l'ancienne ligne ;
+5. retirer la nouvelle : maintenant, motif `passage` (« Jeu de passage,
+   reparti »). Une boîte déjà retirée (perdue pendant l'événement) garde sa
+   date et son motif.
+
+Tout ou rien (test : un déclencheur fait échouer l'étape 4 ou 5, aucune
+ligne n'a bougé). Une course avec un prêt : le prêt passe avant ou après,
+jamais au milieu. Les prêts, le signalement ouvert (visible au carnet sous
+le nouveau code) et le nom du jeu suivent la boîte ; les statistiques de
+l'édition sont identiques avant et après (test sur les quatre lecteurs).
+
+La boîte libérée est une boîte retirée ordinaire : hors catalogue, export,
+étiquettes ; sa page de prêt dit « Boîte retirée ». **Remettre en service**
+(le jeu a finalement été donné) en fait une boîte du parc au code
+`X01-2026`, au catalogue, dans l'export et les étiquettes en lot (son
+étiquette est à réimprimer).
+
+Le motif `passage` n'est **pas proposé** au retrait ordinaire
+(`services.MOTIFS_RETRAIT_PROPOSES`) : il n'a de sens que pour la
+libération. Un envoi forgé est enregistré « sans motif ».
+
+### 7.4 Les périodes passées : `entree_le`
+
+Une boîte nommée en 2026 était jugée « au parc » pendant 2025 : rien ne
+disait quand elle était entrée. Mesuré avant ce lot, sur une base d'essai :
+le bilan 2025 passait de 2 à 3 jeux et listait le jeu de passage parmi les
+**jamais sortis** de 2025 — dès le nommage, libération ou non.
+
+`exemplaires.entree_le` (UTC ISO, nullable, migration idempotente) : posée
+par `nommer_code_ephemere`, recopiée par la libération. NULL = au parc
+depuis toujours (tableur, administration, toute base d'avant) : une base
+existante donne exactement les mêmes chiffres. `condition_au_parc_pendant`
+prend `debut` **et** `fin` : retirée après le début, **et** entrée avant la
+fin (exclusive). Ni début ni fin (« toutes périodes ») : `1 = 1` ; une
+période sans fin n'écarte personne selon son entrée.
+
+### 7.5 Le journal
+
+`ephemere_libere`, module `catalogue`, une ligne par boîte libérée : `ref` =
+« X01 → X01-2026 », `objet` = le nom du jeu en base. Le retrait qui
+l'accompagne n'écrit pas `exemplaire_retire` : c'est le même geste.
+
+Le journal garde, dans ses rotations, des lignes où `X01` désignait la boîte
+libérée (`ephemere_nomme`, prêts) : un code réemployé y désigne deux boîtes
+successives. **On ne réécrit pas le journal** ; la ligne `ephemere_libere`
+fait le lien.
+
+### 7.6 La porte
+
+La libération n'efface pas le nom du jeu : il reste en base, attaché au
+titre (fiche d'administration, statistiques). Il quitte le catalogue public
+avec la boîte, mais la page du code libéré (`/jeu/X01-2026`, qu'aucun QR ne
+porte) le montre encore à qui tape l'adresse, comme pour toute boîte
+retirée. Pour l'effacer : **Corriger le nom** avant la libération, ou la
+fiche d'administration du jeu ensuite. La libération n'ajoute aucun champ
+libre.
