@@ -172,6 +172,9 @@ configuré → **mode ouvert** (dev) avec avertissement au démarrage. Le reste
   (mot de passe oublié ; aussi appelé par `install.sh`). Mot de passe lu sans
   écho, jamais en argument ; refuse une base absente plutôt que d'en créer une
   vide ; `--env` vise une autre instance. Procédure : `docs/deploiement.md` § 9.
+- `captures_wiki.py` : régénère les captures d'écran du wiki sur une instance
+  jetable (voir § 8, « Régénérer les captures du wiki »). Poste de
+  développement seulement : `pip install -r requirements-dev.txt`.
 
 ## 8. Lancer et tester en local
 
@@ -189,6 +192,40 @@ python -m pytest -q          # tests
 
 Tests : `tests/test_services.py` (logique métier, base en mémoire) et
 `tests/test_routes.py` (routes via `TestClient`, base temporaire par test).
+
+### Régénérer les captures du wiki
+
+Les images du wiki (`wiki/images/`) ne se prennent pas à la main : le script
+`scripts/captures_wiki.py` les régénère toutes, à relancer à chaque version
+qui change un écran illustré. Il prépare une instance jetable dans un dossier
+temporaire (son propre fichier d'environnement, désigné par
+`LUDOTEX_ENV_FILE` ; jamais `data/` ni le `.env` de la racine), la peuple
+avec `app.formation` à graine fixe, pose une identité d'association
+**fictive** par `/admin/identite`, prépare chaque état au clic, puis
+photographie les pages avec Playwright. Il échoue si le navigateur contacte
+autre chose que `127.0.0.1`.
+
+```bash
+pip install -r requirements-dev.txt          # une fois
+python -m playwright install chromium        # une fois
+python scripts/captures_wiki.py --liste      # la liste, sans rien lancer
+python scripts/captures_wiki.py              # toutes (une demi-minute environ)
+python scripts/captures_wiki.py --seulement guide-benevole-pret-disponible
+```
+
+Chaque capture se déclare dans la liste `CAPTURES` du script : nom
+(`<page>-<sujet>.png`), page cible, format, profil, préparation, adresse,
+cadrage et **texte alternatif**. Le texte alternatif vit dans le script ; la
+page du wiki en porte une copie (`![texte](images/<nom>.png)`), et
+`tests/test_captures_wiki.py` vérifie que les deux concordent, que chaque
+image citée est déclarée et qu'aucune image n'est orpheline.
+
+**Avant de committer le wiki, ouvrir chaque image régénérée** : une recherche
+de texte ne trouve rien dans un PNG. Le bandeau doit porter le nom fictif,
+aucun jeton ni chemin de la machine ne doit apparaître. Une image fausse se
+corrige dans le script, jamais à la main. Les heures affichées (tirage,
+durée d'une sortie, début d'un tournoi) suivent l'horloge : deux passes ne
+donnent pas exactement les mêmes octets pour ces images-là.
 
 ## 9. Comment étendre — recettes
 

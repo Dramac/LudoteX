@@ -58,7 +58,9 @@ Une proposition retenue devient une pull request qui :
   quelqu'un finira par y taper un nom, et il rejoint la liste des portes
   d'entrée de la [page RGPD du wiki](https://github.com/Dramac/LudoteX/wiki/Rgpd) ;
 - **met à jour la documentation** quand un écran, un libellé, une URL publique
-  ou un comportement visible change.
+  ou un comportement visible change. Si l'écran est illustré dans le wiki,
+  régénérer ses captures avec `scripts/captures_wiki.py` (voir
+  `docs/guide-developpeur.md`, « Régénérer les captures du wiki »).
 
 Le code contribué est publié sous **GPLv3**, comme le reste du projet.
 

@@ -1,0 +1,7 @@
+# Dépendances du poste de DÉVELOPPEMENT, en plus de celles de l'application.
+# Jamais installées sur le serveur (update.sh n'installe que requirements.txt).
+-r requirements.txt
+
+# Captures d'écran du wiki (scripts/captures_wiki.py). Après l'installation,
+# une fois : python -m playwright install chromium
+playwright==1.65.2
