@@ -273,6 +273,11 @@ ACTIONS = {
     # prêt (services.changer_pochette). Le numéro lui-même n'est JAMAIS
     # journalisé, comme pour toutes les actions de prêt.
     "pochette_changee",
+    # Un numéro écarté par ce changement est remis en service (lot
+    # comptoir-10), depuis le bandeau qui suit le changement ou depuis la page
+    # Jeux sortis. Sans le numéro, ici non plus ; un tap sans effet (double
+    # tap, déjà en service) n'écrit rien.
+    "pochette_remise_en_service",
     # --- Carnet de maintenance (docs/conception-signalements.md §10) --------
     # Le geste bénévole et sa clôture par le bureau. Le CRUD des catégories
     # relève, lui, de la configuration : mêmes trois verbes que les types de

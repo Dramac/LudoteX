@@ -1748,8 +1748,11 @@ def changer_pochette(conn: sqlite3.Connection, id_exemplaire: str,
     d'événement. Si le bénévole renonce à une pochette proposée, c'est le plus
     souvent qu'elle manque ou qu'elle est abîmée — la reproposer au prêt
     suivant ferait refaire le même détour. Le numéro CHOISI, lui, est remis en
-    service s'il était écarté : c'est le rattrapage en un geste d'un numéro
-    écarté par erreur.
+    service s'il était écarté. Un numéro écarté à tort (le bénévole a pris le
+    jeton du dessus de la pile, le proposé y est resté) se remet aussi en
+    service sans le reprendre, par `remettre_pochette_en_service` (lot
+    comptoir-10) : bouton du bandeau qui annonce l'écart, et bloc « Pochettes
+    écartées » de la page Jeux sortis.
 
     Un numéro au-delà du plus grand jamais créé est accepté (aucun plafond) :
     les numéros intermédiaires sont créés LIBRES, sinon `plus_petit_numero_libre`
@@ -1808,6 +1811,48 @@ def changer_pochette(conn: sqlite3.Connection, id_exemplaire: str,
             (numero_voulu, courant["id_pret"]),
         )
     return {"statut": "change", "ancien": ancien, "numero": numero_voulu}
+
+
+def pochettes_ecartees(conn: sqlite3.Connection) -> list[int]:
+    """Les numéros écartés par `changer_pochette`, du plus petit au plus grand
+    (lot comptoir-10 : bloc « Pochettes écartées » de la page Jeux sortis)."""
+    return [r[0] for r in conn.execute(
+        "SELECT numero_pochette FROM pochettes WHERE ecartee = 1 "
+        "ORDER BY numero_pochette")]
+
+
+def remettre_pochette_en_service(conn: sqlite3.Connection, numero: int) -> str:
+    """
+    Remet en service un numéro ÉCARTÉ par `changer_pochette` (lot
+    comptoir-10) : il redevient proposable par `plus_petit_numero_libre`.
+    Le cas visé : le bénévole a pris le jeton du dessus de la pile, et le
+    numéro proposé, en bon état, y est resté — l'écarter était un tort.
+
+    `occupe` n'est PAS touché : un numéro écarté est libre (le reprendre à la
+    main lève déjà l'écart, voir `changer_pochette`), il redevient simplement
+    proposable.
+
+    Idempotente, jamais d'erreur : un numéro déjà en service ou inconnu ne
+    change rien et le statut le dit (double tap sur un wifi lent, page
+    ouverte avant la clôture, adresse forgée).
+
+    Returns:
+        "remise"           — le numéro était écarté, il ne l'est plus ;
+        "deja_en_service"  — il existe et n'était pas écarté, rien d'écrit ;
+        "inconnu"          — aucune pochette de ce numéro, rien d'écrit.
+    """
+    with transaction(conn):
+        ligne = conn.execute(
+            "SELECT ecartee FROM pochettes WHERE numero_pochette = ?", (numero,)
+        ).fetchone()
+        if ligne is None:
+            return "inconnu"
+        if not ligne[0]:
+            return "deja_en_service"
+        conn.execute(
+            "UPDATE pochettes SET ecartee = 0 WHERE numero_pochette = ?", (numero,)
+        )
+    return "remise"
 
 
 # Numéro de pochette « factice » des sorties SANS POCHETTE (tournoi, démo :

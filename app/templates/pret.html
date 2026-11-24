@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_pochette_oubliee.html" import verifier_pochette, pochette_pas_vide %}
+{% from "_pochette_ecartee.html" import bouton_remettre, confirmation_remise %}
 {% block titre %}{{ info.nom if info else "Inconnu" }} — Prêt / retour — {{ nom_association }}{% endblock %}
 
 {# Changer le numéro de pochette proposé (retour terrain, 1.34) : replié par
@@ -122,7 +123,18 @@
 
   {# --- Bandeau de résultat après une action --- #}
   {% if resultat %}
-    {% if resultat.type in ("prete", "pochette_changee") %}
+    {# « Remettre le n°X en service » (lot comptoir-10) : SEULEMENT
+       sous la phrase qui annonce l'écart, et à nouveau si le tap a buté sur
+       un conflit d'écriture (« appuyez à nouveau »). Compact et collé à la
+       phrase qu'il corrige, qui nomme la pochette : d'où le libellé court,
+       sur une ligne à 375 px (« Remettre la pochette n°1 en service »
+       passait sur deux et devenait presque aussi large que le geste d'en
+       dessous) ; « Utiliser une autre pochette », pleine
+       largeur, reste le dernier geste du bandeau (docs/ui-composants.md,
+       « Deux boutons secondaires dans un bandeau »). Après le tap, le grand
+       numéro du prêt est INCHANGÉ : seule la pochette quittée change. #}
+    {% if resultat.type in ("prete", "pochette_changee")
+          or (resultat.type == "pochette_remise" and resultat.numero) %}
       <section class="resultat resultat-ok">
         <p class="resultat-libelle">Pochette n°</p>
         <p class="pochette-num">{{ resultat.numero }}</p>
@@ -130,8 +142,24 @@
         {% if resultat.type == "pochette_changee" %}
           <p class="resultat-consigne">Numéro changé : la pochette n°{{ resultat.ancien }}
              ne sera plus proposée jusqu'à la fin de l'événement.</p>
+          {{ bouton_remettre("/pret/" ~ info.id_exemplaire ~ "/pochette/remettre", resultat.ancien,
+                             "Remettre le n°" ~ resultat.ancien ~ " en service",
+                             classe="bouton bouton-secondaire pochette-remettre-bouton") }}
+        {% elif resultat.type == "pochette_remise" %}
+          <p class="resultat-consigne" role="status">{{ confirmation_remise(resultat.statut, resultat.remise) }}</p>
+          {% if resultat.statut == "occupe" %}
+            {{ bouton_remettre("/pret/" ~ info.id_exemplaire ~ "/pochette/remettre", resultat.remise,
+                               "Remettre le n°" ~ resultat.remise ~ " en service",
+                               classe="bouton bouton-secondaire pochette-remettre-bouton") }}
+          {% endif %}
         {% endif %}
         {{ forcer_pochette(info.id_exemplaire, false) }}
+      </section>
+    {# La boîte a été rendue entre le changement et le tap : plus de grand
+       numéro à redire, la phrase seule. #}
+    {% elif resultat.type == "pochette_remise" %}
+      <section class="resultat resultat-info" role="status">
+        <p>{{ confirmation_remise(resultat.statut, resultat.remise) }}</p>
       </section>
     {% elif resultat.type in ("pochette_occupee", "pochette_invalide") %}
       {# Refus du changement de pochette : RIEN n'a été écrit, le prêt reste

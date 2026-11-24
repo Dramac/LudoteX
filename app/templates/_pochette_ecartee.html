@@ -1,0 +1,39 @@
+{# Pochette ÉCARTÉE — formulation UNIQUE, partagée par les deux écrans qui
+   la remettent en service (lot comptoir-10) : le bandeau qui suit un
+   changement de pochette (pret.html) et le bloc « Pochettes écartées » de la
+   page Jeux sortis (sortis.html). Une pochette écartée n'est plus proposée
+   jusqu'à la fin de l'événement (services.changer_pochette) ; la remettre en
+   service la rend de nouveau proposable (services.remettre_pochette_en_service).
+
+   Import :  from "_pochette_ecartee.html" import bouton_remettre, confirmation_remise
+   Aucun accès au contexte : tout passe par les paramètres. #}
+
+{# Le bouton, en un tap. Le numéro voyage dans le CORPS du formulaire, jamais
+   dans l'adresse (journaux d'accès du serveur). `libelle` : le texte visible ;
+   `complement` : ce qu'un lecteur d'écran entend en plus quand le libellé
+   visible ne nomme pas la pochette (une liste de boutons « Remettre en
+   service » serait indistincte, lue hors contexte). `champs` : paires
+   nom → valeur de champs cachés en plus du numéro. #}
+{% macro bouton_remettre(action, numero, libelle, complement="", classe="bouton-filtrer", champs={}) -%}
+<form method="post" action="{{ action }}" class="pochette-remettre">
+  <input type="hidden" name="numero" value="{{ numero }}">
+  {% for nom, valeur in champs.items() %}<input type="hidden" name="{{ nom }}" value="{{ valeur }}">{% endfor %}
+  <button type="submit" class="{{ classe }}">{{ libelle }}{% if complement %}<span class="sr-only"> {{ complement }}</span>{% endif %}</button>
+</form>
+{%- endmacro %}
+
+{# La phrase qui suit le tap. Un double tap (déjà en service) donne la MÊME
+   phrase : le bénévole n'a rien fait de travers. `statut` : celui de
+   routes/pret.py::remettre_en_service. #}
+{% macro confirmation_remise(statut, numero) -%}
+{% if statut in ("remise", "deja_en_service") -%}
+  La pochette n°{{ numero }} sera de nouveau proposée.
+{%- elif statut == "inconnu" -%}
+  Aucune pochette n°{{ numero }} n'est écartée : rien n'a été modifié.
+{%- elif statut == "occupe" -%}
+  Un autre bénévole enregistrait une opération au même moment : rien n'a été
+  modifié. Appuyez à nouveau sur le bouton.
+{%- else -%}
+  Ce n'est pas un numéro de pochette : rien n'a été modifié.
+{%- endif %}
+{%- endmacro %}

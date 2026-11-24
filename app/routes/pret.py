@@ -560,6 +560,77 @@ def action_changer_pochette(request: Request, id_exemplaire: str,
     return _rendu(request, id_exemplaire, resultat)
 
 
+def numero_pochette_saisi(saisie: str) -> int | None:
+    """Le numéro de pochette d'un formulaire, ou None s'il n'en est pas un
+    (vide, non numérique, nul ou au-delà du garde-fou de frappe)."""
+    saisie = (saisie or "").strip()
+    if saisie.isdigit() and 1 <= int(saisie) <= NUMERO_POCHETTE_SAISI_MAX:
+        return int(saisie)
+    return None
+
+
+def remettre_en_service(request: Request, conn, numero: int | None,
+                        objet: str | None = None, ref: str | None = None) -> str:
+    """
+    Remet en service une pochette écartée (lot comptoir-10), pour les DEUX
+    chemins : le bandeau qui suit un changement (`/pret/<id>/pochette/remettre`)
+    et la page Jeux sortis (`routes/sortis.py`). Renvoie le statut de
+    `services.remettre_pochette_en_service`, `"invalide"` pour une saisie qui
+    n'est pas un numéro, `"occupe"` si le verrou d'écriture n'a pas été obtenu.
+
+    Journal : une ligne `pochette_remise_en_service` quand un écart a
+    réellement été levé, et une ligne d'échec sur `occupe` (un bénévole a vu
+    un message inattendu, §2.3 de docs/conception-journal.md). Un double tap
+    ou un numéro déjà en service n'écrit rien en base, ni au journal : le
+    bénévole voit le même écran de confirmation, rien d'inattendu. JAMAIS le
+    numéro (§8 de la même note), comme toutes les actions de prêt.
+    """
+    if numero is None:
+        return "invalide"
+    try:
+        statut = services.remettre_pochette_en_service(conn, numero)
+    except sqlite3.OperationalError as erreur:
+        if not _est_verrou(erreur):
+            raise
+        statut = "occupe"
+    if statut in ("remise", "occupe"):
+        journal.journaliser(request, "pret", "pochette_remise_en_service",
+                            objet=objet, ref=ref, ok=statut == "remise",
+                            detail=None if statut == "remise" else statut)
+    return statut
+
+
+@router.post("/{id_exemplaire}/pochette/remettre")
+def action_remettre_pochette(request: Request, id_exemplaire: str,
+                             numero: str = Form(""), _=Depends(exiger_jeton)):
+    """
+    « Remettre le n°X en service », proposé dans le bandeau qui suit
+    un changement de pochette (lot comptoir-10). Le prêt n'est pas touché : on
+    revient à l'écran de la boîte, le grand numéro inchangé, avec une phrase
+    qui confirme. Le numéro voyage dans le CORPS du formulaire, jamais dans
+    l'adresse (journaux d'accès du serveur).
+    """
+    conn = get_connection()
+    try:
+        info = services.info_exemplaire(conn, id_exemplaire)
+        if info is None:
+            return _rendu(request, id_exemplaire)
+        numero_remis = numero_pochette_saisi(numero)
+        statut = remettre_en_service(request, conn, numero_remis,
+                                     objet=info.get("nom"),
+                                     ref=info.get("reference_titre"))
+        courant = services.pret_en_cours(conn, id_exemplaire)
+    finally:
+        conn.close()
+    # Le grand numéro n'a de sens que si la boîte est encore prêtée avec une
+    # pochette : sinon (rendue entre-temps), la phrase seule.
+    numero_pret = (courant["numero_pochette"]
+                   if courant and courant["motif"] == "pret" else None)
+    return _rendu(request, id_exemplaire,
+                  {"type": "pochette_remise", "statut": statut,
+                   "remise": numero_remis, "numero": numero_pret})
+
+
 @router.post("/{id_exemplaire}/repreter/pochette-non-vide")
 def repreter_pochette_non_vide(request: Request, id_exemplaire: str,
                                numero: str = Form(""), _=Depends(exiger_jeton)):

@@ -469,7 +469,10 @@ plafond** : on ne refuse jamais un prêt.
   refusé, sans rien écrire, si un autre prêt ouvert tient déjà ce numéro ;
   l'ancien numéro redevient libre mais est **écarté** : il n'est plus proposé
   jusqu'à la clôture de fin d'événement (la pochette manque ou est abîmée,
-  le plus souvent). Le choisir à la main le remet en service. Le numéro choisi peut dépasser le plus
+  le plus souvent). Trois chemins le remettent en service : le choisir à la main
+  lors d'un changement, le bouton « Remettre le n°… en service » du
+  bandeau qui annonce l'écart, et le bloc « Pochettes écartées » de la page
+  Jeux sortis (bénévoles). Le numéro choisi peut dépasser le plus
   grand jamais attribué (les numéros intermédiaires sont créés libres) ; seul
   un garde-fou de frappe écarte les valeurs au-delà de 9999.
 - Deux bénévoles qui prêtent au même instant ne peuvent pas recevoir le même

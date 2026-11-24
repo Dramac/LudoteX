@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block titre %}Jeux sortis — {{ nom_association }}{% endblock %}
 {% block conteneur_extra %}contenu-large{% endblock %}
+{% from "_pochette_ecartee.html" import bouton_remettre, confirmation_remise %}
 
 {# Page BÉNÉVOLE (lot bilan-1, app/routes/sortis.py) : la route exige le jeton,
    le numéro de pochette peut donc s'y afficher (docs/vocabulaire.md, règle 2).
@@ -73,5 +74,37 @@
     </ul>
   {% else %}<p>Aucun.</p>{% endif %}
   {% endfor %}
+
+  {# Pochettes écartées (lot comptoir-10, app/routes/sortis.py) : en
+     dernier, rarement utile ; affiché seulement s'il y en a — ou si l'on
+     vient d'en remettre une en service, pour que la confirmation reste à
+     l'ancre même quand la liste se vide. Jamais filtré par `q`. Pas de
+     « tout remettre » : un numéro écarté parce que la pochette manque doit
+     le rester. #}
+  {% if ecartees or remise %}
+  <div id="pochettes-ecartees" class="pochettes-ecartees">
+    <h2>Pochettes écartées <small>({{ ecartees | length }})</small></h2>
+    {% if remise %}
+      <p role="status"><strong>{{ confirmation_remise(remise.statut, remise.numero) }}</strong></p>
+    {% endif %}
+    {% if ecartees %}
+      <p>Elles ne sont plus proposées jusqu'à la fin de l'événement : un
+         bénévole a pris une autre pochette à leur place. Si l'une d'elles est
+         en fait dans la pile, en bon état, remettez-la en service.</p>
+      <ul class="pochettes-ecartees-liste">
+        {% for n in ecartees %}
+          <li>
+            <span class="pochettes-ecartees-num">n°{{ n }}</span>
+            {{ bouton_remettre("/sortis/pochettes-ecartees#pochettes-ecartees", n,
+                               "Remettre en service", complement="la pochette n°" ~ n,
+                               champs={"q": q} if q else {}) }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Aucune.</p>
+    {% endif %}
+  </div>
+  {% endif %}
 </section>
 {% endblock %}

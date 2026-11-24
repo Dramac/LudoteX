@@ -219,6 +219,34 @@ h1 { font-size: 1.5rem; margin: 0 0 12px; }
 .pochette-forcer[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
 .resultat-ok .pochette-forcer > summary { color: var(--vert); border-color: var(--vert); }
 .resultat-attention .pochette-forcer > summary { color: var(--orange); border-color: var(--orange); }
+/* Remettre en service la pochette qu'on vient d'écarter (lot comptoir-10) :
+   second bouton secondaire du bandeau, collé à la phrase qu'il corrige.
+   COMPACT (largeur du texte, pas de chevron) pour ne pas se confondre avec
+   « Utiliser une autre pochette », pleine largeur juste dessous ; même
+   habit (contour et texte de la couleur du bandeau : le gris --bord-champ
+   ne fait pas 3:1 sur le vert pâle, mesure de comptoir-9). */
+.pochette-remettre { margin: 8px 0 0; }
+.pochette-remettre-bouton {
+  display: inline-flex; align-items: center; width: auto; margin: 0;
+  padding: 8px 16px; min-height: 44px; font-size: 1rem;
+}
+.resultat-ok .pochette-remettre-bouton { color: var(--vert); border-color: var(--vert); }
+/* Bloc « Pochettes écartées » de la page Jeux sortis (lot comptoir-10) :
+   une ligne par numéro, son bouton à droite (.bouton-filtrer, l'action
+   secondaire d'une liste, docs/ui-composants.md § 3). Largeur bornée : sur
+   la page large, le numéro et son bouton resteraient sinon à 1 100 px l'un
+   de l'autre. */
+.pochettes-ecartees-liste { list-style: none; padding: 0; margin: 8px 0 0; max-width: 28rem; }
+.pochettes-ecartees-liste li {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--bord);
+}
+.pochettes-ecartees-liste li:last-child { border-bottom: none; }
+/* « n°12 » seul, le titre du bloc dit déjà « Pochettes » : à 375 px, le
+   numéro et « Remettre en service » tiennent ainsi sur une ligne. */
+.pochettes-ecartees-num { font-size: 1.3rem; font-weight: 700; white-space: nowrap; }
+.pochettes-ecartees-liste .pochette-remettre { margin: 0; flex: 0 0 auto; }
+.pochettes-ecartees-liste .bouton-filtrer { min-height: 44px; white-space: nowrap; }
 .pochette-forcer-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
 .pochette-forcer-form .champ { flex: 1 1 auto; min-width: 0; margin: 0; }
 .pochette-forcer-form .champ input { font-size: 1.4rem; font-weight: 700; border-color: var(--gris); }

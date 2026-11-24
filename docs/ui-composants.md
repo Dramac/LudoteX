@@ -91,6 +91,24 @@ Règles d'emploi :
 - Le marqueur natif est remplacé par un **chevron dessiné en CSS**
   (bordures, aucun texte) qui pivote à l'ouverture, sans transition.
 
+## 2 quater. Deux boutons secondaires dans un bandeau (lot comptoir-10)
+
+Après un changement de pochette, le bandeau vert porte deux gestes
+secondaires : **Remettre le n°X en service** (`.pochette-remettre-bouton`,
+`<button class="bouton bouton-secondaire pochette-remettre-bouton">`) et
+**Utiliser une autre pochette** (§ 2 ter). Règle de hiérarchie :
+
+- le geste **attaché à une phrase** se place juste sous elle, **compact**
+  (largeur de son texte, centré, 44 px, texte 1rem, sans chevron) ; le geste
+  **général** du bandeau reste en dernier, **pleine largeur** ;
+- les deux prennent la couleur du bandeau pour texte et contour (mêmes
+  mesures qu'au § 2 ter : 5,37:1 sur le blanc, 4,73:1 contre le vert pâle) ;
+- un libellé de bouton compact tient sur **une ligne à 375 px** : s'il
+  passe sur deux, il prend la largeur du geste d'en dessous et les deux se
+  confondent (« Remettre la pochette n°1 en service » mesuré sur deux lignes,
+  d'où « Remettre le n°1 en service » : la phrase juste au-dessus nomme la
+  pochette).
+
 ## 3. Bouton compact — `.bouton-filtrer`
 
 ```html

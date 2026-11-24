@@ -334,8 +334,11 @@ CREATE TABLE IF NOT EXISTS prets (
 # `ecartee` (1.35) : le bénévole a remplacé ce numéro, proposé par
 # l'application, par une autre pochette (services.changer_pochette) — souvent
 # parce qu'elle manque ou qu'elle est abîmée. Il n'est plus PROPOSÉ jusqu'à la
-# clôture de fin d'événement, qui remet tout à 0 ; on peut toujours le
-# choisir à la main, ce qui le remet en service.
+# clôture de fin d'événement, qui remet tout à 0. Il revient en service
+# (`ecartee` = 0, `occupe` inchangé) si on le choisit à la main lors d'un
+# changement, ou par services.remettre_pochette_en_service (lot comptoir-10 :
+# bouton du bandeau qui suit le changement, bloc « Pochettes écartées » de la
+# page Jeux sortis).
 SCHEMA_POCHETTES = """
 CREATE TABLE IF NOT EXISTS pochettes (
     numero_pochette  INTEGER PRIMARY KEY,         -- numéro (recyclé)

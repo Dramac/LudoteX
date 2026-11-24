@@ -121,6 +121,15 @@ les prêts est donc un doublon — mais un doublon **utile**, pour trois raisons
   la correction des courses de pochettes. Un `occupe` dans le journal, c'est un
   bénévole qui a vu un message inattendu ; c'est exactement ce qu'on cherche après coup.
 
+Les gestes sur la pochette elle-même suivent la même règle, toujours **sans le
+numéro** (§8) : `pochette_changee` (le bénévole remplace le numéro proposé) et
+`pochette_remise_en_service` (lot comptoir-10 : un numéro écarté par ce
+changement redevient proposable, depuis le bandeau qui suit le changement —
+`objet` porte alors le nom du jeu — ou depuis la page Jeux sortis, sans
+`objet`). Un tap sans effet (double tap sur un wifi lent, numéro déjà en
+service) n'écrit **rien** : le bénévole voit la même confirmation, rien
+d'inattendu ; seul le conflit d'écriture (`occupe`) s'inscrit en échec.
+
 ### 2.4 Hors périmètre
 
 Les consultations. Aucun GET public n'est journalisé : ni `/catalogue`, ni
