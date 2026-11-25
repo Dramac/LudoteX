@@ -191,7 +191,10 @@ copie datée des fiches BoardGameGeek (`fiches_bgg`, clé : le numéro BGG, pas
 la référence du titre — deux jeux peuvent partager une fiche), et les
 **éditions de l'événement** (`editions_evenement` : un nom, un premier et un
 dernier jour, inclus), datées par le bureau pour nommer une période des
-statistiques (§7) ; aucun prêt n'y est rattaché. Cette copie
+statistiques (§7) ; aucun prêt n'y est rattaché. Elle porte enfin les **jeux
+demandés** au comptoir (`jeux_demandes` : une ligne par demande, le nom tel
+que tapé, sa clé de regroupement et sa date ; ni appareil, ni bénévole), voir
+§5.4. Cette copie
 n'est jamais une donnée du bureau : elle ne remplace aucune valeur, ne part
 pas dans l'export du catalogue, et n'est récupérée que sur demande. Elle garde
 aussi l'**adresse** de la petite image de la boîte chez BGG (`vignette`).
@@ -419,6 +422,13 @@ Chacun a sa note de conception quand elle existe ; on ne la recopie pas ici.
   s'affichent sur l'écran de salle, sur la page publique `/tombola` et sur
   l'accueil ; une faute de frappe se corrige dans le tirage d'origine ; les
   statistiques donnent le délai médian de remise. `docs/conception-tombola.md`.
+- **Jeux demandés** — un visiteur demande un jeu absent, ou dont toutes les
+  boîtes sont dehors : le bénévole le note (depuis une recherche sans
+  résultat du catalogue, en un tap), les demandes déjà notées sont
+  suggérées pour qu'une même demande se compte ; un jeu du catalogue est noté
+  quand même. Le bureau relit la liste groupée, fusionne les graphies,
+  exporte pour ses achats et purge. Bénévoles et bureau seulement, jamais
+  public ; le nom n'entre jamais au journal. `docs/conception-jeux-demandes.md`.
 - **Journal d'activité** — qui a fait quoi, à quel appareil près, jamais à
   quelle personne. `docs/conception-journal.md`.
 - **Administration** — mot de passe distinct du jeton bénévole : catalogue
@@ -761,7 +771,7 @@ personnelle**. L'emprunteur est représenté par un numéro de pochette ; sa
 pièce d'identité reste physiquement au comptoir et lui est rendue au retour du
 jeu. Quelques champs de texte libre (détail d'un signalement, libellé d'un
 appareil, annonces de l'écran de salle, nom d'un jeu éphémère saisi au
-comptoir) pourraient recevoir un nom : ils portent
+comptoir, nom d'un jeu demandé) pourraient recevoir un nom : ils portent
 une consigne, et leur liste, avec ce que chacun garde, vit dans
 `wiki/Rgpd.md`. La tombola n'en ouvre aucune : elle ne garde que des
 numéros et des heures, ne note jamais le nom d'un gagnant et n'a aucun champ

@@ -115,6 +115,19 @@
   {% endfor %}
 </ul>
 
+{# Jeux demandés (série comptoir, lot 11) : BÉNÉVOLE seulement, jamais un
+   visiteur. Quand une recherche ne donne rien, ou que tout ce qu'elle donne
+   est dehors, un tap mène à la page des jeux demandés, champ pré-rempli par
+   la recherche. Un FORMULAIRE et non un lien : le nom voyage dans le corps
+   du POST, jamais dans une adresse (journal d'accès de nginx). Rien n'est
+   noté à ce tap : la page attend « Noter la demande ». #}
+{% if q and est_benevole(request) and not (jeux | selectattr("disponible", "gt", 0) | list) %}
+<form method="post" action="/jeux-demandes/preparer" class="catalogue-demande">
+  <input type="hidden" name="nom" value="{{ q }}">
+  <button type="submit" class="lien lien-cible">Noter ce jeu comme demandé</button>
+</form>
+{% endif %}
+
 {# M7 (docs/idees-ux.md) : remonte au panneau de recherche sans repasser par
    un long défilement (600 jeux). Lien ancre pur CSS, pas de JS, pas de
    pagination -- réutilise le style .bouton-filtrer (aspect + transitions déjà

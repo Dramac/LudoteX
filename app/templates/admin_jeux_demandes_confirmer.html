@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block titre %}{{ {"fusionner": "Fusionner des demandes", "supprimer": "Supprimer des demandes", "purger": "Purger les demandes"}[geste] }} — Administration — {{ nom_association }}{% endblock %}
+
+{# Confirmation sans JS des trois gestes du bureau sur les jeux demandés
+   (série comptoir, lot 11), patron de admin_edition_supprimer.html : une
+   page à part et une case à cocher. Atteinte par un POST (fusionner,
+   supprimer) : la clé du groupe ne passe jamais par l'adresse. #}
+{% block contenu %}
+<section class="carte">
+  {% if geste == "fusionner" %}
+    <h1>Fusionner des demandes</h1>
+    <div class="resultat resultat-attention">
+      <p>{% if source.nombre == 1 %}La demande « <strong>{{ source.nom }}</strong> » rejoindra
+         {%- else %}Les {{ source.nombre }} demandes « <strong>{{ source.nom }}</strong> » rejoindront{% endif %}
+         « <strong>{{ cible.nom }}</strong> » ({{ cible.nombre }}) :
+         {{ source.nombre + cible.nombre }} demandes en tout, sous le nom
+         « {{ cible.nom }} ».</p>
+      <p>Aucune demande n'est perdue, mais le nom « {{ source.nom }} » disparaît.</p>
+    </div>
+  {% elif geste == "supprimer" %}
+    <h1>Supprimer des demandes</h1>
+    <div class="resultat resultat-attention">
+      <p>{% if source.nombre == 1 %}La demande « <strong>{{ source.nom }}</strong> » sera effacée.
+         {%- else %}Les {{ source.nombre }} demandes « <strong>{{ source.nom }}</strong> » seront effacées.{% endif %}</p>
+      <p><strong>C'est définitif</strong> : elles ne pourront pas être retrouvées.</p>
+    </div>
+  {% else %}
+    <h1>Purger les demandes</h1>
+    <div class="resultat resultat-attention">
+      <p>{% if nb_total == 1 %}La seule demande notée sera effacée.
+         {%- else %}Les {{ nb_total }} demandes notées seront toutes effacées.{% endif %}</p>
+      <p><strong>C'est définitif</strong> : exportez la liste avant si vous en avez
+         encore besoin. Les sauvegardes déjà faites les gardent jusqu'à leur
+         effacement automatique, {{ duree_archives }} jours au plus.</p>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/admin/jeux-demandes/{{ geste }}" class="edition-supprimer">
+    {% if geste == "fusionner" %}
+      <input type="hidden" name="source" value="{{ source.cle }}">
+      <input type="hidden" name="cible" value="{{ cible.cle }}">
+    {% elif geste == "supprimer" %}
+      <input type="hidden" name="cle" value="{{ source.cle }}">
+    {% endif %}
+    <label class="case">
+      <input type="checkbox" name="confirmation" value="oui" required
+             {%- if erreur %} aria-invalid="true" aria-describedby="confirmation-erreur" autofocus{% endif %}>
+      {{ {"fusionner": "Je confirme la fusion.", "supprimer": "Je confirme la suppression.",
+          "purger": "Je confirme vouloir tout effacer."}[geste] }}
+    </label>
+    {% if erreur %}<p class="resultat resultat-attention" id="confirmation-erreur" role="alert">{{ erreur }}</p>{% endif %}
+    <button type="submit" class="bouton bouton-principal">
+      {{ {"fusionner": "Fusionner", "supprimer": "Supprimer", "purger": "Tout purger"}[geste] }}
+    </button>
+  </form>
+
+  <p class="lien-fiche"><a class="lien" href="/admin/jeux-demandes">Annuler</a></p>
+</section>
+{% endblock %}

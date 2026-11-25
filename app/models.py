@@ -28,6 +28,7 @@ docs/conception-signalements.md) :
     tombola_tirages         tirages d'une édition (saisie manuelle ou par l'application).
     tombola_numeros         numéros gagnants tirés, de l'affichage à la remise du lot.
     editions_evenement      éditions de l'événement, datées par le bureau (statistiques).
+    jeux_demandes           jeux demandés au comptoir, notés par les bénévoles (texte libre).
 
 LES DEUX CLÉS NON NÉGOCIABLES (stables même si le CSV évolue, voir spec §3.1) :
 
@@ -699,6 +700,38 @@ CREATE TABLE IF NOT EXISTS editions_evenement (
 );
 """
 
+# ---------------------------------------------------------------------------
+# Jeux demandés (série comptoir, lot 11 ; docs/conception-jeux-demandes.md)
+# ---------------------------------------------------------------------------
+# Une ligne par DEMANDE d'un visiteur au comptoir (« vous n'auriez pas
+# Catan ? »), notée par un bénévole pour les achats du bureau. Une ligne par
+# demande, et non un compteur par jeu : les dates permettent de filtrer par
+# édition, et fusionner deux graphies revient à réécrire `cle`.
+#
+# TEXTE LIBRE TAPÉ PAR TOUT BÉNÉVOLE : une porte à donnée personnelle
+# (CLAUDE.md). Ses conditions vivent dans `app/jeux_demandes.py` : champ
+# court avec consigne, bénévoles et bureau seulement, jamais au journal,
+# suppression sous `secure_delete`. AUCUNE colonne d'origine (ni appareil, ni
+# bénévole) et aucun champ « pour qui ».
+#
+# `jeton_formulaire` : la valeur aléatoire du champ caché, renouvelée à chaque
+# affichage du formulaire. UNIQUE, elle fait d'un double appui (wifi lent) une
+# seule demande — patron de `tombola_tirages`. Elle ne désigne personne : elle
+# n'est écrite nulle part ailleurs.
+#
+# `AUTOINCREMENT` pour la raison des annonces : un numéro n'est jamais
+# réattribué après une purge.
+SCHEMA_JEUX_DEMANDES = """
+CREATE TABLE IF NOT EXISTS jeux_demandes (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom               TEXT NOT NULL,   -- tel que tapé, nettoyé ; 80 caractères au plus
+    cle               TEXT NOT NULL,   -- regroupement : services.slug_titre(nom), réécrit par une fusion
+    demandee_le       TEXT NOT NULL,   -- UTC ISO
+    jeton_formulaire  TEXT UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_jeux_demandes_cle ON jeux_demandes (cle);
+"""
+
 SCHEMA_STATEMENTS = (
     SCHEMA_TITRES,
     SCHEMA_CATEGORIES_JEU,
@@ -716,5 +749,6 @@ SCHEMA_STATEMENTS = (
     SCHEMA_TOMBOLA_TIRAGES,
     SCHEMA_TOMBOLA_NUMEROS,
     SCHEMA_EDITIONS_EVENEMENT,
+    SCHEMA_JEUX_DEMANDES,
     SCHEMA_INDEXES,
 )

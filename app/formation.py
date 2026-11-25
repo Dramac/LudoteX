@@ -104,7 +104,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app import db as pret_db
-from app import services, tombola, vignettes
+from app import jeux_demandes, services, tombola, vignettes
 from app.planning import db as planning_db
 from app.planning import demo as planning_demo
 from app.planning import services as planning_services
@@ -464,6 +464,11 @@ def peupler_pret(conn: sqlite3.Connection, noms: list[str] | None = None) -> dic
     # `services.effacer_toutes_les_annonces`, le même que la clôture. La
     # table n'a aucune clé étrangère : l'ordre des suppressions n'y joue pas.
     services.effacer_toutes_les_annonces(conn)
+    # Les jeux demandés au comptoir (série comptoir, lot 11) partent aussi,
+    # pour la même raison et de la même façon : un texte libre tapé en mise
+    # en situation n'a rien à faire là, et son effacement se prouve sur les
+    # octets (`jeux_demandes.purger`, sous `secure_delete`).
+    jeux_demandes.purger(conn)
 
     return {
         "jeux": len(ids_exemplaires),

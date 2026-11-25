@@ -184,6 +184,18 @@ ACTIONS = {
     # fait partie du même geste. Rien n'est écrit pour une boîte sortie ou
     # un QR déjà vierge.
     "ephemere_libere",
+    # Jeux demandés au comptoir (série comptoir, lot 11 ; app/jeux_demandes.py).
+    # Le NOM d'un jeu demandé est un texte libre, une porte : il n'entre
+    # JAMAIS ici, ni en `objet`, ni en `ref`, ni en `detail`. Une demande
+    # notée n'a pas d'objet (un refus porte sa raison fermée, `vide` ou
+    # `long`, en `detail`) ; les gestes du bureau portent un NOMBRE en `objet`
+    # (« 3 demandes », « 12 jeux » pour l'export). Contrôle statique :
+    # tests/test_jeux_demandes.py. Un double envoi n'écrit rien.
+    "jeu_demande_notee",
+    "jeux_demandes_fusionnes",
+    "jeux_demandes_supprimes",
+    "jeux_demandes_purges",
+    "jeux_demandes_exportes",
     # Un import a défait des corrections faites à l'écran. `objet` porte le
     # NOMBRE de fiches concernées, jamais les valeurs : le détail est dans le
     # message affiché au bureau, pas ici.

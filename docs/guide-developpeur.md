@@ -111,6 +111,16 @@ Ne jamais renommer/retyper ces deux colonnes : le reste du schéma peut évoluer
   (conversion en bornes, libellés, refus du chevauchement) ; `/stats` résout
   `edition=<id>` en `debut` / `fin` **dans la route**, avant tout calcul.
   Sans rapport avec `tombola_editions` (des sessions de tirages).
+- `jeux_demandes` (`AUTOINCREMENT`) : les jeux demandés au comptoir, une
+  ligne par demande (nom tapé, `cle` = `services.slug_titre(nom)`, date UTC,
+  `jeton_formulaire` UNIQUE contre le double envoi), sans colonne d'origine.
+  Texte libre jamais public : logique et conditions de la porte dans
+  `app/jeux_demandes.py`, toute suppression ou réécriture sous
+  `secure_delete` (un test l'inventorie). **Règle d'archive** : les demandes
+  partent dans les archives, comme le planning ; une purge les retire des
+  archives suivantes (`VACUUM` des copies), les antérieures les gardent
+  jusqu'à leur rotation. Clôture : gardées ; formation : effacées.
+  `docs/conception-jeux-demandes.md`.
 - `categories_jeu` (vocabulaire, `cle` UNIQUE) et `titres_categories`
   (liaison ordonnée par `rang`) : les catégories de jeu en liste. Découpage
   d'une case et clé de rapprochement dans `app/categories_jeu.py`, module pur ;

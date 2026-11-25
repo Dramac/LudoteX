@@ -787,6 +787,15 @@ summary:focus-visible,
 .achat-date { color: var(--gris); font-size: 0.85rem; white-space: nowrap; }
 
 .catalogue-liste { list-style: none; margin: 0; padding: 0; }
+/* Jeux demandés (lot comptoir-11) : le passage du catalogue vers la page, pour
+   un bénévole ; un bouton-lien de 44 px de haut (`.lien-cible`). */
+.catalogue-demande { margin: 12px 0 0; text-align: center; }
+.jeux-demandes-saisie input[type="text"] { min-height: 44px; box-sizing: border-box; }
+.jeux-demandes-jour { margin: 0; padding-left: 20px; }
+.jeux-demandes-jour li { padding: 4px 0; }
+.jeux-demandes-fusion { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.jeux-demandes-fusion select { min-height: 44px; flex: 1 1 8em; min-width: 8em; max-width: 100%; }
+.jeux-demandes-table .bouton-filtrer { min-height: 44px; }
 .jeu {
   display: flex;
   align-items: center;

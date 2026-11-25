@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block titre %}Jeux demandés — Prêt / retour — {{ nom_association }}{% endblock %}
+
+{# Jeux demandés au comptoir (série comptoir, lot 11 ;
+   docs/conception-jeux-demandes.md). Écran BÉNÉVOLE, jamais public.
+
+   Le champ « Nom du jeu » est une PORTE : texte libre saisi par n'importe
+   quel bénévole. Sa consigne est VISIBLE sous le champ et reliée par
+   aria-describedby. Suggestions par <datalist>, sans JS : les demandes déjà
+   notées, une par groupe, pour qu'une même demande se compte au lieu de
+   s'écrire de dix façons.
+
+   Le jeton caché change à chaque affichage : un double appui n'écrit qu'une
+   demande (app/jeux_demandes.py, `noter`). #}
+{% block contenu %}
+<section class="carte">
+  <h1>Jeux demandés</h1>
+  <p>Un visiteur demande un jeu que nous n'avons pas, ou dont toutes les boîtes
+     sont dehors ? Notez-le : le bureau s'en sert pour ses achats.</p>
+
+  {% if notee %}
+    <div class="resultat resultat-ok" role="status">
+      {% if notee.doublon %}
+        <p>Cette demande était déjà notée : {{ notee.nom }}, {{ notee.total }} fois en tout. Rien n'a été ajouté.</p>
+      {% else %}
+        <p>Demande notée : {{ notee.nom }}, {{ notee.total }} fois en tout.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if titre_catalogue %}
+    {# Ne bloque jamais : la demande d'un jeu du catalogue est notée quand
+       même (tout est peut-être dehors). #}
+    <div class="resultat resultat-info" role="status">
+      <p>Ce jeu est au catalogue ({{ titre_catalogue.total }} {{ pluriel(titre_catalogue.total, 'boîte', 'boîtes') }}, {{ titre_catalogue.dehors }} dehors)
+         {%- if not notee %} : vous pouvez noter la demande quand même{% endif %}.</p>
+    </div>
+  {% endif %}
+
+  {% if erreur %}
+    <div class="resultat resultat-attention" role="alert"><p>{{ erreur }}</p></div>
+  {% endif %}
+
+  <form method="post" action="/jeux-demandes" class="jeux-demandes-saisie">
+    <input type="hidden" name="jeton" value="{{ jeton }}">
+    <div class="champ">
+      <label for="nom-jeu">Nom du jeu</label>
+      <input type="text" id="nom-jeu" name="nom" value="{{ nom_saisi }}"
+             list="jeux-deja-demandes" maxlength="{{ longueur_max }}" required
+             autocomplete="off" autocapitalize="sentences"
+             aria-describedby="nom-jeu-consigne"
+             {% if erreur %}aria-invalid="true"{% endif %}>
+      <p class="stats-note" id="nom-jeu-consigne">{{ consigne }}</p>
+    </div>
+    <datalist id="jeux-deja-demandes">
+      {% for n in suggestions %}<option value="{{ n }}">{% endfor %}
+    </datalist>
+    <button type="submit" class="bouton bouton-principal">Noter la demande</button>
+  </form>
+</section>
+
+<section class="carte">
+  <h2>Demandés aujourd'hui</h2>
+  {% if du_jour %}
+    <ul class="jeux-demandes-jour">
+      {% for g in du_jour %}
+        <li>{{ g.nom }} <span class="badge">{{ g.nombre }} fois</span></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="stats-note">Aucune demande notée aujourd'hui.</p>
+  {% endif %}
+  <p class="lien-fiche"><a class="lien" href="/catalogue">Retour au catalogue</a></p>
+</section>
+{% endblock %}

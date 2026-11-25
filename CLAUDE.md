@@ -76,13 +76,14 @@ Déploiement : VPS Debian/Ubuntu, nginx, systemd, HTTPS Let's Encrypt.
   consigne sous le champ : détail d'un signalement (jamais public ni journalisé
   ni purgé), libellé d'appareil (bureau), annonces de l'écran de salle
   (publiques, 12 h au plus, jamais journalisées ni archivées), nom d'un jeu
-  éphémère (tout bénévole). Données personnelles assumées : le planning (base
-  séparée, finalité unique, purge par le bureau) et le pseudo de tournoi. Les
-  textes que le bureau publie (identité, programme, tournois) et les noms
-  d'objets ne sont pas des portes. Liste complète, avec qui lit et ce qui
-  efface : `wiki/Rgpd.md`. Une suppression promise se vérifie sur les
-  **octets** de la base et de l'archive (`secure_delete`, `VACUUM`), pas par un
-  `SELECT`.
+  éphémère (tout bénévole), nom d'un jeu demandé (bénévoles et bureau, jamais
+  public ni journalisé, purge par le bureau). Données personnelles assumées :
+  le planning (base séparée, finalité unique, purge par le bureau) et le
+  pseudo de tournoi. Les textes que le bureau publie (identité, programme,
+  tournois) et les noms d'objets ne sont pas des portes. Liste complète, avec
+  qui lit et ce qui efface : `wiki/Rgpd.md`. Une suppression promise se
+  vérifie sur les **octets** de la base et de l'archive (`secure_delete`,
+  `VACUUM`), pas par un `SELECT`.
 
 ## Les trois bases — invariant
 
@@ -147,7 +148,7 @@ Modules livrés (le détail est dans `CHANGELOG.md` et les `conception-*.md`) :
 - **Prêt** — catalogue public, fiche par exemplaire, QR éphémères (`X01`…),
   scanner jsQR et saisie de secours, prêt / retour / re-prêt / transfert de
   pochette, sorties tournoi et démo, erreurs de prêt, retours non scannés,
-  « pochette pas vide », clôture de fin d'événement.
+  « pochette pas vide », jeux demandés au comptoir, clôture de fin d'événement.
 - **Statistiques** (`/stats`) — comptoir, achats, ce qui plaît, organisation
   (bénévoles seuls), période par édition, exports Excel et PDF.
 - **Tournois** (`/tournois`) — quatre modes de scoring (`MODES_SCORING`),

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block titre %}Jeux demandés — Administration — {{ nom_association }}{% endblock %}
+{% block conteneur_extra %}contenu-large{% endblock %}
+
+{# Jeux demandés au comptoir, version BUREAU (série comptoir, lot 11 ;
+   docs/conception-jeux-demandes.md) : relire, fusionner, supprimer, purger,
+   exporter. Jamais public : ni /stats, ni /live, ni un export public.
+
+   Les gestes passent par des formulaires POST : la clé d'un groupe (tirée
+   d'un texte libre) ne passe jamais par une adresse, que nginx journalise.
+   Chaque geste mène d'abord à une page de confirmation. #}
+{% block contenu %}
+<section class="carte">
+  <h1>Jeux demandés</h1>
+  <p><a class="lien" href="/admin">← Tableau de bord</a></p>
+  <p class="stats-note">
+    Les jeux que des visiteurs ont demandés au comptoir, notés par les
+    bénévoles. Une ligne par jeu, avec le nombre de demandes. Fusionnez les
+    graphies d'un même jeu, exportez pour vos achats, puis purgez après
+    l'événement.
+  </p>
+
+  {% if message %}
+    <div class="resultat {{ 'resultat-ok' if message[0] == 'succes' else 'resultat-attention' }}"
+         role="{{ 'status' if message[0] == 'succes' else 'alert' }}"><p>{{ message[1] }}</p></div>
+  {% endif %}
+
+  {% if options_editions %}
+  <form method="get" action="/admin/jeux-demandes" class="recherche-form">
+    <div class="champ">
+      <label for="edition">Période</label>
+      <select id="edition" name="edition">
+        <option value="tout" {% if choix == "tout" %}selected{% endif %}>Toutes les demandes</option>
+        {% for id, libelle in options_editions %}
+          <option value="{{ id }}" {% if choix == id %}selected{% endif %}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="recherche-actions">
+      <button type="submit" class="bouton-filtrer">Afficher</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if groupes %}
+    <p class="dispo-titre">{{ groupes | length }} {{ pluriel(groupes | length, 'jeu demandé', 'jeux demandés') }}
+       {%- if edition %} pendant « {{ edition.nom }} »{% endif %}</p>
+    <table class="admin-table admin-table--cartes jeux-demandes-table">
+      <thead>
+        <tr>
+          <th>Jeu demandé</th>
+          <th>Demandes</th>
+          <th>Première et dernière</th>
+          <th>Au catalogue</th>
+          <th>Fusionner</th>
+          <th>Supprimer</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in groupes %}
+        <tr>
+          <td class="cartes-titre">{{ g.nom }}</td>
+          <td><span class="cartes-libelle">Demandes</span>{{ g.nombre }}</td>
+          <td><span class="cartes-libelle">Première et dernière</span>
+              {{ g.premiere_txt }}{% if g.derniere != g.premiere %}<br>{{ g.derniere_txt }}{% endif %}</td>
+          <td><span class="cartes-libelle">Au catalogue</span>
+            {% if g.titre %}
+              <a class="lien" href="/admin/jeu/{{ g.titre.reference_titre }}">Oui, {{ g.titre.total }}
+                {{ pluriel(g.titre.total, 'boîte', 'boîtes') }}</a>
+            {% else %}Non{% endif %}
+          </td>
+          <td class="cartes-action">
+            {% if tous_groupes | length > 1 %}
+            <form method="post" action="/admin/jeux-demandes/fusionner" class="jeux-demandes-fusion">
+              <input type="hidden" name="source" value="{{ g.cle }}">
+              <label for="cible-{{ loop.index }}" class="sr-only">Fusionner « {{ g.nom }} » dans</label>
+              <select id="cible-{{ loop.index }}" name="cible">
+                {% for autre in tous_groupes if autre.cle != g.cle %}
+                  <option value="{{ autre.cle }}">{{ autre.nom }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="bouton-filtrer">Fusionner<span class="sr-only"> « {{ g.nom }} »</span></button>
+            </form>
+            {% endif %}
+          </td>
+          <td class="cartes-action">
+            <form method="post" action="/admin/jeux-demandes/supprimer">
+              <input type="hidden" name="cle" value="{{ g.cle }}">
+              <button type="submit" class="bouton-filtrer">Supprimer<span class="sr-only"> « {{ g.nom }} »</span></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p><a class="lien lien-cible" href="{{ url_export }}">Télécharger la liste (Excel)</a></p>
+  {% else %}
+    <p class="stats-note">
+      {% if edition %}Aucune demande notée pendant « {{ edition.nom }} ».
+      {% else %}Aucune demande notée pour le moment.{% endif %}
+    </p>
+  {% endif %}
+</section>
+
+{% if nb_total %}
+<section class="carte">
+  <h2>Après l'événement</h2>
+  <p>Quand vous avez fini de vous en servir, effacez les demandes : le nom tapé
+     au comptoir peut contenir autre chose qu'un nom de jeu.</p>
+  <p><a class="lien lien-cible" href="/admin/jeux-demandes/purger">Tout purger ({{ nb_total }} {{ pluriel(nb_total, 'demande', 'demandes') }})</a></p>
+</section>
+{% endif %}
+{% endblock %}

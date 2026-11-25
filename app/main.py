@@ -42,8 +42,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app import auth, envois, journal, services
 from app.db import get_connection, init_db
 from app.modules import ModuleDesactive, garde_module
-from app.routes import (acces, admin, catalogue, images, live, maintenance, pret,
-                        scanner, sortis, stats, tombola)
+from app.routes import (acces, admin, catalogue, images, jeux_demandes, live,
+                        maintenance, pret, scanner, sortis, stats, tombola)
 from app.templating import templates
 from app.tournoi import routes as tournoi_routes
 from app.tournoi import routes_programme
@@ -75,6 +75,8 @@ app.include_router(sortis.router)                                              #
 app.include_router(acces.router)                                               # /acces                   (activation)
 app.include_router(images.router)                                              # /image/*                 (logo + icônes)
 app.include_router(admin.router)                                               # /admin                   (mot de passe)
+app.include_router(jeux_demandes.router)                                       # /jeux-demandes           (bénévole, cœur — jamais public)
+app.include_router(jeux_demandes.router_admin)                                 # /admin/jeux-demandes     (mot de passe)
 app.include_router(stats.router,            dependencies=[garde_module("stats")])      # /stats
 # Le garde de module règle la VISIBILITÉ ; l'accès, lui, tient au
 # `Depends(exiger_jeton)` que chaque route de ce module porte en propre

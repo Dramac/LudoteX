@@ -58,6 +58,9 @@ PREFIXES_RESERVES = ("/admin", "/pret", "/scanner", "/maintenance",
                      # Ajouté au périmètre du prompt : l'administration du
                      # planning est de l'administration, sous un autre préfixe.
                      "/planning/admin",
+                     # Lot comptoir-11 : les jeux demandés au comptoir, un
+                     # texte libre jamais public — même la page de saisie.
+                     "/jeux-demandes",
                      # Série tombola : la page de gestion des bénévoles.
                      # `/tombola` seul est la page PUBLIQUE (lot 2), sans
                      # jeton par construction : d'où le préfixe complet.
