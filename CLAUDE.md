@@ -137,7 +137,7 @@ test qui interdit d'y écrire hors vocabulaire.
 
 ## État de l'application
 
-**Dernière version au dépôt : 1.36.0** (`VERSION` et `CHANGELOG.md`, verrouillés
+**Dernière version au dépôt : 1.37.0** (`VERSION` et `CHANGELOG.md`, verrouillés
 par `tests/test_version_coherente.py`). **La version servie en production ne
 figure pas ici** : elle se lit sur `/apropos`, puis sur `/sante` dès qu'une
 version qui l'y publie est déployée. Le **total de tests** non plus : il se lit

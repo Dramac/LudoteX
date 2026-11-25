@@ -25,7 +25,7 @@ from pathlib import Path
 
 from markupsafe import Markup, escape
 
-APP_VERSION = "1.36.0"
+APP_VERSION = "1.37.0"
 
 # Racine du dépôt (deux niveaux au-dessus de ce fichier : app/version.py -> /).
 _RACINE = Path(__file__).resolve().parent.parent

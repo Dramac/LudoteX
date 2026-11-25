@@ -6,6 +6,19 @@ ancienne. Les versions suivent le schéma `MAJEUR.MINEUR.CORRECTIF` (voir
 affichées sur la page « À propos » du site : les garder claires et tournées
 vers l'utilisateur.
 
+## 1.37.0 — 2026-11-25
+
+- **Échanger depuis le jeu que le visiteur veut emporter** : sur un jeu disponible, appuyez sur **Échanger contre un jeu rendu**, scannez le jeu qu'il rapporte et confirmez ; sa pièce d'identité reste dans sa pochette. Si le jeu rapporté n'est pas noté sorti, ou revient d'un tournoi ou d'une démo, l'écran propose de prêter le jeu voulu en un tap ou de scanner un autre jeu.
+- **Sortir un jeu pour une démo** : sur un jeu disponible, **Sortir pour une démo** le confie à une table sans pièce d'identité ni pochette ; au retour, **Rendre**. Les démos se voient dans la page **Jeux sortis** (section « En démo »), sur la fiche du jeu et sur l'écran de salle ; les statistiques les comptent à part, jamais parmi les prêts.
+- **« Utiliser une autre pochette » se voit mieux** : sous le grand numéro, c'est désormais un bouton encadré, qui se déplie toujours d'un tap. Il est aussi proposé sous le numéro annoncé par **Le re-prêter**.
+- **Remettre une pochette écartée en service** : après **Utiliser une autre pochette**, le bouton **Remettre le n°… en service** reprend aussitôt la pochette d'abord proposée, si elle était en fait dans la pile. La page **Jeux sortis** liste en bas les **Pochettes écartées**, chacune avec **Remettre en service**.
+- **Les jeux arrivés sans étiquette se prêtent aussi** : au premier scan d'un QR éphémère, vous nommez le jeu (le catalogue fait des suggestions), puis vous le prêtez comme les autres ; un visiteur qui le scanne est invité à demander à un bénévole. Une faute de frappe se corrige au comptoir tant que la boîte n'a jamais été prêtée, ensuite par le bureau.
+- **Noter les jeux que les visiteurs réclament** : quand la recherche du catalogue ne trouve pas le jeu, ou que toutes ses boîtes sont dehors, un lien sous les résultats ouvre la page où vous confirmez le nom du jeu ; les jeux déjà notés sont proposés pendant la frappe.
+- **Les jeux réclamés, côté bureau** : l'administration les regroupe et les compte, fusionne les graphies d'un même jeu, les exporte pour préparer les achats et les purge après l'événement. Ils ne sont jamais publics et n'entrent pas au journal d'activité.
+- **Retirer une boîte du catalogue** : une boîte perdue, abîmée, donnée ou vendue se retire depuis la fiche du jeu, avec un motif. Ses prêts passés restent comptés dans les statistiques ; son QR affiche « Boîte retirée » et ne prête plus. **Remettre en service** annule un retrait par erreur, et l'import du catalogue ne remet jamais une boîte retirée en service.
+- **Les QR éphémères, du début à la fin de l'événement** : le bureau imprime depuis les étiquettes une feuille de QR vierges (`X01`…), avec une ligne pour écrire le nom du jeu. En fin d'événement, **Libérer les QR éphémères** fait repartir les jeux de passage en gardant leurs prêts dans les statistiques, et la feuille resservira l'année suivante ; un jeu encore sorti n'est pas libéré, sans bloquer les autres.
+- **Tombola : saisir un tirage depuis « Annonce en salle »**, dans un bloc **Tombola** sous les annonces, sans changer de page. La remise des lots et les corrections restent sur la page de la tombola.
+
 ## 1.36.0 — 2026-11-17
 
 - **Les statistiques sont réservées aux bénévoles** par défaut ; le bureau peut les rouvrir à tous depuis **Fonctionnalités**.
